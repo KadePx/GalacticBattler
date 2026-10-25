@@ -49,10 +49,28 @@ export class MenuScene extends Phaser.Scene {
     }
     button(this, 240, y, 150, 20, 'NEW RUN', () => this.scene.start('commanders'), { fill: 0x3a2a10, color: C.gold });
     const profile = getProfile();
-    txt(this, 240, y + 22, `PILOT RANK ${pilotRank(profile.xp)}`, { origin: 0.5, color: C.cyan }).setStroke('#05060f', 3);
+    this.add.rectangle(240, y + 22, 150, 14, 0x05060f, 0.75);
+    txt(this, 240, y + 22, `PILOT RANK ${pilotRank(profile.xp)}`, { origin: 0.5, color: C.cyan });
 
+    this.add.rectangle(240, 246, 480, 32, 0x05060f, 0.75);
     txt(this, 240, 246, 'Build a fleet. Win 10 battles before your 5 hull points run out.',
-      { origin: 0.5, color: C.dim, wrap: 440, align: 'center' }).setStroke('#05060f', 3);
+      { origin: 0.5, color: C.dim, wrap: 440, align: 'center' });
+
+    // Fullscreen hides the phone's browser bars, which matters a lot in landscape.
+    if (this.sys.game.device.fullscreen.available) {
+      const label = () => (this.scale.isFullscreen ? 'EXIT FULLSCREEN' : 'FULLSCREEN');
+      const fs = button(this, 404, 14, 140, 16, label(), () => {
+        if (this.scale.isFullscreen) this.scale.stopFullscreen();
+        else this.scale.startFullscreen();
+      });
+      const sync = () => fs.label.active && fs.label.setText(label());
+      this.scale.on('enterfullscreen', sync);
+      this.scale.on('leavefullscreen', sync);
+      this.events.once('shutdown', () => {
+        this.scale.off('enterfullscreen', sync);
+        this.scale.off('leavefullscreen', sync);
+      });
+    }
   }
 
   update(time: number, delta: number) {

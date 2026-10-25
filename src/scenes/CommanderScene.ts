@@ -72,7 +72,7 @@ export class CommanderScene extends Phaser.Scene {
     this.add2(this.add.image(x + w / 2, y + 22, portraitKey(id, !unlocked)).setScale(2));
     this.add2(txt(this, x + w / 2, y + 46, c.name.toUpperCase(), { origin: [0.5, 0], color: unlocked ? c.color : C.dim }));
     this.add2(txt(this, x + w / 2, y + 60, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
-      origin: [0.5, 0], color: unlocked ? C.gold : '#4a5578',
+      origin: [0.5, 0], color: unlocked ? C.gold : '#6a76a0',
     }));
     const hit = this.add2(this.add.rectangle(x + w / 2, y + h / 2, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
     hit.on('pointerup', () => {
@@ -118,7 +118,7 @@ export class CommanderScene extends Phaser.Scene {
       const chosen = available && prog.p === slot;
       this.add2(panel(this, bx, by, 138, 54, chosen ? 0x162050 : 0x0b1026, chosen ? C.highlight : 0x262e50));
       this.add2(txt(this, bx + 5, by + 5, ps.name.toUpperCase(), { color: available ? c.color : C.dim, wrap: 128 }));
-      this.add2(txt(this, bx + 5, by + 18, ps.desc, { color: available ? C.text : '#4a5578', wrap: 130 }));
+      this.add2(txt(this, bx + 5, by + 18, ps.desc, { color: available ? C.text : '#6a76a0', wrap: 130 }));
       if (slot === 'b' && lvl < 3) this.add2(txt(this, bx + 133, by + 5, 'LV3', { origin: [1, 0], color: C.bad }));
       if (available) {
         const hit = this.add2(this.add.rectangle(bx + 69, by + 27, 138, 54, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
@@ -149,7 +149,7 @@ export class CommanderScene extends Phaser.Scene {
 
     const nextUnlock = UNLOCKS.find((u) => u.level > lvl);
     if (unlocked && nextUnlock) {
-      this.add2(txt(this, X + 8, 228, `NEXT, LV${nextUnlock.level}: ${nextUnlock.text}`, { color: '#4a5578' }));
+      this.add2(txt(this, X + 8, 228, `NEXT, LV${nextUnlock.level}: ${nextUnlock.text}`, { color: '#6a76a0' }));
     }
 
     // Buttons
@@ -163,7 +163,7 @@ export class CommanderScene extends Phaser.Scene {
   private toggle(x: number, y: number, label: string, need: number, lvl: number, on: boolean, flip: () => void) {
     const ok = lvl >= need && isUnlocked(getProfile(), this.sel);
     const box = this.add2(this.add.rectangle(x + 4, y + 3, 8, 8, on && ok ? 0xffd166 : 0x0b1026).setStrokeStyle(1, ok ? 0x6a7cc0 : 0x262e50));
-    this.add2(txt(this, x + 14, y, label, { color: ok ? C.text : '#4a5578' }));
+    this.add2(txt(this, x + 14, y, label, { color: ok ? C.text : '#6a76a0' }));
     if (!ok) {
       this.add2(txt(this, x + 14 + label.length * 8 + 8, y, `LV${need}`, { color: C.bad }));
       return;

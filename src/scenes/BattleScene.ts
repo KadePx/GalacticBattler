@@ -11,6 +11,21 @@ import { TRAITS, traitCounts, traitLevel } from '../sim/traits';
 import type { Snapshot } from '../sim/types';
 
 const TICK_MS = 150;
+
+// Battle speed is a per-device preference, so it stays the same from battle to battle.
+const SPEEDS = [1, 2, 4, 8];
+const SPEED_KEY = 'starbrawl.speed';
+function savedSpeed() {
+  try {
+    const v = Number(localStorage.getItem(SPEED_KEY));
+    return SPEEDS.includes(v) ? v : 1;
+  } catch {
+    return 1;
+  }
+}
+function rememberSpeed(v: number) {
+  try { localStorage.setItem(SPEED_KEY, String(v)); } catch { /* ignore */ }
+}
 const SHOT_MS = 160;
 const hexInt = (h: string) => Phaser.Display.Color.HexStringToColor(h).color;
 
@@ -40,6 +55,7 @@ export class BattleScene extends Phaser.Scene {
   private startDelay = 0;
   private done = false;
   private speedBtn?: Phaser.GameObjects.Text;
+  private speedObjs: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
     super('battle');
@@ -59,7 +75,8 @@ export class BattleScene extends Phaser.Scene {
     this.started = false;
     this.done = false;
     this.speedBtn = undefined; // the old button was destroyed with the previous battle
-    this.setSpeed(1);
+    this.speedObjs = [];
+    this.setSpeed(savedSpeed());
     setPlayerSkin(run.skin ? run.cmd : null);
     addStarfield(this);
 
@@ -87,7 +104,7 @@ export class BattleScene extends Phaser.Scene {
     if (hull > 1) txt(this, 240, 24, `HULLS x${hull.toFixed(1)}`, { origin: [0.5, 0], color: C.hp });
     txt(this, 472, 7, this.opp.name.toUpperCase(), { origin: [1, 0], color: C.bad });
     const tag = this.opp.runId === 'bot' ? this.opp.style ?? 'RAIDER' : 'GHOST FLEET';
-    txt(this, 472, 24, `${tag}  ${this.opp.wins}W`, { origin: [1, 0], color: C.dim });
+    txt(this, 472, 24, `${tag}  ${this.opp.wins} WIN${this.opp.wins === 1 ? '' : 'S'}`, { origin: [1, 0], color: C.dim });
     this.commanderLine(this.opp, 472, 34, 1);
     if (this.opp.relics.length) txt(this, 472, 44, `${this.opp.relics.length} RELICS`, { origin: [1, 0], color: C.dim });
     this.traitLine(me, 8, 24, 0);
@@ -98,8 +115,15 @@ export class BattleScene extends Phaser.Scene {
     this.layout(0, false);
     this.layout(1, false);
 
-    this.speedBtn = button(this, 420, 256, 44, 16, '1X', () => this.setSpeed(this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1)).label;
-    button(this, 466, 256, 20, 16, '>>', () => this.setSpeed(12));
+    // One big button that cycles speed: 1X, 2X, 4X, 8X.
+    const sb = button(this, 440, 256, 64, 20, `${this.speed}X`, () => {
+      const next = SPEEDS[(SPEEDS.indexOf(this.speed) + 1) % SPEEDS.length] ?? 1;
+      this.setSpeed(next);
+      rememberSpeed(next);
+    });
+    this.speedBtn = sb.label;
+    this.speedObjs = sb.objects;
+    txt(this, 404, 253, 'SPEED', { origin: [1, 0], color: C.faint });
 
     const banner = txt(this, 240, 70, 'ENGAGE!', { size: 16, origin: 0.5, color: C.gold }).setStroke('#05060f', 4);
     this.tweens.add({ targets: banner, alpha: 0, delay: 500, duration: 400, onComplete: () => banner.destroy() });
@@ -128,7 +152,7 @@ export class BattleScene extends Phaser.Scene {
     this.speed = s;
     this.tweens.timeScale = s;
     this.time.timeScale = s;
-    if (this.speedBtn?.active) this.speedBtn.setText(s > 4 ? 'SKIP' : `${s}X`);
+    if (this.speedBtn?.active) this.speedBtn.setText(`${s}X`);
   }
 
   update(time: number, delta: number) {
@@ -403,12 +427,14 @@ export class BattleScene extends Phaser.Scene {
     const sub = w === 0 ? `+1 WIN  (${run.wins}/${WIN_TARGET})`
       : w === 1 ? `-1 HULL  (${run.lives} LEFT)` : 'NO WIN, NO DAMAGE';
 
-    this.add.rectangle(240, 135, 480, 270, 0x05060f, 0.55);
-    panel(this, 140, 88, 200, 96);
-    txt(this, 240, 104, title, { size: 16, origin: 0.5, color }).setStroke('#05060f', 4);
-    txt(this, 240, 128, sub, { origin: 0.5 });
-    button(this, 240, 160, 120, 20, 'CONTINUE', () => {
+    // Result bar along the bottom, so the surviving ships stay visible.
+    this.speedBtn?.destroy();
+    this.speedObjs.forEach((o) => o.destroy());
+    panel(this, 60, 206, 360, 56, 0x0a0e22, 0x3a4a7a).setDepth(50);
+    txt(this, 72, 216, title, { size: 16, color }).setStroke('#05060f', 4).setDepth(51);
+    txt(this, 72, 240, sub, { color: C.text }).setDepth(51);
+    button(this, 352, 234, 112, 22, 'CONTINUE', () => {
       this.scene.start(run.phase === 'over' ? 'gameover' : 'relic');
-    }, { fill: 0x3a2a10, color: C.gold });
+    }, { fill: 0x3a2a10, color: C.gold }).objects.forEach((o) => (o as Phaser.GameObjects.Rectangle).setDepth(51));
   }
 }

@@ -6,7 +6,8 @@ export const FONT = '"Press Start 2P", monospace';
 
 export const C = {
   text: '#e8ecff',
-  dim: '#7c86ad',
+  dim: '#8a94bc',
+  faint: '#6a76a0',
   gold: '#ffd166',
   atk: '#ff9f43',
   hp: '#7dff8a',
@@ -82,6 +83,19 @@ export function relicChip(scene: Phaser.Scene, x: number, y: number, id: string,
     origin: 0.5, color: `#${(r?.color ?? 0xffffff).toString(16).padStart(6, '0')}`,
   });
   return { bg, t };
+}
+
+/**
+ * Recent results, newest on the right: filled green = win, hollow red = loss,
+ * grey dash = draw. Shape as well as colour, so it reads without colour vision.
+ */
+export function historyPips(scene: Phaser.Scene, right: number, y: number, history: string[], max = 10) {
+  return history.slice(-max).reverse().map((o, k) => {
+    const x = right - k * 9;
+    if (o === 'W') return scene.add.rectangle(x, y, 6, 6, 0x7dff8a);
+    if (o === 'L') return scene.add.rectangle(x, y, 5, 5).setStrokeStyle(1, 0xff5e7e);
+    return scene.add.rectangle(x, y, 6, 2, 0x8a94bc);
+  });
 }
 
 /** A thin progress bar; frac is clamped to 0..1. */

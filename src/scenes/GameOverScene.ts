@@ -3,7 +3,7 @@ import { addStarfield, portraitKey, setPlayerSkin, shipKey } from '../game/art';
 import { CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, awardRun, cmdLevel, pilotRank, rankXp } from '../game/profile';
 import { WIN_TARGET } from '../game/run';
 import { clearRun, getRun, saveRun } from '../game/storage';
-import { C, bar, button, panel, relicChip, txt } from '../game/ui';
+import { C, bar, button, historyPips, panel, relicChip, txt } from '../game/ui';
 import { CMD_MAP } from '../sim/commanders';
 
 export class GameOverScene extends Phaser.Scene {
@@ -24,12 +24,18 @@ export class GameOverScene extends Phaser.Scene {
       size: 16, origin: 0.5, color: won ? C.gold : C.bad,
     }).setStroke('#05060f', 4);
     txt(this, 240, 42, `${run.wins} WINS IN ${run.history.length} BATTLES`, { origin: 0.5 });
-    txt(this, 240, 56, run.history.join(' '), { origin: 0.5, color: C.dim, wrap: 440, align: 'center' });
+    const hist = run.history.slice(-24);
+    historyPips(this, 240 + ((hist.length - 1) * 9) / 2, 56, hist, 24);
 
-    const ships = run.fleet.filter(Boolean);
-    ships.forEach((s, i) => {
-      this.add.image(240 + (i - (ships.length - 1) / 2) * 44, 82, shipKey(s!.def, 0)).setScale(2);
-    });
+    // Front ship on the right, matching the shop and battle. Spacing follows sprite widths.
+    const ships = run.fleet.filter(Boolean).map((s) => this.add.image(0, 82, shipKey(s!.def, 0)).setScale(2));
+    const gap = 8;
+    const total = ships.reduce((sum, im) => sum + im.displayWidth, 0) + gap * Math.max(0, ships.length - 1);
+    let x = 240 + total / 2;
+    for (const im of ships) {
+      im.x = Math.round(x - im.displayWidth / 2);
+      x -= im.displayWidth + gap;
+    }
     run.relics.forEach((id, i) => {
       relicChip(this, 240 + (i - (run.relics.length - 1) / 2) * 16, 106, id);
     });

@@ -6,7 +6,7 @@ import {
 } from '../game/run';
 import { CMD_MAP } from '../sim/commanders';
 import { getRun, saveRun } from '../game/storage';
-import { C, button, panel, relicChip, toast, txt } from '../game/ui';
+import { C, button, historyPips, panel, popup, relicChip, toast, txt } from '../game/ui';
 import { RELIC_MAP } from '../sim/relics';
 import { SHIPS, levelOf, xpForNext, type ShipClass, type ShipDef } from '../sim/ships';
 import { TRAITS, TRAIT_MAP, traitCounts, traitLevel } from '../sim/traits';
@@ -15,7 +15,8 @@ import { hullScale } from '../sim/battle';
 
 type Src = { kind: 'shop' | 'fleet'; i: number };
 type Tgt = { kind: 'slot'; i: number } | { kind: 'sell' };
-type Info = { def: ShipDef; ship?: FleetShip } | { relic: string } | { trait: ShipClass } | { cmd: string } | null;
+type Info = { def: ShipDef; ship?: FleetShip } | { relic: string } | { trait: ShipClass } | { cmd: string } | { freeze: number } | null;
+const hexInt = (h: string) => Phaser.Display.Color.HexStringToColor(h).color;
 
 // Layout. Fleet slot 0 is the front of the line, drawn on the right
 // because your fleet faces right in battle.
@@ -27,6 +28,8 @@ const SHOP_X = (i: number) => 48 + i * 56;
 const SHOP_Y = 150;
 const STRIP = { x: 4, y: 199, w: 350, h: 66 };
 const SELL = { x: 418, y: 214, w: 100, h: 18 };
+const SYN = { x: 362, y: 38, w: 112, h: 100 };
+const POWER = { x: 362, y: 141, w: 112, h: 38 };
 const TIER_COLORS = [0x3a4a7a, 0x8a94b8, 0x4aa3ff, 0xc58cff];
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
 
@@ -34,8 +37,14 @@ export class ShopScene extends Phaser.Scene {
   private run!: Run;
   private layer!: Phaser.GameObjects.Container;
   private infoLayer!: Phaser.GameObjects.Container;
+  private synLayer!: Phaser.GameObjects.Container;
+  private synKey: string | null = null; // what the synergy panel currently shows
+  private dropMarker!: Phaser.GameObjects.Rectangle;
   private sel: Src | null = null;
   private hover: Info = null;
+  private pinned: Info = null; // info tapped on a touch screen (no hover there)
+  private armed = false; // commander power waiting for a target / confirmation
+  private touch = false; // last input was a finger
   private dragging = false;
   private flames: Phaser.GameObjects.Image[] = [];
 
@@ -52,28 +61,55 @@ export class ShopScene extends Phaser.Scene {
     this.run = run;
     this.sel = null;
     this.hover = null;
+    this.pinned = null;
+    this.armed = false;
     this.dragging = false;
     setPlayerSkin(run.skin ? run.cmd : null);
     addStarfield(this);
     this.layer = this.add.container();
+    this.synLayer = this.add.container();
     this.infoLayer = this.add.container();
+    this.synKey = null;
+    // Shows where a dragged ship will land.
+    this.dropMarker = this.add.rectangle(0, 0, BOX + 6, BOX + 6).setStrokeStyle(2, C.highlight).setVisible(false).setDepth(800);
     this.input.dragDistanceThreshold = 4;
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      this.touch = p.wasTouch;
+      // Fingers wobble: need a longer move before a tap turns into a drag.
+      this.input.dragDistanceThreshold = p.wasTouch ? 10 : 4;
+    });
+    // Tapping empty space cancels an armed power and clears pinned info.
+    this.input.on('pointerup', (_p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      if (over.length || this.dragging || (!this.armed && !this.pinned && !this.sel)) return;
+      this.armed = false;
+      this.pinned = null;
+      this.sel = null;
+      this.refresh();
+    });
 
     this.input.on('dragstart', (_p: Phaser.Input.Pointer, obj: Phaser.GameObjects.Image) => {
       this.dragging = true;
+      this.armed = false;
       this.sel = obj.getData('src');
       this.layer.bringToTop(obj);
       obj.setScale(2.4);
       this.updateInfo();
     });
+    // On touch the ship is drawn above the finger so you can see where it goes.
+    const lift = () => (this.touch ? 20 : 0);
     this.input.on('drag', (_p: Phaser.Input.Pointer, obj: Phaser.GameObjects.Image, x: number, y: number) => {
-      obj.setPosition(x, y);
+      obj.setPosition(x, y - lift());
       const flame = obj.getData('flame') as Phaser.GameObjects.Image | undefined;
       if (flame) syncFlame(obj, flame, 0);
+      const t = this.hitTest(obj.x, obj.y);
+      if (t?.kind === 'slot') this.dropMarker.setPosition(SLOT_X(t.i), SLOT_Y).setSize(BOX + 6, BOX + 6);
+      else if (t?.kind === 'sell') this.dropMarker.setPosition(SELL.x, SELL.y).setSize(SELL.w + 6, SELL.h + 6);
+      this.dropMarker.setVisible(!!t);
     });
-    this.input.on('dragend', (p: Phaser.Input.Pointer, obj: Phaser.GameObjects.Image) => {
+    this.input.on('dragend', (_p: Phaser.Input.Pointer, obj: Phaser.GameObjects.Image) => {
       const src: Src = obj.getData('src');
-      const tgt = this.hitTest(p.x, p.y);
+      const tgt = this.hitTest(obj.x, obj.y);
+      this.dropMarker.setVisible(false);
       // Defer so we never destroy the dragged object inside Phaser's input handler.
       this.time.delayedCall(0, () => {
         this.dragging = false;
@@ -148,6 +184,12 @@ export class ShopScene extends Phaser.Scene {
 
   private clickShip(src: Src) {
     if (this.dragging) return;
+    this.pinned = null;
+    if (this.armed && src.kind === 'fleet' && this.powerTargets()) {
+      this.applyPower(src.i);
+      return;
+    }
+    this.armed = false;
     const same = this.sel && this.sel.kind === src.kind && this.sel.i === src.i;
     if (same) {
       if (src.kind === 'shop') {
@@ -168,16 +210,30 @@ export class ShopScene extends Phaser.Scene {
   }
 
   private clickSlot(i: number) {
-    if (this.dragging || !this.sel) return;
+    if (this.dragging) return;
+    this.pinned = null;
+    if (this.armed && this.powerTargets()) {
+      if (slotGet(this.run, i)) this.applyPower(i);
+      return;
+    }
+    this.armed = false;
+    if (!this.sel) {
+      this.refresh();
+      return;
+    }
     this.perform(this.sel, { kind: 'slot', i });
   }
 
   private clickSell() {
+    if (this.dragging) return;
+    this.armed = false;
     if (this.sel?.kind === 'fleet') this.perform(this.sel, { kind: 'sell' });
     else toast(this, 'Pick a fleet ship to sell', C.dim);
   }
 
   private clickReroll() {
+    if (this.dragging) return;
+    this.armed = false;
     const err = reroll(this.run);
     if (err) toast(this, err);
     this.sel = null;
@@ -185,32 +241,74 @@ export class ShopScene extends Phaser.Scene {
     this.refresh();
   }
 
+  /**
+   * Power card tapped. First tap arms the power (and explains it); a targeted
+   * power then waits for you to tap one of your ships, an untargeted one for a
+   * second tap on the card. Tapping an armed targeted power cancels it.
+   */
   private clickPower() {
     if (this.dragging) return;
     const cmd = this.run.cmd ? CMD_MAP[this.run.cmd] : null;
     if (!cmd) return;
-    const slot = this.sel?.kind === 'fleet' ? this.sel.i : null;
+    this.pinned = null;
+    if (this.armed) {
+      if (cmd.power.target) {
+        this.armed = false;
+        this.refresh();
+      } else {
+        this.applyPower(null);
+      }
+      return;
+    }
+    if (this.run.powerUsed) return void toast(this, 'Power already used this round', C.dim);
+    if (this.run.scrap < cmd.power.cost) return void toast(this, `Needs ${cmd.power.cost} scrap`);
+    // A ship is already selected: use it straight away.
+    if (cmd.power.target && this.sel?.kind === 'fleet' && slotGet(this.run, this.sel.i)) {
+      this.applyPower(this.sel.i);
+      return;
+    }
+    this.armed = true;
+    this.sel = null;
+    this.refresh();
+  }
+
+  private powerTargets() {
+    return !!this.run.cmd && CMD_MAP[this.run.cmd].power.target;
+  }
+
+  private applyPower(slot: number | null) {
+    const cmd = CMD_MAP[this.run.cmd!];
     const before = this.levels();
     const err = usePower(this.run, slot);
+    this.armed = false;
     if (err) {
-      toast(this, err, err.startsWith('Select') ? C.dim : C.bad);
+      toast(this, err);
     } else {
-      toast(this, `${cmd.power.name}!`, C.gold);
-      if (slot !== null) this.sparkle(SLOT_X(slot), SLOT_Y);
+      if (slot !== null) {
+        this.sparkle(SLOT_X(slot), SLOT_Y);
+        popup(this, SLOT_X(slot), SLOT_Y - 26, `${cmd.power.name}!`, cmd.color);
+      } else {
+        toast(this, `${cmd.power.name}!`, C.gold);
+      }
       this.announceLevelUps(before);
-      if (!cmd.power.target) this.sel = null;
     }
+    this.sel = null;
     saveRun(this.run);
     this.refresh();
   }
 
   private clickFreeze(i: number) {
+    if (this.dragging) return;
+    this.armed = false;
+    this.pinned = null;
     toggleFreeze(this.run, i);
     saveRun(this.run);
     this.refresh();
   }
 
   private clickBattle() {
+    // A touch drag toward SELL can end with the finger over BATTLE!; never start a battle mid-drag.
+    if (this.dragging) return;
     if (!this.run.fleet.some(Boolean)) {
       toast(this, 'Your fleet is empty!');
       return;
@@ -227,9 +325,13 @@ export class ShopScene extends Phaser.Scene {
   }
 
   private refresh() {
+    // Phaser keeps looping tweens alive after their targets are destroyed, so kill them first.
     this.tweens.killTweensOf(this.flames);
+    this.tweens.killTweensOf(this.layer.list);
     this.flames = [];
     this.layer.removeAll(true);
+    this.synKey = null; // fleet may have changed: redraw synergy too
+    this.hover = null; // the pointer may not be over the same thing after a redraw
     const run = this.run;
 
     // Top bar
@@ -241,18 +343,16 @@ export class ShopScene extends Phaser.Scene {
     this.add2(txt(this, 190, 7, `ROUND ${run.round}`));
     this.add2(this.add.image(300, 10, 'coin'));
     this.add2(txt(this, 308, 7, `${run.scrap} SCRAP`, { color: C.gold }));
-    this.add2(txt(this, 472, 7, run.history.slice(-8).join(''), { origin: [1, 0], color: C.dim }));
+    historyPips(this, 470, 10, run.history).forEach((o) => this.add2(o));
 
-    // Relics
-    this.add2(txt(this, 8, 26, 'RELICS', { color: C.dim }));
-    if (!run.relics.length) this.add2(txt(this, 62, 26, 'none yet', { color: '#4a5578' }));
+    // Relics (tap or hover a chip to read it)
+    this.add2(txt(this, 8, 25, 'RELICS', { color: C.dim }));
+    if (!run.relics.length) this.add2(txt(this, 62, 25, 'none yet', { color: C.faint }));
     run.relics.forEach((id, i) => {
-      const chip = relicChip(this, 68 + i * 15, 29, id);
+      const chip = relicChip(this, 66 + i * 17, 28, id, 14);
       this.add2(chip.bg);
       this.add2(chip.t);
-      chip.bg.setInteractive();
-      chip.bg.on('pointerover', () => this.setHover({ relic: id }));
-      chip.bg.on('pointerout', () => this.setHover(null));
+      this.infoTarget(chip.bg, { relic: id });
     });
 
     // Bench (left) and fleet (right)
@@ -261,15 +361,19 @@ export class ShopScene extends Phaser.Scene {
     this.add2(txt(this, 352, 38, 'FRONT>', { origin: [1, 0], color: C.dim }));
     this.add2(this.add.rectangle(131, SLOT_Y, 1, BOX + 8, 0x232c52));
     const selDef = this.selectedDef();
+    const cmdColor = run.cmd ? hexInt(CMD_MAP[run.cmd].color) : C.highlight;
+    const targeting = this.armed && !!run.cmd && CMD_MAP[run.cmd].power.target;
     for (let i = 0; i < TOTAL_SLOTS; i++) {
       const ship = slotGet(run, i);
       const x = SLOT_X(i);
       const bench = isBench(i);
       const isSel = this.sel?.kind === 'fleet' && this.sel.i === i;
       const mergeHint = !!selDef && !isSel && canMerge(ship, selDef);
-      const border = isSel ? C.highlight : mergeHint ? 0x7dff8a : bench ? 0x262e50 : C.border;
+      const powerHint = targeting && !!ship;
+      const border = powerHint ? cmdColor : isSel ? C.highlight : mergeHint ? 0x7dff8a : bench ? 0x262e50 : C.border;
       const box = this.add2(this.add.rectangle(x, SLOT_Y, BOX, BOX, bench ? 0x080b1c : 0x0b1026)
-        .setStrokeStyle(isSel || mergeHint ? 2 : 1, border));
+        .setStrokeStyle(isSel || mergeHint || powerHint ? 2 : 1, border));
+      if (powerHint) this.tweens.add({ targets: box, alpha: 0.55, duration: 380, yoyo: true, repeat: -1 });
       box.setInteractive();
       box.on('pointerup', () => this.clickSlot(i));
       if (!ship) continue;
@@ -301,14 +405,15 @@ export class ShopScene extends Phaser.Scene {
       this.add2(txt(this, x - 6, SHOP_Y + 27, `${def.atk}`, { origin: [1, 0], color: C.atk }));
       this.add2(txt(this, x + 6, SHOP_Y + 27, `${def.hp}`, { color: C.hp }));
 
-      // Freeze toggle
-      const fb = this.add2(this.add.rectangle(x, SHOP_Y + 42, 22, 11, frozen ? 0x2a6a8a : 0x141a33)
+      // Freeze toggle: a labelled button, with a taller invisible hit area for fingers.
+      const fy = SHOP_Y + 41;
+      const fb = this.add2(this.add.rectangle(x, fy, 50, 12, frozen ? 0x2a6a8a : 0x141a33)
         .setStrokeStyle(1, frozen ? 0x7fe7ff : 0x3a4a7a));
-      this.add2(this.add.image(x, SHOP_Y + 42, 'snow').setTint(frozen ? 0xffffff : 0x6a7cc0));
-      fb.setInteractive({ useHandCursor: true });
-      fb.on('pointerup', () => this.clickFreeze(i));
-      fb.on('pointerover', () => fb.setStrokeStyle(1, C.highlight));
-      fb.on('pointerout', () => fb.setStrokeStyle(1, frozen ? 0x7fe7ff : 0x3a4a7a));
+      this.add2(txt(this, x, fy + 1, frozen ? 'FROZEN' : 'FREEZE', { origin: 0.5, color: frozen ? '#ffffff' : C.cyan }));
+      const fhit = this.add2(this.add.rectangle(x, fy, 52, 18, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
+      fhit.on('pointerup', () => this.clickFreeze(i));
+      fhit.on('pointerover', () => { fb.setStrokeStyle(1, C.highlight); this.setHover({ freeze: i }); });
+      fhit.on('pointerout', () => { fb.setStrokeStyle(1, frozen ? 0x7fe7ff : 0x3a4a7a); this.setHover(null); });
     });
 
     // Buttons
@@ -320,26 +425,46 @@ export class ShopScene extends Phaser.Scene {
     const b3 = button(this, 418, 244, 100, 24, 'BATTLE!', () => this.clickBattle(), { fill: 0x3a2a10, color: C.gold });
     [...b1.objects, ...b2.objects, ...b3.objects].forEach((o) => this.add2(o));
 
-    // Commander badge and shop power (top right, above the synergy panel)
-    const cmd = run.cmd ? CMD_MAP[run.cmd] : null;
-    if (cmd) {
-      const badge = this.add2(this.add.image(354, 29, portraitKey(cmd.id)));
-      badge.setInteractive();
-      badge.on('pointerover', () => this.setHover({ cmd: cmd.id }));
-      badge.on('pointerout', () => this.setHover(null));
-      const used = !!run.powerUsed;
-      const pb = button(this, 418, 29, 100, 14, used ? 'USED' : `${cmd.power.name} ${cmd.power.cost}`, () => this.clickPower(), {
-        fill: 0x1d2a50, color: cmd.color, disabled: used || run.scrap < cmd.power.cost,
-      });
-      pb.objects.forEach((o) => this.add2(o));
-      // Hover works even when the button is disabled, so the power can always be read.
-      const hov = this.add2(this.add.rectangle(418, 29, 100, 14, 0xffffff, 0.001).setInteractive());
-      hov.on('pointerover', () => this.setHover({ cmd: cmd.id }));
-      hov.on('pointerout', () => this.setHover(null));
-      hov.on('pointerup', () => this.clickPower());
-    }
-
+    this.drawPowerCard();
     this.updateInfo();
+  }
+
+  /** Commander card under the synergy panel: portrait, power name, cost and state. Tap to use. */
+  private drawPowerCard() {
+    const run = this.run;
+    const cmd = run.cmd ? CMD_MAP[run.cmd] : null;
+    if (!cmd) return;
+    const { x, y, w, h } = POWER;
+    const used = !!run.powerUsed;
+    const broke = run.scrap < cmd.power.cost;
+    const ready = !used && !broke;
+    const col = hexInt(cmd.color);
+    const card = this.add2(this.add.rectangle(x + w / 2, y + h / 2, w, h, this.armed ? 0x1d2a50 : 0x0e1430)
+      .setStrokeStyle(this.armed ? 2 : 1, ready ? col : 0x2a3150));
+    this.add2(this.add.image(x + 12, y + h / 2, portraitKey(cmd.id)).setAlpha(ready ? 1 : 0.5));
+    // Three short lines: power name, cost, state.
+    this.add2(txt(this, x + 24, y + 4, cmd.power.name, { color: ready ? cmd.color : C.dim }));
+    this.add2(txt(this, x + 24, y + 15, `${cmd.power.cost} SCRAP`, { color: broke && !used ? C.bad : C.gold }));
+    const state = used ? 'USED' : this.armed ? (cmd.power.target ? 'PICK SHIP' : 'TAP AGAIN') : broke ? 'NOT ENOUGH' : 'READY';
+    this.add2(txt(this, x + 24, y + 26, state, { color: used || broke ? C.dim : this.armed ? C.gold : C.hp }));
+    // A slow glow while the power is ready, so it's easy to spot.
+    if (ready && !this.armed) this.tweens.add({ targets: card, alpha: 0.7, duration: 900, yoyo: true, repeat: -1 });
+    card.setInteractive({ useHandCursor: true });
+    card.on('pointerup', () => this.clickPower());
+    card.on('pointerover', () => this.setHover({ cmd: cmd.id }));
+    card.on('pointerout', () => this.setHover(null));
+  }
+
+  /** Something you can hover (mouse) or tap (touch) to read in the bottom strip. */
+  private infoTarget(obj: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image, info: NonNullable<Info>) {
+    obj.setInteractive({ useHandCursor: true });
+    obj.on('pointerover', () => this.setHover(info));
+    obj.on('pointerout', () => this.setHover(null));
+    obj.on('pointerup', () => {
+      if (this.dragging) return;
+      this.pinned = info;
+      this.updateInfo();
+    });
   }
 
   /** Small colored dashes under a ship showing its classes. */
@@ -384,6 +509,8 @@ export class ShopScene extends Phaser.Scene {
 
   private currentInfo(): Info {
     if (this.hover) return this.hover;
+    if (this.armed && this.run.cmd) return { cmd: this.run.cmd };
+    if (this.pinned) return this.pinned;
     if (!this.sel) return null;
     const defId = this.selectedDef();
     if (!defId) return null;
@@ -396,32 +523,38 @@ export class ShopScene extends Phaser.Scene {
     const info = this.currentInfo();
     // Preview synergy gains for shop ships and benched ships (not ones already fighting).
     const fighting = info && 'def' in info && info.ship && this.run.fleet.includes(info.ship);
-    this.drawSynergy(info && 'def' in info && !fighting ? info.def : null);
+    const preview = info && 'def' in info && !fighting ? info.def : null;
+    // Only rebuild the synergy panel when its content changes. Rebuilding it while the
+    // pointer is over a row would destroy that row, and its pointerout would never fire.
+    const key = preview?.id ?? '';
+    if (key !== this.synKey) {
+      this.synKey = key;
+      this.synLayer.removeAll(true);
+      this.drawSynergy(preview);
+    }
     this.drawStrip(info);
   }
 
   /** Right-hand panel: class counts and thresholds; previews what a shop ship would add. */
   private drawSynergy(preview: ShipDef | null) {
-    const add = <T extends Phaser.GameObjects.GameObject>(o: T) => { this.infoLayer.add(o); return o; };
-    add(panel(this, 362, 38, 112, 140));
-    add(txt(this, 368, 44, 'SYNERGY', { color: C.dim }));
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T) => { this.synLayer.add(o); return o; };
+    add(panel(this, SYN.x, SYN.y, SYN.w, SYN.h));
+    add(txt(this, SYN.x + 6, SYN.y + 5, 'SYNERGY', { color: C.dim }));
     const counts = traitCounts(this.run.fleet);
     const adds = preview && !this.run.fleet.some((s) => s?.def === preview.id) ? preview.classes : [];
 
     TRAITS.forEach((tr, i) => {
-      const y = 60 + i * 29;
+      const y = SYN.y + 17 + i * 20;
       const n = counts[tr.id];
       const lvl = traitLevel(tr.id, n);
-      const row = add(this.add.rectangle(418, y + 8, 108, 26, 0xffffff, 0.001));
-      row.setInteractive();
-      row.on('pointerover', () => this.setHover({ trait: tr.id }));
-      row.on('pointerout', () => this.setHover(null));
-      if (lvl > 0) add(this.add.rectangle(365, y + 8, 2, 22, Phaser.Display.Color.HexStringToColor(tr.color).color));
-      add(txt(this, 369, y, tr.name, { color: lvl > 0 ? tr.color : C.dim }));
-      add(txt(this, 470, y, `${n}`, { origin: [1, 0], color: lvl > 0 ? C.text : C.dim }));
-      if (adds.includes(tr.id)) add(txt(this, 458, y, '+1', { origin: [1, 0], color: C.hp }));
+      const row = add(this.add.rectangle(SYN.x + SYN.w / 2, y + 8, SYN.w - 4, 20, 0xffffff, 0.001));
+      this.infoTarget(row, { trait: tr.id });
+      if (lvl > 0) add(this.add.rectangle(SYN.x + 3, y + 8, 2, 18, hexInt(tr.color)));
+      add(txt(this, SYN.x + 7, y, tr.name, { color: lvl > 0 ? tr.color : C.dim }));
+      add(txt(this, SYN.x + SYN.w - 4, y, `${n}`, { origin: [1, 0], color: lvl > 0 ? C.text : C.dim }));
+      if (adds.includes(tr.id)) add(txt(this, SYN.x + SYN.w - 18, y, '+1', { origin: [1, 0], color: C.hp }));
       tr.tiers.forEach((tier, k) => {
-        add(txt(this, 369 + k * 24, y + 11, `(${tier.n})`, { color: n >= tier.n ? C.gold : '#4a5578' }));
+        add(txt(this, SYN.x + 7 + k * 24, y + 10, `(${tier.n})`, { color: n >= tier.n ? C.gold : C.faint }));
       });
     });
   }
@@ -435,19 +568,38 @@ export class ShopScene extends Phaser.Scene {
     const row = (i: number) => y + 6 + i * 12;
 
     if (!info) {
-      add(txt(this, L, row(0), 'Drag ships to fleet or bench to buy them.', { color: C.dim }));
+      const verb = this.touch ? 'Tap' : 'Click';
+      add(txt(this, L, row(0), `${verb} a ship, then a slot, to buy it.`, { color: C.dim }));
       add(txt(this, L, row(1), 'Same ship on same ship = merge + level up.', { color: C.dim }));
       add(txt(this, L, row(2), 'Different ships of a class unlock SYNERGY.', { color: C.dim }));
-      add(txt(this, L, row(3), 'Freeze a shop ship to keep it for later.', { color: C.dim }));
+      add(txt(this, L, row(3), 'FREEZE keeps a shop ship for next round.', { color: C.dim }));
       const hull = hullScale(this.run.round);
       add(hull > 1
         ? txt(this, L, row(4), `Round ${this.run.round}: all hulls x${hull.toFixed(1)} HP in battle.`, { color: C.hp })
-        : txt(this, L, row(4), 'Hover anything for details.', { color: '#4a5578' }));
+        : txt(this, L, row(4), `${this.touch ? 'Tap' : 'Hover'} anything for details.`, { color: C.faint }));
+      return;
+    }
+    if ('freeze' in info) {
+      const frozen = !!this.run.frozen?.[info.freeze];
+      add(txt(this, L, row(0), frozen ? 'FROZEN' : 'FREEZE', { color: C.cyan }));
+      add(txt(this, L, row(1), 'A frozen ship stays in the shipyard when'));
+      add(txt(this, L, row(2), 'you reroll and into the next round, so'));
+      add(txt(this, L, row(3), 'you can buy it later. Freezing is free.'));
+      add(txt(this, L, row(4), frozen ? 'Tap again to unfreeze.' : 'Tap to freeze.', { color: C.dim }));
       return;
     }
     if ('cmd' in info) {
       const c = CMD_MAP[info.cmd];
       const ps = c.passives[this.run.passive ?? 'a'];
+      if (this.armed) {
+        add(txt(this, L, row(0), `${c.power.name}: ${c.power.desc}`, { color: c.color, wrap: w - 12 }));
+        add(txt(this, L, row(2), c.power.target
+          ? `${this.touch ? 'Tap' : 'Click'} one of your ships to use it.`
+          : `${this.touch ? 'Tap' : 'Click'} the power card again to use it.`, { color: C.gold }));
+        add(txt(this, L, row(3), `Costs ${c.power.cost} scrap. Once per round.`, { color: C.dim }));
+        add(txt(this, L, row(4), c.power.target ? 'Tap the card again to cancel.' : 'Tap anything else to cancel.', { color: C.faint }));
+        return;
+      }
       add(txt(this, L, row(0), `COMMANDER ${c.name.toUpperCase()}`, { color: c.color }));
       add(txt(this, R, row(0), this.run.powerUsed ? 'POWER USED' : 'POWER READY', { origin: [1, 0], color: this.run.powerUsed ? C.dim : C.hp }));
       add(txt(this, L, row(1), `PASSIVE: ${ps.name}`, { color: C.gold }));
@@ -459,19 +611,21 @@ export class ShopScene extends Phaser.Scene {
     if ('relic' in info) {
       const r = RELIC_MAP[info.relic];
       add(txt(this, L, row(0), `RELIC: ${r.name}`, { color: C.gold }));
-      add(txt(this, L, row(1), r.desc));
+      add(txt(this, L, row(1), r.desc, { wrap: w - 12 }));
+      const n = this.run.relics.filter((x) => x === info.relic).length;
+      if (n > 1) add(txt(this, L, row(3), `You own ${n}. Effects stack.`, { color: C.dim }));
       return;
     }
     if ('trait' in info) {
       const tr = TRAIT_MAP[info.trait];
       const n = traitCounts(this.run.fleet)[info.trait];
       add(txt(this, L, row(0), `${tr.name} SYNERGY`, { color: tr.color }));
-      add(txt(this, R, row(0), `${n} DIFFERENT SHIPS`, { origin: [1, 0], color: C.dim }));
+      add(txt(this, R, row(0), `${n} DIFFERENT SHIP${n === 1 ? '' : 'S'}`, { origin: [1, 0], color: C.dim }));
       tr.tiers.forEach((tier, k) => {
         add(txt(this, L, row(1 + k), `(${tier.n}) ${tier.desc}`, { color: n >= tier.n ? C.gold : C.dim }));
       });
       const members = Object.values(SHIPS).filter((s) => s.tier > 0 && s.classes.includes(info.trait)).map((s) => s.name);
-      add(txt(this, L, row(3), members.join(', '), { color: '#4a5578', wrap: w - 12 }));
+      add(txt(this, L, row(3), members.join(', '), { color: C.faint, wrap: w - 12 }));
       return;
     }
 

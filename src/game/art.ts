@@ -193,7 +193,7 @@ export function makeTextures(scene: Phaser.Scene) {
   drawMap(scene, 'heart', ['.aa.aa.', 'abbabba', 'abhbbba', '.abbba.', '..aba..', '...a...'],
     { a: '#3a0812', b: '#ff4d6d', h: '#ffc2cc' });
   drawMap(scene, 'heart_empty', ['.aa.aa.', 'a..a..a', 'a.....a', '.a...a.', '..a.a..', '...a...'],
-    { a: '#4a5578' });
+    { a: '#6a76a0' });
   drawMap(scene, 'coin', ['..aaa..', '.abbba.', 'abbcbba', 'abcccba', 'abbcbba', '.abbba.', '..aaa..'],
     { a: '#5a3a00', b: '#ffc93c', c: '#fff1a8' });
   drawMap(scene, 'star', ['..a..', '.aba.', 'abbba', '.aba.', '.a.a.'], { a: '#c88a10', b: '#ffe066' });

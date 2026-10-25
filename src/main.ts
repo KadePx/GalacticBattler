@@ -26,15 +26,37 @@ async function start() {
     height: 270,
     pixelArt: true,
     backgroundColor: '#05060f',
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    scale: { mode: Phaser.Scale.NONE, zoom: fitZoom(), autoCenter: Phaser.Scale.CENTER_BOTH },
     scene: [BootScene, MenuScene, ShopScene, BattleScene, RelicScene, GameOverScene, GalleryScene, CommanderScene],
   });
   (window as unknown as { __game: Phaser.Game }).__game = game;
 
-  // If the page had no size yet when the game booted (hidden tab, iframe),
-  // the canvas ends up 0x0. Re-fit whenever the container changes size.
+  // Re-fit whenever the window (or phone orientation) changes. This also covers a
+  // page that had no size yet when the game booted (hidden tab, iframe).
   const app = document.getElementById('app');
-  if (app) new ResizeObserver(() => game.scale.refresh()).observe(app);
+  const refit = () => {
+    const z = fitZoom();
+    if (Math.abs(game.scale.zoom - z) > 0.001) game.scale.setZoom(z);
+    else game.scale.refresh();
+  };
+  if (app) new ResizeObserver(refit).observe(app);
+  window.visualViewport?.addEventListener('resize', refit);
+}
+
+/**
+ * How much to magnify the 480x270 game. Big screens get a whole-number zoom
+ * (crisp, even pixels) capped at 3x so it never feels huge on a monitor.
+ * Small screens (phones) just fill the space, since every pixel counts there.
+ */
+const MAX_ZOOM = 3;
+function fitZoom(): number {
+  const app = document.getElementById('app');
+  // #app sits inside the safe-area padding, so its size is the space we can use.
+  const w = app && app.clientWidth > 0 ? app.clientWidth : window.innerWidth;
+  const h = app && app.clientHeight > 0 ? app.clientHeight : window.innerHeight;
+  const fit = Math.min(w / 480, h / 270);
+  if (!(fit > 0)) return 1;
+  return fit >= 2 ? Math.min(MAX_ZOOM, Math.floor(fit)) : fit;
 }
 
 start();
