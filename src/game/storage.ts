@@ -5,6 +5,7 @@
 import type { Run } from './run';
 import type { Snapshot } from '../sim/types';
 
+// Keys keep the game's original working name so existing saves survive renames.
 const RUN_KEY = 'starbrawl.run';
 const GHOST_KEY = 'starbrawl.ghosts';
 const MAX_GHOSTS = 300;

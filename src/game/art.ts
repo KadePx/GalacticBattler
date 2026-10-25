@@ -172,7 +172,7 @@ export function makeTextures(scene: Phaser.Scene) {
 /** Nebula + two drifting star layers behind every scene. */
 export function addStarfield(scene: Phaser.Scene, withPlanet = false) {
   scene.add.image(0, 0, 'nebula').setOrigin(0).setScale(4).setAlpha(0.9);
-  if (withPlanet) scene.add.image(404, 62, 'planet').setScale(2);
+  if (withPlanet) scene.add.image(452, 60, 'planet').setScale(2);
   const far = scene.add.tileSprite(0, 0, 480, 270, 'stars_far').setOrigin(0);
   const near = scene.add.tileSprite(0, 0, 480, 270, 'stars_near').setOrigin(0);
   scene.tweens.add({ targets: far, tilePositionX: 480, duration: 90000, repeat: -1 });

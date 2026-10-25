@@ -36,7 +36,7 @@ export class MenuScene extends Phaser.Scene {
       this.flyers.push({ spr, flame, side, speed: side === 0 ? 0.035 : 0.05, baseY: y, phase: Math.random() * 6 });
     }
 
-    const title = txt(this, 240, 46, 'STARBRAWL', { size: 24, origin: 0.5, color: C.gold });
+    const title = txt(this, 240, 46, 'GALACTIC BATTLER', { size: 20, origin: 0.5, color: C.gold });
     title.setStroke('#3a1d00', 6);
     txt(this, 240, 72, 'SPACE AUTO-BATTLER', { origin: 0.5, color: C.cyan }).setStroke('#05060f', 3);
 
