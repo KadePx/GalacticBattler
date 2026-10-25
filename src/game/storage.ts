@@ -10,7 +10,7 @@ const RUN_KEY = 'starbrawl.run';
 const GHOST_KEY = 'starbrawl.ghosts';
 const MAX_GHOSTS = 300;
 
-function read<T>(key: string): T | null {
+export function read<T>(key: string): T | null {
   try {
     const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T) : null;
@@ -19,7 +19,7 @@ function read<T>(key: string): T | null {
   }
 }
 
-function write(key: string, value: unknown) {
+export function write(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {

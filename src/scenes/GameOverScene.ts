@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
-import { addStarfield, shipKey } from '../game/art';
-import { WIN_TARGET, newRun } from '../game/run';
+import { addStarfield, portraitKey, setPlayerSkin, shipKey } from '../game/art';
+import { CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, awardRun, cmdLevel, pilotRank, rankXp } from '../game/profile';
+import { WIN_TARGET } from '../game/run';
 import { clearRun, getRun, saveRun } from '../game/storage';
-import { C, button, relicChip, txt } from '../game/ui';
+import { C, bar, button, panel, relicChip, txt } from '../game/ui';
+import { CMD_MAP } from '../sim/commanders';
 
 export class GameOverScene extends Phaser.Scene {
   constructor() {
@@ -15,30 +17,78 @@ export class GameOverScene extends Phaser.Scene {
       this.scene.start('menu');
       return;
     }
+    setPlayerSkin(run.skin ? run.cmd : null);
     addStarfield(this);
     const won = run.wins >= WIN_TARGET;
-    txt(this, 240, 40, won ? 'FLEET TRIUMPHANT' : 'FLEET DESTROYED', {
+    txt(this, 240, 22, won ? 'FLEET TRIUMPHANT' : 'FLEET DESTROYED', {
       size: 16, origin: 0.5, color: won ? C.gold : C.bad,
     }).setStroke('#05060f', 4);
-    txt(this, 240, 66, `${run.wins} WINS IN ${run.history.length} BATTLES`, { origin: 0.5 });
-    txt(this, 240, 82, run.history.join(' '), { origin: 0.5, color: C.dim, wrap: 440, align: 'center' });
+    txt(this, 240, 42, `${run.wins} WINS IN ${run.history.length} BATTLES`, { origin: 0.5 });
+    txt(this, 240, 56, run.history.join(' '), { origin: 0.5, color: C.dim, wrap: 440, align: 'center' });
 
     const ships = run.fleet.filter(Boolean);
     ships.forEach((s, i) => {
-      this.add.image(240 + (i - (ships.length - 1) / 2) * 44, 120, shipKey(s!.def, 0)).setScale(2);
+      this.add.image(240 + (i - (ships.length - 1) / 2) * 44, 82, shipKey(s!.def, 0)).setScale(2);
     });
     run.relics.forEach((id, i) => {
-      relicChip(this, 240 + (i - (run.relics.length - 1) / 2) * 16, 152, id);
+      relicChip(this, 240 + (i - (run.relics.length - 1) / 2) * 16, 106, id);
     });
 
-    button(this, 240, 196, 150, 20, 'NEW RUN', () => {
+    // Rewards (paid once; the run remembers it was paid so refreshing is safe).
+    const award = awardRun(run);
+    saveRun(run);
+    if (award) this.rewards(award);
+
+    button(this, 170, 252, 130, 18, 'NEW RUN', () => {
       clearRun();
-      saveRun(newRun());
-      this.scene.start('shop');
+      this.scene.start('commanders');
     }, { fill: 0x3a2a10, color: C.gold });
-    button(this, 240, 224, 150, 20, 'MENU', () => {
+    button(this, 310, 252, 130, 18, 'MENU', () => {
       clearRun();
       this.scene.start('menu');
     });
+  }
+
+  private rewards(a: NonNullable<ReturnType<typeof awardRun>>) {
+    panel(this, 40, 118, 400, 120);
+    txt(this, 50, 124, `+${a.xp.total} XP`, { color: C.gold, size: 8 });
+    const parts = [`BATTLES +${a.xp.battles}`, `WINS +${a.xp.wins}`];
+    if (a.xp.clear) parts.push(`CLEAR +${a.xp.clear}`);
+    txt(this, 430, 124, parts.join('  '), { origin: [1, 0], color: C.dim });
+
+    // Commander progress
+    const c = a.cmd ? CMD_MAP[a.cmd] : null;
+    if (c) {
+      const before = cmdLevel(a.cmdBefore);
+      const after = cmdLevel(a.cmdAfter);
+      this.add.rectangle(66, 158, 36, 36, 0x05060f).setStrokeStyle(after >= CMD_MAX_LEVEL ? 2 : 1, after >= CMD_MAX_LEVEL ? C.highlight : C.border);
+      this.add.image(66, 158, portraitKey(c.id)).setScale(2);
+      txt(this, 92, 142, c.name.toUpperCase(), { color: c.color });
+      txt(this, 160, 142, `LV ${after}`, { color: C.gold });
+      const next = after < CMD_MAX_LEVEL ? CMD_LEVEL_XP[after] : null;
+      const base = CMD_LEVEL_XP[after - 1];
+      bar(this, 92, 156, 200, 6, next ? (a.cmdAfter - base) / (next - base) : 1, Phaser.Display.Color.HexStringToColor(c.color).color)
+        .forEach((o) => o.setDepth(1));
+      txt(this, 300, 155, next ? `${a.cmdAfter}/${next}` : 'MAX', { color: C.dim });
+      if (after > before) {
+        const got = UNLOCKS.filter((u) => u.level > before && u.level <= after).map((u) => u.text);
+        txt(this, 92, 166, `LEVEL UP! ${got.join(', ')}`, { color: C.hp, wrap: 340 });
+      }
+    } else {
+      txt(this, 50, 150, 'No commander this run (started before commanders existed).', { color: C.dim, wrap: 380 });
+    }
+
+    // Pilot rank
+    const rBefore = pilotRank(a.pilotBefore);
+    const rAfter = pilotRank(a.pilotAfter);
+    const lo = rankXp(rAfter);
+    const hi = rankXp(rAfter + 1);
+    txt(this, 50, 192, `PILOT RANK ${rAfter}`, { color: C.cyan });
+    bar(this, 170, 193, 180, 6, (a.pilotAfter - lo) / (hi - lo), 0x7fe7ff);
+    txt(this, 358, 192, `${a.pilotAfter}/${hi}`, { color: C.dim });
+    if (rAfter > rBefore) {
+      const names = a.newCommanders.map((id) => CMD_MAP[id].name.toUpperCase());
+      txt(this, 50, 208, names.length ? `RANK UP! NEW COMMANDER: ${names.join(', ')}` : 'RANK UP!', { color: C.gold, wrap: 380 });
+    }
   }
 }

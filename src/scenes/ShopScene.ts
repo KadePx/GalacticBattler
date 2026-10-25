@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
-import { addShip, addStarfield, syncFlame } from '../game/art';
+import { addShip, addStarfield, portraitKey, setPlayerSkin, syncFlame } from '../game/art';
 import {
   FLEET_SIZE, REROLL_COST, SHIP_COST, WIN_TARGET, START_LIVES, TOTAL_SLOTS, isBench, slotGet,
-  buy, canMerge, move, quickBuy, reroll, sell, sellValue, toggleFreeze, type Run,
+  buy, canMerge, move, quickBuy, reroll, sell, sellValue, toggleFreeze, usePower, type Run,
 } from '../game/run';
+import { CMD_MAP } from '../sim/commanders';
 import { getRun, saveRun } from '../game/storage';
 import { C, button, panel, relicChip, toast, txt } from '../game/ui';
 import { RELIC_MAP } from '../sim/relics';
@@ -14,7 +15,7 @@ import { hullScale } from '../sim/battle';
 
 type Src = { kind: 'shop' | 'fleet'; i: number };
 type Tgt = { kind: 'slot'; i: number } | { kind: 'sell' };
-type Info = { def: ShipDef; ship?: FleetShip } | { relic: string } | { trait: ShipClass } | null;
+type Info = { def: ShipDef; ship?: FleetShip } | { relic: string } | { trait: ShipClass } | { cmd: string } | null;
 
 // Layout. Fleet slot 0 is the front of the line, drawn on the right
 // because your fleet faces right in battle.
@@ -52,6 +53,7 @@ export class ShopScene extends Phaser.Scene {
     this.sel = null;
     this.hover = null;
     this.dragging = false;
+    setPlayerSkin(run.skin ? run.cmd : null);
     addStarfield(this);
     this.layer = this.add.container();
     this.infoLayer = this.add.container();
@@ -183,6 +185,25 @@ export class ShopScene extends Phaser.Scene {
     this.refresh();
   }
 
+  private clickPower() {
+    if (this.dragging) return;
+    const cmd = this.run.cmd ? CMD_MAP[this.run.cmd] : null;
+    if (!cmd) return;
+    const slot = this.sel?.kind === 'fleet' ? this.sel.i : null;
+    const before = this.levels();
+    const err = usePower(this.run, slot);
+    if (err) {
+      toast(this, err, err.startsWith('Select') ? C.dim : C.bad);
+    } else {
+      toast(this, `${cmd.power.name}!`, C.gold);
+      if (slot !== null) this.sparkle(SLOT_X(slot), SLOT_Y);
+      this.announceLevelUps(before);
+      if (!cmd.power.target) this.sel = null;
+    }
+    saveRun(this.run);
+    this.refresh();
+  }
+
   private clickFreeze(i: number) {
     toggleFreeze(this.run, i);
     saveRun(this.run);
@@ -299,6 +320,25 @@ export class ShopScene extends Phaser.Scene {
     const b3 = button(this, 418, 244, 100, 24, 'BATTLE!', () => this.clickBattle(), { fill: 0x3a2a10, color: C.gold });
     [...b1.objects, ...b2.objects, ...b3.objects].forEach((o) => this.add2(o));
 
+    // Commander badge and shop power (top right, above the synergy panel)
+    const cmd = run.cmd ? CMD_MAP[run.cmd] : null;
+    if (cmd) {
+      const badge = this.add2(this.add.image(354, 29, portraitKey(cmd.id)));
+      badge.setInteractive();
+      badge.on('pointerover', () => this.setHover({ cmd: cmd.id }));
+      badge.on('pointerout', () => this.setHover(null));
+      const used = !!run.powerUsed;
+      const pb = button(this, 418, 29, 100, 14, used ? 'USED' : `${cmd.power.name} ${cmd.power.cost}`, () => this.clickPower(), {
+        fill: 0x1d2a50, color: cmd.color, disabled: used || run.scrap < cmd.power.cost,
+      });
+      pb.objects.forEach((o) => this.add2(o));
+      // Hover works even when the button is disabled, so the power can always be read.
+      const hov = this.add2(this.add.rectangle(418, 29, 100, 14, 0xffffff, 0.001).setInteractive());
+      hov.on('pointerover', () => this.setHover({ cmd: cmd.id }));
+      hov.on('pointerout', () => this.setHover(null));
+      hov.on('pointerup', () => this.clickPower());
+    }
+
     this.updateInfo();
   }
 
@@ -403,6 +443,17 @@ export class ShopScene extends Phaser.Scene {
       add(hull > 1
         ? txt(this, L, row(4), `Round ${this.run.round}: all hulls x${hull.toFixed(1)} HP in battle.`, { color: C.hp })
         : txt(this, L, row(4), 'Hover anything for details.', { color: '#4a5578' }));
+      return;
+    }
+    if ('cmd' in info) {
+      const c = CMD_MAP[info.cmd];
+      const ps = c.passives[this.run.passive ?? 'a'];
+      add(txt(this, L, row(0), `COMMANDER ${c.name.toUpperCase()}`, { color: c.color }));
+      add(txt(this, R, row(0), this.run.powerUsed ? 'POWER USED' : 'POWER READY', { origin: [1, 0], color: this.run.powerUsed ? C.dim : C.hp }));
+      add(txt(this, L, row(1), `PASSIVE: ${ps.name}`, { color: C.gold }));
+      add(txt(this, L, row(2), ps.desc));
+      add(txt(this, L, row(3), `POWER: ${c.power.name} (${c.power.cost} SCRAP, 1/ROUND)`, { color: C.gold }));
+      add(txt(this, L, row(4), c.power.desc, { color: C.text }));
       return;
     }
     if ('relic' in info) {

@@ -22,7 +22,45 @@ const FLAME: Palette[] = [
   { a: '#b03000', b: '#ff8a2a', c: '#fff2c4' },
 ];
 
-export const shipKey = (def: string, side: 0 | 1) => `ship_${def}_${side}`;
+// Commander hull colours (unlocked at commander level 2). They replace the
+// player's steel blue; the enemy always stays crimson so sides never get confused.
+const SKINS: Record<string, { hull: Palette; flame: Palette }> = {
+  vance: {
+    hull: { s: '#5a4520', b: '#9a7a3a', l: '#d8b870', h: '#fff0c8', w: '#fff3a0', e: '#ffb02f' },
+    flame: { a: '#b06a00', b: '#ffc23a', c: '#fff6d0' },
+  },
+  kael: {
+    hull: { s: '#3a5560', b: '#7a9aa8', l: '#c0dce6', h: '#f2fbff', w: '#8ff8ff', e: '#2fd8ff' },
+    flame: { a: '#0f7fb0', b: '#4fe0ff', c: '#e8fdff' },
+  },
+  nyx: {
+    hull: { s: '#22222b', b: '#3e3f52', l: '#72748e', h: '#e0e2f0', w: '#ffd23f', e: '#ffd23f' },
+    flame: { a: '#b08000', b: '#ffd23f', c: '#fff8d8' },
+  },
+  ryx: {
+    hull: { s: '#3a2560', b: '#6a48a0', l: '#a888e0', h: '#eadcff', w: '#ff9cf0', e: '#c56bff' },
+    flame: { a: '#6a1fb0', b: '#c56bff', c: '#f4e0ff' },
+  },
+  orin: {
+    hull: { s: '#353c24', b: '#5e683c', l: '#98a468', h: '#e4ecc0', w: '#ffd166', e: '#ff9f43' },
+    flame: { a: '#a04a00', b: '#ff9f43', c: '#fff0c8' },
+  },
+  juno: {
+    hull: { s: '#1f4a40', b: '#3a8070', l: '#6cc0a8', h: '#d0fff0', w: '#b8fff0', e: '#3dffb0' },
+    flame: { a: '#0a8a5a', b: '#3dffb0', c: '#e0fff4' },
+  },
+};
+
+let playerSkin: string | null = null;
+
+/** Which commander colours your own ships use (null = standard steel blue). */
+export function setPlayerSkin(id: string | null | undefined) {
+  playerSkin = id && SKINS[id] ? id : null;
+}
+
+export const skinShipKey = (def: string, skin: string | null) => (skin && SKINS[skin] ? `ship_${def}_0_${skin}` : `ship_${def}_0`);
+export const shipKey = (def: string, side: 0 | 1) => (side === 0 ? skinShipKey(def, playerSkin) : `ship_${def}_1`);
+const flameKey = (side: 0 | 1) => (side === 0 && playerSkin ? `flame_0_${playerSkin}` : `flame_${side}`);
 
 function drawMap(scene: Phaser.Scene, key: string, rows: string[], pal: Palette, mirror = false) {
   const h = rows.length;
@@ -121,9 +159,9 @@ function mix(a: string, b: string, k: number) {
  * every ship has its own colour family while factions stay recognisable
  * (blue engines and cyan glass vs orange engines and amber glass).
  */
-function shipPalette(side: 0 | 1, accent: [string, string]): Palette {
-  const f = FACTION[side];
-  const k = side === 0 ? 0.42 : 0.3;
+function shipPalette(side: 0 | 1, accent: [string, string], skin?: Palette): Palette {
+  const f = skin ? { ...FACTION[0], ...skin } : FACTION[side];
+  const k = skin ? 0.22 : side === 0 ? 0.42 : 0.3;
   return {
     ...f,
     o: mix(f.o, accent[0], 0.12),
@@ -139,13 +177,19 @@ export function makeTextures(scene: Phaser.Scene) {
   for (const def of Object.values(SHIPS)) {
     for (const side of [0, 1] as const) {
       const pal = shipPalette(side, def.accent);
-      drawMap(scene, shipKey(def.id, side), def.sprite, pal, side === 1);
+      drawMap(scene, side === 0 ? skinShipKey(def.id, null) : `ship_${def.id}_1`, def.sprite, pal, side === 1);
+    }
+    for (const [id, skin] of Object.entries(SKINS)) {
+      drawMap(scene, skinShipKey(def.id, id), def.sprite, shipPalette(0, def.accent, skin.hull));
     }
   }
   // Engine flame, tip pointing left (mirrored for the enemy).
+  const FLAME_MAP = ['..abc', 'abbcc', '..abc'];
   for (const side of [0, 1] as const) {
-    drawMap(scene, `flame_${side}`, ['..abc', 'abbcc', '..abc'], FLAME[side], side === 1);
+    drawMap(scene, `flame_${side}`, FLAME_MAP, FLAME[side], side === 1);
   }
+  for (const [id, skin] of Object.entries(SKINS)) drawMap(scene, `flame_0_${id}`, FLAME_MAP, skin.flame);
+  makePortraits(scene);
   drawMap(scene, 'heart', ['.aa.aa.', 'abbabba', 'abhbbba', '.abbba.', '..aba..', '...a...'],
     { a: '#3a0812', b: '#ff4d6d', h: '#ffc2cc' });
   drawMap(scene, 'heart_empty', ['.aa.aa.', 'a..a..a', 'a.....a', '.a...a.', '..a.a..', '...a...'],
@@ -185,7 +229,7 @@ export function addStarfield(scene: Phaser.Scene, withPlanet = false) {
  */
 export function addShip(scene: Phaser.Scene, x: number, y: number, def: string, side: 0 | 1, scale = 2, flameScale = scale) {
   // Flame first so it draws behind the hull.
-  const flame = scene.add.image(x, y, `flame_${side}`).setOrigin(side === 0 ? 1 : 0, 0.5).setScale(flameScale);
+  const flame = scene.add.image(x, y, flameKey(side)).setOrigin(side === 0 ? 1 : 0, 0.5).setScale(flameScale);
   const spr = scene.add.image(x, y, shipKey(def, side)).setScale(scale);
   syncFlame(spr, flame, side);
   scene.tweens.add({
@@ -199,4 +243,147 @@ export function syncFlame(spr: Phaser.GameObjects.Image, flame: Phaser.GameObjec
   const half = (spr.width * spr.scaleX) / 2;
   flame.setPosition(spr.x + (side === 0 ? -half + 1 : half - 1), spr.y);
   flame.setAlpha(spr.alpha);
+}
+
+// ---------- commander portraits ----------
+// 16x16 busts. o outline  k skin  K skin shadow  h hair/helmet  H helmet light
+// v eyes/visor  a uniform  A uniform light / trim  w white/grey
+const PORTRAITS: Record<string, { map: string[]; pal: Palette }> = {
+  vance: {
+    map: [
+      '................',
+      '....oooooooo....',
+      '...ohhhhhhhho...',
+      '..ohhhhAAhhhho..',
+      '..oAAAAAAAAAAo..',
+      '...oooooooooo...',
+      '...okkkkkkkko...',
+      '...okvkkkkvko...',
+      '...okkkkkkkko...',
+      '...okkkKKkkko...',
+      '...okwwwwwwko...',
+      '....okkkkkko....',
+      '.....oKKKKo.....',
+      '..ooaaoooaaoo...',
+      '.oaaaAaaaAaaao..',
+      '.oaaaaaaaaaaao..',
+    ],
+    pal: { o: '#0a0f1e', k: '#e8b98f', K: '#b98a66', h: '#1d2a50', H: '#33467a', v: '#1a1a2a', a: '#1d2a50', A: '#ffd166', w: '#c8ccd8' },
+  },
+  kael: {
+    map: [
+      '................',
+      '.....oooooo.....',
+      '...oohhhhhhoo...',
+      '..ohHHhhhhhhho..',
+      '..ohHhhhhhhhho..',
+      '.ohhhhhhhhhhhho.',
+      '.ohhoooooooohho.',
+      '.ohhovvvvvvohho.',
+      '.ohhoooooooohho.',
+      '.ohhhhhhhhhhhho.',
+      '..ohhhAAAAhhho..',
+      '..oohhhhhhhhoo..',
+      '...oohhhhhhoo...',
+      '.ooaaoooooooaao.',
+      'oaaaahhhhhhaaaao',
+      'oaaaahhhhhhaaaao',
+    ],
+    pal: { o: '#0a0f1e', h: '#8aa8b8', H: '#e2f4ff', v: '#7fe7ff', a: '#3a5560', A: '#2fc6ff' },
+  },
+  nyx: {
+    map: [
+      '....o..o..o.....',
+      '...ohoohhoho....',
+      '..ohhhhhhhhhho..',
+      '..ohhhhhhhhhhho.',
+      '.ohhhkkkkkkhhho.',
+      '.ohhkkkkkkkkhho.',
+      '..ohkoookvkkho..',
+      '..ohkoookkkkho..',
+      '...okkkkkkkko...',
+      '...okkkKKkkko...',
+      '...okkkwwkkko...',
+      '....okkkkkko....',
+      '.....oKKKKo.....',
+      '...ooaaooooaaoo.',
+      '..oaaaaAAAAaaaao',
+      '..oaaaaAAAAaaaao',
+    ],
+    pal: { o: '#120a08', k: '#d9a27a', K: '#a8744f', h: '#ff7a2f', v: '#2a1a10', a: '#2a2a33', A: '#ffd23f', w: '#ff5e7e' },
+  },
+  ryx: {
+    map: [
+      '..o.........o...',
+      '...o.......o....',
+      '....o.....o.....',
+      '....oooooooo....',
+      '...ohhhhhhhho...',
+      '..ohhHhhhhHhho..',
+      '..ohvvvhhvvvho..',
+      '..ohvAvhhvAvho..',
+      '..ohvvvhhvvvho..',
+      '...ohhhhhhhho...',
+      '...ohhoaaohho...',
+      '....ohhaahho....',
+      '.....ohhhho.....',
+      '...oohhhhhhoo...',
+      '..ohhaahhaahhho.',
+      '..ohhhhhhhhhhho.',
+    ],
+    pal: { o: '#120a20', h: '#6a48a0', H: '#a888e0', v: '#1a0a2a', A: '#ff9cf0', a: '#c56bff' },
+  },
+  orin: {
+    map: [
+      '................',
+      '....oooooooo....',
+      '...ohhhhhhhho...',
+      '..ohhhhhhhhhho..',
+      '..oooooooooooo..',
+      '..oAvAooooAvAo..',
+      '..ooooookkoooo..',
+      '...okkkkkkkko...',
+      '...okvkkkkvko...',
+      '...okkkKKkkko...',
+      '...owwkkkkwwo...',
+      '...owwwwwwwwo...',
+      '....owwwwwwo....',
+      '...ooaooooaoo...',
+      '..oaaaAAAAaaao..',
+      '..oaaaAAAAaaao..',
+    ],
+    pal: { o: '#0e0c08', k: '#c98f68', K: '#9a6a4a', h: '#5e683c', v: '#ff5e7e', A: '#ffd166', a: '#4a5230', w: '#d8d0c0' },
+  },
+  juno: {
+    map: [
+      '...........o....',
+      '..........oAo...',
+      '....ooooooooo...',
+      '...ohhhhhhhhho..',
+      '..ohhhhhhhhhhho.',
+      '..ohkkkkkkkkhho.',
+      '.oaohkkkkkkkoao.',
+      '.oAokvkkkkvkoAo.',
+      '.oaokkkkkkkkoao.',
+      '..ohkkkKKkkkho..',
+      '..ohkkkkkkkkho..',
+      '..oh.okkkko.ho..',
+      '.....oKKKKo.....',
+      '...ooaaooaaoo...',
+      '..oaaawwwwaaao..',
+      '..oaaawwwwaaao..',
+    ],
+    pal: { o: '#06120e', k: '#8a5a3c', K: '#68412a', h: '#e8ecff', v: '#3dffb0', a: '#1f4a40', A: '#3dffb0', w: '#d0fff0' },
+  },
+};
+
+export const portraitKey = (id: string, locked = false) => (locked ? `portrait_${id}_locked` : `portrait_${id}`);
+
+function makePortraits(scene: Phaser.Scene) {
+  for (const [id, { map, pal }] of Object.entries(PORTRAITS)) {
+    drawMap(scene, portraitKey(id), map, pal);
+    // Locked: a flat silhouette.
+    const shadow = Object.fromEntries(Object.keys(pal).map((k) => [k, k === 'o' ? '#0b0f22' : '#1d2444']));
+    drawMap(scene, portraitKey(id, true), map, shadow);
+  }
 }

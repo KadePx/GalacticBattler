@@ -6,6 +6,7 @@ import { BattleScene } from './scenes/BattleScene';
 import { RelicScene } from './scenes/RelicScene';
 import { GameOverScene } from './scenes/GameOverScene';
 import { GalleryScene } from './scenes/GalleryScene';
+import { CommanderScene } from './scenes/CommanderScene';
 
 async function start() {
   // The pixel font must be loaded before Phaser draws any text.
@@ -26,7 +27,7 @@ async function start() {
     pixelArt: true,
     backgroundColor: '#05060f',
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    scene: [BootScene, MenuScene, ShopScene, BattleScene, RelicScene, GameOverScene, GalleryScene],
+    scene: [BootScene, MenuScene, ShopScene, BattleScene, RelicScene, GameOverScene, GalleryScene, CommanderScene],
   });
   (window as unknown as { __game: Phaser.Game }).__game = game;
 

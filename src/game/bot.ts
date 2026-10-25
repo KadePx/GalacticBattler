@@ -50,6 +50,10 @@ export const ARCHETYPES: Archetype[] = [
   },
 ];
 
+const BOT_COMMANDER: Record<string, string> = {
+  swarm: 'ryx', fortress: 'kael', artillery: 'orin', blitz: 'nyx', martyr: 'nyx', control: 'juno', balanced: 'vance',
+};
+
 const NAMES = ['Vex', 'Nyx', 'Korr', 'Talon', 'Ryn', 'Zed', 'Mox', 'Skarn', 'Ilya', 'Drax', 'Quill', 'Juno', 'Sable', 'Orin'];
 
 // Lower = closer to the front.
@@ -106,9 +110,14 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
   while (padded.length < FLEET_SIZE) padded.push(null);
 
   const wins = Math.floor((round - 1) * (0.35 + rand(s) * 0.4));
+  const name = `${pick(s, arch.titles)} ${pick(s, NAMES)}`;
+  // Bots lead with the commander that matches their build. Vance's second passive
+  // only affects shopping, which bots don't model, so his bots always take the first.
+  const cmdId = BOT_COMMANDER[arch.id] ?? 'vance';
+  const p = cmdId !== 'vance' && rand(s) < 0.5 ? 'b' : 'a';
   return {
-    v: 1, id: `bot-${seed}-${round}`, runId: 'bot', name: `${pick(s, arch.titles)} ${pick(s, NAMES)}`,
-    round, wins, lives: 5, fleet: padded, relics, createdAt: 0, style: arch.label,
+    v: 1, id: `bot-${seed}-${round}`, runId: 'bot', name,
+    round, wins, lives: 5, fleet: padded, relics, createdAt: 0, style: arch.label, cmd: { id: cmdId, p },
   };
 }
 

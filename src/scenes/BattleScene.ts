@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { addShip, addStarfield, syncFlame } from '../game/art';
+import { addShip, addStarfield, setPlayerSkin, syncFlame } from '../game/art';
+import { CMD_MAP } from '../sim/commanders';
 import { getOpponent } from '../game/opponents';
 import { WIN_TARGET, applyResult, makeSnapshot, type Run } from '../game/run';
 import { getRun, saveGhost, saveRun } from '../game/storage';
@@ -59,6 +60,7 @@ export class BattleScene extends Phaser.Scene {
     this.done = false;
     this.speedBtn = undefined; // the old button was destroyed with the previous battle
     this.setSpeed(1);
+    setPlayerSkin(run.skin ? run.cmd : null);
     addStarfield(this);
 
     // Freeze the fleet into a snapshot (this is what other players would fight),
@@ -86,9 +88,11 @@ export class BattleScene extends Phaser.Scene {
     txt(this, 472, 7, this.opp.name.toUpperCase(), { origin: [1, 0], color: C.bad });
     const tag = this.opp.runId === 'bot' ? this.opp.style ?? 'RAIDER' : 'GHOST FLEET';
     txt(this, 472, 24, `${tag}  ${this.opp.wins}W`, { origin: [1, 0], color: C.dim });
-    if (this.opp.relics.length) txt(this, 472, 34, `${this.opp.relics.length} RELICS`, { origin: [1, 0], color: C.dim });
+    this.commanderLine(this.opp, 472, 34, 1);
+    if (this.opp.relics.length) txt(this, 472, 44, `${this.opp.relics.length} RELICS`, { origin: [1, 0], color: C.dim });
     this.traitLine(me, 8, 24, 0);
-    this.traitLine(this.opp, 472, 44, 1);
+    this.commanderLine(me, 8, 34, 0);
+    this.traitLine(this.opp, 472, 54, 1);
 
     for (const u of this.res.units) this.makeView(u);
     this.layout(0, false);
@@ -100,6 +104,13 @@ export class BattleScene extends Phaser.Scene {
     const banner = txt(this, 240, 70, 'ENGAGE!', { size: 16, origin: 0.5, color: C.gold }).setStroke('#05060f', 4);
     this.tweens.add({ targets: banner, alpha: 0, delay: 500, duration: 400, onComplete: () => banner.destroy() });
     this.startDelay = 700;
+  }
+
+  /** Commander and passive, e.g. "KAEL: SHIELD WALL". */
+  private commanderLine(snap: Snapshot, x: number, y: number, side: 0 | 1) {
+    const c = snap.cmd ? CMD_MAP[snap.cmd.id] : null;
+    if (!c) return;
+    txt(this, x, y, `${c.name}: ${c.passives[snap.cmd!.p].name}`.toUpperCase(), { origin: [side, 0], color: c.color });
   }
 
   /** Active synergies for a fleet, e.g. "STRIKE 2  TECH 4". */

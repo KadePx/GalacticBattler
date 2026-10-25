@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { addShip, addStarfield, syncFlame } from '../game/art';
-import { newRun } from '../game/run';
-import { clearRun, getRun, saveRun } from '../game/storage';
+import { addShip, addStarfield, setPlayerSkin, syncFlame } from '../game/art';
+import { getProfile, pilotRank } from '../game/profile';
+import { getRun } from '../game/storage';
 import { C, button, txt } from '../game/ui';
 
 interface Flyer {
@@ -21,6 +21,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    setPlayerSkin(null);
     addStarfield(this, true);
     this.flyers = [];
 
@@ -46,11 +47,9 @@ export class MenuScene extends Phaser.Scene {
       button(this, 240, y, 150, 20, 'CONTINUE', () => this.scene.start(sceneFor(saved.phase)));
       y += 28;
     }
-    button(this, 240, y, 150, 20, 'NEW RUN', () => {
-      clearRun();
-      saveRun(newRun());
-      this.scene.start('shop');
-    }, { fill: 0x3a2a10, color: C.gold });
+    button(this, 240, y, 150, 20, 'NEW RUN', () => this.scene.start('commanders'), { fill: 0x3a2a10, color: C.gold });
+    const profile = getProfile();
+    txt(this, 240, y + 22, `PILOT RANK ${pilotRank(profile.xp)}`, { origin: 0.5, color: C.cyan }).setStroke('#05060f', 3);
 
     txt(this, 240, 246, 'Build a fleet. Win 10 battles before your 5 hull points run out.',
       { origin: 0.5, color: C.dim, wrap: 440, align: 'center' }).setStroke('#05060f', 3);

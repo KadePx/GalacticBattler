@@ -4,6 +4,7 @@ import { SHIPS, SHOP_SHIPS, MAX_XP, levelOf, shopSize, tierCap } from '../sim/sh
 import { RELICS, count } from '../sim/relics';
 import { hashStr, pick, rand, type RngState } from '../sim/rng';
 import type { FleetShip, Snapshot } from '../sim/types';
+import { CMD_MAP, type PassiveSlot } from '../sim/commanders';
 
 export const START_LIVES = 5;
 export const WIN_TARGET = 10;
@@ -32,34 +33,125 @@ export interface Run extends RngState {
   history: Outcome[];
   phase: Phase;
   lastOpponent?: string;
+  // Commander (runs from before commanders existed have none).
+  cmd?: string;
+  passive?: PassiveSlot;
+  skin?: boolean;
+  powerUsed?: boolean; // shop power, once per round
+  xpAwarded?: { pilotBefore: number; cmdBefore: number };
 }
 
-export function newRun(): Run {
+export interface RunOptions {
+  cmd: string;
+  passive: PassiveSlot;
+  starter: boolean;
+  skin: boolean;
+}
+
+export function newRun(opts?: RunOptions): Run {
   const runId = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
   const run: Run = {
     v: 1, runId, rng: hashStr(runId), round: 1, wins: 0, lives: START_LIVES, scrap: 0,
     fleet: Array(FLEET_SIZE).fill(null), bench: Array(BENCH_SIZE).fill(null), shop: [], frozen: [], relics: [], relicOffer: [], history: [], phase: 'shop',
   };
+  if (opts && CMD_MAP[opts.cmd]) {
+    run.cmd = opts.cmd;
+    run.passive = opts.passive;
+    run.skin = opts.skin;
+  }
   startRound(run);
+  // Starting ship: paid for out of the first round's scrap, so it's a head start in direction, not power.
+  const starter = opts?.starter && run.cmd ? SHIPS[CMD_MAP[run.cmd].starter] : null;
+  if (starter) {
+    run.fleet[0] = { def: starter.id, atk: starter.atk, hp: starter.hp, xp: 0 };
+    run.scrap -= SHIP_COST;
+  }
   return run;
 }
 
-export function rollShopFor(s: RngState, round: number): string[] {
-  const pool = SHOP_SHIPS.filter((d) => d.tier <= tierCap(round));
+export const runPassive = (run: Run) => (run.cmd ? `${run.cmd}.${run.passive ?? 'a'}` : '');
+
+export function rollShopFor(s: RngState, round: number, deep = false): string[] {
+  const cap = tierCap(round);
+  // Deep scan: no tier 1 ships, and one tier above the normal cap.
+  const maxT = deep ? Math.min(3, cap + 1) : cap;
+  const minT = deep && maxT >= 2 ? 2 : 1;
+  const pool = SHOP_SHIPS.filter((d) => d.tier >= minT && d.tier <= maxT);
   return Array.from({ length: shopSize(round) }, () => pick(s, pool).id);
 }
 
 /** New shop offers, keeping any frozen ships in their slots. */
-function restock(run: Run) {
-  const fresh = rollShopFor(run, run.round);
+function restock(run: Run, deep = false) {
+  const fresh = rollShopFor(run, run.round, deep);
   const frozen = run.frozen ?? [];
   run.shop = fresh.map((def, i) => (frozen[i] && run.shop[i] ? run.shop[i] : def));
   run.frozen = run.shop.map((_, i) => !!frozen[i] && !!run.shop[i]);
 }
 
 export function startRound(run: Run) {
-  run.scrap = ROUND_SCRAP + 2 * count(run.relics, 'salvage');
+  run.scrap = ROUND_SCRAP + 2 * count(run.relics, 'salvage') + (runPassive(run) === 'vance.b' ? 1 : 0);
+  run.powerUsed = false;
   restock(run);
+}
+
+/**
+ * The commander's shop power. `slot` is the selected ship for targeted powers.
+ * Returns an error message, or null on success.
+ */
+export function usePower(run: Run, slot: number | null): string | null {
+  const c = run.cmd ? CMD_MAP[run.cmd] : null;
+  if (!c) return 'No commander';
+  if (run.powerUsed) return 'Already used this round';
+  if (run.scrap < c.power.cost) return 'Not enough scrap';
+  const target = slot === null ? null : slotGet(run, slot);
+  if (c.power.target && !target) return 'Select one of your ships first';
+
+  switch (c.id) {
+    case 'vance': {
+      if (target!.xp >= MAX_XP) return 'Already max level';
+      const before = levelOf(target!.xp);
+      target!.xp++;
+      const gained = levelOf(target!.xp) - before;
+      target!.atk += gained;
+      target!.hp += gained;
+      break;
+    }
+    case 'kael':
+      target!.hp += 3;
+      break;
+    case 'orin':
+      target!.atk += 1;
+      break;
+    case 'nyx': {
+      const options = run.shop.map((d, i) => ({ d, i })).filter((o) => o.d);
+      if (!options.length) return 'The shipyard is empty';
+      const pickOne = options[Math.floor(rand(run) * options.length)];
+      run.scrap += SHIP_COST; // quickBuy charges the normal price; Plunder makes it free
+      const err = quickBuy(run, pickOne.i);
+      if (err) {
+        run.scrap -= SHIP_COST;
+        return err;
+      }
+      break;
+    }
+    case 'ryx': {
+      const ships = run.fleet.filter(Boolean) as FleetShip[];
+      if (!ships.length) return 'Your fleet is empty';
+      const s = ships[Math.floor(rand(run) * ships.length)];
+      s.atk++;
+      s.hp++;
+      break;
+    }
+    case 'juno':
+      if (run.shop.length && run.shop.every((_, i) => run.frozen?.[i])) return 'Everything is frozen';
+      restock(run, true);
+      break;
+    default:
+      return 'Unknown power';
+  }
+  run.scrap -= c.power.cost;
+  run.powerUsed = true;
+  return null;
 }
 
 export function reroll(run: Run): string | null {
@@ -166,6 +258,7 @@ export function makeSnapshot(run: Run, name = 'You'): Snapshot {
     v: 1, id: `${run.runId}-r${run.round}`, runId: run.runId, name, round: run.round,
     wins: run.wins, lives: run.lives, fleet: run.fleet.map((s) => (s ? { ...s } : null)),
     relics: [...run.relics], createdAt: Date.now(),
+    cmd: run.cmd ? { id: run.cmd, p: run.passive ?? 'a' } : undefined,
   };
 }
 

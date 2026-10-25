@@ -84,6 +84,14 @@ export function relicChip(scene: Phaser.Scene, x: number, y: number, id: string,
   return { bg, t };
 }
 
+/** A thin progress bar; frac is clamped to 0..1. */
+export function bar(scene: Phaser.Scene, x: number, y: number, w: number, h: number, frac: number, color: number) {
+  const f = Math.max(0, Math.min(1, frac));
+  const bg = scene.add.rectangle(x, y, w, h, 0x0b0f22).setOrigin(0).setStrokeStyle(1, 0x3a4a7a);
+  const fill = scene.add.rectangle(x + 1, y + 1, Math.max(0, Math.round((w - 2) * f)), h - 2, color).setOrigin(0);
+  return [bg, fill];
+}
+
 /** Floating number / label that drifts up and fades. */
 export function popup(scene: Phaser.Scene, x: number, y: number, str: string, color: string) {
   const t = txt(scene, x, y, str, { origin: 0.5, color }).setDepth(500);

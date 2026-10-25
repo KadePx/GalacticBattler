@@ -24,4 +24,5 @@ export interface Snapshot {
   relics: string[];
   createdAt: number;
   style?: string; // bot archetype label, e.g. 'SWARM FLEET'
+  cmd?: { id: string; p: 'a' | 'b' }; // commander and chosen passive
 }

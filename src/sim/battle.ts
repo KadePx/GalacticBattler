@@ -3,6 +3,7 @@
 
 import { SHIPS, levelOf } from './ships';
 import { count } from './relics';
+import { passiveId } from './commanders';
 import { traitCounts, traitLevel } from './traits';
 import type { Snapshot } from './types';
 
@@ -71,17 +72,20 @@ function factory(next: { uid: number }, scale: number): UnitFactory {
   };
 }
 
-/** Fighter stats: carriers, hangars and queens all launch these. */
-function fighter(make: UnitFactory, side: 0 | 1, relics: string[], level: number, atk: number, hp: number): BUnit {
+/** Fighter stats: carriers, hangars, queens and Ryx all launch these. */
+function fighter(make: UnitFactory, side: 0 | 1, snap: Snapshot, level: number, atk: number, hp: number): BUnit {
+  const relics = snap.relics;
   const sq = count(relics, 'squadron');
+  const hive = passiveId(snap.cmd) === 'ryx.b' ? 1 : 0;
   const cd = SHIPS.fighter.cd - count(relics, 'overclock');
-  return make(side, 'fighter', level, atk + sq + count(relics, 'targeting'), hp + sq, cd, cd);
+  return make(side, 'fighter', level, atk + sq + hive + count(relics, 'targeting'), hp + sq + 2 * hive, cd, cd);
 }
 
 function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
   const r = (id: string) => count(snap.relics, id);
   const counts = traitCounts(snap.fleet);
   const tl = (id: keyof typeof counts) => traitLevel(id, counts[id]);
+  const cp = passiveId(snap.cmd);
   const out: BUnit[] = [];
 
   for (const s of snap.fleet) {
@@ -95,11 +99,17 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     if (s.def === 'drone') atk += r('nanites'); // drones heal 2x ATK, so this is +2 healing
     if (has('strike')) atk += [0, 1, 4][tl('strike')];
     if (has('artillery') && tl('artillery') >= 1) atk += 2;
+    if (cp === 'vance.a' && L >= 2) atk += 1;
+    if (cp === 'nyx.a' && has('strike')) atk += 1;
+    if (cp === 'juno.b' && s.def === 'drone') atk += 1; // drones heal 2x ATK, so +2 healing
 
     let hp = s.hp + 3 * r('plating');
     if (has('guard')) hp += [0, 5, 9][tl('guard')];
     if (tl('tech') >= 2) hp += 3;
     if (s.def === 'gunboat' && L >= 2) hp += 3;
+    if (cp === 'vance.a' && L >= 2) hp += 1;
+    if (cp === 'kael.b' && has('guard')) hp += 4;
+    if (cp === 'juno.b' && has('tech')) hp += 2;
 
     let cd = d.cd - r('overclock');
     if (has('tech') && tl('tech') >= 1) cd -= 1;
@@ -109,6 +119,8 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
 
     let timer = Math.max(2, cd) - 2 * r('alpha');
     if (has('artillery') && tl('artillery') >= 2) timer -= 3;
+    if (cp === 'nyx.b' && has('strike')) timer -= 3;
+    if (cp === 'orin.a' && has('artillery')) timer -= 2;
     if ((s.def === 'torpedo' && L >= 2) || (s.def === 'siege' && L >= 3)) timer = 1;
 
     const u = make(side, s.def, L, atk, hp, cd, timer);
@@ -120,12 +132,23 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     out.push(u);
   }
 
+  if (cp === 'orin.b' && out.length) {
+    const top = out.reduce((m, x) => (x.atk > m.atk ? x : m), out[0]);
+    top.atk += 3;
+  }
+
   // Launch fighters behind the line.
   for (const u of [...out]) {
     if (u.def !== 'carrier') continue;
-    for (let k = 0; k < 1 + u.level; k++) out.push(fighter(make, side, snap.relics, u.level, u.level, u.level));
+    for (let k = 0; k < 1 + u.level; k++) out.push(fighter(make, side, snap, u.level, u.level, u.level));
   }
-  for (let k = 0; k < r('hangar'); k++) out.push(fighter(make, side, snap.relics, 1, 2, 2));
+  for (let k = 0; k < r('hangar'); k++) out.push(fighter(make, side, snap, 1, 2, 2));
+  if (cp === 'ryx.a') {
+    const n = Math.floor(snap.fleet.filter(Boolean).length / 3);
+    // Plain 1/1 fighters: they don't get relic bonuses, or swarm builds snowball.
+    const cd = SHIPS.fighter.cd - r('overclock');
+    for (let k = 0; k < n; k++) out.push(make(side, 'fighter', 1, 1, 1, cd, cd));
+  }
 
   // Battle-start auras, based on line position.
   const ships = [...out];
@@ -146,6 +169,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     }
   });
   if (out[0] && r('matrix') > 0) out[0].shield += 1;
+  if (out[0] && cp === 'kael.a') out[0].shield += 1;
   return out;
 }
 
@@ -167,6 +191,11 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
   const make = factory(next, hullScale(Math.max(a.round, b.round)));
   const snaps = [a, b];
   const units = [...buildSide(a, 0, make), ...buildSide(b, 1, make)];
+  // Juno's Jamming Field delays the whole enemy line.
+  snaps.forEach((snap, side) => {
+    if (passiveId(snap.cmd) !== 'juno.a') return;
+    for (const u of units) if (u.side !== side) u.timer += 1;
+  });
   const initial = units.map((u) => ({ ...u }));
   const events: BEvent[] = [];
   const line = (side: number) => units.filter((u) => u.alive && u.side === side);
@@ -324,7 +353,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       // Swarm Queen launches fighters mid-battle.
       if (u.def === 'queen' && (u.level >= 2 || u.attacks % 2 === 0) && line(u.side).length < MAX_LINE) {
         const strong = u.level >= 3 ? 2 : 1;
-        const f = fighter(make, u.side, snaps[u.side].relics, u.level, strong, 2 * strong);
+        const f = fighter(make, u.side, snaps[u.side], u.level, strong, 2 * strong);
         units.push(f);
         events.push({ t, k: 'spawn', s: u.uid, unit: { ...f } });
       }
