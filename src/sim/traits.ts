@@ -14,7 +14,7 @@ export interface TraitDef {
 export const TRAITS: TraitDef[] = [
   {
     id: 'strike', name: 'STRIKE', color: '#ff9f43',
-    tiers: [{ n: 2, desc: 'Strike ships +1 ATK.' }, { n: 4, desc: 'Strike ships +4 ATK, 1 tick faster.' }],
+    tiers: [{ n: 2, desc: 'Strike ships +1 ATK, +2 HP.' }, { n: 4, desc: 'Strike ships +4 ATK, +4 HP, 1 tick faster.' }],
   },
   {
     id: 'guard', name: 'GUARD', color: '#7fe7ff',

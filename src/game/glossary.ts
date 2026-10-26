@@ -40,7 +40,7 @@ export const TERMS: Term[] = [
   },
   {
     id: 'fighter', name: 'FIGHTER', match: /fighter/i,
-    desc: 'A small ship launched behind your line during battle (1-2 ATK). Fighters aren\'t bought and don\'t count for synergy.',
+    desc: 'A small ship launched behind your line during battle. Not bought, no synergy. Torpedoes and Lances skip fighters, and losing one doesn\'t trigger on-death effects.',
   },
   {
     id: 'zap', name: 'ZAP', match: /\bzap/i,
@@ -64,7 +64,7 @@ export const TERMS: Term[] = [
   },
   {
     id: 'down', name: 'GOES DOWN', match: /goes down|ally lost|per ally|on death|dies/i,
-    desc: 'When a ship is destroyed (or rebuilds). Triggers effects like Salvager, Interceptor and Vengeance.',
+    desc: 'When a ship is destroyed (or rebuilds). Triggers Salvager, Interceptor and Vengeance. Fighters don\'t count.',
   },
   // General terms (shown in the archive; no auto-match).
   {

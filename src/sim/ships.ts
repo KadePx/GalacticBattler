@@ -41,7 +41,7 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   gunboat: {
-    id: 'gunboat', name: 'Gunboat', tier: 1, atk: 3, hp: 7, cd: 5, classes: ['strike'],
+    id: 'gunboat', name: 'Gunboat', tier: 1, atk: 3, hp: 8, cd: 5, classes: ['strike'],
     desc: 'Reliable guns. Shoots the front enemy.',
     perks: ['+3 HP in battle.', 'Shoots the front 2 enemies.'], accent: ['#ff8a1f', '#ffc27a'],
     sprite: [
@@ -93,7 +93,7 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   drone: {
-    id: 'drone', name: 'Repair Drone', tier: 1, atk: 2, hp: 6, cd: 5, classes: ['tech'],
+    id: 'drone', name: 'Repair Drone', tier: 1, atk: 3, hp: 6, cd: 5, classes: ['tech'],
     desc: 'Repairs the most damaged ally by 2x ATK.',
     perks: ['Repairs 2 allies at once.', 'Repairs every damaged ally.'], accent: ['#33d16a', '#a8ffbe'],
     sprite: [
@@ -112,7 +112,7 @@ export const SHIPS: Record<string, ShipDef> = {
   },
   salvager: {
     id: 'salvager', name: 'Salvager', tier: 1, atk: 1, hp: 5, cd: 5, classes: ['tech'],
-    desc: 'Gains +2 ATK whenever an ally goes down.',
+    desc: 'Gains +2 ATK when an ally ship goes down.',
     perks: ['Gains +3 ATK per ally lost.', 'Also repairs 3 HP per ally lost.'], accent: ['#c98a1a', '#ffd27a'],
     sprite: [
       '..oooo.....ooo',
@@ -129,8 +129,8 @@ export const SHIPS: Record<string, ShipDef> = {
 
   // ---------- Tier 2 ----------
   torpedo: {
-    id: 'torpedo', name: 'Torpedo Frigate', tier: 2, atk: 7, hp: 6, cd: 8, classes: ['artillery'],
-    desc: 'Torpedoes hit the rearmost enemy.',
+    id: 'torpedo', name: 'Torpedo Frigate', tier: 2, atk: 7, hp: 6, cd: 7, classes: ['artillery'],
+    desc: 'Torpedoes hit the rearmost enemy ship.',
     perks: ['First torpedo fires at once.', 'Fires 2 torpedoes per volley.'], accent: ['#e0309a', '#ff9ad6'],
     sprite: [
       '....oooo..........',
@@ -145,8 +145,8 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   lance: {
-    id: 'lance', name: 'Lance', tier: 2, atk: 6, hp: 5, cd: 6, classes: ['artillery'],
-    desc: 'Snipes the enemy with the lowest HP.',
+    id: 'lance', name: 'Lance', tier: 2, atk: 7, hp: 6, cd: 5, classes: ['artillery'],
+    desc: 'Snipes the lowest-HP enemy ship.',
     perks: ['Shots pierce shields.', 'A kill reloads it instantly.'], accent: ['#b8c4dc', '#ffffff'],
     sprite: [
       '..ooo...............',
@@ -159,7 +159,7 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   raider: {
-    id: 'raider', name: 'Raider', tier: 2, atk: 3, hp: 7, cd: 4, classes: ['strike'],
+    id: 'raider', name: 'Raider', tier: 2, atk: 4, hp: 9, cd: 4, classes: ['strike'],
     desc: 'Gains +1 ATK every time it attacks.',
     perks: ['Gains +2 ATK per attack.', 'Gains +3 ATK per attack.'], accent: ['#ff5a1f', '#ffb08a'],
     sprite: [
@@ -211,9 +211,9 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   carrier: {
-    id: 'carrier', name: 'Carrier', tier: 2, atk: 1, hp: 9, cd: 7, classes: ['tech'],
+    id: 'carrier', name: 'Carrier', tier: 2, atk: 1, hp: 8, cd: 7, classes: ['tech'],
     desc: 'Launches 2 fighters at battle start.',
-    perks: ['Launches 3 stronger fighters.', 'Launches 4 even stronger fighters.'], accent: ['#9b5cff', '#d4b8ff'],
+    perks: ['Its fighters get +1 HP.', 'Launches 3 fighters with +1 ATK.'], accent: ['#9b5cff', '#d4b8ff'],
     sprite: [
       '...oooooooooooo.....',
       '..ohhllllllllllhoo..',
@@ -267,8 +267,8 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   ion: {
-    id: 'ion', name: 'Ion Cruiser', tier: 3, atk: 4, hp: 15, cd: 5, classes: ['tech'],
-    desc: 'Shots jam the target and drain 1 ATK.',
+    id: 'ion', name: 'Ion Cruiser', tier: 3, atk: 7, hp: 18, cd: 5, classes: ['tech'],
+    desc: 'Piercing shots jam and drain 1 ATK.',
     perks: ['Jams last longer.', 'Jams the front 2 enemies.'], accent: ['#3a7bff', '#b8d4ff'],
     sprite: [
       '..ooo.............',
@@ -285,7 +285,7 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   siege: {
-    id: 'siege', name: 'Siege Platform', tier: 3, atk: 4, hp: 10, cd: 10, classes: ['artillery'],
+    id: 'siege', name: 'Siege Platform', tier: 3, atk: 4, hp: 10, cd: 11, classes: ['artillery'],
     desc: 'Slow, but every shot hits ALL enemies.',
     perks: ['Fires 2 ticks faster.', 'First volley fires at once.'], accent: ['#ff2a4a', '#ff9aa8'],
     sprite: [

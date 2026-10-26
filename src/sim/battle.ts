@@ -96,22 +96,24 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
 
     let atk = s.atk + r('targeting');
     if (s.def === 'torpedo' || s.def === 'lance' || s.def === 'siege') atk += 2 * r('warheads');
-    if (s.def === 'drone') atk += r('nanites'); // drones heal 2x ATK, so this is +2 healing
+    if (s.def === 'drone') atk += 2 * r('nanites'); // drones heal 2x ATK, so this is +4 healing
     if (has('strike')) atk += [0, 1, 4][tl('strike')];
     if (has('artillery') && tl('artillery') >= 1) atk += 2;
     if (cp === 'vance.a' && L >= 2) atk += 1;
     if (cp === 'nyx.a' && has('strike')) atk += 1;
     if (cp === 'juno.b' && s.def === 'drone') atk += 1; // drones heal 2x ATK, so +2 healing
 
-    let hp = s.hp + 3 * r('plating');
+    let hp = s.hp + 3 * r('plating') - 2 * r('overclock'); // Overclock trades hull for speed
     if (has('guard')) hp += [0, 5, 9][tl('guard')];
+    if (has('strike')) hp += [0, 2, 4][tl('strike')];
     if (tl('tech') >= 2) hp += 3;
     if (s.def === 'gunboat' && L >= 2) hp += 3;
     if (cp === 'vance.a' && L >= 2) hp += 1;
     if (cp === 'kael.b' && has('guard')) hp += 4;
     if (cp === 'juno.b' && has('tech')) hp += 2;
 
-    let cd = d.cd - r('overclock');
+    // Overclock can't push a ship below 3 ticks; on the fastest ships a tick is too big a share.
+    let cd = r('overclock') ? Math.max(Math.min(d.cd, 3), d.cd - r('overclock')) : d.cd;
     if (has('tech') && tl('tech') >= 1) cd -= 1;
     if (has('strike') && tl('strike') >= 2) cd -= 1;
     if (s.def === 'scout') cd -= L - 1;
@@ -140,7 +142,11 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
   // Launch fighters behind the line.
   for (const u of [...out]) {
     if (u.def !== 'carrier') continue;
-    for (let k = 0; k < 1 + u.level; k++) out.push(fighter(make, side, snap, u.level, u.level, u.level));
+    // LV1: 2 fighters 1/1. LV2: 2 fighters 1/2. LV3: 3 fighters 2/2.
+    const n = u.level >= 3 ? 3 : 2;
+    const fa = u.level >= 3 ? 2 : 1;
+    const fh = u.level >= 2 ? 2 : 1;
+    for (let k = 0; k < n; k++) out.push(fighter(make, side, snap, u.level, fa, fh));
   }
   for (let k = 0; k < r('hangar'); k++) out.push(fighter(make, side, snap, 1, 2, 2));
   if (cp === 'ryx.a') {
@@ -206,6 +212,11 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     return visible.length ? visible : l;
   };
   const lowest = (l: BUnit[]) => l.reduce((m, x) => (x.hp < m.hp ? x : m), l[0]);
+  /** Real ships only (no fighters), unless fighters are all that's left. */
+  const ships = (l: BUnit[]) => {
+    const real = l.filter((x) => x.def !== 'fighter');
+    return real.length ? real : l;
+  };
 
   const outcome = (): 0 | 1 | -1 | null => {
     const p = line(0).length;
@@ -231,10 +242,11 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     if (sh.jam && !blocked) {
       d.timer += sh.jam + 2 * count(snaps[s.side].relics, 'jammer');
       events.push({ t, k: 'jam', s: s.uid, d: d.uid });
-      // Ion drain: each jam also saps 1 ATK, which counters builds that scale up mid-fight.
-      if (d.atk > 0 && d.hp > 0) {
-        d.atk--;
-        events.push({ t, k: 'buff', u: d.uid, atk: d.atk, hp: d.hp, label: '-1 ATK' });
+      // Ion drain: each jam also saps ATK (more with Jammer Array), which counters builds that scale up mid-fight.
+      const drain = Math.min(d.atk, 1 + count(snaps[s.side].relics, 'jammer'));
+      if (drain > 0 && d.hp > 0) {
+        d.atk -= drain;
+        events.push({ t, k: 'buff', u: d.uid, atk: d.atk, hp: d.hp, label: `-${drain} ATK` });
       }
     }
     // Reflectors punish hits that bounce off their side's shields. Zaps pierce, so they never chain.
@@ -266,6 +278,9 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       const dmg = u.atk * (u.level >= 2 ? 2 : 1);
       for (const f of u.level >= 3 ? foes : foes.slice(0, 1)) hit({ s: u, d: f, dmg, ram: true }, 0);
     }
+    // Fighters are disposable: losing one doesn't feed Salvagers or Vengeance
+    // (otherwise swarms of 1-HP fighters snowball those effects).
+    if (u.def === 'fighter') return;
     const vengeance = count(snaps[u.side].relics, 'vengeance');
     for (const x of line(u.side)) {
       if (x === u) continue;
@@ -306,10 +321,10 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           break;
         }
         case 'torpedo':
-          for (const f of foes.slice(L >= 3 ? -2 : -1)) shots.push({ s: u, d: f, dmg: u.atk });
+          for (const f of ships(foes).slice(L >= 3 ? -2 : -1)) shots.push({ s: u, d: f, dmg: u.atk });
           break;
         case 'lance':
-          shots.push({ s: u, d: lowest(foes), dmg: u.atk, pierce: L >= 2, onKill: L >= 3 ? 'reload' : undefined });
+          shots.push({ s: u, d: lowest(ships(foes)), dmg: u.atk, pierce: L >= 2, onKill: L >= 3 ? 'reload' : undefined });
           break;
         case 'dread':
           for (const f of foes.slice(0, L + 1)) shots.push({ s: u, d: f, dmg: u.atk });
@@ -318,7 +333,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk });
           break;
         case 'ion':
-          for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, jam: L >= 2 ? 6 : 4 });
+          for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, jam: L >= 2 ? 7 : 5, pierce: true }); // ion bolts go through shields
           break;
         case 'siege':
           for (const f of foes) shots.push({ s: u, d: f, dmg: u.atk });
