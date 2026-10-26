@@ -5,8 +5,10 @@ import {
   buy, canMerge, move, quickBuy, reroll, sell, sellValue, toggleFreeze, usePower, type Run,
 } from '../game/run';
 import { CMD_MAP } from '../sim/commanders';
+import { audio } from '../game/audio';
+import { soundButton } from '../game/soundPanel';
 import { getRun, saveRun } from '../game/storage';
-import { C, button, historyPips, panel, popup, relicChip, toast, txt } from '../game/ui';
+import { C, TIER_COLORS, button, historyPips, panel, popup, relicChip, toast, txt } from '../game/ui';
 import { RELIC_MAP } from '../sim/relics';
 import { SHIPS, levelOf, xpForNext, type ShipClass, type ShipDef } from '../sim/ships';
 import { TRAITS, TRAIT_MAP, traitCounts, traitLevel } from '../sim/traits';
@@ -17,6 +19,14 @@ type Src = { kind: 'shop' | 'fleet'; i: number };
 type Tgt = { kind: 'slot'; i: number } | { kind: 'sell' };
 type Info = { def: ShipDef; ship?: FleetShip } | { relic: string } | { trait: ShipClass } | { cmd: string } | { freeze: number } | null;
 const hexInt = (h: string) => Phaser.Display.Color.HexStringToColor(h).color;
+/** One short tip at a time in the empty info strip, changing each round. */
+const SHOP_TIPS = [
+  'Drop a ship on its twin to merge',
+  'Different ships of a class: SYNERGY',
+  'FREEZE keeps a ship for next round',
+  'Front of the line is on the right',
+  'Bench ships sit out the battle',
+];
 
 // Layout. Fleet slot 0 is the front of the line, drawn on the right
 // because your fleet faces right in battle.
@@ -30,7 +40,6 @@ const STRIP = { x: 4, y: 199, w: 350, h: 66 };
 const SELL = { x: 418, y: 214, w: 100, h: 18 };
 const SYN = { x: 362, y: 38, w: 112, h: 100 };
 const POWER = { x: 362, y: 141, w: 112, h: 38 };
-const TIER_COLORS = [0x3a4a7a, 0x8a94b8, 0x4aa3ff, 0xc58cff];
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
 
 export class ShopScene extends Phaser.Scene {
@@ -65,6 +74,7 @@ export class ShopScene extends Phaser.Scene {
     this.armed = false;
     this.dragging = false;
     setPlayerSkin(run.skin ? run.cmd : null);
+    audio.setMood('shop');
     addStarfield(this);
     this.layer = this.add.container();
     this.synLayer = this.add.container();
@@ -142,7 +152,7 @@ export class ShopScene extends Phaser.Scene {
       err = sell(this.run, src.i);
     }
     if (err) toast(this, err);
-    else this.announceLevelUps(levelsBefore);
+    else this.feedback(levelsBefore, tgt.kind === 'sell' ? 'sell' : src.kind === 'shop' ? 'buy' : 'move');
     this.sel = null;
     this.hover = null;
     saveRun(this.run);
@@ -159,7 +169,9 @@ export class ShopScene extends Phaser.Scene {
     return m;
   }
 
+  /** Toast and sparkle for ships that levelled up. Returns true if any did. */
   private announceLevelUps(before: Map<FleetShip, number>) {
+    let any = false;
     for (let i = 0; i < TOTAL_SLOTS; i++) {
       const s = slotGet(this.run, i);
       if (!s || !before.has(s)) continue;
@@ -167,8 +179,24 @@ export class ShopScene extends Phaser.Scene {
       if (lvl > before.get(s)!) {
         toast(this, `LEVEL ${lvl}! ${SHIPS[s.def].perks[lvl - 2]}`, C.gold);
         this.sparkle(SLOT_X(i), SLOT_Y);
+        any = true;
       }
     }
+    return any;
+  }
+
+  /**
+   * Feedback after a successful buy/move/sell: a level-up beats a merge, which
+   * beats a plain buy. Merges are spotted by the ship count going down.
+   */
+  private feedback(before: Map<FleetShip, number>, kind: 'buy' | 'move' | 'sell') {
+    const leveled = this.announceLevelUps(before);
+    if (leveled) return audio.play('levelup');
+    if (kind === 'sell') return audio.play('sell');
+    const after = this.levels().size;
+    // Buying into an empty slot adds a ship; buying onto a copy doesn't. A merge by moving removes one.
+    const merged = kind === 'buy' ? after <= before.size : after < before.size;
+    audio.play(merged ? 'merge' : kind === 'buy' ? 'buy' : 'click');
   }
 
   private sparkle(x: number, y: number) {
@@ -196,7 +224,7 @@ export class ShopScene extends Phaser.Scene {
         const before = this.levels();
         const err = quickBuy(this.run, src.i);
         if (err) toast(this, err);
-        else this.announceLevelUps(before);
+        else this.feedback(before, 'buy');
         saveRun(this.run);
       }
       this.sel = null;
@@ -205,6 +233,7 @@ export class ShopScene extends Phaser.Scene {
       return;
     } else {
       this.sel = src;
+      audio.play('select');
     }
     this.refresh();
   }
@@ -236,6 +265,7 @@ export class ShopScene extends Phaser.Scene {
     this.armed = false;
     const err = reroll(this.run);
     if (err) toast(this, err);
+    else audio.play('reroll');
     this.sel = null;
     saveRun(this.run);
     this.refresh();
@@ -269,6 +299,7 @@ export class ShopScene extends Phaser.Scene {
     }
     this.armed = true;
     this.sel = null;
+    audio.play('arm');
     this.refresh();
   }
 
@@ -290,7 +321,7 @@ export class ShopScene extends Phaser.Scene {
       } else {
         toast(this, `${cmd.power.name}!`, C.gold);
       }
-      this.announceLevelUps(before);
+      audio.play(this.announceLevelUps(before) ? 'levelup' : 'power');
     }
     this.sel = null;
     saveRun(this.run);
@@ -302,6 +333,7 @@ export class ShopScene extends Phaser.Scene {
     this.armed = false;
     this.pinned = null;
     toggleFreeze(this.run, i);
+    audio.play(this.run.frozen?.[i] ? 'freeze' : 'unfreeze');
     saveRun(this.run);
     this.refresh();
   }
@@ -341,6 +373,7 @@ export class ShopScene extends Phaser.Scene {
     }
     this.add2(txt(this, 70, 7, `WINS ${run.wins}/${WIN_TARGET}`, { color: C.gold }));
     this.add2(txt(this, 190, 7, `ROUND ${run.round}`));
+    soundButton(this, 166, 10).forEach((o) => this.add2(o));
     this.add2(this.add.image(300, 10, 'coin'));
     this.add2(txt(this, 308, 7, `${run.scrap} SCRAP`, { color: C.gold }));
     historyPips(this, 470, 10, run.history).forEach((o) => this.add2(o));
@@ -370,7 +403,9 @@ export class ShopScene extends Phaser.Scene {
       const isSel = this.sel?.kind === 'fleet' && this.sel.i === i;
       const mergeHint = !!selDef && !isSel && canMerge(ship, selDef);
       const powerHint = targeting && !!ship;
-      const border = powerHint ? cmdColor : isSel ? C.highlight : mergeHint ? 0x7dff8a : bench ? 0x262e50 : C.border;
+      // Owned ships keep their shipyard tier colour on the slot border, so tier is visible after buying.
+      const tierCol = ship ? TIER_COLORS[SHIPS[ship.def].tier] : bench ? 0x262e50 : C.border;
+      const border = powerHint ? cmdColor : isSel ? C.highlight : mergeHint ? 0x7dff8a : tierCol;
       const box = this.add2(this.add.rectangle(x, SLOT_Y, BOX, BOX, bench ? 0x080b1c : 0x0b1026)
         .setStrokeStyle(isSel || mergeHint || powerHint ? 2 : 1, border));
       if (powerHint) this.tweens.add({ targets: box, alpha: 0.55, duration: 380, yoyo: true, repeat: -1 });
@@ -379,8 +414,10 @@ export class ShopScene extends Phaser.Scene {
       if (!ship) continue;
       const def = SHIPS[ship.def];
       this.shipSprite(x, SLOT_Y, def, { kind: 'fleet', i }, ship);
+      // Tier label top-left (same as the shipyard), level stars top-right.
+      this.add2(txt(this, x - 19, SLOT_Y - 18, `T${def.tier}`, { color: hex(TIER_COLORS[def.tier]) }).setStroke('#05060f', 2));
       const lvl = levelOf(ship.xp);
-      for (let s = 0; s < lvl; s++) this.add2(this.add.image(x - (lvl - 1) * 4 + s * 8, SLOT_Y - 15, 'star'));
+      for (let s = 0; s < lvl; s++) this.add2(this.add.image(x + 15 - (lvl - 1 - s) * 7, SLOT_Y - 15, 'star'));
       this.classPips(x, SLOT_Y + 16, def);
       this.add2(txt(this, x - 4, SLOT_Y + 23, `${ship.atk}`, { origin: [1, 0], color: C.atk }));
       this.add2(txt(this, x + 4, SLOT_Y + 23, `${ship.hp}`, { color: C.hp }));
@@ -568,15 +605,12 @@ export class ShopScene extends Phaser.Scene {
     const row = (i: number) => y + 6 + i * 12;
 
     if (!info) {
-      const verb = this.touch ? 'Tap' : 'Click';
-      add(txt(this, L, row(0), `${verb} a ship, then a slot, to buy it.`, { color: C.dim }));
-      add(txt(this, L, row(1), 'Same ship on same ship = merge + level up.', { color: C.dim }));
-      add(txt(this, L, row(2), 'Different ships of a class unlock SYNERGY.', { color: C.dim }));
-      add(txt(this, L, row(3), 'FREEZE keeps a shop ship for next round.', { color: C.dim }));
+      // Kept short and quiet on purpose: one prompt plus one rotating tip.
+      const cy = y + h / 2;
+      add(txt(this, x + w / 2, cy - 7, `${this.touch ? 'Tap' : 'Hover'} anything for details`, { origin: 0.5, color: C.faint }));
       const hull = hullScale(this.run.round);
-      add(hull > 1
-        ? txt(this, L, row(4), `Round ${this.run.round}: all hulls x${hull.toFixed(1)} HP in battle.`, { color: C.hp })
-        : txt(this, L, row(4), `${this.touch ? 'Tap' : 'Hover'} anything for details.`, { color: C.faint }));
+      const tip = hull > 1 ? `Hulls x${hull.toFixed(1)} HP this round` : SHOP_TIPS[(this.run.round - 1) % SHOP_TIPS.length];
+      add(txt(this, x + w / 2, cy + 7, tip, { origin: 0.5, color: hull > 1 ? C.hp : '#4f5a80' }));
       return;
     }
     if ('freeze' in info) {
@@ -634,7 +668,8 @@ export class ShopScene extends Phaser.Scene {
     if (ship) {
       const next = xpForNext(ship.xp);
       const benched = !this.run.fleet.includes(ship) ? 'BENCHED  ' : '';
-      add(txt(this, R, row(0), `${benched}LV ${levelOf(ship.xp)}  ${next ? `XP ${ship.xp}/${next}` : 'MAX'}`, { origin: [1, 0], color: C.gold }));
+      const lv = add(txt(this, R, row(0), `LV ${levelOf(ship.xp)}  ${next ? `XP ${ship.xp}/${next}` : 'MAX'}`, { origin: [1, 0], color: C.gold }));
+      add(txt(this, lv.x - lv.width - 12, row(0), `${benched}T${def.tier}`, { origin: [1, 0], color: hex(TIER_COLORS[def.tier]) }));
     } else {
       add(txt(this, R, row(0), `TIER ${def.tier}`, { origin: [1, 0], color: hex(TIER_COLORS[def.tier]) }));
     }

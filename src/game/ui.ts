@@ -1,6 +1,7 @@
 // Small pixel-UI helpers: text, panels, buttons, toasts, relic chips.
 import Phaser from 'phaser';
 import { RELIC_MAP } from '../sim/relics';
+import { audio } from './audio';
 
 export const FONT = '"Press Start 2P", monospace';
 
@@ -65,12 +66,16 @@ export function button(
     bg.setInteractive({ useHandCursor: true });
     bg.on('pointerover', () => bg.setStrokeStyle(2, C.highlight));
     bg.on('pointerout', () => bg.setStrokeStyle(2, 0x6a7cc0));
-    bg.on('pointerup', onClick);
+    bg.on('pointerup', () => {
+      audio.play('click');
+      onClick();
+    });
   }
   return { bg, label: t, objects: [bg, t] };
 }
 
 export function toast(scene: Phaser.Scene, msg: string, color = C.bad) {
+  if (color === C.bad) audio.play('error'); // red toasts are refusals
   const t = txt(scene, 240, 136, msg, { origin: 0.5, color }).setDepth(1000);
   t.setStroke('#05060f', 4);
   scene.tweens.add({ targets: t, y: 120, alpha: 0, delay: 700, duration: 500, onComplete: () => t.destroy() });
@@ -112,3 +117,6 @@ export function popup(scene: Phaser.Scene, x: number, y: number, str: string, co
   t.setStroke('#05060f', 3);
   scene.tweens.add({ targets: t, y: y - 14, alpha: 0, duration: 650, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
 }
+
+/** Border/label colour for each ship tier (index = tier; 0 is unused). */
+export const TIER_COLORS = [0x3a4a7a, 0x8a94b8, 0x4aa3ff, 0xc58cff];

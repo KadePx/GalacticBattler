@@ -5,6 +5,7 @@ import { WIN_TARGET } from '../game/run';
 import { clearRun, getRun, saveRun } from '../game/storage';
 import { C, bar, button, historyPips, panel, relicChip, txt } from '../game/ui';
 import { CMD_MAP } from '../sim/commanders';
+import { audio } from '../game/audio';
 
 export class GameOverScene extends Phaser.Scene {
   constructor() {
@@ -18,6 +19,7 @@ export class GameOverScene extends Phaser.Scene {
       return;
     }
     setPlayerSkin(run.skin ? run.cmd : null);
+    audio.setMood('menu');
     addStarfield(this);
     const won = run.wins >= WIN_TARGET;
     txt(this, 240, 22, won ? 'FLEET TRIUMPHANT' : 'FLEET DESTROYED', {
@@ -43,7 +45,13 @@ export class GameOverScene extends Phaser.Scene {
     // Rewards (paid once; the run remembers it was paid so refreshing is safe).
     const award = awardRun(run);
     saveRun(run);
-    if (award) this.rewards(award);
+    if (award) {
+      this.rewards(award);
+      // Celebrate progress a moment after the screen appears.
+      const ranked = pilotRank(award.pilotAfter) > pilotRank(award.pilotBefore);
+      const leveled = !!award.cmd && cmdLevel(award.cmdAfter) > cmdLevel(award.cmdBefore);
+      if (ranked || leveled) this.time.delayedCall(500, () => audio.play(ranked ? 'rankup' : 'levelup'));
+    }
 
     button(this, 170, 252, 130, 18, 'NEW RUN', () => {
       clearRun();

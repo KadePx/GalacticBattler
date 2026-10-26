@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { addShip, addStarfield, setPlayerSkin, syncFlame } from '../game/art';
 import { getProfile, pilotRank } from '../game/profile';
+import { audio } from '../game/audio';
+import { soundButton } from '../game/soundPanel';
 import { getRun } from '../game/storage';
 import { C, button, txt } from '../game/ui';
 
@@ -22,6 +24,7 @@ export class MenuScene extends Phaser.Scene {
 
   create() {
     setPlayerSkin(null);
+    audio.setMood('menu');
     addStarfield(this, true);
     this.flyers = [];
 
@@ -55,6 +58,8 @@ export class MenuScene extends Phaser.Scene {
     this.add.rectangle(240, 246, 480, 32, 0x05060f, 0.75);
     txt(this, 240, 246, 'Build a fleet. Win 10 battles before your 5 hull points run out.',
       { origin: 0.5, color: C.dim, wrap: 440, align: 'center' });
+
+    soundButton(this, 16, 14);
 
     // Fullscreen hides the phone's browser bars, which matters a lot in landscape.
     if (this.sys.game.device.fullscreen.available) {

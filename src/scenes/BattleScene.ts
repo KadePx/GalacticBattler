@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { addShip, addStarfield, setPlayerSkin, syncFlame } from '../game/art';
 import { CMD_MAP } from '../sim/commanders';
+import { audio } from '../game/audio';
+import { soundButton } from '../game/soundPanel';
 import { getOpponent } from '../game/opponents';
 import { WIN_TARGET, applyResult, makeSnapshot, type Run } from '../game/run';
 import { getRun, saveGhost, saveRun } from '../game/storage';
@@ -78,6 +80,7 @@ export class BattleScene extends Phaser.Scene {
     this.speedObjs = [];
     this.setSpeed(savedSpeed());
     setPlayerSkin(run.skin ? run.cmd : null);
+    audio.setMood('battle');
     addStarfield(this);
 
     // Freeze the fleet into a snapshot (this is what other players would fight),
@@ -124,10 +127,12 @@ export class BattleScene extends Phaser.Scene {
     this.speedBtn = sb.label;
     this.speedObjs = sb.objects;
     txt(this, 404, 253, 'SPEED', { origin: [1, 0], color: C.faint });
+    soundButton(this, 16, 256);
 
     const banner = txt(this, 240, 70, 'ENGAGE!', { size: 16, origin: 0.5, color: C.gold }).setStroke('#05060f', 4);
     this.tweens.add({ targets: banner, alpha: 0, delay: 500, duration: 400, onComplete: () => banner.destroy() });
     this.startDelay = 700;
+    audio.play('engage');
   }
 
   /** Commander and passive, e.g. "KAEL: SHIELD WALL". */
@@ -241,6 +246,7 @@ export class BattleScene extends Phaser.Scene {
       const b = txt(this, 240, 60, 'REACTOR OVERLOAD', { size: 16, origin: 0.5, color: C.bad }).setStroke('#05060f', 4);
       this.tweens.add({ targets: b, alpha: 0, delay: 900, duration: 500, onComplete: () => b.destroy() });
       this.cameras.main.flash(200, 120, 20, 30);
+      audio.play('overload');
     }
     for (const e of this.byTick.get(this.t) ?? []) this.play(e);
     if (this.t >= this.res.ticks) {
@@ -261,6 +267,7 @@ export class BattleScene extends Phaser.Scene {
         this.time.delayedCall(SHOT_MS, () => {
           if (!v.alive) return;
           this.setHp(v, e.hp);
+          audio.play(e.label.startsWith('-') ? 'debuff' : 'buff');
           // Small team-wide buffs (Vengeance) just flash; named buffs get a label.
           if (/^\+\d+$/.test(e.label)) this.flash(v, 0xffd166);
           else popup(this, v.spr.x, v.spr.y - 24, e.label, e.label.startsWith('-') ? '#b8d4ff' : C.gold);
@@ -273,7 +280,10 @@ export class BattleScene extends Phaser.Scene {
         this.time.delayedCall(e.on ? SHOT_MS + 60 : 0, () => {
           if (!v.alive) return;
           this.tweens.add({ targets: v.spr, alpha: e.on ? 0.3 : 1, duration: 150 });
-          if (e.on) popup(this, v.spr.x, v.spr.y - 24, 'CLOAK', '#dcc0ff');
+          if (e.on) {
+            popup(this, v.spr.x, v.spr.y - 24, 'CLOAK', '#dcc0ff');
+            audio.play('cloak');
+          }
         });
         return;
       }
@@ -287,6 +297,7 @@ export class BattleScene extends Phaser.Scene {
           this.flash(v, 0xe8ffb0);
           this.setHp(v, e.hp);
           popup(this, v.spr.x, v.spr.y - 24, 'REBUILT', '#9cff3a');
+          audio.play('revive');
         });
         return;
       }
@@ -295,6 +306,7 @@ export class BattleScene extends Phaser.Scene {
         const v = this.makeView(e.unit, q ? { ...q.pos } : undefined);
         v.spr.setScale(0.5);
         this.tweens.add({ targets: v.spr, scale: 2, duration: 200 });
+        audio.play('spawn', e.unit.side === 0 ? 1 : 0.8);
         this.layout(e.unit.side);
         return;
       }
@@ -312,11 +324,16 @@ export class BattleScene extends Phaser.Scene {
       this.time.delayedCall(SHOT_MS / 2, () => {
         this.setHp(d, e.hp);
         popup(this, d.spr.x, d.spr.y - 14, `+${e.amt}`, C.hp);
+        audio.play('heal');
       });
       return;
     }
     if (e.k === 'jam') {
-      this.time.delayedCall(SHOT_MS, () => d.alive && popup(this, d.spr.x, d.spr.y - 24, 'JAM', '#b8d4ff'));
+      this.time.delayedCall(SHOT_MS, () => {
+        if (!d.alive) return;
+        popup(this, d.spr.x, d.spr.y - 24, 'JAM', '#b8d4ff');
+        audio.play('jam');
+      });
       return;
     }
     if (e.k !== 'shot') return;
@@ -326,6 +343,7 @@ export class BattleScene extends Phaser.Scene {
       this.time.delayedCall(SHOT_MS + 20, () => {
         if (!d.alive) return;
         this.lightning(s.spr.x, s.spr.y, d.spr.x, d.spr.y, 0x3dffa8);
+        audio.play('zap');
         this.setHp(d, e.hp);
         popup(this, d.spr.x, d.spr.y - 14, `-${e.dmg}`, '#3dffa8');
         this.flash(d, 0xd0fff0);
@@ -345,6 +363,8 @@ export class BattleScene extends Phaser.Scene {
       this.tweens.add({ targets: m, scale: 4, alpha: 0, duration: 90, onComplete: () => m.destroy() });
     }
     const isTorp = s.u.def === 'torpedo' || s.u.def === 'siege' || !!e.ram;
+    // Enemy guns sound a little lower than yours.
+    audio.play(e.ram ? 'ram' : isTorp ? 'torpedo' : 'laser', side === 0 ? 1 : 0.78);
     const proj = isTorp
       ? this.add.image(nose.x, nose.y, `torp_${side}`).setScale(2)
       : this.add.image(nose.x, nose.y, 'bolt').setScale(2).setTint(accent);
@@ -356,6 +376,7 @@ export class BattleScene extends Phaser.Scene {
         if (!d.alive) return;
         if (e.blocked) {
           popup(this, d.spr.x, d.spr.y - 14, 'BLOCK', C.cyan);
+          audio.play('block');
           if (d.shield && e.sh > 0) d.shield.setStrokeStyle(e.sh > 1 ? 2 : 1, 0x7fe7ff);
           else if (d.shield) {
             const sh = d.shield;
@@ -366,6 +387,7 @@ export class BattleScene extends Phaser.Scene {
         }
         this.setHp(d, e.hp);
         popup(this, d.spr.x, d.spr.y - 14, `-${e.dmg}`, C.bad);
+        audio.play('hit', d.u.side === 0 ? 0.85 : 1);
         this.flash(d, 0xffffff);
         this.sparks(d.spr.x, d.spr.y, 4, accent);
       },
@@ -414,6 +436,7 @@ export class BattleScene extends Phaser.Scene {
     this.sparks(x, y, 6, hexInt(SHIPS[v.u.def].accent[0]));
     this.ring(x, y, 0xffcf5a);
     this.cameras.main.shake(big ? 140 : 80, big ? 0.007 : 0.004);
+    audio.play(big ? 'boom' : 'explode');
     for (const o of [v.spr, v.flame, v.barBg, v.bar, v.hpT, v.shield]) o?.destroy();
     this.layout(v.u.side);
   }
@@ -424,6 +447,7 @@ export class BattleScene extends Phaser.Scene {
     const run = this.run;
     const title = w === 0 ? 'VICTORY' : w === 1 ? 'DEFEAT' : 'STALEMATE';
     const color = w === 0 ? C.gold : w === 1 ? C.bad : C.cyan;
+    audio.play(w === 0 ? 'victory' : w === 1 ? 'defeat' : 'draw');
     const sub = w === 0 ? `+1 WIN  (${run.wins}/${WIN_TARGET})`
       : w === 1 ? `-1 HULL  (${run.lives} LEFT)` : 'NO WIN, NO DAMAGE';
 

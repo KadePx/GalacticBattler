@@ -8,6 +8,7 @@ import { clearRun, saveRun } from '../game/storage';
 import { C, bar, button, panel, txt } from '../game/ui';
 import { COMMANDERS, CMD_MAP, type PassiveSlot } from '../sim/commanders';
 import { SHIPS } from '../sim/ships';
+import { audio } from '../game/audio';
 
 const STYLE_LABEL: Record<string, string> = {
   balanced: 'ALL-ROUNDER', fortress: 'GUARD / DEFENSE', blitz: 'STRIKE / SPEED',
@@ -26,6 +27,7 @@ export class CommanderScene extends Phaser.Scene {
 
   create() {
     setPlayerSkin(null);
+    audio.setMood('menu');
     addStarfield(this);
     const p = getProfile();
     this.sel = CMD_MAP[p.last] && isUnlocked(p, p.last) ? p.last : 'vance';
@@ -76,6 +78,7 @@ export class CommanderScene extends Phaser.Scene {
     }));
     const hit = this.add2(this.add.rectangle(x + w / 2, y + h / 2, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
     hit.on('pointerup', () => {
+      audio.play('select');
       this.sel = id;
       this.refresh();
     });
@@ -191,6 +194,7 @@ export class CommanderScene extends Phaser.Scene {
       starter: lvl >= 4 && prog.starter,
       skin: lvl >= 2 && prog.skin,
     }));
+    audio.play('launch');
     this.scene.start('shop');
   }
 }

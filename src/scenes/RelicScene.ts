@@ -3,10 +3,11 @@ import { addShip, addStarfield, setPlayerSkin } from '../game/art';
 import { relicFit, type RelicFit } from '../game/relicFit';
 import { START_LIVES, WIN_TARGET, chooseRelic, type Run } from '../game/run';
 import { getRun, saveRun } from '../game/storage';
-import { C, button, historyPips, panel, relicChip, txt } from '../game/ui';
+import { C, TIER_COLORS, button, historyPips, panel, relicChip, txt } from '../game/ui';
 import { CMD_MAP } from '../sim/commanders';
+import { audio } from '../game/audio';
 import { RELIC_MAP, count } from '../sim/relics';
-import { levelOf } from '../sim/ships';
+import { SHIPS, levelOf } from '../sim/ships';
 import { TRAITS, traitCounts, traitLevel } from '../sim/traits';
 
 const CARD = { w: 140, h: 122, y: 59 };
@@ -36,6 +37,7 @@ export class RelicScene extends Phaser.Scene {
     this.picked = null;
     this.focus = null;
     setPlayerSkin(run.skin ? run.cmd : null);
+    audio.setMood('shop');
     addStarfield(this);
     this.layer = this.add.container();
     this.refresh();
@@ -112,7 +114,7 @@ export class RelicScene extends Phaser.Scene {
     hit.on('pointerup', () => {
       // First tap picks, a second tap on the same card takes it.
       if (this.picked === id) this.confirm();
-      else { this.picked = id; this.refresh(); }
+      else { this.picked = id; audio.play('select'); this.refresh(); }
     });
   }
 
@@ -137,8 +139,11 @@ export class RelicScene extends Phaser.Scene {
     run.fleet.forEach((s, i) => {
       const x = SHIP_X(i);
       const on = lit.has(i);
-      this.add2(this.add.rectangle(x, FLEET_Y, 40, 36, on ? 0x1a3a2a : 0x0b1026).setStrokeStyle(on ? 2 : 1, on ? 0x7dff8a : 0x262e50));
+      const tierCol = s ? TIER_COLORS[SHIPS[s.def].tier] : 0x262e50;
+      this.add2(this.add.rectangle(x, FLEET_Y, 40, 36, on ? 0x1a3a2a : 0x0b1026).setStrokeStyle(on ? 2 : 1, on ? 0x7dff8a : tierCol));
       if (!s) return;
+      const tier = SHIPS[s.def].tier;
+      this.add2(txt(this, x - 18, FLEET_Y - 16, `T${tier}`, { color: `#${TIER_COLORS[tier].toString(16).padStart(6, '0')}` }).setStroke('#05060f', 2));
       const { spr, flame } = addShip(this, x, FLEET_Y - 3, s.def, 0, 2, 1);
       const dim = fit && fit.slots.length > 0 && !on;
       spr.setAlpha(dim ? 0.35 : 1);
@@ -169,6 +174,7 @@ export class RelicScene extends Phaser.Scene {
   private confirm() {
     if (!this.picked) return;
     chooseRelic(this.run, this.picked);
+    audio.play('relic');
     saveRun(this.run);
     this.scene.start('shop');
   }

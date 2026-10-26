@@ -7,6 +7,7 @@ import { RelicScene } from './scenes/RelicScene';
 import { GameOverScene } from './scenes/GameOverScene';
 import { GalleryScene } from './scenes/GalleryScene';
 import { CommanderScene } from './scenes/CommanderScene';
+import { installAudioUnlock } from './game/audio';
 
 async function start() {
   // The pixel font must be loaded before Phaser draws any text.
@@ -26,10 +27,12 @@ async function start() {
     height: 270,
     pixelArt: true,
     backgroundColor: '#05060f',
+    audio: { noAudio: true }, // the game makes its own sound (src/game/audio.ts)
     scale: { mode: Phaser.Scale.NONE, zoom: fitZoom(), autoCenter: Phaser.Scale.CENTER_BOTH },
     scene: [BootScene, MenuScene, ShopScene, BattleScene, RelicScene, GameOverScene, GalleryScene, CommanderScene],
   });
   (window as unknown as { __game: Phaser.Game }).__game = game;
+  installAudioUnlock();
 
   // Re-fit whenever the window (or phone orientation) changes. This also covers a
   // page that had no size yet when the game booted (hidden tab, iframe).

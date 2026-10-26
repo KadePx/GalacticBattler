@@ -201,6 +201,9 @@ export function makeTextures(scene: Phaser.Scene) {
   drawMap(scene, 'torp_0', ['.aab.', 'eaaab', '.aab.'], { a: '#ff5e7e', b: '#ffffff', e: '#ffcf5a' });
   drawMap(scene, 'torp_1', ['.baa.', 'baaae', '.baa.'], { a: '#ff5e7e', b: '#ffffff', e: '#7fe7ff' });
   drawMap(scene, 'px', ['aa', 'aa'], { a: '#ffffff' });
+  // Speaker icons for the sound button.
+  drawMap(scene, 'spk_on', ['...a.....a.', '..aa...a..a', 'aaaa..a.a.a', 'aaaa..a.a.a', 'aaaa..a.a.a', '..aa...a..a', '...a.....a.'], { a: '#e8ecff' });
+  drawMap(scene, 'spk_off', ['...a.......', '..aa..b...b', 'aaaa...b.b.', 'aaaa....b..', 'aaaa...b.b.', '..aa..b...b', '...a.......'], { a: '#8a94bc', b: '#ff5e7e' });
   drawMap(scene, 'snow', ['a..a..a', '.a.a.a.', '..aaa..', 'aaaaaaa', '..aaa..', '.a.a.a.', 'a..a..a'], { a: '#ffffff' });
   starLayer(scene, 'stars_far', 260, ['#2a3360', '#3a4580', '#1d2448', '#3a2a5a']);
   starLayer(scene, 'stars_near', 70, ['#ffffff', '#9fc4ff', '#ffe9a8', '#ffb8e0'], true);
