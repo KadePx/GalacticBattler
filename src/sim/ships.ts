@@ -13,7 +13,7 @@ export const FACTIONS: ShipClass[] = ['concord', 'reaver', 'void'];
 export interface ShipDef {
   id: string;
   name: string;
-  tier: number; // 0 = not sold in the shop
+  tier: number; // 0 = not sold in the shop, 4 = prototype (rewards only)
   atk: number;
   hp: number;
   cd: number; // ticks between attacks
@@ -287,7 +287,7 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   siege: {
-    id: 'siege', name: 'Siege Platform', tier: 3, atk: 4, hp: 10, cd: 11, classes: ['artillery', 'concord'],
+    id: 'siege', name: 'Siege Platform', tier: 3, atk: 4, hp: 12, cd: 11, classes: ['artillery', 'concord'],
     desc: 'Slow, but every shot hits ALL enemies.',
     perks: ['Fires 2 ticks faster.', 'First volley fires at once.'], accent: ['#ff2a4a', '#ff9aa8'],
     sprite: [
@@ -644,6 +644,197 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
 
+  // ---------- Wave 3: burn, curse, splash, haste, economy ----------
+  incinerator: {
+    id: 'incinerator', name: 'Incinerator', tier: 2, atk: 2, hp: 9, cd: 5, classes: ['artillery', 'reaver'],
+    desc: 'Shots burn: 1 dmg/tick for 3 ticks.',
+    perks: ['Burns for 2 dmg/tick.', 'Hits the front 2 enemies.'], accent: ['#ff6a00', '#ffc060'],
+    sprite: [
+      '...ooooo........',
+      '..oaAAAao.......',
+      'eooaaaaaoooooo..',
+      'Eobbllllbbbbmmmo',
+      'EobbbbwwbbbbbAAo',
+      'Eobbssssbbbbmmmo',
+      'eoossssssooooo..',
+      '..oaaaaao.......',
+      '...ooooo........',
+    ],
+  },
+  corsair: {
+    id: 'corsair', name: 'Corsair', tier: 2, atk: 5, hp: 10, cd: 5, classes: ['strike', 'reaver'],
+    desc: 'A kill lets it fire again next tick.',
+    perks: ['+1 ATK per kill.', 'Hunts the lowest-HP enemy.'], accent: ['#ff3060', '#ff9ab0'],
+    sprite: [
+      '..oo..........',
+      '.oaAo.........',
+      '.oaaooooooo...',
+      'eoohllllllhoo.',
+      'Eobbbbbbbbbwwo',
+      'eoosssssssboo.',
+      '.oaaooooooo...',
+      '.oaAo.........',
+      '..oo..........',
+    ],
+  },
+  bomber: {
+    id: 'bomber', name: 'Bomber', tier: 2, atk: 4, hp: 10, cd: 6, classes: ['artillery', 'concord'],
+    desc: 'Splash: half damage to the ship behind.',
+    perks: ['Splash deals full damage.', 'Splashes 2 ships behind.'], accent: ['#40a0ff', '#b0e0ff'],
+    sprite: [
+      '.....oooooo.......',
+      '....oaAAAAao......',
+      '.ooooaaaaaaooooo..',
+      'eohllllllllllllho.',
+      'Eobbbbbbbbbbbbbwwo',
+      'Eobbmmbbmmbbmmbbbo',
+      'Eobbggbbggbbggbbbo',
+      'eosssssssssssssso.',
+      '.ooooaaaaaaooooo..',
+      '....oaAAAAao......',
+      '.....oooooo.......',
+    ],
+  },
+  hexer: {
+    id: 'hexer', name: 'Hexer', tier: 2, atk: 2, hp: 11, cd: 4, classes: ['tech', 'void'],
+    desc: 'Shots curse: no healing or rebuilds.',
+    perks: ['Cursed ships lose 1 ATK.', 'Curses the front 2 enemies.'], accent: ['#a040ff', '#e0a0ff'],
+    sprite: [
+      '....oooo......',
+      '...oaAAao.....',
+      'eoooaaaaoooo..',
+      'Eobbllllbbbbo.',
+      'EobbbbbbbbaAwo',
+      'Eobbssssbbbbo.',
+      'eoooaaaaoooo..',
+      '...oaAAao.....',
+      '....oooo......',
+    ],
+  },
+  prospector: {
+    id: 'prospector', name: 'Prospector', tier: 1, atk: 2, hp: 7, cd: 5, classes: ['tech', 'void'],
+    desc: 'In your fleet: +1 scrap every round.',
+    perks: ['+3 scrap every round.', '+5 scrap every round.'], accent: ['#ffd166', '#fff0b0'],
+    sprite: [
+      '...oooo.....',
+      '..oaAAao....',
+      'eooaaaaooo..',
+      'Eobbbbbbbwo.',
+      'Eobmmbbbbbwo',
+      'Eobbbbbbbwo.',
+      'eoosssssoo..',
+      '..oaaaao....',
+      '...oooo.....',
+    ],
+  },
+  overseer: {
+    id: 'overseer', name: 'Overseer', tier: 3, atk: 3, hp: 12, cd: 6, classes: ['tech', 'concord'],
+    desc: 'Each attack: allies fire 1 tick sooner.',
+    perks: ['Battle start: allies 2 ticks sooner.', 'Speeds allies 2 ticks per attack.'], accent: ['#3dffb0', '#b0ffe0'],
+    sprite: [
+      '.......oooooo.......',
+      '......oaAAAAao......',
+      '..oooooaaaaaaooooo..',
+      '.ohllllllllllllllho.',
+      'eobbbbbbaaaabbbbbbwo',
+      'EobbbbbaAAAAabbbbbwo',
+      'eobbbbbbaaaabbbbbbwo',
+      '.osssssssssssssssso.',
+      '..oooooaaaaaaooooo..',
+      '......oaAAAAao......',
+      '.......oooooo.......',
+    ],
+  },
+  // ---------- Prototypes: tier 4, never in the shipyard (only from rewards) ----------
+  nova: {
+    id: 'nova', name: 'Nova Frigate', tier: 4, atk: 3, hp: 15, cd: 7, classes: ['artillery', 'concord'],
+    desc: 'Piercing shots hit every enemy.',
+    perks: ['+2 ATK.', 'Fires 2 ticks faster.'], accent: ['#ffd040', '#fff4b0'],
+    sprite: [
+      '....oooooooo..........',
+      '...oaAAAAAAao.........',
+      '.ooooaaaaaaoooooooo...',
+      'eohllllllllllllllmmmo.',
+      'EobbbbbbbbbbbbbbbmAAmo',
+      'EobbbbwwbbbbbbbbbmAAmo',
+      'eosssssssssssssssmmmo.',
+      '.ooooaaaaaaoooooooo...',
+      '...oaAAAAAAao.........',
+      '....oooooooo..........',
+    ],
+  },
+  leviathan: {
+    id: 'leviathan', name: 'Leviathan', tier: 4, atk: 4, hp: 22, cd: 6, classes: ['guard', 'reaver'],
+    desc: 'Takes 2 less per hit; hits back for 3.',
+    perks: ['+10 HP.', 'Takes 3 less; deals 5 back.'], accent: ['#ff5030', '#ffb090'],
+    sprite: [
+      '.......oooooooooo.......',
+      '.....ooaaaaaaaaaaoo.....',
+      '...oollllllllllllllloo..',
+      '.oohhbbbbbbbbbbbbbbbbhoo',
+      'eobbbbbbbbbbbbbbbbbbbbwo',
+      'EobbbaAAabbbbbbaAAabbbwo',
+      'Eobbbbbbbbbbbbbbbbbbbbwo',
+      'EobbbaAAabbbbbbaAAabbbwo',
+      'eobbbbbbbbbbbbbbbbbbbbwo',
+      '.oossssssssssssssssssoo.',
+      '...oossssssssssssssoo...',
+      '.....ooaaaaaaaaaaoo.....',
+      '.......oooooooooo.......',
+    ],
+  },
+  eclipse: {
+    id: 'eclipse', name: 'Eclipse', tier: 4, atk: 8, hp: 17, cd: 5, classes: ['strike', 'void'],
+    desc: 'Cloaked: ambush x2, heals all it deals.',
+    perks: ['+2 ATK.', 'Recloaks after a kill.'], accent: ['#d050ff', '#ffb0ff'],
+    sprite: [
+      '..oo.................',
+      '.oaAoo...............',
+      '.oaaaaooooooooo......',
+      'eoohlllllllllllhoo...',
+      'EobbbbbbbbbbbbbbbwwAo',
+      'eoosssssssssssssboo..',
+      '.oaaaaooooooooo......',
+      '.oaAoo...............',
+      '..oo.................',
+    ],
+  },
+  architect: {
+    id: 'architect', name: 'Architect', tier: 4, atk: 3, hp: 16, cd: 5, classes: ['tech', 'concord'],
+    desc: 'Each attack: hurt ally +1 ATK, a shield.',
+    perks: ['Builds up 2 allies.', 'Gives +2 ATK instead.'], accent: ['#40e0ff', '#c0f8ff'],
+    sprite: [
+      '......oooooooo......',
+      '....ooaaAAAAaaoo....',
+      '...oallllllllllao...',
+      '..ohbbbbbbbbbbbbho..',
+      'eobbbbmmbbbbmmbbbbwo',
+      'EobbbbmAbbbbmAbbbbwo',
+      'eobbbbmmbbbbmmbbbbwo',
+      '..osssssssssssssso..',
+      '...oaaaaaaaaaaaao...',
+      '....ooaaAAAAaaoo....',
+      '......oooooooo......',
+    ],
+  },
+  brood: {
+    id: 'brood', name: 'Brood Ark', tier: 4, atk: 3, hp: 16, cd: 6, classes: ['strike', 'reaver'],
+    desc: 'Starts with 2 fighters; +1 per 2 attacks.',
+    perks: ['Its fighters are 3/3.', 'Launches 1 every attack.'], accent: ['#c58cff', '#f0d8ff'],
+    sprite: [
+      '.....oooooooooo.......',
+      '....oaaAaaAaaAao......',
+      '..oollllllllllllloo...',
+      'eohbbbbbbbbbbbbbbbbho.',
+      'EobbaAbaAbaAbaAbbbbwwo',
+      'EobbbbbbbbbbbbbbbbbbAo',
+      'EobbaAbaAbaAbaAbbbbwwo',
+      'eosssssssssssssssssso.',
+      '..oossssssssssssssoo..',
+      '....oaaAaaAaaAao......',
+      '.....oooooooooo.......',
+    ],
+  },
   // ---------- Summons ----------
   fighter: {
     id: 'fighter', name: 'Fighter', tier: 0, atk: 1, hp: 2, cd: 4, classes: [],
@@ -665,7 +856,9 @@ export const SHIPS: Record<string, ShipDef> = {
 /** Battle-only units (fighters, mines): not bought, no synergy, skipped by snipes and torpedoes. */
 export const isSummon = (def: string) => def === 'fighter' || def === 'mine' || def === 'echo';
 
-export const SHOP_SHIPS = Object.values(SHIPS).filter((s) => s.tier > 0);
+export const SHOP_SHIPS = Object.values(SHIPS).filter((s) => s.tier > 0 && s.tier <= 3);
+/** Tier 4 prototypes: never in the shipyard, only from Prototype reward cards. */
+export const PROTOTYPES = Object.values(SHIPS).filter((s) => s.tier === 4);
 
 export const MAX_XP = 5;
 export const levelOf = (xp: number) => (xp >= 5 ? 3 : xp >= 2 ? 2 : 1);

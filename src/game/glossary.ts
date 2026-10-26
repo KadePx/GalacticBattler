@@ -111,6 +111,26 @@ export const TERMS: Term[] = [
     desc: 'A Void copy that fights at the back of your line. Battle-only: not bought, no synergy, doesn\'t trigger on-death effects.'
   },
   {
+    id: 'burn', name: 'BURN', match: /burn/i,
+    desc: 'A burning ship takes damage every tick for 3 ticks. The ticks ignore shields and blinks (a shield or blink still stops the shot that lights it). Grows in later rounds; a new burn refreshes, it does not stack.',
+  },
+  {
+    id: 'curse', name: 'CURSE', match: /curse/i,
+    desc: 'A cursed ship cannot be healed (drones, life-steal, buffs that heal) and cannot rebuild. It lasts the whole battle.',
+  },
+  {
+    id: 'haste', name: 'HASTE', match: /sooner|haste/i,
+    desc: 'Pulls the next attack closer, so a ship fires that many ticks sooner.',
+  },
+  {
+    id: 'splash', name: 'SPLASH', match: /splash/i,
+    desc: 'The shot also hits the enemy ship standing behind the target.',
+  },
+  {
+    id: 'scrap', name: 'SCRAP', match: /scrap/i,
+    desc: 'Money for the shipyard. You get 10 each round; ships cost 3, rerolls 1. Unspent scrap is lost.',
+  },
+  {
     id: 'endless', name: 'ENDLESS',
     desc: 'After winning a run you can keep going. Enemies keep getting stronger; the run ends when your hull runs out. Endless wins pay extra XP.',
   },
@@ -121,7 +141,7 @@ export const TERMS: Term[] = [
   },
   {
     id: 'tier', name: 'TIER',
-    desc: 'How advanced a ship is. Tier 2 ships appear from round 3 and tier 3 from round 5. Shown as T1/T2/T3 with a coloured border.',
+    desc: 'How advanced a ship is. Tier 2 ships appear from round 3 and tier 3 from round 5. Shown as T1/T2/T3 with a coloured border. Prototypes (P, gold) are tier 4: never sold, only won as rare rewards.',
   },
   {
     id: 'synergy', name: 'SYNERGY',

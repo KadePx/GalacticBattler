@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { addShip, addStarfield, portraitKey, setPlayerSkin, syncFlame } from '../game/art';
 import {
-  FLEET_SIZE, REROLL_COST, SHIP_COST, START_LIVES, TOTAL_SLOTS, isBench, slotGet, winsLabel,
+  EVENT_INFO, FLEET_SIZE, REROLL_COST, SALE_COST, SHIP_COST, START_LIVES, VETERAN_COST, TOTAL_SLOTS, isBench, slotGet, winsLabel,
   buy, canMerge, move, powerProblem, quickBuy, reroll, sell, sellValue, toggleFreeze, usePower, type Run,
 } from '../game/run';
 import { CMD_MAP } from '../sim/commanders';
@@ -9,7 +9,7 @@ import { audio } from '../game/audio';
 import { soundButton } from '../game/soundPanel';
 import { openDetails, type Detail } from '../game/details';
 import { getRun, saveRun } from '../game/storage';
-import { C, TIER_COLORS, button, historyPips, panel, popup, relicChip, toast, txt } from '../game/ui';
+import { C, TIER_COLORS, tierTag, button, historyPips, panel, popup, relicChip, toast, txt } from '../game/ui';
 import { RELIC_MAP } from '../sim/relics';
 import { SHIPS, levelOf, xpForNext, type ShipClass, type ShipDef } from '../sim/ships';
 import { TRAITS, TRAIT_MAP, traitCounts, traitLevel } from '../sim/traits';
@@ -85,6 +85,12 @@ export class ShopScene extends Phaser.Scene {
     // Shows where a dragged ship will land.
     this.dropMarker = this.add.rectangle(0, 0, BOX + 6, BOX + 6).setStrokeStyle(2, C.highlight).setVisible(false).setDepth(800);
     this.input.dragDistanceThreshold = 4;
+    if (run.notice) {
+      const note = run.notice;
+      run.notice = undefined;
+      saveRun(run);
+      this.time.delayedCall(300, () => toast(this, note, C.gold));
+    }
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       this.touch = p.wasTouch;
       // Fingers wobble: need a longer move before a tap turns into a drag.
@@ -421,7 +427,7 @@ export class ShopScene extends Phaser.Scene {
       const def = SHIPS[ship.def];
       this.shipSprite(x, SLOT_Y, def, { kind: 'fleet', i }, ship);
       // Tier label top-left (same as the shipyard), level stars top-right.
-      this.add2(txt(this, x - 19, SLOT_Y - 18, `T${def.tier}`, { color: hex(TIER_COLORS[def.tier]) }).setStroke('#05060f', 2));
+      this.add2(txt(this, x - 19, SLOT_Y - 18, tierTag(def.tier), { color: hex(TIER_COLORS[def.tier]) }).setStroke('#05060f', 2));
       const lvl = levelOf(ship.xp);
       for (let s = 0; s < lvl; s++) this.add2(this.add.image(x + 15 - (lvl - 1 - s) * 7, SLOT_Y - 15, 'star'));
       this.classPips(x, SLOT_Y + 16, def);
@@ -430,7 +436,9 @@ export class ShopScene extends Phaser.Scene {
     }
 
     // Shipyard
-    this.add2(txt(this, 24, 114, `SHIPYARD  ${SHIP_COST} SCRAP EACH`, { color: C.cyan }));
+    const sale = run.event === 'sale';
+    const vetNote = run.vetSlot !== undefined && run.shop[run.vetSlot] ? `  (LV2: ${VETERAN_COST})` : '';
+    this.add2(txt(this, 24, 114, `SHIPYARD  ${sale ? SALE_COST : SHIP_COST} SCRAP EACH${vetNote}`, { color: sale ? C.gold : C.cyan }));
     const owned: FleetShip[] = [];
     for (let k = 0; k < TOTAL_SLOTS; k++) {
       const f = slotGet(run, k);
@@ -452,12 +460,18 @@ export class ShopScene extends Phaser.Scene {
         this.add2(txt(this, x, SHOP_Y, 'SOLD', { origin: 0.5, color: '#3a4570' }));
         return;
       }
-      this.add2(txt(this, x - 21, SHOP_Y - 21, `T${def.tier}`, { color: hex(TIER_COLORS[def.tier]) }));
-      this.shipSprite(x, SHOP_Y, def, { kind: 'shop', i });
+      this.add2(txt(this, x - 21, SHOP_Y - 21, tierTag(def.tier), { color: hex(TIER_COLORS[def.tier]) }));
+      this.shipSprite(x, SHOP_Y, def, { kind: 'shop', i }, run.vetSlot === i ? this.veteran(def) : undefined);
       this.classPips(x, SHOP_Y + 20, def);
-      this.add2(txt(this, x - 6, SHOP_Y + 27, `${def.atk}`, { origin: [1, 0], color: C.atk }));
-      this.add2(txt(this, x + 6, SHOP_Y + 27, `${def.hp}`, { color: C.hp }));
-      if (mergeable || maxed) {
+      const vet = run.vetSlot === i;
+      this.add2(txt(this, x - 6, SHOP_Y + 27, `${def.atk + (vet ? 3 : 0)}`, { origin: [1, 0], color: C.atk }));
+      this.add2(txt(this, x + 6, SHOP_Y + 27, `${def.hp + (vet ? 3 : 0)}`, { color: C.hp }));
+      if (vet) {
+        // Level 2 ship for hire: gold tag and its price.
+        this.add2(this.add.rectangle(x + 9, SHOP_Y - 19, 28, 9, 0x3a2a10).setStrokeStyle(1, C.highlight));
+        this.add2(txt(this, x + 9, SHOP_Y - 18, 'LV2', { origin: 0.5, color: C.gold }));
+        this.add2(txt(this, x - 21, SHOP_Y + 12, `$${VETERAN_COST}`, { color: C.gold }).setStroke('#05060f', 2));
+      } else if (mergeable || maxed) {
         const tag = mergeable ? 'OWN' : 'MAX';
         this.add2(this.add.rectangle(x + 23 - (tag.length * 7 + 4) / 2, SHOP_Y - 19, tag.length * 7 + 4, 9, mergeable ? 0x1d5a32 : 0x1d2444)
           .setStrokeStyle(1, mergeable ? 0x7dff8a : 0x3a4a7a));
@@ -476,8 +490,8 @@ export class ShopScene extends Phaser.Scene {
     });
 
     // Buttons
-    const b1 = button(this, 418, 190, 100, 18, `REROLL ${REROLL_COST}`, () => this.clickReroll(),
-      { disabled: run.scrap < REROLL_COST });
+    const b1 = button(this, 418, 190, 100, 18, run.market ? `FREE ROLL x${run.market}` : run.freeRolls ? `FREE ROLL x${run.freeRolls}` : `REROLL ${REROLL_COST}`, () => this.clickReroll(),
+      { disabled: !run.market && !run.freeRolls && run.scrap < REROLL_COST, fill: run.market ? 0x2a1a40 : undefined, color: run.market ? "#e0c8ff" : undefined });
     const selShip = this.sel?.kind === 'fleet' ? slotGet(run, this.sel.i) : null;
     const sellLabel = selShip ? `SELL +${sellValue(run, selShip)}` : 'SELL';
     const b2 = button(this, SELL.x, SELL.y, SELL.w, SELL.h, sellLabel, () => this.clickSell(), { fill: 0x3a1420 });
@@ -573,6 +587,11 @@ export class ShopScene extends Phaser.Scene {
     this.updateInfo();
   }
 
+  /** What a Veteran-for-hire ship will be once bought: level 2, +3/+3. */
+  private veteran(def: ShipDef): FleetShip {
+    return { def: def.id, atk: def.atk + 3, hp: def.hp + 3, xp: 2 };
+  }
+
   private currentInfo(): Info {
     if (this.hover) return this.hover;
     if (this.armed && this.run.cmd) return { cmd: this.run.cmd };
@@ -580,7 +599,8 @@ export class ShopScene extends Phaser.Scene {
     if (!this.sel) return null;
     const defId = this.selectedDef();
     if (!defId) return null;
-    const ship = this.sel.kind === 'fleet' ? slotGet(this.run, this.sel.i) ?? undefined : undefined;
+    const ship = this.sel.kind === 'fleet' ? slotGet(this.run, this.sel.i) ?? undefined
+      : this.run.vetSlot === this.sel.i ? this.veteran(SHIPS[defId]) : undefined;
     return { def: SHIPS[defId], ship };
   }
 
@@ -660,7 +680,11 @@ export class ShopScene extends Phaser.Scene {
     if (!info) {
       // Kept short and quiet on purpose: one prompt plus one rotating tip.
       const cy = y + h / 2;
-      add(txt(this, x + w / 2, cy - 7, `${this.touch ? 'Tap' : 'Hover'} anything for details`, { origin: 0.5, color: C.faint }));
+      const ev = this.run.event ? EVENT_INFO[this.run.event] : null;
+      if (ev) {
+        // This round's shipyard event takes the prompt's place.
+        add(txt(this, x + w / 2, cy - 7, `${ev.name}: ${ev.desc}`, { origin: 0.5, color: C.gold }));
+      } else add(txt(this, x + w / 2, cy - 7, `${this.touch ? 'Tap' : 'Hover'} anything for details`, { origin: 0.5, color: C.faint }));
       const hull = hullScale(this.run.round);
       const tip = hull > 1 ? `Hulls x${hull.toFixed(1)} HP this round` : SHOP_TIPS[(this.run.round - 1) % SHOP_TIPS.length];
       add(txt(this, x + w / 2, cy + 7, tip, { origin: 0.5, color: hull > 1 ? C.hp : '#4f5a80' }));

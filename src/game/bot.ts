@@ -9,7 +9,8 @@ import { SHIPS, levelOf, MAX_XP } from '../sim/ships';
 import { count } from '../sim/relics';
 import { hashStr, pick, rand, type RngState } from '../sim/rng';
 import type { FleetShip, Snapshot } from '../sim/types';
-import { FLEET_SIZE, ROUND_SCRAP, SHIP_COST, REROLL_COST, mergeInto, minShipCost, rollShopFor, rollRelicOffer, shipCost } from './run';
+import { FLEET_SIZE, ROUND_SCRAP, SHIP_COST, REROLL_COST, drill, drillTargets, mergeInto, minShipCost, prospectorScrap, prototypeShip, recruitShip, rollShopFor, shipCost } from './run';
+import { isReward, rollRewardOffer } from './rewards';
 
 export interface Archetype {
   id: string;
@@ -30,7 +31,7 @@ export const ARCHETYPES: Archetype[] = [
   },
   {
     id: 'artillery', label: 'ARTILLERY FLEET', titles: ['Gunnery Chief', 'Bombardier', 'Siegemaster'],
-    core: ['torpedo', 'lance', 'siege', 'dread', 'bulwark'], relics: ['warheads', 'alpha', 'plating'],
+    core: ['torpedo', 'lance', 'siege', 'dread', 'incinerator', 'bulwark'], relics: ['warheads', 'alpha', 'napalm', 'plating'],
   },
   {
     id: 'blitz', label: 'BLITZ FLEET', titles: ['Ace', 'Wing Commander', 'Speed Demon'],
@@ -50,15 +51,15 @@ export const ARCHETYPES: Archetype[] = [
   },
   {
     id: 'concord', label: 'CONCORD FLEET', titles: ['Marshal', 'Commodore', 'Lieutenant'],
-    core: ['flagship', 'bastion', 'spotter', 'railgun', 'aegis', 'picket'], relics: ['banner_c', 'matrix', 'plating'],
+    core: ['flagship', 'overseer', 'bastion', 'spotter', 'railgun', 'bomber', 'picket'], relics: ['banner_c', 'matrix', 'plating'],
   },
   {
     id: 'reaver', label: 'REAVER FLEET', titles: ['Reaver', 'Warlord', 'Cutthroat'],
-    core: ['revenant', 'ravager', 'ironmaw', 'grappler', 'raider', 'phantom', 'scrapper'], relics: ['trophy', 'banner_r', 'alpha'],
+    core: ['revenant', 'ravager', 'ironmaw', 'grappler', 'corsair', 'phantom', 'scrapper'], relics: ['trophy', 'banner_r', 'alpha'],
   },
   {
     id: 'void', label: 'VOID FLEET', titles: ['Oracle', 'Hollow One', 'Riftborn'],
-    core: ['oblivion', 'voidmother', 'skimmer', 'herald', 'wraith'], relics: ['banner_v', 'plating', 'vengeance'],
+    core: ['oblivion', 'voidmother', 'skimmer', 'herald', 'hexer', 'wraith'], relics: ['banner_v', 'plating', 'vengeance'],
   },
 ];
 
@@ -77,11 +78,16 @@ const FRONT_PRIORITY: Record<string, number> = {
   picket: 1.2, bastion: 0.7, spotter: 4.5, scrapper: 2.5, minelayer: 5, ravager: 2,
   herald: 0.8, skimmer: 1.5, wraith: 2.5, siphon: 4, oblivion: 5, voidmother: 5,
   ironmaw: 0.6, grappler: 2, railgun: 5, flagship: 3,
+  incinerator: 5, corsair: 2.5, bomber: 5, hexer: 3.5, prospector: 6, overseer: 4,
+  nova: 5.5, leviathan: 0.2, eclipse: 4, architect: 3, brood: 3,
 };
 
-/** Extra scrap bots get in later rounds, so the back half of a run stays a challenge. */
+/**
+ * Scrap adjustment for opponent bots. Early rounds are lighter (bots shop better than a new
+ * player does), and later rounds get extra so the back half of a run stays a challenge.
+ */
 export const botBonusScrap = (round: number) =>
-  round >= 15 ? 3 : round >= 13 ? 2 : round >= 10 ? 1 : 0;
+  round >= 14 ? 3 : round >= 11 ? 2 : round >= 8 ? 1 : round === 2 || round === 3 ? -1 : 0;
 
 export function botSnapshot(seed: number, round: number, archetypeId?: string, bonus = true): Snapshot {
   const s: RngState = { rng: seed };
@@ -89,9 +95,31 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
   const fleet: FleetShip[] = [];
   const relics: string[] = [];
 
+  let carry = 0; // Scrap Cache
+  let market = false; // Black Market
+  const addShip = (def: string) => {
+    const d = SHIPS[def];
+    const match = fleet.find((f) => f.def === def && f.xp < MAX_XP);
+    if (match) mergeInto(match, d.atk, d.hp, 0);
+    else {
+      if (fleet.length >= FLEET_SIZE) {
+        const weakest = weakestIndex(fleet, arch);
+        fleet.splice(weakest, 1);
+      }
+      fleet.push({ def, atk: d.atk, hp: d.hp, xp: 0 });
+    }
+  };
   for (let r = 1; r <= round; r++) {
-    let scrap = ROUND_SCRAP + 2 * count(relics, 'salvage') + (bonus ? botBonusScrap(r) : 0);
-    let shop: (string | null)[] = rollShopFor(s, r);
+    let scrap = ROUND_SCRAP + 2 * count(relics, 'salvage') + (bonus ? botBonusScrap(r) : 0) + carry -
+      // Half of opponent bots open with one ship fewer, so round 1 is kinder to new players.
+      (bonus && r === 1 && rand(s) < 0.5 ? 2 : 0) + prospectorScrap(fleet) +
+      // Scrap relics, roughly: Bounty ~2 kills, Insurance pays on ~40% of rounds, Dice saves a reroll.
+      2 * count(relics, 'bounty') + 2 * count(relics, 'dice') +
+      // Shipyard events (sales, supply drops, veterans) are worth about 2 scrap when they happen.
+      (r >= 2 && rand(s) < 0.3 ? 2 : 0) + (rand(s) < 0.4 ? 4 * count(relics, 'insurance') : 0);
+    let shop: (string | null)[] = rollShopFor(s, r, market);
+    carry = 0;
+    market = false;
     let rerolls = 0;
     while (scrap >= minShipCost()) {
       const affordable = shop.map((d) => (d && shipCost(d, r) <= scrap ? d : null));
@@ -118,8 +146,21 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
       } else break;
     }
     if (r < round) {
-      const offer = rollRelicOffer(s, relics);
-      relics.push(offer.find((id) => arch.relics.includes(id)) ?? pick(s, offer));
+      // Same reward cards as players (minus Hull Repair, which a snapshot can't use).
+      const offer = rollRewardOffer(s, relics, {
+        round: r, lostLast: rand(s) < 0.4, canRecruit: true, canDrill: fleet.some((f) => f.xp < MAX_XP), canRepair: false,
+      });
+      const special = offer.find(isReward);
+      // Bots have no bench, so Reserve Wing would do nothing for them.
+      const plain = offer.filter((id) => !isReward(id) && id !== 'reserves');
+      const liked = plain.find((id) => arch.relics.includes(id));
+      if (!liked && special && rand(s) < 0.5) {
+        if (special === 'x:recruit') addShip(recruitShip(s, fleet, r));
+        else if (special === 'x:proto') addShip(prototypeShip(s, fleet));
+        else if (special === 'x:drill') drillTargets(fleet).forEach((i) => drill(fleet[i]));
+        else if (special === 'x:cache') carry = 7;
+        else if (special === 'x:market') market = true;
+      } else relics.push(liked ?? pick(s, plain));
     }
   }
 

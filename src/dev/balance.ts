@@ -143,9 +143,11 @@ function swapTest() {
     });
     rows.push({ id: def.id, tier: def.tier, cells, avg: cells.reduce((s, v) => s + v, 0) / cells.length });
   }
-  for (const tier of [1, 2, 3]) {
+  const meanOf = (tier: number) => { const g = rows.filter((r) => r.tier === tier); return g.reduce((s, r) => s + r.avg, 0) / g.length; };
+  // Prototypes (tier 4) are compared against the tier 3 average.
+  for (const tier of [1, 2, 3, 4]) {
     const group = rows.filter((r) => r.tier === tier);
-    const mean = group.reduce((s, r) => s + r.avg, 0) / group.length;
+    const mean = meanOf(Math.min(3, tier));
     for (const r of group.sort((x, y) => y.avg - x.avg)) {
       const d = Math.round(r.avg - mean);
       console.log(pad(r.id, 12) + lpad(`T${tier}`, 5) + r.cells.map((v) => lpad(v, 6)).join('') + lpad(Math.round(r.avg), 6) + lpad(d >= 0 ? `+${d}` : d, 8));
@@ -303,6 +305,19 @@ function matrix() {
   }
 }
 
+
+// ---------- R: early rounds (bot-skill player, no bonus scrap, vs opponent bots) ----------
+function earlyRounds() {
+  header('EARLY ROUNDS: player win % by round vs opponent bots');
+  const rs = [1, 2, 3, 4, 5, 6, 8];
+  console.log(rs.map((r) => lpad('r' + r, 6)).join(''));
+  console.log(rs.map((round) => {
+    let w = 0;
+    for (let i = 0; i < N * 2; i++) if (simulate(botSnapshot(700000 + i * 13, round, undefined, false), foe(i + 3100, round)).winner === 0) w++;
+    return lpad(pct(w, N * 2), 6);
+  }).join(''));
+}
+
 const t0 = Date.now();
 const only = process.argv[3];
 if (!only || only.includes('a')) styleByRound();
@@ -313,4 +328,5 @@ if (!only || only.includes('e')) passives();
 if (!only || only.includes('f')) matrix();
 if (only && only.includes('p')) pricingCompare();
 if (only && only.includes('n')) endless();
+if (only && only.includes('r')) earlyRounds();
 console.log(`\n(done in ${((Date.now() - t0) / 1000).toFixed(1)}s)`);

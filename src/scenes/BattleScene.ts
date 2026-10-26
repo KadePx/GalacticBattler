@@ -7,7 +7,7 @@ import { getOpponent } from '../game/opponents';
 import { WIN_TARGET, applyResult, makeSnapshot, type Run } from '../game/run';
 import { getRun, saveGhost, saveRun } from '../game/storage';
 import { C, button, panel, popup, txt } from '../game/ui';
-import { OVERLOAD_TICK, hullScale, simulate, type BEvent, type BUnit, type BattleResult } from '../sim/battle';
+import { OVERLOAD_TICK, hullScale, simulate, type BEvent, type BUnit, type BattleResult, kills } from '../sim/battle';
 import { SHIPS } from '../sim/ships';
 import { TRAITS, traitCounts, traitLevel } from '../sim/traits';
 import type { Snapshot } from '../sim/types';
@@ -41,6 +41,8 @@ interface View {
   bar: Phaser.GameObjects.Rectangle;
   hpT: Phaser.GameObjects.Text;
   shield: Phaser.GameObjects.Ellipse | null;
+  popT?: number; // when its last label popped (labels stack upward)
+  popN?: number;
   alive: boolean;
 }
 
@@ -96,7 +98,7 @@ export class BattleScene extends Phaser.Scene {
 
     // Lock in the result now so refreshing the page can't undo a loss.
     run.lastOpponent = this.opp.name;
-    applyResult(run, this.res.winner);
+    applyResult(run, this.res.winner, kills(this.res, 0));
     saveRun(run);
 
     // Header
@@ -203,6 +205,16 @@ export class BattleScene extends Phaser.Scene {
     return v;
   }
 
+  /** A label over a ship; several at once stack upward instead of overlapping. */
+  private label(v: View, text: string, color: string) {
+    const now = this.time.now;
+    if (now - (v.popT ?? -1e9) > 450) v.popN = 0;
+    const k = v.popN ?? 0;
+    v.popN = k + 1;
+    v.popT = now;
+    popup(this, v.spr.x, v.spr.y - 24 - 9 * Math.min(k, 3), text, color);
+  }
+
   private makeShield(n: number) {
     return this.add.ellipse(0, 0, 44, 32).setStrokeStyle(n > 1 ? 2 : 1, 0x7fe7ff).setFillStyle(0x7fe7ff, 0.1);
   }
@@ -271,10 +283,15 @@ export class BattleScene extends Phaser.Scene {
         this.time.delayedCall(SHOT_MS, () => {
           if (!v.alive) return;
           this.setHp(v, e.hp);
+          // A shield gained mid-battle (Architect): draw or thicken the bubble.
+          if (e.sh !== undefined && e.sh > 0) {
+            if (v.shield) v.shield.setStrokeStyle(e.sh > 1 ? 2 : 1, 0x7fe7ff);
+            else v.shield = this.makeShield(e.sh).setPosition(v.spr.x, v.spr.y);
+          }
           audio.play(e.label.startsWith('-') ? 'debuff' : 'buff');
           // Small team-wide buffs (Vengeance) just flash; named buffs get a label.
           if (/^\+\d+$/.test(e.label)) this.flash(v, 0xffd166);
-          else popup(this, v.spr.x, v.spr.y - 24, e.label, e.label.startsWith('-') ? '#b8d4ff' : C.gold);
+          else this.label(v, e.label, e.label.startsWith('-') ? '#b8d4ff' : e.label === 'CURSED' ? '#d090ff' : C.gold);
         });
         return;
       }
@@ -327,6 +344,14 @@ export class BattleScene extends Phaser.Scene {
         const v = this.makeView(e.unit, q ? { ...q.pos } : undefined);
         v.spr.setScale(0.5);
         this.tweens.add({ targets: v.spr, scale: 2, duration: 200 });
+        if (e.reserve) {
+          // Reserve Wing: a ship warping in from the bench.
+          this.time.delayedCall(260, () => {
+            if (!v.alive) return;
+            this.ring(v.spr.x, v.spr.y, 0x7fe7ff);
+            this.label(v, 'RESERVE!', C.cyan);
+          });
+        }
         audio.play('spawn', e.unit.side === 0 ? 1 : 0.8);
         this.layout(e.unit.side);
         return;
@@ -369,6 +394,16 @@ export class BattleScene extends Phaser.Scene {
     }
     if (e.k !== 'shot') return;
 
+    if (e.burn) {
+      // After this tick's shots have landed (torpedoes are slowest), before any explosion.
+      this.time.delayedCall(SHOT_MS * 1.4 + 20, () => {
+        if (!d.alive) return;
+        this.setHp(d, e.hp);
+        popup(this, d.spr.x + 10, d.spr.y - 4, `-${e.dmg}`, '#ff8a3a');
+        this.sparks(d.spr.x, d.spr.y, 2, 0xff6a00);
+      });
+      return;
+    }
     if (e.zap) {
       // Reflector: a jagged lightning arc straight to the attacker.
       this.time.delayedCall(SHOT_MS + 20, () => {

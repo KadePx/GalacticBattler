@@ -7,6 +7,8 @@ import type { FleetShip } from '../sim/types';
 import type { Run } from './run';
 import { TRAIT_MAP, traitCounts } from '../sim/traits';
 import type { ShipClass } from '../sim/ships';
+import { drillTargets } from './run';
+import { REWARD_MAP } from './rewards';
 
 export type FitKind = 'combo' | 'all' | 'econ' | 'none';
 
@@ -29,7 +31,7 @@ export function relicFit(id: string, run: Run): RelicFit {
   const fleet = run.fleet;
   const all = fleet.map((s, i) => (s ? i : -1)).filter((i) => i >= 0);
   const front = all.length ? [all[0]] : [];
-  const fighterMakers = shipsOf(fleet, ['carrier', 'queen']);
+  const fighterMakers = shipsOf(fleet, ['carrier', 'queen', 'brood']);
   // Ryx's Brood Nest fighters are plain on purpose, so they don't count here.
   const fighterSources = fighterMakers.length + count(run.relics, 'hangar');
 
@@ -40,6 +42,13 @@ export function relicFit(id: string, run: Run): RelicFit {
       : { kind: 'none', slots: [], note: 'None in your fleet yet' };
   };
 
+  const special = REWARD_MAP[id];
+  if (special) {
+    if (id === 'x:drill') {
+      return { kind: 'econ', slots: drillTargets(fleet), note: special.note };
+    }
+    return { kind: 'econ', slots: [], note: special.note };
+  }
   switch (id) {
     case 'targeting':
     case 'plating':
@@ -93,11 +102,35 @@ export function relicFit(id: string, run: Run): RelicFit {
         : { kind: 'all', slots: front, note: 'Soaks the first enemy shot' };
     }
     case 'trophy': {
-      const killers = shipsOf(fleet, ['scrapper', 'ravager', 'lance', 'phantom']);
+      const killers = shipsOf(fleet, ['scrapper', 'ravager', 'lance', 'phantom', 'eclipse', 'corsair']);
       return killers.length
         ? { kind: 'combo', slots: killers, note: `Combos with your ${names(fleet, killers)}` }
         : { kind: 'all', slots: all, note: 'Kills make ships stronger' };
     }
+    case 'napalm':
+    case 'gyro': {
+      const slots = id === 'napalm'
+        ? fleet.map((s, i) => (s && SHIPS[s.def].classes.includes('artillery') ? i : -1)).filter((i) => i >= 0)
+        : fleet.map((s, i) => (s && s.xp >= 5 ? i : -1)).filter((i) => i >= 0);
+      if (slots.length) return { kind: 'combo', slots, note: `Boosts your ${names(fleet, slots)}` };
+      return { kind: 'none', slots: [], note: id === 'napalm' ? 'No artillery ships yet' : 'No level 3 ships yet' };
+    }
+    case 'ablative':
+      return { kind: 'all', slots: front, note: front.length ? `Armors your ${names(fleet, front)}` : 'Armors your front ship' };
+    case 'beacon':
+      return { kind: 'all', slots: all, note: 'Turns a loss into a rally' };
+    case 'reserves': {
+      const benched = (run.bench ?? []).find(Boolean);
+      return benched
+        ? { kind: 'combo', slots: [], note: `Your ${SHIPS[benched.def].name} waits in reserve` }
+        : { kind: 'none', slots: [], note: 'Needs a ship on your bench' };
+    }
+    case 'bounty':
+      return { kind: 'econ', slots: [], note: 'Pays for every kill' };
+    case 'insurance':
+      return { kind: 'econ', slots: [], note: 'Softens a loss' };
+    case 'dice':
+      return { kind: 'econ', slots: [], note: 'Cheaper rerolls' };
     case 'salvage':
       return { kind: 'econ', slots: [], note: 'More ships each round' };
     case 'magnet':

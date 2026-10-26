@@ -5,6 +5,7 @@
 import Phaser from 'phaser';
 import { CMD_MAP } from '../sim/commanders';
 import { RELIC_MAP } from '../sim/relics';
+import { REWARD_MAP } from './rewards';
 import { SHIPS, levelOf, type ShipClass, type ShipDef } from '../sim/ships';
 import { TRAIT_MAP } from '../sim/traits';
 import type { FleetShip } from '../sim/types';
@@ -24,7 +25,7 @@ const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
 /** All the text a detail shows; used to find which terms to explain. */
 export function detailText(d: Detail): string[] {
   if ('def' in d) return [d.def.desc, ...d.def.perks];
-  if ('relic' in d) return [RELIC_MAP[d.relic]?.desc ?? ''];
+  if ('relic' in d) return [(RELIC_MAP[d.relic] ?? REWARD_MAP[d.relic])?.desc ?? ''];
   if ('trait' in d) return TRAIT_MAP[d.trait].tiers.map((t) => t.desc);
   const c = CMD_MAP[d.cmd];
   return [c.passives.a.desc, c.passives.b.desc, c.power.desc];
@@ -45,7 +46,7 @@ function drawShip(scene: Phaser.Scene, add: Add, def: ShipDef, ship: FleetShip |
   add(scene.add.rectangle(x + 18, y + 16, 36, 30, 0x05060f).setStrokeStyle(1, tc));
   add(scene.add.image(x + 18, y + 16, shipKey(def.id, 0)).setScale(2));
   add(txt(scene, x + 42, y + 2, def.name.toUpperCase(), { color: def.accent[1] }));
-  const tierLabel = def.tier ? (w >= 240 ? `TIER ${def.tier}` : `T${def.tier}`) : 'LAUNCHED';
+  const tierLabel = def.tier === 4 ? (w >= 240 ? 'PROTOTYPE' : 'PROTO') : def.tier ? (w >= 240 ? `TIER ${def.tier}` : `T${def.tier}`) : 'LAUNCHED';
   const t = add(txt(scene, x + 42, y + 14, tierLabel, { color: hex(tc) }));
   let cx = t.x + t.width + 8;
   // Class and faction tags; wrap to a second line in narrow cards.
@@ -73,22 +74,25 @@ function drawShip(scene: Phaser.Scene, add: Add, def: ShipDef, ship: FleetShip |
       const pt = add(txt(scene, x + 32, cy, p, { wrap: w - 32, color: on ? C.gold : C.text }));
       cy += Math.max(label.height, pt.height) + 4;
     });
-    const note = add(txt(scene, x, cy, ship ? `This ship: level ${lvl}` : 'Merge copies to reach LV2 / LV3.', { color: C.faint, wrap: w }));
+    const note = add(txt(scene, x, cy, ship ? `This ship: level ${lvl}` : def.tier === 4 ? 'Prototype: only from rare rewards.' : 'Merge copies to reach LV2 / LV3.', { color: C.faint, wrap: w }));
     cy += note.height + 2;
   }
   return cy;
 }
 
 function drawRelic(scene: Phaser.Scene, add: Add, id: string, x: number, y: number, w: number) {
-  const r = RELIC_MAP[id];
+  const bonus = REWARD_MAP[id];
+  const r = RELIC_MAP[id] ?? bonus;
   const chip = relicChip(scene, x + 12, y + 12, id, 22);
   chip.t.setFontSize(16);
   add(chip.bg);
   add(chip.t);
   add(txt(scene, x + 32, y + 2, r.name.toUpperCase(), { color: C.gold, wrap: w - 32 }));
-  add(txt(scene, x + 32, y + 14, 'RELIC', { color: C.dim }));
+  add(txt(scene, x + 32, y + 14, bonus ? 'ONE-TIME BONUS' : 'RELIC', { color: bonus ? '#e0c8ff' : C.dim }));
   const d = add(txt(scene, x, y + 32, r.desc, { wrap: w }));
-  const note = add(txt(scene, x, d.y + d.height + 6, 'Lasts the whole run. Copies stack.', { color: C.faint, wrap: w }));
+  const note = add(txt(scene, x, d.y + d.height + 6, bonus
+    ? 'Sometimes offered instead of a relic after a battle (more often after a loss). Used up at once.'
+    : 'Lasts the whole run. Copies stack.', { color: C.faint, wrap: w }));
   return note.y + note.height + 4;
 }
 

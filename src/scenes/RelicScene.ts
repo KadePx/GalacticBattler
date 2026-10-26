@@ -3,10 +3,11 @@ import { addShip, addStarfield, setPlayerSkin } from '../game/art';
 import { relicFit, type RelicFit } from '../game/relicFit';
 import { START_LIVES, chooseRelic, winsLabel, type Run } from '../game/run';
 import { getRun, saveRun } from '../game/storage';
-import { C, TIER_COLORS, button, historyPips, panel, relicChip, txt } from '../game/ui';
+import { C, TIER_COLORS, tierTag, button, historyPips, panel, relicChip, txt } from '../game/ui';
 import { CMD_MAP } from '../sim/commanders';
 import { audio } from '../game/audio';
 import { RELIC_MAP, count } from '../sim/relics';
+import { REWARD_MAP, isReward } from '../game/rewards';
 import { SHIPS, levelOf } from '../sim/ships';
 import { TRAITS, traitCounts, traitLevel } from '../sim/traits';
 
@@ -63,31 +64,37 @@ export class RelicScene extends Phaser.Scene {
     const last = run.history[run.history.length - 1];
     const head = last === 'W' ? 'VICTORY SALVAGE' : last === 'L' ? 'EMERGENCY REFIT' : 'FIELD UPGRADE';
     this.add2(txt(this, 240, 32, head, { size: 16, origin: 0.5, color: last === 'L' ? C.bad : C.gold }).setStroke('#05060f', 4));
-    this.add2(txt(this, 240, 45, 'Pick a relic. It lasts for the rest of the run.', { origin: 0.5, color: C.dim }));
+    const anySpecial = run.relicOffer.some(isReward);
+    this.add2(txt(this, 240, 45, anySpecial ? 'Pick a relic (lasts all run) or a one-time BONUS.' : 'Pick a relic. It lasts for the rest of the run.', { origin: 0.5, color: C.dim }));
 
     run.relicOffer.forEach((id, i) => this.card(id, CARD_X(i)));
     this.fleetStrip();
 
-    const pickedName = this.picked ? RELIC_MAP[this.picked].name.toUpperCase() : '';
-    const b = button(this, 240, 257, 200, 18, this.picked ? `TAKE ${pickedName}` : 'CHOOSE A RELIC', () => this.confirm(), {
+    const pickedName = this.picked ? (RELIC_MAP[this.picked] ?? REWARD_MAP[this.picked]).name.toUpperCase() : '';
+    const b = button(this, 240, 257, 220, 18, this.picked ? `TAKE ${pickedName}` : anySpecial ? 'CHOOSE A REWARD' : 'CHOOSE A RELIC', () => this.confirm(), {
       fill: 0x3a2a10, color: C.gold, disabled: !this.picked,
     });
     b.objects.forEach((o) => this.add2(o));
   }
 
   private card(id: string, cx: number) {
-    const r = RELIC_MAP[id];
+    const r = RELIC_MAP[id] ?? REWARD_MAP[id];
+    const special = isReward(id);
     const fit = relicFit(id, this.run);
     const owned = count(this.run.relics, id);
     const sel = this.picked === id;
     const { w, h, y } = CARD;
     const x = cx - w / 2;
-    this.add2(panel(this, x, y, w, h, sel ? 0x1f2c66 : C.panel, sel ? C.highlight : C.border));
+    this.add2(panel(this, x, y, w, h, sel ? 0x1f2c66 : special ? 0x1a1430 : C.panel, sel ? C.highlight : special ? r.color : C.border));
+    if (special) {
+      this.add2(this.add.rectangle(x + 26, y + 10, 44, 11, 0x2a1a40).setStrokeStyle(1, r.color));
+      this.add2(txt(this, x + 26, y + 11, 'BONUS', { origin: 0.5, color: '#e0c8ff' }));
+    }
     if (fit.kind === 'combo') {
       this.add2(this.add.rectangle(x + 24, y + 22, 42, 11, 0x14402a).setStrokeStyle(1, 0x7dff8a));
       this.add2(txt(this, x + 24, y + 23, 'COMBO', { origin: 0.5, color: C.hp }));
     }
-    if (owned) this.add2(txt(this, x + w - 5, y + 5, `x${owned}`, { origin: [1, 0], color: C.dim }));
+    if (owned) this.add2(txt(this, x + w - 5, y + 5, `OWN x${owned}`, { origin: [1, 0], color: C.dim }));
     const chip = relicChip(this, cx, y + 22, id, 22);
     chip.t.setFontSize(16);
     this.add2(chip.bg);
@@ -143,13 +150,13 @@ export class RelicScene extends Phaser.Scene {
       this.add2(this.add.rectangle(x, FLEET_Y, 40, 36, on ? 0x1a3a2a : 0x0b1026).setStrokeStyle(on ? 2 : 1, on ? 0x7dff8a : tierCol));
       if (!s) return;
       const tier = SHIPS[s.def].tier;
-      this.add2(txt(this, x - 18, FLEET_Y - 16, `T${tier}`, { color: `#${TIER_COLORS[tier].toString(16).padStart(6, '0')}` }).setStroke('#05060f', 2));
       const { spr, flame } = addShip(this, x, FLEET_Y - 3, s.def, 0, 2, 1);
       const dim = fit && fit.slots.length > 0 && !on;
       spr.setAlpha(dim ? 0.35 : 1);
       flame.setAlpha(dim ? 0.35 : 1);
       this.add2(flame);
       this.add2(spr);
+      this.add2(txt(this, x - 18, FLEET_Y - 16, tierTag(tier), { color: `#${TIER_COLORS[tier].toString(16).padStart(6, '0')}` }).setStroke('#05060f', 2));
       const lvl = levelOf(s.xp);
       if (lvl > 1) this.add2(txt(this, x + 18, FLEET_Y - 17, `${lvl}`, { origin: [1, 0], color: C.gold }));
       this.add2(txt(this, x - 3, FLEET_Y + 9, `${s.atk}`, { origin: [1, 0], color: C.atk }));

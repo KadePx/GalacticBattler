@@ -1,6 +1,7 @@
 // Small pixel-UI helpers: text, panels, buttons, toasts, relic chips.
 import Phaser from 'phaser';
 import { RELIC_MAP } from '../sim/relics';
+import { REWARD_MAP } from './rewards';
 import { audio } from './audio';
 
 export const FONT = '"Press Start 2P", monospace';
@@ -76,13 +77,16 @@ export function button(
 
 export function toast(scene: Phaser.Scene, msg: string, color = C.bad) {
   if (color === C.bad) audio.play('error'); // red toasts are refusals
-  const t = txt(scene, 240, 136, msg, { origin: 0.5, color }).setDepth(1000);
+  const t = txt(scene, 240, 136, msg, { origin: 0.5, color, align: 'center' }).setDepth(1000);
   t.setStroke('#05060f', 4);
-  scene.tweens.add({ targets: t, y: 120, alpha: 0, delay: 700, duration: 500, onComplete: () => t.destroy() });
+  const bg = scene.add.rectangle(240, 136, t.width + 12, t.height + 8, 0x05060f, 0.85).setStrokeStyle(1, 0x3a4a7a).setDepth(999);
+  // Longer messages stay up longer, so they can be read.
+  const hold = Math.min(2200, Math.max(700, msg.length * 30));
+  scene.tweens.add({ targets: [t, bg], y: 120, alpha: 0, delay: hold, duration: 500, onComplete: () => { t.destroy(); bg.destroy(); } });
 }
 
 export function relicChip(scene: Phaser.Scene, x: number, y: number, id: string, size = 12) {
-  const r = RELIC_MAP[id];
+  const r = RELIC_MAP[id] ?? REWARD_MAP[id];
   const bg = scene.add.rectangle(x, y, size, size, 0x0b0f22).setStrokeStyle(1, r?.color ?? 0xffffff);
   const t = txt(scene, x + 1, y + 1, r?.glyph ?? '?', {
     origin: 0.5, color: `#${(r?.color ?? 0xffffff).toString(16).padStart(6, '0')}`,
@@ -119,4 +123,6 @@ export function popup(scene: Phaser.Scene, x: number, y: number, str: string, co
 }
 
 /** Border/label colour for each ship tier (index = tier; 0 is unused). */
-export const TIER_COLORS = [0x3a4a7a, 0x8a94b8, 0x4aa3ff, 0xc58cff];
+export const TIER_COLORS = [0x3a4a7a, 0x8a94b8, 0x4aa3ff, 0xc58cff, 0xffb030];
+/** Short tier tag for ship cards: T1..T3, or P for a prototype. */
+export const tierTag = (tier: number) => (tier === 4 ? 'P' : `T${tier}`);

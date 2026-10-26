@@ -8,6 +8,7 @@ import { soundButton } from '../game/soundPanel';
 import { C, TIER_COLORS, button, panel, relicChip, txt } from '../game/ui';
 import { COMMANDERS, CMD_MAP } from '../sim/commanders';
 import { RELICS } from '../sim/relics';
+import { REWARDS } from '../game/rewards';
 import { SHIPS, type ShipClass } from '../sim/ships';
 import { TRAITS } from '../sim/traits';
 
@@ -26,12 +27,16 @@ const SHIP_LIST = [...Object.values(SHIPS).filter((s) => s.tier > 0).sort((a, b)
 const LIST = { x: 6, y: 48, w: 184, h: 216 };
 const DETAIL = { x: 196, y: 48, w: 278, h: 216 };
 const TERMS_PER_PAGE = 10;
+const RELICS_PER_PAGE = 18;
+// Relics, then the one-time bonus cards.
+const RELIC_ROWS = [...RELICS, ...REWARDS];
 
 /** Reference for everything in the game: ships, synergies, relics, commanders and terms. */
 export class ArchiveScene extends Phaser.Scene {
   private tab: Tab = 'ships';
   private pick: Record<Tab, string> = { ships: SHIP_LIST[0].id, synergy: 'strike', relics: RELICS[0].id, cmdrs: 'vance', terms: TERMS[0].id };
   private termPage = 0;
+  private relicPage = 0;
   private layer!: Phaser.GameObjects.Container;
 
   constructor() {
@@ -88,9 +93,9 @@ export class ArchiveScene extends Phaser.Scene {
   // ---------- left side ----------
 
   private shipGrid() {
-    const cols = 6;
-    const cw = 30;
-    const ch = 36;
+    const cols = 7;
+    const cw = 26;
+    const ch = 30;
     SHIP_LIST.forEach((s, i) => {
       const x = LIST.x + (i % cols) * cw + cw / 2;
       const y = LIST.y + Math.floor(i / cols) * ch + ch / 2;
@@ -99,7 +104,7 @@ export class ArchiveScene extends Phaser.Scene {
       const box = this.add2(this.add.rectangle(x, y, cw - 4, ch - 4, sel ? 0x1f2c66 : 0x0b1026).setStrokeStyle(sel ? 2 : 1, sel ? C.highlight : tc));
       const img = this.add2(this.add.image(x, y + 2, shipKey(s.id, 0)));
       img.setScale(Math.min(2, (cw - 6) / img.width));
-      this.add2(txt(this, x - cw / 2 + 4, y - ch / 2 + 4, s.tier ? `${s.tier}` : 'F', { color: `#${tc.toString(16).padStart(6, '0')}` }).setStroke('#05060f', 2));
+      this.add2(txt(this, x - cw / 2 + 3, y - ch / 2 + 3, s.tier === 4 ? 'P' : s.tier ? `${s.tier}` : 'F', { color: `#${tc.toString(16).padStart(6, '0')}` }).setStroke('#05060f', 2));
       box.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(s.id));
     });
   }
@@ -118,7 +123,10 @@ export class ArchiveScene extends Phaser.Scene {
 
   private relicList() {
     const rowH = 10.5;
-    RELICS.forEach((r, i) => {
+    const pages = Math.ceil(RELIC_ROWS.length / RELICS_PER_PAGE);
+    this.relicPage = Math.min(this.relicPage, pages - 1);
+    this.pager(pages, this.relicPage, (p) => { this.relicPage = p; });
+    RELIC_ROWS.slice(this.relicPage * RELICS_PER_PAGE, (this.relicPage + 1) * RELICS_PER_PAGE).forEach((r, i) => {
       const y = LIST.y + i * rowH;
       const sel = this.pick.relics === r.id;
       const row = this.add2(this.add.rectangle(LIST.x + LIST.w / 2, y + rowH / 2, LIST.w, rowH - 2, sel ? 0x1f2c66 : 0x0b1026)
@@ -126,7 +134,7 @@ export class ArchiveScene extends Phaser.Scene {
       const chip = relicChip(this, LIST.x + 8, y + rowH / 2, r.id, 8);
       this.add2(chip.bg);
       this.add2(chip.t);
-      this.add2(txt(this, LIST.x + 18, y + 2, r.name.toUpperCase(), { color: sel ? C.gold : C.text }));
+      this.add2(txt(this, LIST.x + 18, y + 2, r.name.toUpperCase(), { color: sel ? C.gold : r.id.startsWith('x:') ? '#e0c8ff' : C.text }));
       row.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(r.id));
     });
   }
@@ -152,14 +160,18 @@ export class ArchiveScene extends Phaser.Scene {
     this.termPage = Math.min(this.termPage, pages - 1);
     const items = TERMS.slice(this.termPage * TERMS_PER_PAGE, (this.termPage + 1) * TERMS_PER_PAGE);
     this.list(items.map((t) => ({ id: t.id, label: t.name, color: C.cyan })), 18);
-    if (pages > 1) {
-      const y = LIST.y + LIST.h - 9;
-      button(this, LIST.x + 26, y, 48, 16, 'PREV', () => { this.termPage = (this.termPage + pages - 1) % pages; this.refresh(); })
-        .objects.forEach((o) => this.add2(o));
-      this.add2(txt(this, LIST.x + LIST.w / 2, y - 3, `${this.termPage + 1}/${pages}`, { origin: [0.5, 0], color: C.dim }));
-      button(this, LIST.x + LIST.w - 26, y, 48, 16, 'NEXT', () => { this.termPage = (this.termPage + 1) % pages; this.refresh(); })
-        .objects.forEach((o) => this.add2(o));
-    }
+    this.pager(pages, this.termPage, (p) => { this.termPage = p; });
+  }
+
+  /** PREV / page / NEXT along the bottom of the list. */
+  private pager(pages: number, page: number, set: (p: number) => void) {
+    if (pages <= 1) return;
+    const y = LIST.y + LIST.h - 9;
+    button(this, LIST.x + 26, y, 48, 16, 'PREV', () => { set((page + pages - 1) % pages); this.refresh(); })
+      .objects.forEach((o) => this.add2(o));
+    this.add2(txt(this, LIST.x + LIST.w / 2, y - 3, `${page + 1}/${pages}`, { origin: [0.5, 0], color: C.dim }));
+    button(this, LIST.x + LIST.w - 26, y, 48, 16, 'NEXT', () => { set((page + 1) % pages); this.refresh(); })
+      .objects.forEach((o) => this.add2(o));
   }
 
   // ---------- right side ----------

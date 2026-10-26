@@ -24,16 +24,20 @@ export interface BUnit {
   attacks: number; // attacks made so far (Swarm Queen)
   mark: number; // extra damage this ship takes (Spotter / Sera marks)
   evade: number; // hits that will miss it (Rift Skimmer's Blink)
+  burn: number; // damage per tick while burning
+  burnT: number; // burning ticks left
+  curse: boolean; // can't heal or rebuild (Hexer)
+  armor: number; // damage taken per hit is reduced by this (min 1)
 }
 
 export type BEvent =
-  | { t: number; k: 'shot'; s: number; d: number; dmg: number; blocked: boolean; hp: number; sh: number; ram?: boolean; zap?: boolean; miss?: boolean }
+  | { t: number; k: 'shot'; s: number; d: number; dmg: number; blocked: boolean; hp: number; sh: number; ram?: boolean; zap?: boolean; miss?: boolean; burn?: boolean }
   | { t: number; k: 'heal'; s: number; d: number; amt: number; hp: number }
   | { t: number; k: 'jam'; s: number; d: number }
-  | { t: number; k: 'buff'; u: number; atk: number; hp: number; label: string }
+  | { t: number; k: 'buff'; u: number; atk: number; hp: number; label: string; sh?: number }
   | { t: number; k: 'cloak'; u: number; on: boolean }
   | { t: number; k: 'revive'; u: number; hp: number }
-  | { t: number; k: 'spawn'; s: number; unit: BUnit }
+  | { t: number; k: 'spawn'; s: number; unit: BUnit; reserve?: boolean }
   | { t: number; k: 'die'; u: number }
   | { t: number; k: 'drag'; s: number; u: number; before: number };
 
@@ -70,7 +74,7 @@ function factory(next: { uid: number }, scale: number): UnitFactory {
     hp = Math.max(1, Math.round(hp * scale));
     return {
       uid: next.uid++, side, def, level, atk, hp, maxHp: hp, cd,
-      timer: Math.max(1, Math.min(cd, timer)), shield: 0, cloak: false, alive: true, revives: 0, attacks: 0, mark: 0, evade: 0,
+      timer: Math.max(1, Math.min(cd, timer)), shield: 0, cloak: false, alive: true, revives: 0, attacks: 0, mark: 0, evade: 0, burn: 0, burnT: 0, curse: false, armor: 0,
     };
   };
 }
@@ -114,6 +118,12 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     if (cp === 'nyx.a' && has('strike')) hp += 1;
     if (s.def === 'gunboat' && L >= 2) hp += 3;
     if (s.def === 'dread' && L >= 2) atk += 2;
+    if ((s.def === 'nova' || s.def === 'eclipse') && L >= 2) atk += 2;
+    if (s.def === 'leviathan' && L >= 2) hp += 10;
+    if (L >= 3) {
+      atk += 3 * r('gyro');
+      hp += 6 * r('gyro');
+    }
     if (cp === 'vance.a') hp += L >= 2 ? 2 : 1;
     if (cp === 'kael.b' && has('guard')) hp += 4;
     if (cp === 'juno.b' && has('tech')) hp += 3;
@@ -135,6 +145,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     if (s.def === 'scout') cd -= L - 1;
     if (s.def === 'siege' && L >= 2) cd -= 2;
     if (s.def === 'railgun' && L >= 2) cd -= 1;
+    if (s.def === 'nova' && L >= 3) cd -= 2;
 
     let timer = Math.max(2, cd) - 2 * r('alpha');
     if (has('artillery') && tl('artillery') >= 2) timer -= 1;
@@ -146,7 +157,8 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     if (s.def === 'bulwark') u.shield += L >= 2 ? 2 : 1;
     if (s.def === 'reflector' && L >= 3) u.shield += 1;
     if (has('guard') && tl('guard') >= 2) u.shield += 1;
-    if (s.def === 'phantom') u.cloak = true;
+    if (s.def === 'phantom' || s.def === 'eclipse') u.cloak = true;
+    if (s.def === 'leviathan') u.armor += L >= 3 ? 3 : 2;
     if (s.def === 'revenant') u.revives = L >= 3 ? 2 : 1;
     if (s.def === 'picket' && L >= 2) u.shield += L >= 3 ? 2 : 1;
     if (s.def === 'bastion') u.shield += 1;
@@ -167,6 +179,11 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     const fa = u.level >= 3 ? 2 : 1;
     const fh = u.level >= 2 ? 2 : 1;
     for (let k = 0; k < n; k++) out.push(fighter(make, side, snap, u.level, fa, fh));
+  }
+  for (const u of [...out]) {
+    if (u.def !== 'brood') continue;
+    const f = u.level >= 2 ? 3 : 2;
+    for (let k = 0; k < 2; k++) out.push(fighter(make, side, snap, u.level, f, f));
   }
   for (let k = 0; k < r('hangar'); k++) out.push(fighter(make, side, snap, 1, 2, 2));
   if (cp === 'ryx.a') {
@@ -212,6 +229,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     }
   }
   if (out[0] && r('phase')) out[0].evade += r('phase');
+  if (out[0]) out[0].armor += 2 * r('ablative');
   if (tl('concord') >= 2) {
     for (const u of out.filter((x) => SHIPS[x.def].classes.includes('concord')).slice(0, 2)) u.shield += 1;
   }
@@ -246,6 +264,8 @@ interface Shot {
   ram?: boolean;
   zap?: boolean;
   first?: boolean; // the shooter's opening shot (Sera's Spotter Net)
+  burn?: number; // sets the target burning for this much per tick
+  curse?: boolean; // the target can't heal or rebuild
 }
 
 export function simulate(a: Snapshot, b: Snapshot): BattleResult {
@@ -283,6 +303,9 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       }
     }
   }
+  for (const o of units.filter((u) => u.def === 'overseer' && u.level >= 2)) {
+    for (const x of units) if (x.side === o.side && x.def !== 'overseer') x.timer = Math.max(1, x.timer - 2);
+  }
   const line = (side: number) => units.filter((u) => u.alive && u.side === side);
   // Cloaked ships can't be picked unless nothing else is left.
   const targets = (side: number) => {
@@ -298,6 +321,8 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
   };
 
   const lastStand = [false, false];
+  const rallied = [false, false];
+  const reserveIn = [false, false];
   const echoChamber = [false, false];
   /** Leave a Void Echo on that side (a battle-only unit at the back of the line). */
   const spawnEcho = (side: 0 | 1, atk: number, hp: number, src: BUnit) => {
@@ -320,14 +345,15 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
 
   function buff(u: BUnit, atk: number, heal: number, label: string) {
     u.atk += atk;
-    if (heal && u.hp > 0) u.hp = Math.min(u.maxHp, u.hp + heal);
+    if (heal && u.hp > 0 && !u.curse) u.hp = Math.min(u.maxHp, u.hp + heal);
     events.push({ t, k: 'buff', u: u.uid, atk: u.atk, hp: u.hp, label });
   }
 
   const hit = (sh: Shot, bonus: number) => {
     const { s, d } = sh;
     const before = d.hp;
-    const dmg = sh.dmg + bonus + d.mark + (sh.first && sideCp[s.side] === 'tess.b' ? 2 : 0);
+    const raw = sh.dmg + bonus + d.mark + (sh.first && sideCp[s.side] === 'tess.b' ? 2 : 0);
+    const dmg = d.armor && !sh.zap && raw > 0 ? Math.max(1, raw - d.armor) : raw;
     // Blink: the hit misses entirely (zaps and explosions can't be dodged).
     if (d.evade > 0 && !sh.zap && !sh.ram && d.hp > 0) {
       d.evade--;
@@ -345,7 +371,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     events.push({ t, k: 'shot', s: s.uid, d: d.uid, dmg, blocked, hp: Math.max(0, d.hp), sh: d.shield, ram: sh.ram, zap: sh.zap });
     // Thorns: Ironmaw (and Guard ships with Thorn Plating) hit back. Thorns can't be dodged and never chain.
     if (!blocked && !sh.zap && s.alive) {
-      let thorns = d.def === 'ironmaw' ? 2 * d.level : 0;
+      let thorns = d.def === 'ironmaw' ? 2 * d.level : d.def === 'leviathan' ? (d.level >= 3 ? 5 : 3) : 0;
       if (SHIPS[d.def]?.classes.includes('guard') && !isSummon(s.def)) thorns += count(snaps[d.side].relics, 'thorns');
       if (thorns) hit({ s: d, d: s, dmg: thorns, pierce: true, zap: true }, 0);
     }
@@ -359,6 +385,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
         if (s.level >= 3) gain += 1;
       }
       if (s.def === 'oblivion') heal += s.level >= 3 ? dealt : Math.ceil(dealt / 2);
+      if (s.def === 'eclipse') heal += dealt;
       if (SHIPS[s.def]?.classes.includes('void')) {
         const vl = sideTl[s.side]('void');
         heal += vl >= 2 ? Math.ceil(dealt * 0.7) : vl >= 1 ? Math.ceil(dealt * 0.5) : 0;
@@ -366,7 +393,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       }
       heal = Math.min(heal, dealt + (sideCp[s.side] === 'nihl.a' ? 3 : 0)); // never more than the hit took (plus Hunger)
       if (gain) buff(s, gain, 0, `+${gain} ATK`);
-      const healed = Math.min(heal, s.maxHp - s.hp);
+      const healed = s.curse ? 0 : Math.min(heal, s.maxHp - s.hp);
       if (healed > 0) {
         s.hp += healed;
         events.push({ t, k: 'heal', s: s.uid, d: s.uid, amt: healed, hp: s.hp });
@@ -379,6 +406,15 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
         const front = ships(line(s.side))[0];
         if (s.level >= 2 && front) buff(front, drain, 0, `+${drain}`);
       }
+    }
+    if (!blocked && d.hp > 0 && sh.burn) {
+      d.burn = Math.max(d.burn, sh.burn);
+      d.burnT = 3;
+    }
+    if (!blocked && d.hp > 0 && sh.curse && !d.curse) {
+      d.curse = true;
+      if (s.def === 'hexer' && s.level >= 2 && d.atk > 0) d.atk -= 1;
+      events.push({ t, k: 'buff', u: d.uid, atk: d.atk, hp: d.hp, label: 'CURSED' });
     }
     if (sh.jam && !blocked) {
       const jammer = count(snaps[s.side].relics, 'jammer');
@@ -422,9 +458,11 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           if (s.level >= 3) heal += 4;
         }
         if (s.def === 'ravager' && s.level >= 3) gain += 2;
+        if (s.def === 'corsair' && s.level >= 2 && (d.revives === 0 || d.curse)) gain += 1;
         if (gain || heal) buff(s, gain, heal, gain ? `+${gain} ATK` : `+${heal}`);
       }
-      if (sh.onKill === 'reload') s.timer = 1;
+      const realKill = !isSummon(d.def) && (d.revives === 0 || d.curse);
+      if (sh.onKill === 'reload' && (s.def !== 'corsair' || realKill)) s.timer = 1;
       if (sh.onKill === 'recloak' && !s.cloak) {
         s.cloak = true;
         events.push({ t, k: 'cloak', u: s.uid, on: true });
@@ -474,6 +512,16 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       const front = targets(1 - u.side)[0];
       if (front) hit({ s: u, d: front, dmg: 5, ram: true }, 0);
     }
+    // Rally Beacon: the first real loss speeds up everyone left.
+    if (!rebuilt && !rallied[u.side] && count(snaps[u.side].relics, 'beacon')) {
+      rallied[u.side] = true;
+      for (const x of line(u.side)) {
+        if (x === u) continue;
+        x.cd = Math.max(2, x.cd - 1);
+        x.timer = Math.max(1, x.timer - 1);
+        events.push({ t, k: 'buff', u: x.uid, atk: x.atk, hp: x.hp, label: 'RALLY' });
+      }
+    }
     const vengeance = count(snaps[u.side].relics, 'vengeance');
     for (const x of line(u.side)) {
       if (x === u || x.def === 'salvager') continue;
@@ -508,7 +556,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       const L = u.level;
       switch (u.def) {
         case 'drone': {
-          const hurt = line(u.side).filter((x) => x.hp < x.maxHp).sort((x, y) => x.hp / x.maxHp - y.hp / y.maxHp);
+          const hurt = line(u.side).filter((x) => x.hp < x.maxHp && !x.curse).sort((x, y) => x.hp / x.maxHp - y.hp / y.maxHp);
           if (hurt.length) for (const x of hurt.slice(0, L >= 3 ? hurt.length : L)) heals.push({ s: u, d: x, amt: 2 * u.atk });
           else shots.push({ s: u, d: foes[0], dmg: 1 });
           break;
@@ -537,12 +585,31 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
         case 'oblivion':
           for (const f of foes.slice(0, L >= 2 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, pierce: true });
           break;
+        case 'incinerator':
+          for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, burn: Math.max(1, Math.round((L >= 2 ? 2 : 1) * scale)) });
+          break;
+        case 'hexer':
+          for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, curse: true });
+          break;
+        case 'corsair':
+          shots.push({ s: u, d: L >= 3 ? lowest(ships(foes)) : foes[0], dmg: u.atk, onKill: 'reload' });
+          break;
+        case 'bomber':
+          shots.push({ s: u, d: foes[0], dmg: u.atk });
+          for (const f of foes.slice(1, L >= 3 ? 3 : 2)) shots.push({ s: u, d: f, dmg: L >= 2 ? u.atk : Math.ceil(u.atk / 2) });
+          break;
         case 'spotter':
           for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk });
           break;
         case 'ravager':
           shots.push({ s: u, d: foes[0], dmg: u.atk });
           if (foes[1]) shots.push({ s: u, d: foes[1], dmg: L >= 2 ? u.atk : Math.ceil(u.atk / 2) });
+          break;
+        case 'nova':
+          for (const f of foes) shots.push({ s: u, d: f, dmg: u.atk, pierce: true });
+          break;
+        case 'eclipse':
+          shots.push({ s: u, d: lowest(ships(foes)), dmg: u.cloak ? 2 * u.atk : u.atk, onKill: L >= 3 ? 'recloak' : undefined });
           break;
         case 'phantom':
           // Ambush: striking from cloak deals double damage.
@@ -552,11 +619,16 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           shots.push({ s: u, d: foes[0], dmg: u.atk });
       }
       // Pickets pull snipes (Lance, hunting Phantom) onto themselves.
-      if (u.def === 'lance' || (u.def === 'phantom' && L >= 2)) {
+      if (u.def === 'lance' || u.def === 'eclipse' || (u.def === 'phantom' && L >= 2)) {
         const pk = picket(1 - u.side);
         if (pk) for (const sh of shots) if (sh.s === u) sh.d = pk;
       }
       if (u.attacks === 0) for (const sh of shots) if (sh.s === u) sh.first = true;
+      // Napalm Rounds: artillery shots set targets burning.
+      if (count(snaps[u.side].relics, 'napalm') && SHIPS[u.def]?.classes.includes('artillery')) {
+        const main = shots.find((sh) => sh.s === u);
+        if (main && !main.burn) main.burn = Math.max(1, Math.round(scale * 0.6));
+      }
       // Jammer Array: every ship's opening shot also jams its target for 2 ticks.
       if (u.attacks === 0 && count(snaps[u.side].relics, 'jammer')) {
         for (const sh of shots) if (sh.s === u && !sh.jam) sh.jam = 2;
@@ -573,6 +645,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     }
 
     for (const h of heals) {
+      if (h.d.curse) continue;
       h.d.hp = Math.min(h.d.maxHp, h.d.hp + h.amt);
       events.push({ t, k: 'heal', s: h.s.uid, d: h.d.uid, amt: h.amt, hp: h.d.hp });
     }
@@ -581,10 +654,32 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     for (const u of acting) {
       if (!u.alive) continue;
       if (u.def === 'raider') buff(u, u.level, 0, `+${u.level} ATK`);
+      // Overseer: every attack speeds up the rest of the line.
+      if (u.def === 'overseer') {
+        for (const x of line(u.side)) if (x.def !== 'overseer') x.timer = Math.max(1, x.timer - (u.level >= 3 ? 2 : 1));
+        events.push({ t, k: 'buff', u: u.uid, atk: u.atk, hp: u.hp, label: 'HASTE' });
+      }
       // Voidmother spawns Echoes every few attacks.
       if (u.def === 'voidmother' && (u.level >= 3 || u.attacks % 2 === 0)) {
         const n = u.level >= 2 ? 5 : 3;
         spawnEcho(u.side, n, n, u);
+      }
+      // Architect: builds up the most-hurt allies.
+      if (u.def === 'architect') {
+        const hurt = ships(line(u.side)).filter((x) => x !== u && x.hp > 0).sort((x, y) => x.hp / x.maxHp - y.hp / y.maxHp);
+        const gain = u.level >= 3 ? 2 : 1;
+        for (const x of hurt.slice(0, u.level >= 2 ? 2 : 1)) {
+          x.shield += 1;
+          x.atk += gain;
+          events.push({ t, k: 'buff', u: x.uid, atk: x.atk, hp: x.hp, label: `+${gain} +SHIELD`, sh: x.shield });
+        }
+      }
+      // Brood Ark launches a fighter every 2nd attack (every attack at LV3).
+      if (u.def === 'brood' && (u.level >= 3 || u.attacks % 2 === 0) && line(u.side).length < MAX_LINE) {
+        const f = u.level >= 2 ? 3 : 2;
+        const fi = fighter(make, u.side, snaps[u.side], u.level, f, f);
+        units.push(fi);
+        events.push({ t, k: 'spawn', s: u.uid, unit: { ...fi } });
       }
       // Swarm Queen launches fighters mid-battle.
       if (u.def === 'queen' && (u.level >= 2 || u.attacks % 2 === 0) && line(u.side).length < MAX_LINE) {
@@ -595,13 +690,22 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       }
     }
 
+    // Burning ships take damage every tick (it ignores shields and can't miss).
+    for (const u of units) {
+      if (!u.alive || u.hp <= 0 || u.burnT <= 0) continue;
+      u.burnT--;
+      u.hp -= u.burn;
+      events.push({ t, k: 'shot', s: u.uid, d: u.uid, dmg: u.burn, blocked: false, hp: Math.max(0, u.hp), sh: u.shield, burn: true });
+    }
+
     // Deaths, with on-death triggers that can chain into more deaths.
     let dying = units.filter((u) => u.alive && u.hp <= 0);
     while (dying.length) {
       for (const u of dying) {
-        if (u.revives > 0) {
+        if (u.revives > 0 && !u.curse) {
           u.revives--;
           u.hp = u.level >= 2 ? u.maxHp : Math.ceil(u.maxHp / 2);
+          u.burnT = 0;
           events.push({ t, k: 'revive', u: u.uid, hp: u.hp });
         } else {
           u.alive = false;
@@ -611,8 +715,31 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       for (const u of dying) onLoss(u, u.alive);
       dying = units.filter((u) => u.alive && u.hp <= 0);
     }
+    // Reserve Wing: when a side is down to its last real ship, its first benched ship warps in.
+    for (const side of [0, 1] as const) {
+      const snap = snaps[side];
+      const res = snap.reserve;
+      if (reserveIn[side] || !res || !SHIPS[res.def] || !count(snap.relics, 'reserves')) continue;
+      const real = line(side).filter((x) => !isSummon(x.def));
+      if (real.length > 1 || !line(1 - side).some((x) => x.def !== 'mine') || line(side).length >= MAX_LINE) continue;
+      reserveIn[side] = true;
+      // Built like a fleet ship (relics, synergies, passives), then it joins at the back.
+      const built = buildSide({ ...snap, fleet: [...snap.fleet, res] }, side, make, scale);
+      const r = [...built].reverse().find((x) => x.def === res.def && !isSummon(x.def))!;
+      r.timer = r.cd;
+      units.push(r);
+      const src = real[0] ?? units.find((x) => x.side === side)!;
+      events.push({ t, k: 'spawn', s: src.uid, unit: { ...r }, reserve: true });
+    }
     winner = outcome();
   }
 
   return { units: initial, events, winner: winner ?? -1, ticks: t };
+}
+
+/** Real enemy ships (not fighters, mines or echoes) that `side` destroyed. Used by Bounty Board. */
+export function kills(res: BattleResult, side: 0 | 1): number {
+  const who = new Map<number, BUnit>(res.units.map((u) => [u.uid, u]));
+  for (const e of res.events) if (e.k === 'spawn') who.set(e.unit.uid, e.unit);
+  return res.events.filter((e) => e.k === 'die' && who.get(e.u)?.side === 1 - side && !isSummon(who.get(e.u)!.def)).length;
 }

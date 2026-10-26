@@ -26,4 +26,5 @@ export interface Snapshot {
   style?: string; // bot archetype label, e.g. 'SWARM FLEET'
   cmd?: { id: string; p: 'a' | 'b' }; // commander and chosen passive
   bench?: number; // ships waiting on the bench (Tess's Spare Parts)
+  reserve?: FleetShip; // first benched ship (Reserve Wing)
 }

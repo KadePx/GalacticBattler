@@ -30,6 +30,14 @@ export const RELICS: RelicDef[] = [
   { id: 'phase', name: 'Phase Coils', desc: 'Your front ship blinks: the first hit misses.', color: 0xd050ff, glyph: 'P' },
   { id: 'thorns', name: 'Thorn Plating', desc: 'Guard ships deal 1 back when hit by ships.', color: 0xa04020, glyph: 'T' },
   { id: 'magnet', name: 'Scrap Magnet', desc: 'Selling ships gives +1 scrap.', color: 0xb0b8d0, glyph: 'M' },
+  { id: 'napalm', name: 'Napalm Rounds', desc: 'Artillery attacks burn their main target.', color: 0xff6a00, glyph: '~' },
+  { id: 'ablative', name: 'Ablative Armor', desc: 'Your starting front ship takes 2 less per hit.', color: 0x9aa8c8, glyph: '=' },
+  { id: 'gyro', name: 'Veteran Gyros', desc: 'Level 3 ships +3 ATK and +6 HP.', color: 0xffc040, glyph: 'G' },
+  { id: 'beacon', name: 'Rally Beacon', desc: 'First ship lost: the rest attack 1 tick faster.', color: 0xff9f43, glyph: '!' },
+  { id: 'reserves', name: 'Reserve Wing', desc: 'Down to 1 ship: your first benched ship warps in.', color: 0x7fe7ff, glyph: '>' },
+  { id: 'bounty', name: 'Bounty Board', desc: '+1 scrap next round per enemy ship destroyed (max 3).', color: 0xe0b030, glyph: 'B' },
+  { id: 'insurance', name: 'War Insurance', desc: 'After a loss: +4 scrap next round.', color: 0x8ad0ff, glyph: 'I' },
+  { id: 'dice', name: 'Loaded Dice', desc: 'Your first 2 rerolls each round are free.', color: 0xf0f0f0, glyph: 'D' },
 ];
 
 export const RELIC_MAP: Record<string, RelicDef> = Object.fromEntries(RELICS.map((r) => [r.id, r]));
