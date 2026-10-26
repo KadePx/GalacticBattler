@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { addShip, addStarfield, setPlayerSkin } from '../game/art';
 import { relicFit, type RelicFit } from '../game/relicFit';
-import { START_LIVES, WIN_TARGET, chooseRelic, type Run } from '../game/run';
+import { START_LIVES, chooseRelic, winsLabel, type Run } from '../game/run';
 import { getRun, saveRun } from '../game/storage';
 import { C, TIER_COLORS, button, historyPips, panel, relicChip, txt } from '../game/ui';
 import { CMD_MAP } from '../sim/commanders';
@@ -56,7 +56,7 @@ export class RelicScene extends Phaser.Scene {
     // Top bar: same facts as the shop, so you know where the run stands.
     this.add2(panel(this, 0, 0, 480, 20, 0x0a0e22, 0x232c52));
     for (let i = 0; i < START_LIVES; i++) this.add2(this.add.image(12 + i * 10, 10, i < run.lives ? 'heart' : 'heart_empty'));
-    this.add2(txt(this, 70, 7, `WINS ${run.wins}/${WIN_TARGET}`, { color: C.gold }));
+    this.add2(txt(this, 70, 7, winsLabel(run), { color: run.endless ? '#c58cff' : C.gold }));
     this.add2(txt(this, 190, 7, `ROUND ${run.round}`));
     historyPips(this, 470, 10, run.history).forEach((o) => this.add2(o));
 
@@ -84,8 +84,8 @@ export class RelicScene extends Phaser.Scene {
     const x = cx - w / 2;
     this.add2(panel(this, x, y, w, h, sel ? 0x1f2c66 : C.panel, sel ? C.highlight : C.border));
     if (fit.kind === 'combo') {
-      this.add2(this.add.rectangle(x + 24, y + 9, 42, 11, 0x14402a).setStrokeStyle(1, 0x7dff8a));
-      this.add2(txt(this, x + 24, y + 10, 'COMBO', { origin: 0.5, color: C.hp }));
+      this.add2(this.add.rectangle(x + 24, y + 22, 42, 11, 0x14402a).setStrokeStyle(1, 0x7dff8a));
+      this.add2(txt(this, x + 24, y + 23, 'COMBO', { origin: 0.5, color: C.hp }));
     }
     if (owned) this.add2(txt(this, x + w - 5, y + 5, `x${owned}`, { origin: [1, 0], color: C.dim }));
     const chip = relicChip(this, cx, y + 22, id, 22);
@@ -163,11 +163,11 @@ export class RelicScene extends Phaser.Scene {
       this.add2(txt(this, 470, ry, cmd.name.toUpperCase(), { origin: [1, 0], color: cmd.color }));
       ry += 12;
     }
-    const counts = traitCounts(run.fleet);
+    const counts = traitCounts(run.fleet, run.relics);
     const active = TRAITS.filter((t) => traitLevel(t.id, counts[t.id]) > 0);
     if (!active.length) this.add2(txt(this, 470, ry, 'no synergy', { origin: [1, 0], color: C.faint }));
     active.slice(0, 3).forEach((t, k) => {
-      this.add2(txt(this, 470, ry + k * 11, `${t.name} ${counts[t.id]}`, { origin: [1, 0], color: t.color }));
+      this.add2(txt(this, 470, ry + k * 11, `${t.short} ${counts[t.id]}`, { origin: [1, 0], color: t.color }));
     });
   }
 

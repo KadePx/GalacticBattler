@@ -5,6 +5,8 @@ import { count } from '../sim/relics';
 import { SHIPS } from '../sim/ships';
 import type { FleetShip } from '../sim/types';
 import type { Run } from './run';
+import { TRAIT_MAP, traitCounts } from '../sim/traits';
+import type { ShipClass } from '../sim/ships';
 
 export type FitKind = 'combo' | 'all' | 'econ' | 'none';
 
@@ -71,6 +73,29 @@ export function relicFit(id: string, run: Run): RelicFit {
       return slots.length
         ? { kind: 'combo', slots, note: `Combos with your ${names(fleet, slots)}` }
         : { kind: 'all', slots: [], note: 'Best with many small ships' };
+    }
+    case 'banner_c':
+    case 'banner_r': {
+      const f: ShipClass = id === 'banner_c' ? 'concord' : 'reaver';
+      const have = traitCounts(fleet, run.relics)[f];
+      const slots = fleet.map((s, i) => (s && SHIPS[s.def].classes.includes(f) ? i : -1)).filter((i) => i >= 0);
+      const next = TRAIT_MAP[f].tiers.find((t) => have < t.n)?.n;
+      if (next && have + 1 >= next) return { kind: 'combo', slots, note: `Unlocks ${TRAIT_MAP[f].short} (${next})` };
+      return slots.length
+        ? { kind: 'all', slots, note: `${TRAIT_MAP[f].short} ${have} -> ${have + 1}` }
+        : { kind: 'none', slots: [], note: `No ${TRAIT_MAP[f].short} ships yet` };
+    }
+    case 'minefield': {
+      const layers = shipsOf(fleet, ['minelayer']);
+      return layers.length
+        ? { kind: 'combo', slots: layers, note: 'More mines up front' }
+        : { kind: 'all', slots: front, note: 'Soaks the first enemy shot' };
+    }
+    case 'trophy': {
+      const killers = shipsOf(fleet, ['scrapper', 'ravager', 'lance', 'phantom']);
+      return killers.length
+        ? { kind: 'combo', slots: killers, note: `Combos with your ${names(fleet, killers)}` }
+        : { kind: 'all', slots: all, note: 'Kills make ships stronger' };
     }
     case 'salvage':
       return { kind: 'econ', slots: [], note: 'More ships each round' };

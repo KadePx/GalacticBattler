@@ -77,6 +77,24 @@ export const COMMANDERS: CommanderDef[] = [
     power: { name: 'DEEP SCAN', desc: 'Reroll: higher-tier ships only.', cost: 1, target: false },
     starter: 'drone',
   },
+  {
+    id: 'sera', name: 'Sera', title: 'Fleet Marshal', style: 'concord', rank: 6, color: '#a8c8ff',
+    passives: {
+      a: { name: 'Phalanx', desc: 'Front Concord ship starts with 2 shields.' },
+      b: { name: 'Spotter Net', desc: 'Each ship\'s first shot marks its target.' },
+    },
+    power: { name: 'RECRUIT', desc: 'Shop ship becomes a Concord ship.', cost: 1, target: false },
+    starter: 'picket',
+  },
+  {
+    id: 'grisk', name: 'Grisk', title: 'Reaver King', style: 'reaver', rank: 7, color: '#ff8a4a',
+    passives: {
+      a: { name: 'Boarding Crews', desc: 'Kills give the killer +1 ATK, repair 3.' },
+      b: { name: 'Last Stand', desc: 'First ship you lose explodes for 5.' },
+    },
+    power: { name: 'SCRAP RAID', desc: '+1 scrap if you have 2+ Reavers.', cost: 0, target: false },
+    starter: 'scrapper',
+  },
 ];
 
 export const CMD_MAP: Record<string, CommanderDef> = Object.fromEntries(COMMANDERS.map((c) => [c.id, c]));

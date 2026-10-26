@@ -2,7 +2,7 @@
 // per-commander XP (unlocks options for that commander). Stored locally.
 
 import { COMMANDERS, CMD_MAP, type PassiveSlot } from '../sim/commanders';
-import { WIN_TARGET, type Run } from './run';
+import { WIN_TARGET, endlessWins, type Run } from './run';
 import { read, write } from './storage';
 
 const KEY = 'starbrawl.profile';
@@ -19,6 +19,7 @@ export interface Profile {
   xp: number; // pilot XP, the sum of everything earned
   runs: number;
   last: string; // last commander used
+  bestEndless?: number; // most total wins in an endless run
   cmd: Record<string, CmdProgress>;
 }
 
@@ -90,18 +91,21 @@ export interface RunXp {
   battles: number;
   wins: number;
   clear: number;
+  endless: number;
   total: number;
 }
 
 export const XP_PER_BATTLE = 10;
 export const XP_PER_WIN = 15;
 export const XP_CLEAR = 50;
+export const XP_ENDLESS_WIN = 5; // extra per endless win, on top of the normal win XP
 
 export function runXp(run: Run): RunXp {
   const battles = run.history.length * XP_PER_BATTLE;
   const wins = run.wins * XP_PER_WIN;
   const clear = run.wins >= WIN_TARGET ? XP_CLEAR : 0;
-  return { battles, wins, clear, total: battles + wins + clear };
+  const endless = endlessWins(run) * XP_ENDLESS_WIN;
+  return { battles, wins, clear, endless, total: battles + wins + clear + endless };
 }
 
 export interface Award {
@@ -112,6 +116,9 @@ export interface Award {
   pilotBefore: number;
   pilotAfter: number;
   newCommanders: string[];
+  gained: number; // XP paid out this time (less than xp.total if part was paid at an earlier finish)
+  bestEndless?: number;
+  newBest?: boolean;
 }
 
 /** Grant XP for a finished run, once. Safe to call again on refresh. */
@@ -121,22 +128,35 @@ export function awardRun(run: Run): Award | null {
   const cmd = run.cmd && CMD_MAP[run.cmd] ? run.cmd : null;
   const cp = cmd ? progress(p, cmd) : null;
   const before = { pilot: p.xp, cmd: cp?.xp ?? 0 };
-  if (run.xpAwarded) {
-    // Already paid out: report the same numbers again.
-    const pilotBefore = run.xpAwarded.pilotBefore;
+  // Older saves recorded a payout without an amount: treat them as fully paid.
+  const paid = run.xpAwarded ? run.xpAwarded.paid ?? xp.total : 0;
+  const best = p.bestEndless ?? 0;
+  if (run.xpAwarded && paid >= xp.total) {
+    // Already paid out (e.g. the page was refreshed): report the same numbers again.
+    if (run.xpAwarded.paid === undefined) run.xpAwarded.paid = xp.total;
+    const { pilotBefore, cmdBefore } = run.xpAwarded;
+    const last = run.xpAwarded.last ?? xp.total;
     return {
-      xp, cmd, cmdBefore: run.xpAwarded.cmdBefore, cmdAfter: run.xpAwarded.cmdBefore + xp.total,
-      pilotBefore, pilotAfter: pilotBefore + xp.total, newCommanders: unlockedBetween(pilotBefore, pilotBefore + xp.total),
+      xp, cmd, cmdBefore, cmdAfter: cmdBefore + last, pilotBefore, pilotAfter: pilotBefore + last,
+      newCommanders: unlockedBetween(pilotBefore, pilotBefore + last), gained: last,
+      bestEndless: best, newBest: false,
     };
   }
-  p.xp += xp.total;
-  p.runs++;
-  if (cp) cp.xp += xp.total;
+  const gained = xp.total - paid;
+  p.xp += gained;
+  if (!run.xpAwarded) p.runs++;
+  if (cp) cp.xp += gained;
+  let newBest = false;
+  if (run.endless && run.wins > best) {
+    p.bestEndless = run.wins;
+    newBest = true;
+  }
   saveProfile(p);
-  run.xpAwarded = { pilotBefore: before.pilot, cmdBefore: before.cmd };
+  run.xpAwarded = { pilotBefore: before.pilot, cmdBefore: before.cmd, paid: xp.total, last: gained };
   return {
-    xp, cmd, cmdBefore: before.cmd, cmdAfter: before.cmd + xp.total,
+    xp, cmd, cmdBefore: before.cmd, cmdAfter: before.cmd + gained,
     pilotBefore: before.pilot, pilotAfter: p.xp, newCommanders: unlockedBetween(before.pilot, p.xp),
+    gained, bestEndless: p.bestEndless ?? 0, newBest,
   };
 }
 

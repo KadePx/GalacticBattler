@@ -22,6 +22,10 @@ export const RELICS: RelicDef[] = [
   { id: 'vengeance', name: 'Vengeance Protocol', desc: 'When a ship goes down, allies +1 ATK.', color: 0xff3b3b, glyph: 'V' },
   { id: 'jammer', name: 'Jammer Array', desc: 'Opening shots jam. Ion stun +2T, drain +1.', color: 0x3a7bff, glyph: 'J' },
   { id: 'salvage', name: 'Salvage Rights', desc: '+2 scrap every round.', color: 0xffd166, glyph: '$' },
+  { id: 'banner_c', name: 'Concord Banner', desc: 'Counts as one more Concord ship.', color: 0xa8c8ff, glyph: 'C' },
+  { id: 'banner_r', name: 'Reaver Flag', desc: 'Counts as one more Reaver ship.', color: 0xff8a4a, glyph: 'R' },
+  { id: 'minefield', name: 'Minefield', desc: 'Lay 1 mine in front of your line.', color: 0xe0b030, glyph: '*' },
+  { id: 'trophy', name: 'Trophy Rack', desc: 'Your ships gain +3 ATK per kill.', color: 0xd87830, glyph: 'K' },
   { id: 'magnet', name: 'Scrap Magnet', desc: 'Selling ships gives +1 scrap.', color: 0xb0b8d0, glyph: 'M' },
 ];
 

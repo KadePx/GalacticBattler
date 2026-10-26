@@ -49,6 +49,14 @@ const SKINS: Record<string, { hull: Palette; flame: Palette }> = {
     hull: { s: '#1f4a40', b: '#3a8070', l: '#6cc0a8', h: '#d0fff0', w: '#b8fff0', e: '#3dffb0' },
     flame: { a: '#0a8a5a', b: '#3dffb0', c: '#e0fff4' },
   },
+  sera: {
+    hull: { s: '#5a6a8a', b: '#a8b8d8', l: '#e0e8ff', h: '#ffffff', w: '#8ff8ff', e: '#5a8cff' },
+    flame: { a: '#2a4aa0', b: '#7aa8ff', c: '#f0f6ff' },
+  },
+  grisk: {
+    hull: { s: '#4a2a1a', b: '#7a4a2a', l: '#b0784a', h: '#f0c890', w: '#ffb050', e: '#ff7a2a' },
+    flame: { a: '#a03000', b: '#ff7a2a', c: '#fff0c8' },
+  },
 };
 
 let playerSkin: string | null = null;
@@ -377,6 +385,48 @@ const PORTRAITS: Record<string, { map: string[]; pal: Palette }> = {
       '..oaaawwwwaaao..',
     ],
     pal: { o: '#06120e', k: '#8a5a3c', K: '#68412a', h: '#e8ecff', v: '#3dffb0', a: '#1f4a40', A: '#3dffb0', w: '#d0fff0' },
+  },
+  sera: {
+    map: [
+      '................',
+      '.....oooooo.....',
+      '...oohhhhhhoo...',
+      '..ohhhhhhhhhho..',
+      '..ohhkkkkkkhho..',
+      '.ohhkkkkkkkkhho.',
+      '.ohkkvkkkkvkkho.',
+      '.ohkkkkkkkkkkho.',
+      '..ohkkkKKkkkho..',
+      '..ohkkkkkkkkho..',
+      '..ohhokkkkohho..',
+      '...oh.oKKo.ho...',
+      '..ooaaoooaaoo...',
+      '.oaAawwwwwaAao..',
+      '.oaaawwAwwaaao..',
+      '.oaaawwwwwaaao..',
+    ],
+    pal: { o: '#080c1a', k: '#f0c8a8', K: '#c09878', h: '#f0e6c8', v: '#3a7bff', a: '#d8e4ff', A: '#ffd166', w: '#5a8cff' },
+  },
+  grisk: {
+    map: [
+      '.o............o.',
+      '.oAo........oAo.',
+      '..oAooooooooAo..',
+      '...ohhhhhhhho...',
+      '..ohhhhhhhhhho..',
+      '..oooooooooooo..',
+      '..okvkkkkkkvko..',
+      '..okkkkkkkkkko..',
+      '..okkwkKKkkkko..',
+      '..okkkwkkkkkko..',
+      '..okkoooooookko.',
+      '...okkkkkkkko...',
+      '....oKKKKKKo....',
+      '..ooaaooooaaoo..',
+      '.oaaaAAAAAAaaao.',
+      '.oaaaaaaaaaaaao.',
+    ],
+    pal: { o: '#140806', k: '#9a6a50', K: '#6e4a36', h: '#4a4a52', A: '#ff8a4a', v: '#ff3b3b', a: '#5a3a2a', w: '#e8d0b0' },
   },
 };
 

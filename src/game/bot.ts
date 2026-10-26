@@ -48,10 +48,19 @@ export const ARCHETYPES: Archetype[] = [
     id: 'balanced', label: 'RAIDER', titles: ['Captain', 'Corsair', 'Commodore'],
     core: [], relics: [],
   },
+  {
+    id: 'concord', label: 'CONCORD FLEET', titles: ['Marshal', 'Commodore', 'Lieutenant'],
+    core: ['picket', 'spotter', 'bastion', 'aegis', 'reflector', 'bulwark', 'lance'], relics: ['banner_c', 'matrix', 'plating'],
+  },
+  {
+    id: 'reaver', label: 'REAVER FLEET', titles: ['Reaver', 'Warlord', 'Cutthroat'],
+    core: ['revenant', 'ravager', 'raider', 'phantom', 'scrapper', 'interceptor'], relics: ['trophy', 'banner_r', 'alpha'],
+  },
 ];
 
 const BOT_COMMANDER: Record<string, string> = {
   swarm: 'ryx', fortress: 'kael', artillery: 'orin', blitz: 'nyx', martyr: 'nyx', control: 'juno', balanced: 'vance',
+  concord: 'sera', reaver: 'grisk',
 };
 
 const NAMES = ['Vex', 'Nyx', 'Korr', 'Talon', 'Ryn', 'Zed', 'Mox', 'Skarn', 'Ilya', 'Drax', 'Quill', 'Juno', 'Sable', 'Orin'];
@@ -61,10 +70,12 @@ const FRONT_PRIORITY: Record<string, number> = {
   bulwark: 0, aegis: 0.5, reflector: 0.8, revenant: 1, dread: 1, gunboat: 2, raider: 2, interceptor: 1.5,
   carrier: 3, ion: 3, command: 3, scout: 4, phantom: 4, salvager: 4.5, lance: 5, queen: 5.5,
   torpedo: 6, siege: 6, drone: 6,
+  picket: 1.2, bastion: 0.7, spotter: 4.5, scrapper: 2.5, minelayer: 5, ravager: 2,
 };
 
 /** Extra scrap bots get in later rounds, so the back half of a run stays a challenge. */
-export const botBonusScrap = (round: number) => (round >= 10 ? 2 : round >= 6 ? 1 : 0);
+export const botBonusScrap = (round: number) =>
+  round >= 14 ? 3 : round >= 10 ? 2 : round >= 6 ? 1 : 0;
 
 export function botSnapshot(seed: number, round: number, archetypeId?: string, bonus = true): Snapshot {
   const s: RngState = { rng: seed };
@@ -106,6 +117,12 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
     }
   }
 
+  // Endless pressure: past round 12, bot fleets keep getting tougher every round.
+  const surge = bonus ? Math.floor(Math.max(0, round - 12) / 3) : 0;
+  if (surge) for (const f of fleet) {
+    f.atk += surge;
+    f.hp += 2 * surge;
+  }
   fleet.sort((a, b) => (FRONT_PRIORITY[a.def] ?? 3) - (FRONT_PRIORITY[b.def] ?? 3) || b.hp - a.hp);
   const padded: (FleetShip | null)[] = [...fleet];
   while (padded.length < FLEET_SIZE) padded.push(null);

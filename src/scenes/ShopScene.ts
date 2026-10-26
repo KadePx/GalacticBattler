@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { addShip, addStarfield, portraitKey, setPlayerSkin, syncFlame } from '../game/art';
 import {
-  FLEET_SIZE, REROLL_COST, SHIP_COST, WIN_TARGET, START_LIVES, TOTAL_SLOTS, isBench, slotGet,
-  buy, canMerge, move, quickBuy, reroll, sell, sellValue, toggleFreeze, usePower, type Run,
+  FLEET_SIZE, REROLL_COST, SHIP_COST, START_LIVES, TOTAL_SLOTS, isBench, slotGet, winsLabel,
+  buy, canMerge, move, powerProblem, quickBuy, reroll, sell, sellValue, toggleFreeze, usePower, type Run,
 } from '../game/run';
 import { CMD_MAP } from '../sim/commanders';
 import { audio } from '../game/audio';
@@ -27,6 +27,7 @@ const SHOP_TIPS = [
   'FREEZE keeps a ship for next round',
   'Front of the line is on the right',
   'Bench ships sit out the battle',
+  'Every ship has a class AND a faction',
 ];
 
 // Layout. Fleet slot 0 is the front of the line, drawn on the right
@@ -373,9 +374,9 @@ export class ShopScene extends Phaser.Scene {
     for (let i = 0; i < START_LIVES; i++) {
       this.add2(this.add.image(12 + i * 10, 10, i < run.lives ? 'heart' : 'heart_empty'));
     }
-    this.add2(txt(this, 70, 7, `WINS ${run.wins}/${WIN_TARGET}`, { color: C.gold }));
+    this.add2(txt(this, 70, 7, winsLabel(run), { color: run.endless ? '#c58cff' : C.gold }));
     this.add2(txt(this, 190, 7, `ROUND ${run.round}`));
-    soundButton(this, 166, 10).forEach((o) => this.add2(o));
+    soundButton(this, 176, 10).forEach((o) => this.add2(o));
     this.add2(this.add.image(300, 10, 'coin'));
     this.add2(txt(this, 308, 7, `${run.scrap} SCRAP`, { color: C.gold }));
     historyPips(this, 470, 10, run.history).forEach((o) => this.add2(o));
@@ -383,12 +384,15 @@ export class ShopScene extends Phaser.Scene {
     // Relics (tap or hover a chip to read it)
     this.add2(txt(this, 8, 25, 'RELICS', { color: C.dim }));
     if (!run.relics.length) this.add2(txt(this, 62, 25, 'none yet', { color: C.faint }));
-    run.relics.forEach((id, i) => {
+    // Long (endless) runs collect many relics: show what fits, then a count.
+    const maxChips = 16;
+    run.relics.slice(0, maxChips).forEach((id, i) => {
       const chip = relicChip(this, 66 + i * 17, 28, id, 14);
       this.add2(chip.bg);
       this.add2(chip.t);
       this.infoTarget(chip.bg, { relic: id });
     });
+    if (run.relics.length > maxChips) this.add2(txt(this, 66 + maxChips * 17 - 6, 25, `+${run.relics.length - maxChips}`, { color: C.dim }));
 
     // Bench (left) and fleet (right)
     this.add2(txt(this, 6, 38, 'BENCH', { color: C.dim }));
@@ -476,7 +480,8 @@ export class ShopScene extends Phaser.Scene {
     const { x, y, w, h } = POWER;
     const used = !!run.powerUsed;
     const broke = run.scrap < cmd.power.cost;
-    const ready = !used && !broke;
+    const blocked = powerProblem(run);
+    const ready = !used && !broke && !blocked;
     const col = hexInt(cmd.color);
     const card = this.add2(this.add.rectangle(x + w / 2, y + h / 2, w, h, this.armed ? 0x1d2a50 : 0x0e1430)
       .setStrokeStyle(this.armed ? 2 : 1, ready ? col : 0x2a3150));
@@ -484,7 +489,7 @@ export class ShopScene extends Phaser.Scene {
     // Three short lines: power name, cost, state.
     this.add2(txt(this, x + 24, y + 4, cmd.power.name, { color: ready ? cmd.color : C.dim }));
     this.add2(txt(this, x + 24, y + 15, `${cmd.power.cost} SCRAP`, { color: broke && !used ? C.bad : C.gold }));
-    const state = used ? 'USED' : this.armed ? (cmd.power.target ? 'PICK SHIP' : 'TAP AGAIN') : broke ? 'NOT ENOUGH' : 'READY';
+    const state = used ? 'USED' : this.armed ? (cmd.power.target ? 'PICK SHIP' : 'TAP AGAIN') : broke ? 'NOT ENOUGH' : blocked ?? 'READY';
     this.add2(txt(this, x + 24, y + 26, state, { color: used || broke ? C.dim : this.armed ? C.gold : C.hp }));
     // A slow glow while the power is ready, so it's easy to spot.
     if (ready && !this.armed) this.tweens.add({ targets: card, alpha: 0.7, duration: 900, yoyo: true, repeat: -1 });
@@ -510,7 +515,10 @@ export class ShopScene extends Phaser.Scene {
   private classPips(x: number, y: number, def: ShipDef) {
     def.classes.forEach((c, k) => {
       const px = x + (k - (def.classes.length - 1) / 2) * 10;
-      this.add2(this.add.rectangle(px, y, 8, 2, Phaser.Display.Color.HexStringToColor(TRAIT_MAP[c].color).color));
+      const col = Phaser.Display.Color.HexStringToColor(TRAIT_MAP[c].color).color;
+      // Factions get a small diamond; classes a dash.
+      if (TRAIT_MAP[c].faction) this.add2(this.add.rectangle(px, y, 4, 4, col).setAngle(45));
+      else this.add2(this.add.rectangle(px, y, 8, 2, col));
     });
   }
 
@@ -593,7 +601,7 @@ export class ShopScene extends Phaser.Scene {
     if (!info || 'freeze' in info) return null;
     if ('def' in info) return { def: info.def, ship: info.ship };
     if ('relic' in info) return { relic: info.relic };
-    if ('trait' in info) return { trait: info.trait, count: traitCounts(this.run.fleet)[info.trait] };
+    if ('trait' in info) return { trait: info.trait, count: traitCounts(this.run.fleet, this.run.relics)[info.trait] };
     if (this.armed) return null;
     return { cmd: info.cmd, passive: this.run.passive ?? 'a' };
   }
@@ -602,24 +610,27 @@ export class ShopScene extends Phaser.Scene {
   private drawSynergy(preview: ShipDef | null) {
     const add = <T extends Phaser.GameObjects.GameObject>(o: T) => { this.synLayer.add(o); return o; };
     add(panel(this, SYN.x, SYN.y, SYN.w, SYN.h));
-    add(txt(this, SYN.x + 6, SYN.y + 5, 'SYNERGY', { color: C.dim }));
-    const counts = traitCounts(this.run.fleet);
+    add(txt(this, SYN.x + 6, SYN.y + 4, 'SYNERGY', { color: C.dim }));
+    const counts = traitCounts(this.run.fleet, this.run.relics);
     const adds = preview && !this.run.fleet.some((s) => s?.def === preview.id) ? preview.classes : [];
 
+    // One line per synergy: name, then "have/next" (gold when maxed). Factions sit under a divider.
     TRAITS.forEach((tr, i) => {
-      const y = SYN.y + 17 + i * 20;
+      const y = SYN.y + 15 + i * 13 + (tr.faction ? 3 : 0);
       const n = counts[tr.id];
       const lvl = traitLevel(tr.id, n);
-      const row = add(this.add.rectangle(SYN.x + SYN.w / 2, y + 8, SYN.w - 4, 20, 0xffffff, 0.001));
+      const next = tr.tiers.find((t) => n < t.n)?.n;
+      const row = add(this.add.rectangle(SYN.x + SYN.w / 2, y + 4, SYN.w - 4, 13, 0xffffff, 0.001));
       this.infoTarget(row, { trait: tr.id });
-      if (lvl > 0) add(this.add.rectangle(SYN.x + 3, y + 8, 2, 18, hexInt(tr.color)));
-      add(txt(this, SYN.x + 7, y, tr.name, { color: lvl > 0 ? tr.color : C.dim }));
-      add(txt(this, SYN.x + SYN.w - 4, y, `${n}`, { origin: [1, 0], color: lvl > 0 ? C.text : C.dim }));
-      if (adds.includes(tr.id)) add(txt(this, SYN.x + SYN.w - 18, y, '+1', { origin: [1, 0], color: C.hp }));
-      tr.tiers.forEach((tier, k) => {
-        add(txt(this, SYN.x + 7 + k * 24, y + 10, `(${tier.n})`, { color: n >= tier.n ? C.gold : C.faint }));
-      });
+      if (lvl > 0) add(this.add.rectangle(SYN.x + 3, y + 4, 2, 11, hexInt(tr.color)));
+      const name = add(txt(this, SYN.x + 7, y, tr.short, { color: lvl > 0 ? tr.color : C.dim }));
+      if (adds.includes(tr.id)) add(txt(this, name.x + name.width + 3, y, '+1', { color: C.hp }));
+      add(txt(this, SYN.x + SYN.w - 4, y, next ? `${n}/${next}` : `${n} MAX`, {
+        origin: [1, 0], color: !next ? C.gold : lvl > 0 ? C.text : C.faint,
+      }));
     });
+    const fy = SYN.y + 15 + TRAITS.filter((t) => !t.faction).length * 13 + 1;
+    add(this.add.rectangle(SYN.x + SYN.w / 2, fy, SYN.w - 10, 1, 0x262e50));
   }
 
   private drawStrip(info: Info) {
@@ -678,14 +689,15 @@ export class ShopScene extends Phaser.Scene {
     }
     if ('trait' in info) {
       const tr = TRAIT_MAP[info.trait];
-      const n = traitCounts(this.run.fleet)[info.trait];
+      const n = traitCounts(this.run.fleet, this.run.relics)[info.trait];
       add(txt(this, L, row(0), `${tr.name} SYNERGY`, { color: tr.color }));
-      add(txt(this, R, row(0), `${n} DIFFERENT SHIP${n === 1 ? '' : 'S'}`, { origin: [1, 0], color: C.dim }));
+      add(txt(this, R, row(0), `${n} COUNTED`, { origin: [1, 0], color: C.dim }));
       tr.tiers.forEach((tier, k) => {
         add(txt(this, L, row(1 + k), `(${tier.n}) ${tier.desc}`, { color: n >= tier.n ? C.gold : C.dim }));
       });
-      const members = Object.values(SHIPS).filter((s) => s.tier > 0 && s.classes.includes(info.trait)).map((s) => s.name);
-      add(txt(this, L, row(3), members.join(', '), { color: C.faint, wrap: w - 12 }));
+      // Only the ships you own here (the full list is behind MORE).
+      const mine = [...new Set(this.run.fleet.filter((s) => s && SHIPS[s.def].classes.includes(info.trait)).map((s) => SHIPS[s!.def].name))];
+      add(txt(this, L, row(3), mine.length ? `YOURS: ${mine.join(', ')}` : 'None in your fleet yet. MORE lists them.', { color: C.faint, wrap: w - 12 }));
       return;
     }
 
@@ -704,7 +716,7 @@ export class ShopScene extends Phaser.Scene {
     add(txt(this, hp.x + hp.width + 10, row(1), `EVERY ${def.cd}T`, { color: C.dim }));
     let cx = R;
     [...def.classes].reverse().forEach((c) => {
-      const t = add(txt(this, cx, row(1), TRAIT_MAP[c].name, { origin: [1, 0], color: TRAIT_MAP[c].color }));
+      const t = add(txt(this, cx, row(1), TRAIT_MAP[c].short, { origin: [1, 0], color: TRAIT_MAP[c].color }));
       cx -= t.width + 8;
     });
     add(txt(this, L, row(2), def.desc));

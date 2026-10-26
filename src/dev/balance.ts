@@ -5,7 +5,7 @@
 //   npm run balance -- 400     (more fights per cell = less noise, slower)
 
 import { ARCHETYPES, botSnapshot } from '../game/bot';
-import { setPricing, type Pricing } from '../game/run';
+import { ENDLESS_REPAIR, setPricing, type Pricing } from '../game/run';
 import { simulate } from '../sim/battle';
 import { COMMANDERS } from '../sim/commanders';
 import { RELICS } from '../sim/relics';
@@ -226,6 +226,42 @@ function pricingCompare() {
   for (const [k, vals] of Object.entries(rows)) console.log(pad(k, 24) + vals.map((v) => lpad(v, 14)).join(''));
 }
 
+// ---------- N: endless mode ----------
+// Bot-skill players who clear keep going until their hull runs out.
+function endless() {
+  const runsN = Math.max(400, N);
+  header(`ENDLESS: cleared runs that keep going (N=${runsN} runs per style)`);
+  console.log(pad('style', 11) + lpad('clears', 8) + lpad('avgExtra', 10) + lpad('median', 8) + lpad('p90', 6) + lpad('maxRnd', 8));
+  for (const a of ARCHETYPES) {
+    const extras: number[] = [];
+    let maxRound = 0;
+    for (let i = 0; i < runsN; i++) {
+      let w = 0;
+      let lives = 5;
+      let round = 1;
+      let extra = 0;
+      for (; lives > 0 && round <= 40; round++) {
+        const res = simulate(botSnapshot(5000 + i * 31, round, a.id, false), foe(i * 13 + 7, round)).winner;
+        if (res === 0) {
+          w++;
+          if (w > 10) extra++;
+          if (w === 10) lives = Math.min(5, lives + ENDLESS_REPAIR); // Keep Going repairs the hull
+        }
+        if (res === 1) lives--;
+        if (w < 10 && lives <= 0) break;
+      }
+      if (w >= 10) {
+        extras.push(extra);
+        maxRound = Math.max(maxRound, round - 1);
+      }
+    }
+    extras.sort((x, y) => x - y);
+    const q = (f: number) => (extras.length ? extras[Math.min(extras.length - 1, Math.floor(f * extras.length))] : 0);
+    const avg = extras.length ? extras.reduce((s, v) => s + v, 0) / extras.length : 0;
+    console.log(pad(a.id, 11) + lpad(`${pct(extras.length, runsN)}%`, 8) + lpad(avg.toFixed(1), 10) + lpad(q(0.5), 8) + lpad(q(0.9), 6) + lpad(maxRound, 8));
+  }
+}
+
 // ---------- E: commander passives ----------
 function passives() {
   header(`COMMANDER PASSIVE win % (random bot with this passive vs random bots, N=${N * 3})`);
@@ -275,4 +311,5 @@ if (!only || only.includes('d')) swapTest();
 if (!only || only.includes('e')) passives();
 if (!only || only.includes('f')) matrix();
 if (only && only.includes('p')) pricingCompare();
+if (only && only.includes('n')) endless();
 console.log(`\n(done in ${((Date.now() - t0) / 1000).toFixed(1)}s)`);

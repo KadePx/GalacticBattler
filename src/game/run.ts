@@ -29,6 +29,8 @@ export function shipCost(def: string, round: number): number {
 export const REROLL_COST = 1;
 export const FLEET_SIZE = 5;
 export const BENCH_SIZE = 3;
+/** Hull points repaired when a won run continues into endless mode. */
+export const ENDLESS_REPAIR = 2;
 
 export type Phase = 'shop' | 'relic' | 'over';
 export type Outcome = 'W' | 'L' | 'D';
@@ -54,7 +56,11 @@ export interface Run extends RngState {
   passive?: PassiveSlot;
   skin?: boolean;
   powerUsed?: boolean; // shop power, once per round
-  xpAwarded?: { pilotBefore: number; cmdBefore: number };
+  // XP already paid for this run (an endless run can pay out a second time).
+  xpAwarded?: { pilotBefore: number; cmdBefore: number; paid?: number; last?: number };
+  // Endless: keep playing after a win; the run only ends when the hull runs out.
+  endless?: boolean;
+  endlessFrom?: number; // history length when endless started
 }
 
 export interface RunOptions {
@@ -163,6 +169,20 @@ export function usePower(run: Run, slot: number | null): string | null {
       if (run.shop.length && run.shop.every((_, i) => run.frozen?.[i])) return 'Everything is frozen';
       restock(run, true);
       break;
+    case 'sera': {
+      // Replace a random unfrozen shipyard slot with a random Concord ship you could normally see.
+      const slots = run.shop.map((_, i) => i).filter((i) => !run.frozen?.[i]);
+      if (!slots.length) return 'Everything is frozen';
+      const pool = SHOP_SHIPS.filter((d) => d.classes.includes('concord') && d.tier <= tierCap(run.round));
+      run.shop[slots[Math.floor(rand(run) * slots.length)]] = pick(run, pool).id;
+      break;
+    }
+    case 'grisk': {
+      const reavers = new Set(run.fleet.filter((f) => f && SHIPS[f.def].classes.includes('reaver')).map((f) => f!.def)).size;
+      if (reavers < 2) return 'Needs 2 different Reaver ships';
+      run.scrap += 1;
+      break;
+    }
     default:
       return 'Unknown power';
   }
@@ -297,13 +317,37 @@ export function applyResult(run: Run, winner: 0 | 1 | -1) {
   run.history.push(o);
   if (o === 'W') run.wins++;
   if (o === 'L') run.lives--;
-  if (run.wins >= WIN_TARGET || run.lives <= 0) {
+  if ((!run.endless && run.wins >= WIN_TARGET) || run.lives <= 0) {
     run.phase = 'over';
   } else {
     run.phase = 'relic';
     run.relicOffer = rollRelicOffer(run, run.relics);
   }
 }
+
+/** After a won run: keep the same fleet going in endless mode (starts with a relic pick). */
+export function goEndless(run: Run) {
+  run.endless = true;
+  run.endlessFrom = run.history.length;
+  run.lives = Math.min(START_LIVES, run.lives + ENDLESS_REPAIR); // a fresh start for the long haul
+  run.phase = 'relic';
+  run.relicOffer = rollRelicOffer(run, run.relics);
+}
+
+/** Why the commander's power can't be used right now (beyond cost / once a round), or null. */
+export function powerProblem(run: Run): string | null {
+  if (run.cmd === 'grisk') {
+    const reavers = new Set(run.fleet.filter((f) => f && SHIPS[f.def].classes.includes('reaver')).map((f) => f!.def)).size;
+    if (reavers < 2) return 'NO REAVERS';
+  }
+  return null;
+}
+
+/** Wins earned after switching to endless. */
+export const endlessWins = (run: Run) => (run.endless ? run.history.slice(run.endlessFrom ?? 0).filter((o) => o === 'W').length : 0);
+
+/** Top-bar label: "WINS 3/10", or "ENDLESS 14W" once endless. */
+export const winsLabel = (run: Run) => (run.endless ? `ENDLESS ${run.wins}W` : `WINS ${run.wins}/${WIN_TARGET}`);
 
 export function chooseRelic(run: Run, id: string) {
   run.relics.push(id);

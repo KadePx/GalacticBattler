@@ -48,8 +48,15 @@ function drawShip(scene: Phaser.Scene, add: Add, def: ShipDef, ship: FleetShip |
   const tierLabel = def.tier ? (w >= 240 ? `TIER ${def.tier}` : `T${def.tier}`) : 'LAUNCHED';
   const t = add(txt(scene, x + 42, y + 14, tierLabel, { color: hex(tc) }));
   let cx = t.x + t.width + 8;
+  // Class and faction tags; wrap to a second line in narrow cards.
+  let cy0 = y + 14;
   for (const c of def.classes) {
-    const ct = add(txt(scene, cx, y + 14, TRAIT_MAP[c].name, { color: TRAIT_MAP[c].color }));
+    const label = TRAIT_MAP[c].short;
+    if (cx + label.length * 8 > x + w) {
+      cx = x + 42;
+      cy0 += 10;
+    }
+    const ct = add(txt(scene, cx, cy0, label, { color: TRAIT_MAP[c].color }));
     cx += ct.width + 8;
   }
   const lvl = ship ? levelOf(ship.xp) : 0;
@@ -90,7 +97,7 @@ function drawTrait(scene: Phaser.Scene, add: Add, id: ShipClass, count: number |
   add(txt(scene, x, y + 2, `${tr.name} SYNERGY`, { color: tr.color }));
   if (count !== undefined) add(txt(scene, x + w, y + 2, `YOU HAVE ${count}`, { origin: [1, 0], color: C.dim }));
   let cy = y + 16;
-  const intro = add(txt(scene, x, cy, 'Each different ship of this class counts once.', { wrap: w, color: C.dim }));
+  const intro = add(txt(scene, x, cy, tr.faction ? 'A faction. Each different ship counts once; banners add one.' : 'Each different ship of this class counts once.', { wrap: w, color: C.dim }));
   cy += intro.height + 6;
   for (const tier of tr.tiers) {
     const on = count !== undefined && count >= tier.n;
@@ -99,10 +106,14 @@ function drawTrait(scene: Phaser.Scene, add: Add, id: ShipClass, count: number |
   }
   const members = Object.values(SHIPS).filter((s) => s.tier > 0 && s.classes.includes(id));
   cy += 4;
+  const pitch = 30;
+  const perRow = Math.max(1, Math.floor(w / pitch));
   members.forEach((s, i) => {
-    add(scene.add.image(x + 14 + i * 34, cy + 10, shipKey(s.id, 0)).setScale(2));
+    const im = add(scene.add.image(x + 14 + (i % perRow) * pitch, cy + 10 + Math.floor(i / perRow) * 22, shipKey(s.id, 0)));
+    im.setScale(Math.min(2, (pitch - 4) / im.width));
   });
-  cy += 24;
+  cy += 22 * Math.ceil(members.length / perRow) + 2;
+  if (members.length > 6) return cy;
   const names = add(txt(scene, x, cy, members.map((s) => s.name).join(', '), { wrap: w, color: C.faint }));
   return names.y + names.height + 4;
 }

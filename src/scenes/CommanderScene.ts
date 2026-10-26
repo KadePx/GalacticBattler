@@ -13,6 +13,7 @@ import { audio } from '../game/audio';
 const STYLE_LABEL: Record<string, string> = {
   balanced: 'ALL-ROUNDER', fortress: 'GUARD / DEFENSE', blitz: 'STRIKE / SPEED',
   swarm: 'FIGHTERS / SWARM', artillery: 'ARTILLERY', control: 'TECH / CONTROL',
+  concord: 'SHIELDS / CONCORD', reaver: 'KILLS / REAVERS',
 };
 
 const hexInt = (h: string) => Phaser.Display.Color.HexStringToColor(h).color;
@@ -53,7 +54,7 @@ export class CommanderScene extends Phaser.Scene {
     const hi = rankXp(rank + 1);
     this.add2s(bar(this, 410, 8, 62, 6, (p.xp - lo) / (hi - lo), 0x7fe7ff));
 
-    COMMANDERS.forEach((c, i) => this.card(c.id, 8 + (i % 2) * 86, 28 + Math.floor(i / 2) * 80));
+    COMMANDERS.forEach((c, i) => this.card(c.id, 8 + (i % 2) * 86, 26 + Math.floor(i / 2) * 60));
     this.detail(this.sel);
   }
 
@@ -68,12 +69,12 @@ export class CommanderScene extends Phaser.Scene {
     const lvl = cmdLevel(progress(p, id).xp);
     const isSel = this.sel === id;
     const w = 82;
-    const h = 76;
+    const h = 57;
     this.add2(panel(this, x, y, w, h, isSel ? 0x162050 : C.panel, isSel ? C.highlight : C.border));
-    if (unlocked && lvl >= CMD_MAX_LEVEL) this.add2(this.add.rectangle(x + w / 2, y + 22, 38, 38).setStrokeStyle(1, C.highlight));
-    this.add2(this.add.image(x + w / 2, y + 22, portraitKey(id, !unlocked)).setScale(2));
-    this.add2(txt(this, x + w / 2, y + 46, c.name.toUpperCase(), { origin: [0.5, 0], color: unlocked ? c.color : C.dim }));
-    this.add2(txt(this, x + w / 2, y + 60, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
+    if (unlocked && lvl >= CMD_MAX_LEVEL) this.add2(this.add.rectangle(x + w / 2, y + 16, 28, 28).setStrokeStyle(1, C.highlight));
+    this.add2(this.add.image(x + w / 2, y + 16, portraitKey(id, !unlocked)).setScale(1.5));
+    this.add2(txt(this, x + w / 2, y + 31, c.name.toUpperCase(), { origin: [0.5, 0], color: unlocked ? c.color : C.dim }));
+    this.add2(txt(this, x + w / 2, y + 43, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
       origin: [0.5, 0], color: unlocked ? C.gold : '#6a76a0',
     }));
     const hit = this.add2(this.add.rectangle(x + w / 2, y + h / 2, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));

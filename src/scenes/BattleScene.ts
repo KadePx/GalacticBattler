@@ -104,7 +104,7 @@ export class BattleScene extends Phaser.Scene {
     txt(this, 8, 7, 'YOUR FLEET', { color: C.cyan });
     txt(this, 240, 7, `ROUND ${me.round}`, { origin: [0.5, 0] });
     const hull = hullScale(Math.max(me.round, this.opp.round));
-    if (hull > 1) txt(this, 240, 24, `HULLS x${hull.toFixed(1)}`, { origin: [0.5, 0], color: C.hp });
+    if (hull > 1) txt(this, 240, 44, `HULLS x${hull.toFixed(1)}`, { origin: [0.5, 0], color: C.hp });
     txt(this, 472, 7, this.opp.name.toUpperCase(), { origin: [1, 0], color: C.bad });
     const tag = this.opp.runId === 'bot' ? this.opp.style ?? 'RAIDER' : 'GHOST FLEET';
     txt(this, 472, 24, `${tag}  ${this.opp.wins} WIN${this.opp.wins === 1 ? '' : 'S'}`, { origin: [1, 0], color: C.dim });
@@ -144,12 +144,16 @@ export class BattleScene extends Phaser.Scene {
 
   /** Active synergies for a fleet, e.g. "STRIKE 2  TECH 4". */
   private traitLine(snap: Snapshot, x: number, y: number, side: 0 | 1) {
-    const counts = traitCounts(snap.fleet);
+    const counts = traitCounts(snap.fleet, snap.relics);
     const active = TRAITS.filter((tr) => traitLevel(tr.id, counts[tr.id]) > 0);
     let cx = x;
+    // Stay on this side of the screen: stop before reaching the middle.
     for (const tr of side === 0 ? active : [...active].reverse()) {
-      const t = txt(this, cx, y, `${tr.name} ${counts[tr.id]}`, { origin: [side, 0], color: tr.color });
-      cx += side === 0 ? t.width + 8 : -(t.width + 8);
+      const label = `${tr.short} ${counts[tr.id]}`;
+      const w = label.length * 8;
+      if (side === 0 ? cx + w > 228 : cx - w < 252) break;
+      txt(this, cx, y, label, { origin: [side, 0], color: tr.color });
+      cx += side === 0 ? w + 8 : -(w + 8);
     }
   }
 
@@ -356,7 +360,7 @@ export class BattleScene extends Phaser.Scene {
     const dir = side === 0 ? 1 : -1;
     const accent = hexInt(SHIPS[s.u.def].accent[1]);
     const nose = { x: s.spr.x + (s.spr.width) * dir, y: s.spr.y };
-    if (e.ram) popup(this, s.spr.x, s.spr.y - 24, 'RAM!', C.atk);
+    if (e.ram) popup(this, s.spr.x, s.spr.y - 24, s.u.def === 'interceptor' ? 'RAM!' : 'BOOM!', C.atk);
     else {
       this.tweens.add({ targets: s.pos, x: s.pos.x - 3 * dir, duration: 50, yoyo: true });
       const m = this.add.image(nose.x, nose.y, 'px').setScale(2).setTint(0xffffff);
@@ -448,7 +452,7 @@ export class BattleScene extends Phaser.Scene {
     const title = w === 0 ? 'VICTORY' : w === 1 ? 'DEFEAT' : 'STALEMATE';
     const color = w === 0 ? C.gold : w === 1 ? C.bad : C.cyan;
     audio.play(w === 0 ? 'victory' : w === 1 ? 'defeat' : 'draw');
-    const sub = w === 0 ? `+1 WIN  (${run.wins}/${WIN_TARGET})`
+    const sub = w === 0 ? (run.endless ? `+1 WIN  (${run.wins} TOTAL)` : `+1 WIN  (${run.wins}/${WIN_TARGET})`)
       : w === 1 ? `-1 HULL  (${run.lives} LEFT)` : 'NO WIN, NO DAMAGE';
 
     // Result bar along the bottom, so the surviving ships stay visible.

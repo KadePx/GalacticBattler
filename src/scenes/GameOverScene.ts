@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { addStarfield, portraitKey, setPlayerSkin, shipKey } from '../game/art';
 import { CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, awardRun, cmdLevel, pilotRank, rankXp } from '../game/profile';
-import { WIN_TARGET } from '../game/run';
+import { WIN_TARGET, endlessWins, goEndless } from '../game/run';
 import { clearRun, getRun, saveRun } from '../game/storage';
 import { C, bar, button, historyPips, panel, relicChip, txt } from '../game/ui';
 import { CMD_MAP } from '../sim/commanders';
@@ -22,10 +22,12 @@ export class GameOverScene extends Phaser.Scene {
     audio.setMood('menu');
     addStarfield(this);
     const won = run.wins >= WIN_TARGET;
-    txt(this, 240, 22, won ? 'FLEET TRIUMPHANT' : 'FLEET DESTROYED', {
-      size: 16, origin: 0.5, color: won ? C.gold : C.bad,
-    }).setStroke('#05060f', 4);
-    txt(this, 240, 42, `${run.wins} WINS IN ${run.history.length} BATTLES`, { origin: 0.5 });
+    const title = run.endless ? 'ENDLESS RUN OVER' : won ? 'FLEET TRIUMPHANT' : 'FLEET DESTROYED';
+    txt(this, 240, 22, title, { size: 16, origin: 0.5, color: run.endless ? '#c58cff' : won ? C.gold : C.bad }).setStroke('#05060f', 4);
+    const sub = run.endless
+      ? `${run.wins} WINS (${WIN_TARGET} + ${endlessWins(run)} ENDLESS) IN ${run.history.length} BATTLES`
+      : `${run.wins} WINS IN ${run.history.length} BATTLES`;
+    txt(this, 240, 42, sub, { origin: 0.5 });
     const hist = run.history.slice(-24);
     historyPips(this, 240 + ((hist.length - 1) * 9) / 2, 56, hist, 24);
 
@@ -38,8 +40,9 @@ export class GameOverScene extends Phaser.Scene {
       im.x = Math.round(x - im.displayWidth / 2);
       x -= im.displayWidth + gap;
     }
+    const step = Math.min(16, 440 / Math.max(1, run.relics.length));
     run.relics.forEach((id, i) => {
-      relicChip(this, 240 + (i - (run.relics.length - 1) / 2) * 16, 106, id);
+      relicChip(this, 240 + (i - (run.relics.length - 1) / 2) * step, 106, id);
     });
 
     // Rewards (paid once; the run remembers it was paid so refreshing is safe).
@@ -53,11 +56,23 @@ export class GameOverScene extends Phaser.Scene {
       if (ranked || leveled) this.time.delayedCall(500, () => audio.play(ranked ? 'rankup' : 'levelup'));
     }
 
-    button(this, 170, 252, 130, 18, 'NEW RUN', () => {
+    // After a win, the same fleet can keep going in endless mode.
+    const canGoOn = won && !run.endless;
+    const bx = canGoOn ? [95, 240, 385] : [170, 310];
+    if (canGoOn) {
+      button(this, bx[0], 252, 130, 18, 'KEEP GOING', () => {
+        goEndless(run);
+        saveRun(run);
+        audio.play('launch');
+        this.scene.start('relic');
+      }, { fill: 0x2a1a4a, color: '#c58cff' });
+      txt(this, 240, 228, 'KEEP GOING = ENDLESS: +2 hull, more XP.', { origin: 0.5, color: '#c58cff' });
+    }
+    button(this, bx[canGoOn ? 1 : 0], 252, 130, 18, 'NEW RUN', () => {
       clearRun();
       this.scene.start('commanders');
     }, { fill: 0x3a2a10, color: C.gold });
-    button(this, 310, 252, 130, 18, 'MENU', () => {
+    button(this, bx[canGoOn ? 2 : 1], 252, 130, 18, 'MENU', () => {
       clearRun();
       this.scene.start('menu');
     });
@@ -65,10 +80,23 @@ export class GameOverScene extends Phaser.Scene {
 
   private rewards(a: NonNullable<ReturnType<typeof awardRun>>) {
     panel(this, 40, 118, 400, 120);
-    txt(this, 50, 124, `+${a.xp.total} XP`, { color: C.gold, size: 8 });
-    const parts = [`BATTLES +${a.xp.battles}`, `WINS +${a.xp.wins}`];
-    if (a.xp.clear) parts.push(`CLEAR +${a.xp.clear}`);
-    txt(this, 430, 124, parts.join('  '), { origin: [1, 0], color: C.dim });
+    txt(this, 50, 124, `+${a.gained} XP`, { color: C.gold, size: 8 });
+    const line1 = [`BATTLES +${a.xp.battles}`, `WINS +${a.xp.wins}`];
+    const line2: string[] = [];
+    if (a.xp.clear) line2.push(`CLEAR +${a.xp.clear}`);
+    if (a.xp.endless) line2.push(`ENDLESS +${a.xp.endless}`);
+    if (a.gained < a.xp.total) {
+      // Second payout of an endless run: say what was already paid instead of the full breakdown.
+      txt(this, 430, 124, `${a.xp.total} TOTAL, ${a.xp.total - a.gained} PAID AT WIN`, { origin: [1, 0], color: C.dim });
+    } else {
+      txt(this, 430, 124, line1.join('  '), { origin: [1, 0], color: C.dim });
+      if (line2.length) txt(this, 430, 134, line2.join('  '), { origin: [1, 0], color: C.dim });
+    }
+    if (a.bestEndless) {
+      txt(this, 430, 222, a.newBest ? `NEW ENDLESS BEST: ${a.bestEndless} WINS!` : `ENDLESS BEST: ${a.bestEndless} WINS`, {
+        origin: [1, 0], color: a.newBest ? C.gold : '#c58cff',
+      });
+    }
 
     // Commander progress
     const c = a.cmd ? CMD_MAP[a.cmd] : null;

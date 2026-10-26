@@ -1,7 +1,7 @@
 // Deterministic battle simulator. Same two snapshots in -> same result out,
 // on any machine. No randomness, no rendering. The game plays back the event log.
 
-import { SHIPS, levelOf } from './ships';
+import { SHIPS, isSummon, levelOf } from './ships';
 import { count } from './relics';
 import { passiveId } from './commanders';
 import { traitCounts, traitLevel } from './traits';
@@ -22,6 +22,7 @@ export interface BUnit {
   alive: boolean;
   revives: number; // Revenant rebuilds left
   attacks: number; // attacks made so far (Swarm Queen)
+  mark: number; // extra damage this ship takes (Spotter / Sera marks)
 }
 
 export type BEvent =
@@ -67,7 +68,7 @@ function factory(next: { uid: number }, scale: number): UnitFactory {
     hp = Math.max(1, Math.round(hp * scale));
     return {
       uid: next.uid++, side, def, level, atk, hp, maxHp: hp, cd,
-      timer: Math.max(1, Math.min(cd, timer)), shield: 0, cloak: false, alive: true, revives: 0, attacks: 0,
+      timer: Math.max(1, Math.min(cd, timer)), shield: 0, cloak: false, alive: true, revives: 0, attacks: 0, mark: 0,
     };
   };
 }
@@ -83,7 +84,7 @@ function fighter(make: UnitFactory, side: 0 | 1, snap: Snapshot, level: number, 
 
 function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
   const r = (id: string) => count(snap.relics, id);
-  const counts = traitCounts(snap.fleet);
+  const counts = traitCounts(snap.fleet, snap.relics);
   const tl = (id: keyof typeof counts) => traitLevel(id, counts[id]);
   const cp = passiveId(snap.cmd);
   const out: BUnit[] = [];
@@ -97,7 +98,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     let atk = s.atk + r('targeting');
     if (s.def === 'torpedo' || s.def === 'lance' || s.def === 'siege') atk += 2 * r('warheads');
     if (s.def === 'drone') atk += 2 * r('nanites'); // drones heal 2x ATK, so this is +4 healing
-    if (has('strike')) atk += [0, 1, 3][tl('strike')];
+    if (has('strike')) atk += [0, 1, 2][tl('strike')];
     if (has('artillery') && tl('artillery') >= 1) atk += 2;
     if (cp === 'vance.a' && L >= 2) atk += 1;
     if (cp === 'nyx.a' && has('strike')) atk += 1;
@@ -113,6 +114,12 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     if (cp === 'vance.a' && L >= 2) hp += 1;
     if (cp === 'kael.b' && has('guard')) hp += 4;
     if (cp === 'juno.b' && has('tech')) hp += 2;
+    if (has('concord')) hp += [0, 2, 2][tl('concord')];
+    if (has('reaver')) {
+      atk += [0, 0, 1][tl('reaver')];
+      hp += [0, 2, 2][tl('reaver')];
+    }
+    if (s.def === 'picket' && L >= 3) hp += 2;
 
     // Overclock can't push a ship below 3 ticks; on the fastest ships a tick is too big a share.
     let cd = r('overclock') ? Math.max(Math.min(d.cd, 3), d.cd - r('overclock')) : d.cd;
@@ -133,6 +140,8 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     if (has('guard') && tl('guard') >= 2) u.shield += 1;
     if (s.def === 'phantom') u.cloak = true;
     if (s.def === 'revenant') u.revives = L >= 3 ? 2 : 1;
+    if (s.def === 'picket' && L >= 2) u.shield += L >= 3 ? 2 : 1;
+    if (s.def === 'bastion') u.shield += 1;
     out.push(u);
   }
 
@@ -178,6 +187,29 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
   });
   if (out[0] && r('matrix') > 0) out[0].shield += 1;
   if (out[0] && cp === 'kael.a') out[0].shield += 1;
+  // Sera's Phalanx: the front Concord ship starts with 2 shields.
+  if (cp === 'sera.a') {
+    const lead = out.find((x) => SHIPS[x.def].classes.includes('concord'));
+    if (lead) lead.shield += 2;
+  }
+  if (tl('concord') >= 2) {
+    for (const u of out.filter((x) => SHIPS[x.def].classes.includes('concord')).slice(0, 2)) u.shield += 1;
+  }
+
+  // Mines go in FRONT of the line (after front-ship effects, so those still land on a real ship).
+  const mines: BUnit[] = [];
+  const mine = (dmg: number) => {
+    const m = make(side, 'mine', 1, dmg, 1, SHIPS.mine.cd, SHIPS.mine.cd);
+    m.hp = m.maxHp = 1;
+    mines.push(m);
+  };
+  for (const u of out) {
+    if (u.def !== 'minelayer') continue;
+    // LV1: 1 mine. LV2: mines hit 2 harder. LV3: 2 mines. Explosions grow with the Mine Layer's ATK.
+    for (let k = 0; k < (u.level >= 3 ? 2 : 1); k++) mine(u.atk + 1 + (u.level >= 2 ? 2 : 0));
+  }
+  for (let k = 0; k < r('minefield'); k++) mine(2);
+  out.unshift(...mines);
   return out;
 }
 
@@ -193,6 +225,7 @@ interface Shot {
   onKill?: 'reload' | 'recloak';
   ram?: boolean;
   zap?: boolean;
+  first?: boolean; // the shooter's opening shot (Sera's Spotter Net)
 }
 
 export function simulate(a: Snapshot, b: Snapshot): BattleResult {
@@ -205,6 +238,12 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     if (passiveId(snap.cmd) !== 'juno.a') return;
     for (const u of units) if (u.side !== side) u.timer += 1;
   });
+  // Per-side synergy levels and passives, for effects that fire mid-battle.
+  const sideTl = snaps.map((snap) => {
+    const c = traitCounts(snap.fleet, snap.relics);
+    return (id: keyof typeof c) => traitLevel(id, c[id]);
+  });
+  const sideCp = snaps.map((snap) => passiveId(snap.cmd));
   const initial = units.map((u) => ({ ...u }));
   const events: BEvent[] = [];
   const line = (side: number) => units.filter((u) => u.alive && u.side === side);
@@ -215,25 +254,35 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     return visible.length ? visible : l;
   };
   const lowest = (l: BUnit[]) => l.reduce((m, x) => (x.hp < m.hp ? x : m), l[0]);
-  /** Real ships only (no fighters), unless fighters are all that's left. */
+  /** Real ships only (no fighters or mines), unless those are all that's left. */
   const ships = (l: BUnit[]) => {
-    const real = l.filter((x) => x.def !== 'fighter');
+    const real = l.filter((x) => !isSummon(x.def));
     return real.length ? real : l;
   };
 
+  const lastStand = [false, false];
+  /** A visible Picket on that side, which pulls snipes onto itself. */
+  const picket = (side: number) => line(side).find((u) => u.def === 'picket' && !u.cloak);
+
   const outcome = (): 0 | 1 | -1 | null => {
-    const p = line(0).length;
-    const e = line(1).length;
+    const p = line(0).filter((u) => u.def !== 'mine').length;
+    const e = line(1).filter((u) => u.def !== 'mine').length;
     if (p && e) return null;
     return !p && !e ? -1 : e === 0 ? 0 : 1;
   };
 
   let t = 0;
 
+  function buff(u: BUnit, atk: number, heal: number, label: string) {
+    u.atk += atk;
+    if (heal && u.hp > 0) u.hp = Math.min(u.maxHp, u.hp + heal);
+    events.push({ t, k: 'buff', u: u.uid, atk: u.atk, hp: u.hp, label });
+  }
+
   const hit = (sh: Shot, bonus: number) => {
     const { s, d } = sh;
     const before = d.hp;
-    const dmg = sh.dmg + bonus;
+    const dmg = sh.dmg + bonus + d.mark;
     let blocked = false;
     if (d.shield > 0 && !sh.pierce) {
       d.shield--;
@@ -253,6 +302,20 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
         events.push({ t, k: 'buff', u: d.uid, atk: d.atk, hp: d.hp, label: `-${drain} ATK` });
       }
     }
+    // Marks: Spotter shots, and Sera's Spotter Net on each ship's opening shot.
+    const markBy = s.def === 'spotter' ? (s.level >= 2 ? 3 : 2) : sh.first && sideCp[s.side] === 'sera.b' ? 1 : 0;
+    if (markBy > d.mark && d.hp > 0) {
+      d.mark = markBy;
+      events.push({ t, k: 'buff', u: d.uid, atk: d.atk, hp: Math.max(0, d.hp), label: 'MARKED' });
+    }
+    if (blocked && d.alive) {
+      // Bastions grow on every block; Sera's Phalanx patches up the blocker.
+      for (const b of line(d.side)) {
+        if (b.def !== 'bastion') continue;
+        buff(b, b.level >= 2 ? 3 : 2, 0, `+${b.level >= 2 ? 3 : 2} ATK`);
+        if (b.level >= 3 && d.hp < d.maxHp) buff(d, 0, 3, '+3');
+      }
+    }
     // Reflectors punish hits that bounce off their side's shields. Zaps pierce, so they never chain.
     if (blocked && s.alive && !sh.zap) {
       for (const ref of line(d.side)) {
@@ -261,6 +324,17 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       }
     }
     if (before > 0 && d.hp <= 0 && s.alive) {
+      // Kill rewards (only for real ships, not fighters or mines).
+      if (!isSummon(d.def)) {
+        let gain = 3 * count(snaps[s.side].relics, 'trophy') + (sideCp[s.side] === 'grisk.a' ? 1 : 0);
+        let heal = sideCp[s.side] === 'grisk.a' ? 3 : 0;
+        if (s.def === 'scrapper') {
+          gain += s.level >= 2 ? 3 : 2;
+          if (s.level >= 3) heal += 4;
+        }
+        if (s.def === 'ravager' && s.level >= 3) gain += 2;
+        if (gain || heal) buff(s, gain, heal, gain ? `+${gain} ATK` : `+${heal}`);
+      }
       if (sh.onKill === 'reload') s.timer = 1;
       if (sh.onKill === 'recloak' && !s.cloak) {
         s.cloak = true;
@@ -269,31 +343,46 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     }
   };
 
-  const buff = (u: BUnit, atk: number, heal: number, label: string) => {
-    u.atk += atk;
-    if (heal) u.hp = Math.min(u.maxHp, u.hp + heal);
-    events.push({ t, k: 'buff', u: u.uid, atk: u.atk, hp: u.hp, label });
-  };
 
   /** Everything that reacts to a ship going down (also fires when a Revenant rebuilds). */
-  const onLoss = (u: BUnit) => {
+  const onLoss = (u: BUnit, rebuilt = false) => {
     if (u.def === 'interceptor') {
       const foes = targets(1 - u.side);
       const dmg = u.atk * (u.level >= 2 ? 2 : 1);
       for (const f of u.level >= 3 ? foes : foes.slice(0, 1)) hit({ s: u, d: f, dmg, ram: true }, 0);
     }
-    // Fighters are disposable: losing one doesn't feed Salvagers or Vengeance
-    // (otherwise swarms of 1-HP fighters snowball those effects).
-    if (u.def === 'fighter') return;
+    // Mines explode at the front enemy.
+    if (u.def === 'mine') {
+      const front = targets(1 - u.side)[0];
+      if (front) hit({ s: u, d: front, dmg: u.atk, ram: true }, 0);
+    }
+    // Fighters and mines are disposable: losing one doesn't feed Salvagers,
+    // Vengeance or Reavers (otherwise swarms of 1-HP units snowball those effects).
+    if (isSummon(u.def)) return;
+    // Reavers feed on enemy losses.
+    const foeSide = 1 - u.side;
+    const rl = sideTl[foeSide]('reaver');
+    if (rl > 0) {
+      for (const x of line(foeSide)) {
+        if (!SHIPS[x.def]?.classes.includes('reaver')) continue;
+        buff(x, rl >= 2 ? 2 : 1, rl >= 2 ? 2 : 1, `+${rl >= 2 ? 2 : 1}`);
+      }
+    }
+    // Grisk's Last Stand: the first real ship you lose blows up at the front enemy.
+    if (!rebuilt && sideCp[u.side] === 'grisk.b' && !lastStand[u.side]) {
+      lastStand[u.side] = true;
+      const front = targets(1 - u.side)[0];
+      if (front) hit({ s: u, d: front, dmg: 5, ram: true }, 0);
+    }
     const vengeance = count(snaps[u.side].relics, 'vengeance');
     for (const x of line(u.side)) {
-      if (x === u) continue;
-      if (x.def === 'salvager') {
-        const gain = (x.level >= 2 ? 3 : 2) + vengeance;
-        buff(x, gain, x.level >= 3 ? 3 : 0, `+${gain} ATK`);
-      } else if (vengeance) {
-        buff(x, vengeance, 0, `+${vengeance}`);
-      }
+      if (x === u || x.def === 'salvager') continue;
+      if (vengeance) buff(x, vengeance, 0, `+${vengeance}`);
+    }
+    for (const x of [...line(0), ...line(1)]) {
+      if (x === u || x.def !== 'salvager') continue;
+      const gain = (x.level >= 2 ? 3 : 2) + (x.side === u.side ? vengeance : 0);
+      buff(x, gain, x.level >= 3 ? 3 : 0, `+${gain} ATK`);
     }
   };
 
@@ -302,7 +391,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     t++;
     const acting: BUnit[] = [];
     for (const u of units) {
-      if (!u.alive) continue;
+      if (!u.alive || u.def === 'mine') continue;
       if (--u.timer <= 0) {
         u.timer = u.cd;
         acting.push(u);
@@ -342,13 +431,26 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
         case 'siege':
           for (const f of foes) shots.push({ s: u, d: f, dmg: u.atk });
           break;
+        case 'spotter':
+          for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk });
+          break;
+        case 'ravager':
+          shots.push({ s: u, d: foes[0], dmg: u.atk });
+          if (foes[1]) shots.push({ s: u, d: foes[1], dmg: L >= 2 ? u.atk : Math.ceil(u.atk / 2) });
+          break;
         case 'phantom':
           // Ambush: striking from cloak deals double damage.
-          shots.push({ s: u, d: L >= 2 ? lowest(foes) : foes[0], dmg: u.cloak ? 2 * u.atk : u.atk, onKill: L >= 3 ? 'recloak' : undefined });
+          shots.push({ s: u, d: L >= 2 ? lowest(ships(foes)) : foes[0], dmg: u.cloak ? 2 * u.atk : u.atk, onKill: L >= 3 ? 'recloak' : undefined });
           break;
         default:
           shots.push({ s: u, d: foes[0], dmg: u.atk });
       }
+      // Pickets pull snipes (Lance, hunting Phantom) onto themselves.
+      if (u.def === 'lance' || (u.def === 'phantom' && L >= 2)) {
+        const pk = picket(1 - u.side);
+        if (pk) for (const sh of shots) if (sh.s === u) sh.d = pk;
+      }
+      if (u.attacks === 0) for (const sh of shots) if (sh.s === u) sh.first = true;
       // Jammer Array: every ship's opening shot also jams its target for 2 ticks.
       if (u.attacks === 0 && count(snaps[u.side].relics, 'jammer')) {
         for (const sh of shots) if (sh.s === u && !sh.jam) sh.jam = 2;
@@ -395,7 +497,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           events.push({ t, k: 'die', u: u.uid });
         }
       }
-      for (const u of dying) onLoss(u);
+      for (const u of dying) onLoss(u, u.alive);
       dying = units.filter((u) => u.alive && u.hp <= 0);
     }
     winner = outcome();

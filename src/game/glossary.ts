@@ -64,7 +64,31 @@ export const TERMS: Term[] = [
   },
   {
     id: 'down', name: 'GOES DOWN', match: /goes down|ally lost|per ally|on death|dies/i,
-    desc: 'When a ship is destroyed (or rebuilds). Triggers Salvager, Interceptor and Vengeance. Fighters don\'t count.',
+    desc: 'When a ship is destroyed (or rebuilds). Triggers Salvagers (either side), Interceptors, Vengeance and Reavers. Fighters and mines don\'t count.',
+  },
+  {
+    id: 'mark', name: 'MARK', match: /\bmark/i,
+    desc: 'A marked enemy takes extra damage from every hit your fleet lands on it, for the rest of the battle.',
+  },
+  {
+    id: 'mine', name: 'MINE', match: /\bmine/i,
+    desc: 'A 1-HP charge placed in front of your line. Enemies shoot it first; when destroyed it explodes on the front enemy.',
+  },
+  {
+    id: 'cleave', name: 'CLEAVE', match: /cleave/i,
+    desc: 'The attack also hits the next enemy in line.',
+  },
+  {
+    id: 'kill', name: 'KILL', match: /\bkill/i,
+    desc: 'When this ship\'s shot destroys an enemy ship. Fighters and mines don\'t count.',
+  },
+  {
+    id: 'faction', name: 'FACTIONS', match: /concord|reaver/i,
+    desc: 'Every ship is Concord (disciplined navy: shields, marks) or Reaver (raiders: kills, mines, cleave). Faction bonuses stack with class bonuses.',
+  },
+  {
+    id: 'endless', name: 'ENDLESS',
+    desc: 'After winning a run you can keep going. Enemies keep getting stronger; the run ends when your hull runs out. Endless wins pay extra XP.',
   },
   // General terms (shown in the archive; no auto-match).
   {
