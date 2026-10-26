@@ -5,6 +5,7 @@
 //   npm run balance -- 400     (more fights per cell = less noise, slower)
 
 import { ARCHETYPES, botSnapshot } from '../game/bot';
+import { setPricing, type Pricing } from '../game/run';
 import { simulate } from '../sim/battle';
 import { COMMANDERS } from '../sim/commanders';
 import { RELICS } from '../sim/relics';
@@ -152,6 +153,79 @@ function swapTest() {
   }
 }
 
+// ---------- P: pricing models ----------
+// Every fleet (player and opponents) shops under the same pricing rule.
+function pricingCompare() {
+  const modes: Pricing[] = ['flat', 't1late', 'tiered'];
+  const runsN = Math.max(300, N);
+  header(`PRICING MODELS (styles N=${N}/cell, runs N=${runsN}/style)`);
+  const rows: Record<string, string[]> = {};
+  const put = (k: string, v: string) => { (rows[k] ??= []).push(v); };
+  for (const mode of modes) {
+    setPricing(mode);
+    // Style balance (average over rounds) and fight length.
+    const avgs: number[] = [];
+    let ticks = 0;
+    let fights = 0;
+    for (const a of ARCHETYPES) {
+      let w = 0;
+      let n = 0;
+      for (const round of ROUNDS) {
+        for (let i = 0; i < N; i++) {
+          const r = simulate(botSnapshot(10000 + i * 131 + round, round, a.id), foe(i, round));
+          if (r.winner === 0) w++;
+          ticks += r.ticks;
+          fights++;
+          n++;
+        }
+      }
+      avgs.push(pct(w, n));
+    }
+    put('style win% spread', `${Math.min(...avgs)}-${Math.max(...avgs)}`);
+    put('fight length (ticks)', (ticks / fights).toFixed(1));
+    // Full runs.
+    const clears: number[] = [];
+    for (const a of ARCHETYPES) {
+      let cleared = 0;
+      for (let i = 0; i < runsN; i++) {
+        let w = 0;
+        let lives = 5;
+        for (let round = 1; w < 10 && lives > 0; round++) {
+          const res = simulate(botSnapshot(5000 + i * 31, round, a.id, false), foe(i * 13 + 7, round)).winner;
+          if (res === 0) w++;
+          if (res === 1) lives--;
+        }
+        if (w >= 10) cleared++;
+      }
+      clears.push(pct(cleared, runsN));
+    }
+    put('clear% avg', String(Math.round(clears.reduce((s, v) => s + v, 0) / clears.length)));
+    put('clear% spread', `${Math.min(...clears)}-${Math.max(...clears)}`);
+    // Fleet composition.
+    for (const round of [5, 8, 11]) {
+      let ships = 0;
+      let tierSum = 0;
+      let t1 = 0;
+      let lvl = 0;
+      const n = N * 2;
+      for (let i = 0; i < n; i++) {
+        const f = botSnapshot(700000 + i * 41 + round, round).fleet.filter(Boolean);
+        ships += f.length;
+        for (const s of f) {
+          tierSum += SHIPS[s!.def].tier;
+          if (SHIPS[s!.def].tier === 1) t1++;
+          lvl += levelOf(s!.xp);
+        }
+      }
+      put(`r${round} ships / avg tier`, `${(ships / n).toFixed(1)} / ${(tierSum / ships).toFixed(2)}`);
+      put(`r${round} % tier 1 / avg level`, `${pct(t1, ships)}% / ${(lvl / ships).toFixed(2)}`);
+    }
+  }
+  setPricing('flat');
+  console.log(pad('', 24) + modes.map((m) => lpad(m, 14)).join(''));
+  for (const [k, vals] of Object.entries(rows)) console.log(pad(k, 24) + vals.map((v) => lpad(v, 14)).join(''));
+}
+
 // ---------- E: commander passives ----------
 function passives() {
   header(`COMMANDER PASSIVE win % (random bot with this passive vs random bots, N=${N * 3})`);
@@ -200,4 +274,5 @@ if (!only || only.includes('c')) presence();
 if (!only || only.includes('d')) swapTest();
 if (!only || only.includes('e')) passives();
 if (!only || only.includes('f')) matrix();
+if (only && only.includes('p')) pricingCompare();
 console.log(`\n(done in ${((Date.now() - t0) / 1000).toFixed(1)}s)`);

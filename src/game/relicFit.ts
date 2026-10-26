@@ -50,8 +50,12 @@ export function relicFit(id: string, run: Run): RelicFit {
       return targeted(['torpedo', 'lance', 'siege']);
     case 'nanites':
       return targeted(['drone']);
-    case 'jammer':
-      return targeted(['ion']);
+    case 'jammer': {
+      const ions = shipsOf(fleet, ['ion']);
+      return ions.length
+        ? { kind: 'combo', slots: ions, note: `Boosts your ${names(fleet, ions)}` }
+        : { kind: 'all', slots: all, note: 'Every ship opens with a jam' };
+    }
     case 'squadron':
       return fighterSources
         ? { kind: 'combo', slots: fighterMakers, note: 'Boosts your fighters' }

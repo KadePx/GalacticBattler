@@ -97,7 +97,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     let atk = s.atk + r('targeting');
     if (s.def === 'torpedo' || s.def === 'lance' || s.def === 'siege') atk += 2 * r('warheads');
     if (s.def === 'drone') atk += 2 * r('nanites'); // drones heal 2x ATK, so this is +4 healing
-    if (has('strike')) atk += [0, 1, 4][tl('strike')];
+    if (has('strike')) atk += [0, 1, 3][tl('strike')];
     if (has('artillery') && tl('artillery') >= 1) atk += 2;
     if (cp === 'vance.a' && L >= 2) atk += 1;
     if (cp === 'nyx.a' && has('strike')) atk += 1;
@@ -105,8 +105,10 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
 
     let hp = s.hp + 3 * r('plating') - 2 * r('overclock'); // Overclock trades hull for speed
     if (has('guard')) hp += [0, 5, 9][tl('guard')];
-    if (has('strike')) hp += [0, 2, 4][tl('strike')];
+    if (has('strike')) hp += [0, 2, 2][tl('strike')];
+    if (has('tech') && tl('tech') >= 1) hp += 2;
     if (tl('tech') >= 2) hp += 3;
+    if (cp === 'nyx.a' && has('strike')) hp += 1;
     if (s.def === 'gunboat' && L >= 2) hp += 3;
     if (cp === 'vance.a' && L >= 2) hp += 1;
     if (cp === 'kael.b' && has('guard')) hp += 4;
@@ -187,6 +189,7 @@ interface Shot {
   dmg: number;
   pierce?: boolean;
   jam?: number;
+  drain?: boolean; // Ion: the jam also saps ATK
   onKill?: 'reload' | 'recloak';
   ram?: boolean;
   zap?: boolean;
@@ -240,10 +243,11 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     }
     events.push({ t, k: 'shot', s: s.uid, d: d.uid, dmg, blocked, hp: Math.max(0, d.hp), sh: d.shield, ram: sh.ram, zap: sh.zap });
     if (sh.jam && !blocked) {
-      d.timer += sh.jam + 2 * count(snaps[s.side].relics, 'jammer');
+      const jammer = count(snaps[s.side].relics, 'jammer');
+      d.timer += sh.jam + (sh.drain ? 2 * jammer : 0);
       events.push({ t, k: 'jam', s: s.uid, d: d.uid });
       // Ion drain: each jam also saps ATK (more with Jammer Array), which counters builds that scale up mid-fight.
-      const drain = Math.min(d.atk, 1 + count(snaps[s.side].relics, 'jammer'));
+      const drain = sh.drain ? Math.min(d.atk, 1 + jammer) : 0;
       if (drain > 0 && d.hp > 0) {
         d.atk -= drain;
         events.push({ t, k: 'buff', u: d.uid, atk: d.atk, hp: d.hp, label: `-${drain} ATK` });
@@ -333,7 +337,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk });
           break;
         case 'ion':
-          for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, jam: L >= 2 ? 7 : 5, pierce: true }); // ion bolts go through shields
+          for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, jam: L >= 2 ? 7 : 5, drain: true, pierce: true }); // ion bolts go through shields
           break;
         case 'siege':
           for (const f of foes) shots.push({ s: u, d: f, dmg: u.atk });
@@ -344,6 +348,10 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           break;
         default:
           shots.push({ s: u, d: foes[0], dmg: u.atk });
+      }
+      // Jammer Array: every ship's opening shot also jams its target for 2 ticks.
+      if (u.attacks === 0 && count(snaps[u.side].relics, 'jammer')) {
+        for (const sh of shots) if (sh.s === u && !sh.jam) sh.jam = 2;
       }
       u.attacks++;
     }

@@ -9,7 +9,7 @@ import { SHIPS, levelOf, MAX_XP } from '../sim/ships';
 import { count } from '../sim/relics';
 import { hashStr, pick, rand, type RngState } from '../sim/rng';
 import type { FleetShip, Snapshot } from '../sim/types';
-import { FLEET_SIZE, ROUND_SCRAP, SHIP_COST, REROLL_COST, mergeInto, rollShopFor, rollRelicOffer } from './run';
+import { FLEET_SIZE, ROUND_SCRAP, SHIP_COST, REROLL_COST, mergeInto, minShipCost, rollShopFor, rollRelicOffer, shipCost } from './run';
 
 export interface Archetype {
   id: string;
@@ -76,12 +76,13 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
     let scrap = ROUND_SCRAP + 2 * count(relics, 'salvage') + (bonus ? botBonusScrap(r) : 0);
     let shop: (string | null)[] = rollShopFor(s, r);
     let rerolls = 0;
-    while (scrap >= SHIP_COST) {
-      const idx = chooseBuy(s, shop, fleet, arch);
+    while (scrap >= minShipCost()) {
+      const affordable = shop.map((d) => (d && shipCost(d, r) <= scrap ? d : null));
+      const idx = chooseBuy(s, affordable, fleet, arch);
       if (idx >= 0) {
         const def = shop[idx]!;
         shop[idx] = null;
-        scrap -= SHIP_COST;
+        scrap -= shipCost(def, r);
         const d = SHIPS[def];
         const match = fleet.find((f) => f.def === def && f.xp < MAX_XP);
         if (match) mergeInto(match, d.atk, d.hp, 0);

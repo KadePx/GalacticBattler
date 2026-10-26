@@ -10,6 +10,22 @@ export const START_LIVES = 5;
 export const WIN_TARGET = 10;
 export const ROUND_SCRAP = 10;
 export const SHIP_COST = 3;
+
+/**
+ * Ship pricing model. The game uses 'flat' (every ship costs SHIP_COST); the
+ * others exist so the balance tool can compare alternatives.
+ *   t1late: tier 1 ships cost 2 from round 5.   tiered: T1=2, T2=3, T3=4.
+ */
+export type Pricing = 'flat' | 't1late' | 'tiered';
+let pricing: Pricing = 'flat';
+export const setPricing = (p: Pricing) => { pricing = p; };
+export const minShipCost = () => (pricing === 'flat' ? SHIP_COST : 2);
+export function shipCost(def: string, round: number): number {
+  const tier = SHIPS[def]?.tier ?? 1;
+  if (pricing === 'tiered') return tier + 1;
+  if (pricing === 't1late' && tier === 1 && round >= 5) return 2;
+  return SHIP_COST;
+}
 export const REROLL_COST = 1;
 export const FLEET_SIZE = 5;
 export const BENCH_SIZE = 3;
@@ -126,10 +142,11 @@ export function usePower(run: Run, slot: number | null): string | null {
       const options = run.shop.map((d, i) => ({ d, i })).filter((o) => o.d);
       if (!options.length) return 'The shipyard is empty';
       const pickOne = options[Math.floor(rand(run) * options.length)];
-      run.scrap += SHIP_COST; // quickBuy charges the normal price; Plunder makes it free
+      const refund = shipCost(pickOne.d!, run.round);
+      run.scrap += refund; // quickBuy charges the normal price; Plunder makes it free
       const err = quickBuy(run, pickOne.i);
       if (err) {
-        run.scrap -= SHIP_COST;
+        run.scrap -= refund;
         return err;
       }
       break;
@@ -205,10 +222,11 @@ const allSlots = () => Array.from({ length: TOTAL_SLOTS }, (_, i) => i);
 export function buy(run: Run, shopIdx: number, slot: number): string | null {
   const def = run.shop[shopIdx];
   if (!def) return null;
-  if (run.scrap < SHIP_COST) return 'Not enough scrap';
+  const cost = shipCost(def, run.round);
+  if (run.scrap < cost) return 'Not enough scrap';
   const target = slotGet(run, slot);
   if (target && !canMerge(target, def)) return target.def === def ? 'Already max level' : 'Slot taken';
-  run.scrap -= SHIP_COST;
+  run.scrap -= cost;
   run.shop[shopIdx] = null;
   if (run.frozen) run.frozen[shopIdx] = false;
   const d = SHIPS[def];

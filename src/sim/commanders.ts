@@ -44,7 +44,7 @@ export const COMMANDERS: CommanderDef[] = [
   {
     id: 'nyx', name: 'Nyx', title: 'Pirate Queen', style: 'blitz', rank: 2, color: '#ff9f43',
     passives: {
-      a: { name: 'Hit and Run', desc: 'Strike ships +1 ATK.' },
+      a: { name: 'Hit and Run', desc: 'Strike ships +1 ATK and +1 HP.' },
       b: { name: 'Afterburners', desc: 'Strike ships open fire 3 ticks sooner.' },
     },
     power: { name: 'PLUNDER', desc: 'Take a random shipyard ship free.', cost: 1, target: false },

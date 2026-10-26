@@ -20,7 +20,7 @@ export const RELICS: RelicDef[] = [
   { id: 'nanites', name: 'Nanite Swarm', desc: 'Repair Drones heal +4.', color: 0x2ee59d, glyph: 'N' },
   { id: 'squadron', name: 'Squadron Doctrine', desc: 'Fighters get +1 ATK and +1 HP.', color: 0xd4b8ff, glyph: 'Q' },
   { id: 'vengeance', name: 'Vengeance Protocol', desc: 'When a ship goes down, allies +1 ATK.', color: 0xff3b3b, glyph: 'V' },
-  { id: 'jammer', name: 'Jammer Array', desc: 'Ion stuns last 2 ticks longer, drain +1.', color: 0x3a7bff, glyph: 'J' },
+  { id: 'jammer', name: 'Jammer Array', desc: 'Opening shots jam. Ion stun +2T, drain +1.', color: 0x3a7bff, glyph: 'J' },
   { id: 'salvage', name: 'Salvage Rights', desc: '+2 scrap every round.', color: 0xffd166, glyph: '$' },
   { id: 'magnet', name: 'Scrap Magnet', desc: 'Selling ships gives +1 scrap.', color: 0xb0b8d0, glyph: 'M' },
 ];

@@ -32,7 +32,7 @@ export const TERMS: Term[] = [
   },
   {
     id: 'jam', name: 'JAM / STUN', match: /\bjam|stun/i,
-    desc: 'Pushes the target\'s next attack back by several ticks and drains 1 of its ATK.',
+    desc: 'Pushes the target\'s next attack back by a few ticks. Ion Cruiser jams also drain 1 of its ATK.',
   },
   {
     id: 'ram', name: 'RAM', match: /\bram/i,
