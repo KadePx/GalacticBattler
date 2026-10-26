@@ -71,10 +71,10 @@ export class CommanderScene extends Phaser.Scene {
     const w = 82;
     const h = 46;
     this.add2(panel(this, x, y, w, h, isSel ? 0x162050 : C.panel, isSel ? C.highlight : C.border));
-    if (unlocked && lvl >= CMD_MAX_LEVEL) this.add2(this.add.rectangle(x + 17, y + 23, 28, 28).setStrokeStyle(1, C.highlight));
-    this.add2(this.add.image(x + 17, y + 23, portraitKey(id, !unlocked)).setScale(1.5));
-    this.add2(txt(this, x + 33, y + 11, c.name.toUpperCase(), { color: unlocked ? c.color : C.dim }));
-    this.add2(txt(this, x + 33, y + 25, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
+    if (unlocked && lvl >= CMD_MAX_LEVEL) this.add2(this.add.rectangle(x + 13, y + 23, 23, 23).setStrokeStyle(1, C.highlight));
+    this.add2(this.add.image(x + 13, y + 23, portraitKey(id, !unlocked)).setScale(1.25));
+    this.add2(txt(this, x + 25, y + 11, c.name.toUpperCase(), { color: unlocked ? c.color : C.dim }));
+    this.add2(txt(this, x + 25, y + 25, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
       color: unlocked ? C.gold : '#6a76a0',
     }));
     const hit = this.add2(this.add.rectangle(x + w / 2, y + h / 2, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));

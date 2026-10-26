@@ -24,7 +24,7 @@ export interface CommanderDef {
 
 export const COMMANDERS: CommanderDef[] = [
   {
-    id: 'vance', name: 'Vance', title: 'Grand Admiral', style: 'balanced', rank: 1, color: '#ffd166',
+    id: 'vance', name: 'M1TCHY', title: 'Grand Admiral', style: 'balanced', rank: 1, color: '#ffd166',
     passives: {
       a: { name: 'Veteran Crews', desc: 'Level 2+ ships get +1 ATK and +2 HP.' },
       b: { name: 'Supply Lines', desc: '+1 scrap every round.' },
@@ -51,7 +51,7 @@ export const COMMANDERS: CommanderDef[] = [
     starter: 'scout',
   },
   {
-    id: 'ryx', name: 'Ryx', title: 'Hive Empress', style: 'swarm', rank: 3, color: '#c58cff',
+    id: 'ryx', name: 'Slurms', title: 'Hive Empress', style: 'swarm', rank: 3, color: '#c58cff',
     passives: {
       a: { name: 'Brood Nest', desc: 'Launch a 1/1 fighter per 3 fleet ships.' },
       b: { name: 'Hive Mind', desc: 'Fighters get +1 ATK and +2 HP.' },
@@ -60,7 +60,7 @@ export const COMMANDERS: CommanderDef[] = [
     starter: 'salvager',
   },
   {
-    id: 'orin', name: 'Orin', title: 'Lord Gunner', style: 'artillery', rank: 4, color: '#ff5e7e',
+    id: 'orin', name: 'Hogarth', title: 'Lord Gunner', style: 'artillery', rank: 4, color: '#ff5e7e',
     passives: {
       a: { name: 'Opening Barrage', desc: 'Artillery ships fire 2 ticks sooner.' },
       b: { name: 'Big Guns', desc: 'Your top-ATK ship gets +3 ATK.' },

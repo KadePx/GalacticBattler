@@ -269,25 +269,26 @@ export function syncFlame(spr: Phaser.GameObjects.Image, flame: Phaser.GameObjec
 // v eyes/visor  a uniform  A uniform light / trim  w white/grey
 const PORTRAITS: Record<string, { map: string[]; pal: Palette }> = {
   vance: {
+    // M1TCHY: half cyborg (the commander's id stays 'vance' so saved progress carries over).
     map: [
-      '................',
-      '....oooooooo....',
-      '...ohhhhhhhho...',
-      '..ohhhhAAhhhho..',
-      '..oAAAAAAAAAAo..',
-      '...oooooooooo...',
-      '...okkkkkkkko...',
-      '...okvkkkkvko...',
-      '...okkkkkkkko...',
-      '...okkkKKkkko...',
-      '...okwwwwwwko...',
-      '....okkkkkko....',
-      '.....oKKKKo.....',
-      '..ooaaoooaaoo...',
-      '.oaaaAaaaAaaao..',
-      '.oaaaaaaaaaaao..',
+      '..oooooo........',
+      '.oHHHHHHoo......',
+      'oHHHhhHHHHoo....',
+      'oHhHHhhhHHHHoo..',
+      '.ohhhHHhhhhHHho.',
+      '..ohhhhhHHhhhhho',
+      '..odhhhhhhhhhddo',
+      '..oddkkkkmmmmddo',
+      '..okkvkMmmrmMdo.',
+      '..okkkkMmmmmMo..',
+      '..okkkKMmMmmmo..',
+      '...okkkwMmmmo...',
+      '....okkkMmmo....',
+      '.....oKKMMo.....',
+      '..ooaaAooAaaoo..',
+      '.oaaaaAaaAaaaao.',
     ],
-    pal: { o: '#0a0f1e', k: '#e8b98f', K: '#b98a66', h: '#1d2a50', H: '#33467a', v: '#1a1a2a', a: '#1d2a50', A: '#ffd166', w: '#c8ccd8' },
+    pal: { o: '#0a0a1a', k: '#f0c4a0', K: '#c8967a', h: '#d8b070', H: '#f6e2a8', d: '#8a6a40', v: '#2a3a6a', w: '#c87a6a', a: '#1a1a2a', A: '#7a5ac8', m: '#9aa6b8', M: '#4a5468', r: '#ff3b3b' },
   },
   kael: {
     map: [

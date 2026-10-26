@@ -79,7 +79,7 @@ function factory(next: { uid: number }, scale: number): UnitFactory {
   };
 }
 
-/** Fighter stats: carriers, hangars, queens and Ryx all launch these. */
+/** Fighter stats: carriers, hangars, queens and Slurms all launch these. */
 function fighter(make: UnitFactory, side: 0 | 1, snap: Snapshot, level: number, atk: number, hp: number): BUnit {
   const relics = snap.relics;
   const sq = count(relics, 'squadron');

@@ -32,7 +32,7 @@ export function relicFit(id: string, run: Run): RelicFit {
   const all = fleet.map((s, i) => (s ? i : -1)).filter((i) => i >= 0);
   const front = all.length ? [all[0]] : [];
   const fighterMakers = shipsOf(fleet, ['carrier', 'queen', 'brood']);
-  // Ryx's Brood Nest fighters are plain on purpose, so they don't count here.
+  // Slurms' Brood Nest fighters are plain on purpose, so they don't count here.
   const fighterSources = fighterMakers.length + count(run.relics, 'hangar');
 
   const targeted = (defs: string[]): RelicFit => {
