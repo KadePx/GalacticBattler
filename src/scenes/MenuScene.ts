@@ -64,6 +64,12 @@ export class MenuScene extends Phaser.Scene {
 
     soundButton(this, 16, 14);
 
+    // Patch notes live on the site as a normal web page (scrolls and reads well on phones).
+    button(this, 92, 14, 112, 16, 'PATCH NOTES', () => {
+      const url = 'patch-notes.html';
+      if (!window.open(url, '_blank')) window.location.href = url;
+    }, { fill: 0x3a2a10, color: C.gold });
+
     // Fullscreen hides the phone's browser bars, which matters a lot in landscape.
     if (this.sys.game.device.fullscreen.available) {
       const label = () => (this.scale.isFullscreen ? 'EXIT FULLSCREEN' : 'FULLSCREEN');

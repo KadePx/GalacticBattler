@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Patch Notes · Galactic Battler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+  /* Layout: one reading column on a starfield, like the game's own panels; ship and relic entries as pixel-bordered tiles. */
+  :root {
+    color-scheme: dark;
+    --space: #05060f;
+    --panel: #0e1430;
+    --panel-2: #0b1026;
+    --rule: #262e50;
+    --border: #3a4a7a;
+    --text: #e8ecff;
+    --dim: #a3acd0;
+    --faint: #6a76a0;
+    --gold: #ffd166;
+    --cyan: #7fe7ff;
+    --atk: #ff9f43;
+    --hp: #7dff8a;
+    --bonus: #e0c8ff;
+    --t1: #8a94b8;
+    --t2: #4aa3ff;
+    --t3: #c58cff;
+    --t4: #ffb030;
+    --concord: #a8c8ff;
+    --reaver: #ff8a4a;
+    --void: #c070ff;
+    --pixel: "Press Start 2P", "Courier New", monospace;
+    --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--space);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.55;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 0 64px;
+    background-image:
+      radial-gradient(1px 1px at 12% 8%, #8a94bc 50%, transparent 51%),
+      radial-gradient(1px 1px at 78% 3%, #e8ecff 50%, transparent 51%),
+      radial-gradient(1px 1px at 46% 14%, #6a76a0 50%, transparent 51%),
+      radial-gradient(1px 1px at 91% 22%, #8a94bc 50%, transparent 51%),
+      radial-gradient(1px 1px at 5% 31%, #6a76a0 50%, transparent 51%),
+      radial-gradient(1px 1px at 63% 38%, #e8ecff 50%, transparent 51%),
+      radial-gradient(1px 1px at 29% 52%, #8a94bc 50%, transparent 51%),
+      radial-gradient(1px 1px at 85% 61%, #6a76a0 50%, transparent 51%),
+      radial-gradient(1px 1px at 17% 74%, #e8ecff 50%, transparent 51%),
+      radial-gradient(1px 1px at 55% 83%, #6a76a0 50%, transparent 51%),
+      radial-gradient(1px 1px at 94% 92%, #8a94bc 50%, transparent 51%);
+    background-attachment: fixed;
+  }
+  main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+
+  header { padding-top: 40px; display: flex; flex-direction: column; gap: 14px; }
+  .eyebrow { font-family: var(--pixel); font-size: 10px; letter-spacing: 0.08em; color: var(--cyan); }
+  h1 {
+    font-family: var(--pixel); font-weight: 400; font-size: clamp(22px, 5vw, 38px); line-height: 1.35;
+    color: var(--gold); margin: 0; text-wrap: balance; text-shadow: 3px 3px 0 #3a2a10;
+  }
+  .lede { color: var(--dim); max-width: 62ch; margin: 0; font-size: 17px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font-family: var(--pixel); font-size: 9px; letter-spacing: 0.04em; padding: 6px 8px;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--dim);
+  }
+  .chip strong { color: var(--text); font-weight: 400; }
+
+  h2 {
+    font-family: var(--pixel); font-weight: 400; font-size: 14px; letter-spacing: 0.04em; color: var(--cyan);
+    margin: 0; padding-bottom: 10px; border-bottom: 2px solid var(--rule); text-wrap: balance;
+  }
+  section { display: flex; flex-direction: column; gap: 16px; }
+  section > p { margin: 0; color: var(--dim); max-width: 66ch; }
+  h3 { font-family: var(--pixel); font-weight: 400; font-size: 11px; margin: 6px 0 0; color: var(--gold); letter-spacing: 0.04em; }
+
+  .highlights { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+  .highlights li {
+    background: var(--panel); border: 1px solid var(--border); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  }
+  .highlights .n { font-family: var(--pixel); font-size: 18px; color: var(--gold); }
+  .highlights .l { color: var(--dim); font-size: 15px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .tile {
+    background: var(--panel); border: 1px solid var(--border); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  }
+  .tile.bonus { border-color: #6a4a9a; background: #140f2a; }
+  .tile.proto { border-color: var(--t4); }
+  .tile-head { display: flex; align-items: center; gap: 10px; }
+  .glyph {
+    flex: none; width: 26px; height: 26px; display: grid; place-items: center; background: var(--panel-2);
+    border: 1px solid currentColor; font-family: var(--pixel); font-size: 11px; line-height: 1;
+  }
+  .name { font-family: var(--pixel); font-size: 10px; line-height: 1.5; color: var(--gold); text-transform: uppercase; }
+  .tile p { margin: 0; font-size: 15px; }
+  .sub { color: var(--faint); font-size: 14px; }
+
+  .tier { font-family: var(--pixel); font-size: 9px; padding: 3px 5px; border: 1px solid currentColor; flex: none; }
+  .tier.t1 { color: var(--t1); } .tier.t2 { color: var(--t2); } .tier.t3 { color: var(--t3); } .tier.t4 { color: var(--t4); }
+  .stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--pixel); font-size: 9px; font-variant-numeric: tabular-nums; }
+  .stats .a { color: var(--atk); } .stats .h { color: var(--hp); } .stats .c { color: var(--dim); }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-family: var(--pixel); font-size: 8px; padding: 3px 5px; background: var(--panel-2); border: 1px solid var(--rule); color: var(--dim); letter-spacing: 0.03em; }
+  .tag.concord { color: var(--concord); } .tag.reaver { color: var(--reaver); } .tag.void { color: var(--void); }
+  .perks { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--rule); display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--dim); }
+  .perks b { font-family: var(--pixel); font-size: 8px; font-weight: 400; color: var(--gold); margin-right: 6px; }
+  .mech { font-family: var(--pixel); font-size: 8px; color: var(--cyan); letter-spacing: 0.04em; }
+
+  .events { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .event { border-left: 3px solid var(--gold); background: var(--panel); padding: 12px 14px; min-width: 0; }
+  .event .name { display: block; margin-bottom: 4px; }
+  .event p { margin: 0; font-size: 15px; color: var(--dim); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-family: var(--pixel); font-weight: 400; font-size: 9px; color: var(--faint); letter-spacing: 0.04em; background: var(--panel-2); }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  .up { color: var(--hp); } .down { color: var(--atk); }
+
+  ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+  ul.plain li::marker { color: var(--gold); }
+  .earlier { background: var(--panel-2); border: 1px solid var(--rule); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+  .earlier h3 { margin: 0; }
+  footer { color: var(--faint); font-size: 14px; border-top: 1px solid var(--rule); padding-top: 16px; }
+  a { color: var(--cyan); }
+  a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .back { font-family: var(--pixel); font-size: 10px; color: var(--cyan); text-decoration: none; letter-spacing: 0.04em; }
+  .back:hover { color: var(--gold); }
+</style>
+
+</head>
+<body>
+<main>
+  <header>
+    <a class="back" href="/">&lt; BACK TO THE GAME</a>
+    <div class="eyebrow">GALACTIC BATTLER · PATCH NOTES</div>
+    <h1>Salvage &amp; Prototypes</h1>
+    <p class="lede">More choices between battles, eleven new ships, eight new relics and a shipyard that changes from round to round. The first few rounds are also easier now.</p>
+    <div class="meta">
+      <span class="chip">LIVE <strong>OCT 26, 2026</strong></span>
+      <span class="chip">SHIPS <strong>35 → 46</strong></span>
+      <span class="chip">RELICS <strong>20 → 28</strong></span>
+      <span class="chip">PLAY AT <strong>ITSKADE.SPACE</strong></span>
+    </div>
+  </header>
+
+  <section aria-labelledby="h-highlights">
+    <h2 id="h-highlights">HIGHLIGHTS</h2>
+    <ul class="highlights">
+      <li><span class="n">6</span><span class="l">one-time bonus cards that can show up instead of a relic</span></li>
+      <li><span class="n">6</span><span class="l">new ships, each with a new mechanic</span></li>
+      <li><span class="n">5</span><span class="l">tier 4 prototypes you can only win, never buy</span></li>
+      <li><span class="n">8</span><span class="l">new relics, several that pay out in scrap</span></li>
+      <li><span class="n">5</span><span class="l">shipyard events that shake up a round's shopping</span></li>
+      <li><span class="n">R1–3</span><span class="l">gentler opening rounds against bots</span></li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="h-bonus">
+    <h2 id="h-bonus">BONUS CARDS</h2>
+    <p>After a battle you still pick one of three cards, but one of them may now be a purple BONUS: a one-time boost used up as soon as you take it. Bonus cards turn up more often after a loss, which gives a struggling run a way back.</p>
+    <div class="grid">
+      <article class="tile bonus"><div class="tile-head"><span class="glyph" style="color:#4aa3ff">+</span><span class="name">Recruit Contract</span></div><p>A free ship of the top tier you can buy, matched to your fleet's classes when it can be.</p></article>
+      <article class="tile bonus"><div class="tile-head"><span class="glyph" style="color:#ffd166">^</span><span class="name">Combat Drills</span></div><p>Three fleet ships gain 1 XP and +1/+1. It picks the ships closest to their next level.</p></article>
+      <article class="tile bonus"><div class="tile-head"><span class="glyph" style="color:#ffe066">&amp;</span><span class="name">Scrap Cache</span></div><p>+7 scrap next round.</p></article>
+      <article class="tile bonus"><div class="tile-head"><span class="glyph" style="color:#c58cff">?</span><span class="name">Black Market</span></div><p>Next round's shipyard shows higher-tier ships, with 2 free rerolls that stay higher-tier.</p></article>
+      <article class="tile bonus"><div class="tile-head"><span class="glyph" style="color:#ffb030">4</span><span class="name">Prototype</span></div><p>A rare tier 4 ship. From round 5, when you have room in your fleet or bench.</p></article>
+      <article class="tile bonus"><div class="tile-head"><span class="glyph" style="color:#ff5e7e">#</span><span class="name">Hull Repair</span></div><p>Repairs 1 hull point. Only offered after a loss.</p></article>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-ships">
+    <h2 id="h-ships">NEW SHIPS</h2>
+    <p>Each one brings a mechanic the game didn't have before. "Every 5T" means it attacks once every 5 ticks.</p>
+    <div class="grid">
+      <article class="tile">
+        <div class="tile-head"><span class="tier t1">T1</span><span class="name">Prospector</span></div>
+        <div class="mech">NEW: ECONOMY</div>
+        <p>While it's in your fleet (not the bench), it earns +1 scrap every round.</p>
+        <div class="stats"><span class="a">ATK 2</span><span class="h">HP 7</span><span class="c">EVERY 5T</span></div>
+        <div class="tags"><span class="tag">TECH</span><span class="tag void">VOID</span></div>
+        <ul class="perks"><li><b>LV2</b>+3 scrap every round</li><li><b>LV3</b>+5 scrap every round</li></ul>
+      </article>
+      <article class="tile">
+        <div class="tile-head"><span class="tier t2">T2</span><span class="name">Incinerator</span></div>
+        <div class="mech">NEW: BURN</div>
+        <p>Shots set the target burning: 1 damage a tick for 3 ticks, straight through shields.</p>
+        <div class="stats"><span class="a">ATK 2</span><span class="h">HP 9</span><span class="c">EVERY 5T</span></div>
+        <div class="tags"><span class="tag">ARTILLERY</span><span class="tag reaver">REAVER</span></div>
+        <ul class="perks"><li><b>LV2</b>Burns for 2 a tick</li><li><b>LV3</b>Hits the front 2 enemies</li></ul>
+      </article>
+      <article class="tile">
+        <div class="tile-head"><span class="tier t2">T2</span><span class="name">Hexer</span></div>
+        <div class="mech">NEW: CURSE</div>
+        <p>Cursed ships can't be healed and can't rebuild for the rest of the battle. A hard answer to Revenants and Void life-steal.</p>
+        <div class="stats"><span class="a">ATK 2</span><span class="h">HP 11</span><span class="c">EVERY 4T</span></div>
+        <div class="tags"><span class="tag">TECH</span><span class="tag void">VOID</span></div>
+        <ul class="perks"><li><b>LV2</b>Cursed ships lose 1 ATK</li><li><b>LV3</b>Curses the front 2 enemies</li></ul>
+      </article>
+      <article class="tile">
+        <div class="tile-head"><span class="tier t2">T2</span><span class="name">Bomber</span></div>
+        <div class="mech">NEW: SPLASH</div>
+        <p>Hits the front enemy, and the ship behind it takes half damage.</p>
+        <div class="stats"><span class="a">ATK 4</span><span class="h">HP 10</span><span class="c">EVERY 6T</span></div>
+        <div class="tags"><span class="tag">ARTILLERY</span><span class="tag concord">CONCORD</span></div>
+        <ul class="perks"><li><b>LV2</b>Splash deals full damage</li><li><b>LV3</b>Splashes 2 ships behind</li></ul>
+      </article>
+      <article class="tile">
+        <div class="tile-head"><span class="tier t2">T2</span><span class="name">Corsair</span></div>
+        <div class="mech">NEW: CHAIN KILLS</div>
+        <p>When it destroys a real ship, it fires again next tick.</p>
+        <div class="stats"><span class="a">ATK 5</span><span class="h">HP 10</span><span class="c">EVERY 5T</span></div>
+        <div class="tags"><span class="tag">STRIKE</span><span class="tag reaver">REAVER</span></div>
+        <ul class="perks"><li><b>LV2</b>+1 ATK per kill</li><li><b>LV3</b>Hunts the lowest-HP enemy</li></ul>
+      </article>
+      <article class="tile">
+        <div class="tile-head"><span class="tier t3">T3</span><span class="name">Overseer</span></div>
+        <div class="mech">NEW: HASTE</div>
+        <p>Every attack pulls your other ships' next shots 1 tick sooner. Overseers don't speed each other up.</p>
+        <div class="stats"><span class="a">ATK 3</span><span class="h">HP 12</span><span class="c">EVERY 6T</span></div>
+        <div class="tags"><span class="tag">TECH</span><span class="tag concord">CONCORD</span></div>
+        <ul class="perks"><li><b>LV2</b>Battle start: allies 2 ticks sooner</li><li><b>LV3</b>Speeds allies 2 ticks per attack</li></ul>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-proto">
+    <h2 id="h-proto">PROTOTYPES (TIER 4)</h2>
+    <p>Experimental ships with a gold <strong style="color:var(--t4)">P</strong> tag. They never appear in the shipyard; the only way to get one is the Prototype bonus card. You won't get the same one twice until you own all five.</p>
+    <div class="grid">
+      <article class="tile proto">
+        <div class="tile-head"><span class="tier t4">P</span><span class="name">Nova Frigate</span></div>
+        <p>Piercing shots hit every enemy at once.</p>
+        <div class="stats"><span class="a">ATK 3</span><span class="h">HP 15</span><span class="c">EVERY 7T</span></div>
+        <div class="tags"><span class="tag">ARTILLERY</span><span class="tag concord">CONCORD</span></div>
+        <ul class="perks"><li><b>LV2</b>+2 ATK</li><li><b>LV3</b>Fires 2 ticks faster</li></ul>
+      </article>
+      <article class="tile proto">
+        <div class="tile-head"><span class="tier t4">P</span><span class="name">Leviathan</span></div>
+        <p>Takes 2 less damage from every hit and hits back for 3.</p>
+        <div class="stats"><span class="a">ATK 4</span><span class="h">HP 22</span><span class="c">EVERY 6T</span></div>
+        <div class="tags"><span class="tag">GUARD</span><span class="tag reaver">REAVER</span></div>
+        <ul class="perks"><li><b>LV2</b>+10 HP</li><li><b>LV3</b>Takes 3 less; deals 5 back</li></ul>
+      </article>
+      <article class="tile proto">
+        <div class="tile-head"><span class="tier t4">P</span><span class="name">Eclipse</span></div>
+        <p>Starts cloaked, ambushes the weakest enemy for double damage and heals for everything it deals.</p>
+        <div class="stats"><span class="a">ATK 8</span><span class="h">HP 17</span><span class="c">EVERY 5T</span></div>
+        <div class="tags"><span class="tag">STRIKE</span><span class="tag void">VOID</span></div>
+        <ul class="perks"><li><b>LV2</b>+2 ATK</li><li><b>LV3</b>Recloaks after a kill</li></ul>
+      </article>
+      <article class="tile proto">
+        <div class="tile-head"><span class="tier t4">P</span><span class="name">Architect</span></div>
+        <p>Each attack gives your most-hurt ally +1 ATK and a fresh shield.</p>
+        <div class="stats"><span class="a">ATK 3</span><span class="h">HP 16</span><span class="c">EVERY 5T</span></div>
+        <div class="tags"><span class="tag">TECH</span><span class="tag concord">CONCORD</span></div>
+        <ul class="perks"><li><b>LV2</b>Builds up 2 allies</li><li><b>LV3</b>Gives +2 ATK instead</li></ul>
+      </article>
+      <article class="tile proto">
+        <div class="tile-head"><span class="tier t4">P</span><span class="name">Brood Ark</span></div>
+        <p>Starts with 2 fighters and launches another every second attack.</p>
+        <div class="stats"><span class="a">ATK 3</span><span class="h">HP 16</span><span class="c">EVERY 6T</span></div>
+        <div class="tags"><span class="tag">STRIKE</span><span class="tag reaver">REAVER</span></div>
+        <ul class="perks"><li><b>LV2</b>Its fighters are 3/3</li><li><b>LV3</b>Launches one every attack</li></ul>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-relics">
+    <h2 id="h-relics">NEW RELICS</h2>
+    <h3>IN BATTLE</h3>
+    <div class="grid">
+      <article class="tile"><div class="tile-head"><span class="glyph" style="color:#ff6a00">~</span><span class="name">Napalm Rounds</span></div><p>Artillery attacks set their main target burning.</p></article>
+      <article class="tile"><div class="tile-head"><span class="glyph" style="color:#9aa8c8">=</span><span class="name">Ablative Armor</span></div><p>Your starting front ship takes 2 less damage per hit (at least 1).</p></article>
+      <article class="tile"><div class="tile-head"><span class="glyph" style="color:#ffc040">G</span><span class="name">Veteran Gyros</span></div><p>Level 3 ships get +3 ATK and +6 HP.</p></article>
+      <article class="tile"><div class="tile-head"><span class="glyph" style="color:#ff9f43">!</span><span class="name">Rally Beacon</span></div><p>When you lose your first ship, the rest attack 1 tick faster for the rest of the fight.</p></article>
+      <article class="tile"><div class="tile-head"><span class="glyph" style="color:#7fe7ff">&gt;</span><span class="name">Reserve Wing</span></div><p>When you're down to your last ship, the first ship on your bench warps in with your fleet's bonuses.</p></article>
+    </div>
+    <h3>IN THE SHIPYARD</h3>
+    <div class="grid">
+      <article class="tile"><div class="tile-head"><span class="glyph" style="color:#e0b030">B</span><span class="name">Bounty Board</span></div><p>+1 scrap next round for each enemy ship you destroyed (up to 3).</p></article>
+      <article class="tile"><div class="tile-head"><span class="glyph" style="color:#8ad0ff">I</span><span class="name">War Insurance</span></div><p>+4 scrap the round after a loss.</p></article>
+      <article class="tile"><div class="tile-head"><span class="glyph" style="color:#f0f0f0">D</span><span class="name">Loaded Dice</span></div><p>Your first 2 rerolls each round are free.</p></article>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-events">
+    <h2 id="h-events">SHIPYARD EVENTS</h2>
+    <p>From round 2, about one round in three opens with an event. It's shown in the info panel at the bottom of the shop.</p>
+    <div class="events">
+      <div class="event"><span class="name">Fire Sale</span><p>Every ship costs 2 scrap this round.</p></div>
+      <div class="event"><span class="name">Supply Drop</span><p>+3 scrap this round.</p></div>
+      <div class="event"><span class="name">Veteran</span><p>One ship is already level 2 (+3/+3). It costs 5 and has a gold LV2 tag. Freeze it to keep it.</p></div>
+      <div class="event"><span class="name">Elite Dealer</span><p>One ship is a tier above what the shop would normally sell. Rounds 2–4 only.</p></div>
+      <div class="event"><span class="name">Open Market</span><p>2 free rerolls this round.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-balance">
+    <h2 id="h-balance">BALANCE</h2>
+    <h3>EASIER OPENING ROUNDS</h3>
+    <p>Bot opponents shop almost perfectly from round 1, which made the start of a run feel harsh. Half of round 1 bots now open with one ship fewer, and every bot gets 1 less scrap in rounds 2 and 3. To keep runs about as hard overall, bots get their late-game bonus scrap a little sooner (+1 from round 8, +2 from 11, +3 from 14).</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>SIMULATED WIN RATE</th><th>ROUND 1</th><th>ROUND 2</th><th>ROUND 3</th><th>ROUND 4+</th></tr></thead>
+        <tbody>
+          <tr><td>Before</td><td class="num">50%</td><td class="num">49%</td><td class="num">49%</td><td class="num">~50%</td></tr>
+          <tr><td>After</td><td class="num up">67%</td><td class="num up">59%</td><td class="num up">54%</td><td class="num">~51%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub">Win rates are for a player who shops as well as the bots, over 2,000 simulated battles per round.</p>
+    <h3>COMMANDERS &amp; FACTIONS</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>CHANGE</th><th>BEFORE</th><th>AFTER</th></tr></thead>
+        <tbody>
+          <tr><td>Juno · DEEP SCAN</td><td>Reroll with higher-tier ships only (one tier above the round's limit)</td><td class="down">Reroll with no tier 1 ships, never above the round's limit</td></tr>
+          <tr><td>Ryx · FEED</td><td class="num">1 scrap</td><td class="num down">2 scrap</td></tr>
+          <tr><td>Vance · Veteran Crews</td><td>All ships +1 HP; level 2+ also +1 ATK, +2 HP</td><td class="down">Level 2+ ships +1 ATK, +2 HP</td></tr>
+          <tr><td>Concord synergy (3)</td><td>+2 HP</td><td class="up">+1 ATK, +3 HP</td></tr>
+          <tr><td>Concord synergy (5)</td><td>+2 HP, front 2 shielded</td><td class="up">+1 ATK, +4 HP, front 2 shielded</td></tr>
+          <tr><td>Void synergy (3+)</td><td>Heal 50% / 70% of damage</td><td class="up">Also +2 HP for Void ships</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub">Bot opponents now use their commander's shop power every round too. That's what showed Deep Scan was far ahead: with it, Control finished 55% of simulated runs. After these changes every play style finishes between 16% and 24% of runs.</p>
+    <h3>SHIP CHANGES</h3>
+    <ul class="plain">
+      <li>Siege Platform: HP 10 → 12.</li>
+      <li>Every new ship and prototype was tuned through repeated battle simulations. Tier 1–3 ships sit within a few points of their tier's average; prototypes are clearly stronger than tier 3 on purpose.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="h-ui">
+    <h2 id="h-ui">INTERFACE</h2>
+    <ul class="plain">
+      <li>A short message when the shop opens tells you what just happened: scrap from bounties or insurance, a new recruit, or drills that levelled your ships.</li>
+      <li>The reroll button shows free rerolls left (FREE ROLL x2).</li>
+      <li>Battles show burn damage in orange, plus CURSED, HASTE, RALLY and RESERVE labels. Labels on the same ship stack instead of overlapping.</li>
+      <li>Fleet Archive: a 7-column ship grid, pages for relics and bonus cards, and new terms for Burn, Curse, Haste, Splash and Scrap.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="h-earlier">
+    <h2 id="h-earlier">EARLIER TODAY</h2>
+    <div class="earlier">
+      <h3>VOID FACTION</h3>
+      <p class="sub">A third faction built around life-steal, Echoes and drain. It brought the game to 35 ships and 10 commanders, with Nihl (Void Oracle) and Tess (Chief Engineer).</p>
+      <h3>COMPLETION TUNING</h3>
+      <p class="sub">Bots got their mid-game bonus scrap later, and Vance (Veteran Crews) and Juno (Jamming Field, Repair Protocols) were buffed so every play style can finish a run.</p>
+      <h3>OWNED SHIPS IN THE SHOP</h3>
+      <p class="sub">Shop cards glow green with an OWN tag when buying merges into a ship you have, or show MAX when your copy is already level 3.</p>
+    </div>
+  </section>
+
+  <footer>Galactic Battler · play at <a href="https://itskade.space" target="_blank" rel="noopener">itskade.space</a></footer>
+</main>
+
+</body>
+</html>
