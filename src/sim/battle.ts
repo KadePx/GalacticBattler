@@ -114,9 +114,10 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     if (cp === 'nyx.a' && has('strike')) hp += 1;
     if (s.def === 'gunboat' && L >= 2) hp += 3;
     if (s.def === 'dread' && L >= 2) atk += 2;
-    if (cp === 'vance.a' && L >= 2) hp += 1;
+    if (cp === 'vance.a') hp += L >= 2 ? 2 : 1;
     if (cp === 'kael.b' && has('guard')) hp += 4;
-    if (cp === 'juno.b' && has('tech')) hp += 2;
+    if (cp === 'juno.b' && has('tech')) hp += 3;
+    if (cp === 'juno.a' && has('tech')) atk += 1;
     if (has('concord')) hp += [0, 2, 2][tl('concord')];
     if (has('reaver')) {
       atk += [0, 0, 1][tl('reaver')];

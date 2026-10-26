@@ -26,7 +26,7 @@ export const COMMANDERS: CommanderDef[] = [
   {
     id: 'vance', name: 'Vance', title: 'Grand Admiral', style: 'balanced', rank: 1, color: '#ffd166',
     passives: {
-      a: { name: 'Veteran Crews', desc: 'Level 2+ ships get +1 ATK and +1 HP.' },
+      a: { name: 'Veteran Crews', desc: 'Ships +1 HP. Level 2+: +1 ATK, +2 HP.' },
       b: { name: 'Supply Lines', desc: '+1 scrap every round.' },
     },
     power: { name: 'PROMOTE', desc: 'Selected ship gains 1 XP.', cost: 2, target: true },
@@ -71,8 +71,8 @@ export const COMMANDERS: CommanderDef[] = [
   {
     id: 'juno', name: 'Juno', title: 'Spymaster', style: 'control', rank: 5, color: '#3dffb0',
     passives: {
-      a: { name: 'Jamming Field', desc: 'Enemy ships fire their first shot 1 tick late.' },
-      b: { name: 'Repair Protocols', desc: 'Drones heal +2. Tech ships +2 HP.' },
+      a: { name: 'Jamming Field', desc: 'Enemies fire 1 tick late. Tech ships +1 ATK.' },
+      b: { name: 'Repair Protocols', desc: 'Drones heal +2. Tech ships +3 HP.' },
     },
     power: { name: 'DEEP SCAN', desc: 'Reroll: higher-tier ships only.', cost: 1, target: false },
     starter: 'drone',

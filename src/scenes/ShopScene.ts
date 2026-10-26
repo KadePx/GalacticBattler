@@ -431,13 +431,23 @@ export class ShopScene extends Phaser.Scene {
 
     // Shipyard
     this.add2(txt(this, 24, 114, `SHIPYARD  ${SHIP_COST} SCRAP EACH`, { color: C.cyan }));
+    const owned: FleetShip[] = [];
+    for (let k = 0; k < TOTAL_SLOTS; k++) {
+      const f = slotGet(run, k);
+      if (f) owned.push(f);
+    }
     run.shop.forEach((defId, i) => {
       const x = SHOP_X(i);
       const def = defId ? SHIPS[defId] : null;
       const isSel = this.sel?.kind === 'shop' && this.sel.i === i;
       const frozen = !!run.frozen?.[i];
-      const stroke = isSel ? C.highlight : frozen ? 0x7fe7ff : def ? TIER_COLORS[def.tier] : 0x1d2444;
-      this.add2(this.add.rectangle(x, SHOP_Y, 48, 48, frozen ? 0x10263a : 0x0b1026).setStrokeStyle(isSel || frozen ? 2 : 1, stroke));
+      // A copy of a ship you own: buying it merges (levels up) your ship, so call it out.
+      const mergeable = !!def && owned.some((f) => canMerge(f, def.id));
+      const maxed = !!def && !mergeable && owned.some((f) => f.def === def.id);
+      const stroke = isSel ? C.highlight : frozen ? 0x7fe7ff : mergeable ? 0x7dff8a : def ? TIER_COLORS[def.tier] : 0x1d2444;
+      const card = this.add2(this.add.rectangle(x, SHOP_Y, 48, 48, frozen ? 0x10263a : mergeable ? 0x0f2a1a : 0x0b1026)
+        .setStrokeStyle(isSel || frozen || mergeable ? 2 : 1, stroke));
+      if (mergeable && !isSel && !frozen) this.tweens.add({ targets: card, alpha: 0.7, duration: 600, yoyo: true, repeat: -1 });
       if (!def) {
         this.add2(txt(this, x, SHOP_Y, 'SOLD', { origin: 0.5, color: '#3a4570' }));
         return;
@@ -447,6 +457,12 @@ export class ShopScene extends Phaser.Scene {
       this.classPips(x, SHOP_Y + 20, def);
       this.add2(txt(this, x - 6, SHOP_Y + 27, `${def.atk}`, { origin: [1, 0], color: C.atk }));
       this.add2(txt(this, x + 6, SHOP_Y + 27, `${def.hp}`, { color: C.hp }));
+      if (mergeable || maxed) {
+        const tag = mergeable ? 'OWN' : 'MAX';
+        this.add2(this.add.rectangle(x + 23 - (tag.length * 7 + 4) / 2, SHOP_Y - 19, tag.length * 7 + 4, 9, mergeable ? 0x1d5a32 : 0x1d2444)
+          .setStrokeStyle(1, mergeable ? 0x7dff8a : 0x3a4a7a));
+        this.add2(txt(this, x + 23 - (tag.length * 7 + 4) / 2, SHOP_Y - 18, tag, { origin: 0.5, color: mergeable ? '#b8ffc4' : C.dim }));
+      }
 
       // Freeze toggle: a labelled button, with a taller invisible hit area for fingers.
       const fy = SHOP_Y + 41;

@@ -81,7 +81,7 @@ const FRONT_PRIORITY: Record<string, number> = {
 
 /** Extra scrap bots get in later rounds, so the back half of a run stays a challenge. */
 export const botBonusScrap = (round: number) =>
-  round >= 14 ? 3 : round >= 10 ? 2 : round >= 6 ? 1 : 0;
+  round >= 15 ? 3 : round >= 13 ? 2 : round >= 10 ? 1 : 0;
 
 export function botSnapshot(seed: number, round: number, archetypeId?: string, bonus = true): Snapshot {
   const s: RngState = { rng: seed };
