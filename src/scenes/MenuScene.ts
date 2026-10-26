@@ -45,15 +45,18 @@ export class MenuScene extends Phaser.Scene {
     txt(this, 240, 72, 'SPACE AUTO-BATTLER', { origin: 0.5, color: C.cyan }).setStroke('#05060f', 3);
 
     const saved = getRun();
-    let y = 160;
-    if (saved && saved.phase !== 'over') {
-      button(this, 240, y, 150, 20, 'CONTINUE', () => this.scene.start(sceneFor(saved.phase)));
-      y += 28;
+    const hasRun = !!saved && saved.phase !== 'over';
+    let y = hasRun ? 148 : 160;
+    if (hasRun) {
+      button(this, 240, y, 160, 20, 'CONTINUE', () => this.scene.start(sceneFor(saved!.phase)));
+      y += 26;
     }
-    button(this, 240, y, 150, 20, 'NEW RUN', () => this.scene.start('commanders'), { fill: 0x3a2a10, color: C.gold });
+    button(this, 240, y, 160, 20, 'NEW RUN', () => this.scene.start('commanders'), { fill: 0x3a2a10, color: C.gold });
+    y += 26;
+    button(this, 240, y, 160, 20, 'FLEET ARCHIVE', () => this.scene.start('archive'), { fill: 0x14304a, color: C.cyan });
     const profile = getProfile();
-    this.add.rectangle(240, y + 22, 150, 14, 0x05060f, 0.75);
-    txt(this, 240, y + 22, `PILOT RANK ${pilotRank(profile.xp)}`, { origin: 0.5, color: C.cyan });
+    this.add.rectangle(240, y + 21, 150, 14, 0x05060f, 0.75);
+    txt(this, 240, y + 21, `PILOT RANK ${pilotRank(profile.xp)}`, { origin: 0.5, color: C.cyan });
 
     this.add.rectangle(240, 246, 480, 32, 0x05060f, 0.75);
     txt(this, 240, 246, 'Build a fleet. Win 10 battles before your 5 hull points run out.',

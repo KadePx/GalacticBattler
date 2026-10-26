@@ -7,6 +7,7 @@ import {
 import { CMD_MAP } from '../sim/commanders';
 import { audio } from '../game/audio';
 import { soundButton } from '../game/soundPanel';
+import { openDetails, type Detail } from '../game/details';
 import { getRun, saveRun } from '../game/storage';
 import { C, TIER_COLORS, button, historyPips, panel, popup, relicChip, toast, txt } from '../game/ui';
 import { RELIC_MAP } from '../sim/relics';
@@ -155,6 +156,7 @@ export class ShopScene extends Phaser.Scene {
     else this.feedback(levelsBefore, tgt.kind === 'sell' ? 'sell' : src.kind === 'shop' ? 'buy' : 'move');
     this.sel = null;
     this.hover = null;
+    this.pinned = null; // the ship it described may have moved, merged or been sold
     saveRun(this.run);
     this.refresh();
   }
@@ -540,6 +542,9 @@ export class ShopScene extends Phaser.Scene {
 
   private setHover(info: Info) {
     if (this.dragging) return;
+    // The last thing hovered stays in the strip (so its MORE button can be reached),
+    // until something else is hovered, tapped, or the shop changes.
+    if (!info && this.hover && !('freeze' in this.hover)) this.pinned = this.hover;
     this.hover = info;
     this.updateInfo();
   }
@@ -570,6 +575,27 @@ export class ShopScene extends Phaser.Scene {
       this.drawSynergy(preview);
     }
     this.drawStrip(info);
+    this.drawMoreButton(info);
+  }
+
+  /** "MORE" opens a full card with every detail and definitions of the terms used. */
+  private drawMoreButton(info: Info) {
+    const d = this.toDetail(info);
+    if (!d) return;
+    const b = button(this, 332, 192, 40, 12, 'MORE', () => {
+      if (this.dragging) return;
+      openDetails(this, d);
+    }, { fill: 0x1d2a50, color: C.cyan });
+    b.objects.forEach((o) => this.infoLayer.add(o));
+  }
+
+  private toDetail(info: Info): Detail | null {
+    if (!info || 'freeze' in info) return null;
+    if ('def' in info) return { def: info.def, ship: info.ship };
+    if ('relic' in info) return { relic: info.relic };
+    if ('trait' in info) return { trait: info.trait, count: traitCounts(this.run.fleet)[info.trait] };
+    if (this.armed) return null;
+    return { cmd: info.cmd, passive: this.run.passive ?? 'a' };
   }
 
   /** Right-hand panel: class counts and thresholds; previews what a shop ship would add. */

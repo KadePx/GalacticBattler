@@ -7,6 +7,7 @@ import { RelicScene } from './scenes/RelicScene';
 import { GameOverScene } from './scenes/GameOverScene';
 import { GalleryScene } from './scenes/GalleryScene';
 import { CommanderScene } from './scenes/CommanderScene';
+import { ArchiveScene } from './scenes/ArchiveScene';
 import { installAudioUnlock } from './game/audio';
 
 async function start() {
@@ -29,7 +30,7 @@ async function start() {
     backgroundColor: '#05060f',
     audio: { noAudio: true }, // the game makes its own sound (src/game/audio.ts)
     scale: { mode: Phaser.Scale.NONE, zoom: fitZoom(), autoCenter: Phaser.Scale.CENTER_BOTH },
-    scene: [BootScene, MenuScene, ShopScene, BattleScene, RelicScene, GameOverScene, GalleryScene, CommanderScene],
+    scene: [BootScene, MenuScene, ShopScene, BattleScene, RelicScene, GameOverScene, GalleryScene, CommanderScene, ArchiveScene],
   });
   (window as unknown as { __game: Phaser.Game }).__game = game;
   installAudioUnlock();
