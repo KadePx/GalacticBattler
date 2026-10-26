@@ -124,17 +124,21 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
       atk += 3 * r('gyro');
       hp += 6 * r('gyro');
     }
-    if (cp === 'vance.a') hp += L >= 2 ? 2 : 1;
+    if (cp === 'vance.a' && L >= 2) hp += 2;
     if (cp === 'kael.b' && has('guard')) hp += 4;
     if (cp === 'juno.b' && has('tech')) hp += 3;
     if (cp === 'juno.a' && has('tech')) atk += 1;
-    if (has('concord')) hp += [0, 2, 2][tl('concord')];
+    if (has('concord')) {
+      hp += [0, 3, 4][tl('concord')];
+      atk += [0, 1, 1][tl('concord')];
+    }
     if (has('reaver')) {
       atk += [0, 0, 1][tl('reaver')];
       hp += [0, 2, 2][tl('reaver')];
     }
     if (s.def === 'picket' && L >= 3) hp += 2;
     if (cp === 'tess.a') hp += snap.bench ?? 0;
+    if (has('void') && tl('void') >= 1) hp += 2;
     if (has('void') && tl('void') >= 2) atk += 1;
     if (has('void') && cp === 'nihl.a') atk += 1;
 

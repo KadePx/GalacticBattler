@@ -33,7 +33,7 @@ export const TRAITS: TraitDef[] = [
   },
   {
     id: 'concord', name: 'CONCORD', short: 'CONCORD', faction: true, color: '#a8c8ff',
-    tiers: [{ n: 3, desc: 'Concord ships +2 HP.' }, { n: 5, desc: '+2 HP; the front 2 start shielded.' }],
+    tiers: [{ n: 3, desc: 'Concord ships +1 ATK, +3 HP.' }, { n: 5, desc: '+1 ATK, +4 HP; front 2 start shielded.' }],
   },
   {
     id: 'reaver', name: 'REAVERS', short: 'REAVERS', faction: true, color: '#ff8a4a',
@@ -41,7 +41,7 @@ export const TRAITS: TraitDef[] = [
   },
   {
     id: 'void', name: 'VOID', short: 'VOID', faction: true, color: '#c070ff',
-    tiers: [{ n: 3, desc: 'Void ships heal 50% of damage dealt.' }, { n: 5, desc: 'Heal 70% of damage; Void +1 ATK.' }],
+    tiers: [{ n: 3, desc: 'Void ships +2 HP, heal 50% of damage.' }, { n: 5, desc: '+2 HP, heal 70%; Void +1 ATK.' }],
   },
 ];
 

@@ -117,17 +117,20 @@ export const prospectorScrap = (fleet: (FleetShip | null)[]) =>
 
 export const runPassive = (run: Run) => (run.cmd ? `${run.cmd}.${run.passive ?? 'a'}` : '');
 
-export function rollShopFor(s: RngState, round: number, deep = false): string[] {
+/**
+ * A fresh shipyard. 'deep' (Black Market): no tier 1, and one tier above the normal cap.
+ * 'scan' (Juno's Deep Scan): no tier 1 ships, but never above the normal cap.
+ */
+export function rollShopFor(s: RngState, round: number, deep: boolean | 'scan' = false): string[] {
   const cap = tierCap(round);
-  // Deep scan: no tier 1 ships, and one tier above the normal cap.
-  const maxT = deep ? Math.min(3, cap + 1) : cap;
+  const maxT = deep === true ? Math.min(3, cap + 1) : cap;
   const minT = deep && maxT >= 2 ? 2 : 1;
   const pool = SHOP_SHIPS.filter((d) => d.tier >= minT && d.tier <= maxT);
   return Array.from({ length: shopSize(round) }, () => pick(s, pool).id);
 }
 
 /** New shop offers, keeping any frozen ships in their slots. */
-function restock(run: Run, deep = false) {
+function restock(run: Run, deep: boolean | 'scan' = false) {
   const fresh = rollShopFor(run, run.round, deep);
   const frozen = run.frozen ?? [];
   run.shop = fresh.map((def, i) => (frozen[i] && run.shop[i] ? run.shop[i] : def));
@@ -196,7 +199,7 @@ export function usePower(run: Run, slot: number | null): string | null {
     }
     case 'juno':
       if (run.shop.length && run.shop.every((_, i) => run.frozen?.[i])) return 'Everything is frozen';
-      restock(run, true);
+      restock(run, 'scan');
       break;
     case 'sera':
     case 'nihl': {

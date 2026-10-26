@@ -5,11 +5,12 @@
 // Each bot follows a build archetype so opponents feel different from each
 // other, and each archetype doubles as a template for a player playstyle.
 
-import { SHIPS, levelOf, MAX_XP } from '../sim/ships';
+import { SHIPS, SHOP_SHIPS, levelOf, MAX_XP, tierCap } from '../sim/ships';
+import { CMD_MAP } from '../sim/commanders';
 import { count } from '../sim/relics';
 import { hashStr, pick, rand, type RngState } from '../sim/rng';
 import type { FleetShip, Snapshot } from '../sim/types';
-import { FLEET_SIZE, ROUND_SCRAP, SHIP_COST, REROLL_COST, drill, drillTargets, mergeInto, minShipCost, prospectorScrap, prototypeShip, recruitShip, rollShopFor, shipCost } from './run';
+import { FLEET_SIZE, ROUND_SCRAP, SHIP_COST, REROLL_COST, drill, drillTargets, mergeInto, minShipCost, prospectorScrap, prototypeShip, recruitShip, rollShopFor, shipCost, train } from './run';
 import { isReward, rollRewardOffer } from './rewards';
 
 export interface Archetype {
@@ -95,6 +96,9 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
   const fleet: FleetShip[] = [];
   const relics: string[] = [];
 
+  const cmdId = BOT_COMMANDER[arch.id] ?? 'vance';
+  const p: 'a' | 'b' = rand(s) < 0.5 ? 'b' : 'a';
+  const power = CMD_MAP[cmdId]?.power;
   let carry = 0; // Scrap Cache
   let market = false; // Black Market
   const addShip = (def: string) => {
@@ -116,10 +120,42 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
       // Scrap relics, roughly: Bounty ~2 kills, Insurance pays on ~40% of rounds, Dice saves a reroll.
       2 * count(relics, 'bounty') + 2 * count(relics, 'dice') +
       // Shipyard events (sales, supply drops, veterans) are worth about 2 scrap when they happen.
-      (r >= 2 && rand(s) < 0.3 ? 2 : 0) + (rand(s) < 0.4 ? 4 * count(relics, 'insurance') : 0);
+      (r >= 2 && rand(s) < 0.3 ? 2 : 0) + (rand(s) < 0.4 ? 4 * count(relics, 'insurance') : 0) +
+      (cmdId === 'vance' && p === 'b' ? 1 : 0); // Supply Lines
     let shop: (string | null)[] = rollShopFor(s, r, market);
     carry = 0;
     market = false;
+    // Commander shop power, once a round. Shop-shaping powers go first; stat powers are
+    // paid for up front (from round 2) and applied after shopping.
+    let statPower = false;
+    if (power && scrap >= power.cost) {
+      if (cmdId === 'nyx') {
+        const open = shop.map((d, i) => (d ? i : -1)).filter((i) => i >= 0);
+        if (open.length) {
+          const i = pick(s, open);
+          const def = shop[i]!;
+          if (fleet.length < FLEET_SIZE || fleet.some((f) => f.def === def && f.xp < MAX_XP)) addShip(def);
+          else scrap += 1; // no room: sold
+          shop[i] = null;
+          scrap -= power.cost;
+        }
+      } else if (cmdId === 'juno') {
+        shop = rollShopFor(s, r, 'scan');
+        scrap -= power.cost;
+      } else if (cmdId === 'sera' || cmdId === 'nihl') {
+        const faction = cmdId === 'sera' ? 'concord' : 'void';
+        const pool = SHOP_SHIPS.filter((d) => d.classes.includes(faction) && d.tier <= tierCap(r));
+        if (shop.length && pool.length) {
+          shop[Math.floor(rand(s) * shop.length)] = pick(s, pool).id;
+          scrap -= power.cost;
+        }
+      } else if (cmdId === 'grisk') {
+        if (new Set(fleet.filter((f) => SHIPS[f.def].classes.includes('reaver')).map((f) => f.def)).size >= 2) scrap += 1;
+      } else if (r >= 2 && ['vance', 'kael', 'orin', 'ryx'].includes(cmdId)) {
+        scrap -= power.cost;
+        statPower = true;
+      }
+    }
     let rerolls = 0;
     while (scrap >= minShipCost()) {
       const affordable = shop.map((d) => (d && shipCost(d, r) <= scrap ? d : null));
@@ -144,6 +180,23 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
         rerolls++;
         shop = rollShopFor(s, r);
       } else break;
+    }
+    if (statPower && fleet.length) {
+      if (cmdId === 'vance') {
+        // PROMOTE the ship closest to its next level.
+        const open = fleet.filter((f) => f.xp < MAX_XP).sort((a, b) => b.xp - a.xp);
+        if (open[0]) train(open[0]);
+      } else if (cmdId === 'kael') {
+        // FORTIFY whichever ship will stand at the front.
+        const front = fleet.reduce((m, f) => ((FRONT_PRIORITY[f.def] ?? 3) < (FRONT_PRIORITY[m.def] ?? 3) ? f : m), fleet[0]);
+        front.hp += 3;
+      } else if (cmdId === 'orin') {
+        fleet.reduce((m, f) => (f.atk > m.atk ? f : m), fleet[0]).atk += 1;
+      } else if (cmdId === 'ryx') {
+        const f = pick(s, fleet);
+        f.atk++;
+        f.hp++;
+      }
     }
     if (r < round) {
       // Same reward cards as players (minus Hull Repair, which a snapshot can't use).
@@ -176,10 +229,7 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
 
   const wins = Math.floor((round - 1) * (0.35 + rand(s) * 0.4));
   const name = `${pick(s, arch.titles)} ${pick(s, NAMES)}`;
-  // Bots lead with the commander that matches their build. Vance's second passive
-  // only affects shopping, which bots don't model, so his bots always take the first.
-  const cmdId = BOT_COMMANDER[arch.id] ?? 'vance';
-  const p = cmdId !== 'vance' && rand(s) < 0.5 ? 'b' : 'a';
+  // Bots lead with the commander that matches their build (chosen above, so it could shop).
   return {
     v: 1, id: `bot-${seed}-${round}`, runId: 'bot', name,
     round, wins, lives: 5, fleet: padded, relics, createdAt: 0, style: arch.label, cmd: { id: cmdId, p },

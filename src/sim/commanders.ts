@@ -26,7 +26,7 @@ export const COMMANDERS: CommanderDef[] = [
   {
     id: 'vance', name: 'Vance', title: 'Grand Admiral', style: 'balanced', rank: 1, color: '#ffd166',
     passives: {
-      a: { name: 'Veteran Crews', desc: 'Ships +1 HP. Level 2+: +1 ATK, +2 HP.' },
+      a: { name: 'Veteran Crews', desc: 'Level 2+ ships get +1 ATK and +2 HP.' },
       b: { name: 'Supply Lines', desc: '+1 scrap every round.' },
     },
     power: { name: 'PROMOTE', desc: 'Selected ship gains 1 XP.', cost: 2, target: true },
@@ -56,7 +56,7 @@ export const COMMANDERS: CommanderDef[] = [
       a: { name: 'Brood Nest', desc: 'Launch a 1/1 fighter per 3 fleet ships.' },
       b: { name: 'Hive Mind', desc: 'Fighters get +1 ATK and +2 HP.' },
     },
-    power: { name: 'FEED', desc: 'A random fleet ship gets +1/+1.', cost: 1, target: false },
+    power: { name: 'FEED', desc: 'A random fleet ship gets +1/+1.', cost: 2, target: false },
     starter: 'salvager',
   },
   {
@@ -74,7 +74,7 @@ export const COMMANDERS: CommanderDef[] = [
       a: { name: 'Jamming Field', desc: 'Enemies fire 1 tick late. Tech ships +1 ATK.' },
       b: { name: 'Repair Protocols', desc: 'Drones heal +2. Tech ships +3 HP.' },
     },
-    power: { name: 'DEEP SCAN', desc: 'Reroll: higher-tier ships only.', cost: 1, target: false },
+    power: { name: 'DEEP SCAN', desc: 'Reroll with no tier 1 ships.', cost: 1, target: false },
     starter: 'drone',
   },
   {
