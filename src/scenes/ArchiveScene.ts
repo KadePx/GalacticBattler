@@ -88,8 +88,8 @@ export class ArchiveScene extends Phaser.Scene {
   // ---------- left side ----------
 
   private shipGrid() {
-    const cols = 5;
-    const cw = 36;
+    const cols = 6;
+    const cw = 30;
     const ch = 36;
     SHIP_LIST.forEach((s, i) => {
       const x = LIST.x + (i % cols) * cw + cw / 2;
@@ -117,32 +117,32 @@ export class ArchiveScene extends Phaser.Scene {
   }
 
   private relicList() {
-    const rowH = 12;
+    const rowH = 10.5;
     RELICS.forEach((r, i) => {
       const y = LIST.y + i * rowH;
       const sel = this.pick.relics === r.id;
       const row = this.add2(this.add.rectangle(LIST.x + LIST.w / 2, y + rowH / 2, LIST.w, rowH - 2, sel ? 0x1f2c66 : 0x0b1026)
         .setStrokeStyle(1, sel ? C.highlight : 0x1d2444));
-      const chip = relicChip(this, LIST.x + 8, y + rowH / 2, r.id, 9);
+      const chip = relicChip(this, LIST.x + 8, y + rowH / 2, r.id, 8);
       this.add2(chip.bg);
       this.add2(chip.t);
-      this.add2(txt(this, LIST.x + 18, y + 3, r.name.toUpperCase(), { color: sel ? C.gold : C.text }));
+      this.add2(txt(this, LIST.x + 18, y + 2, r.name.toUpperCase(), { color: sel ? C.gold : C.text }));
       row.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(r.id));
     });
   }
 
   private commanderList() {
     const p = getProfile();
-    const rowH = 25;
+    const rowH = 19;
     COMMANDERS.forEach((c, i) => {
-      const y = LIST.y + i * (rowH + 2);
+      const y = LIST.y + i * (rowH + 2.5);
       const sel = this.pick.cmdrs === c.id;
       const open = isUnlocked(p, c.id);
       const row = this.add2(this.add.rectangle(LIST.x + LIST.w / 2, y + rowH / 2, LIST.w, rowH, sel ? 0x1f2c66 : 0x0b1026)
         .setStrokeStyle(1, sel ? C.highlight : 0x262e50));
-      this.add2(this.add.image(LIST.x + 18, y + rowH / 2, portraitKey(c.id, !open)).setScale(1));
-      this.add2(txt(this, LIST.x + 36, y + 4, c.name.toUpperCase(), { color: open ? c.color : C.dim }));
-      this.add2(txt(this, LIST.x + 36, y + 14, open ? 'UNLOCKED' : `PILOT RANK ${c.rank}`, { color: open ? C.faint : C.bad }));
+      this.add2(this.add.image(LIST.x + 12, y + rowH / 2, portraitKey(c.id, !open)).setScale(1));
+      this.add2(txt(this, LIST.x + 26, y + 6, c.name.toUpperCase(), { color: open ? c.color : C.dim }));
+      this.add2(txt(this, LIST.x + LIST.w - 6, y + 6, open ? 'OPEN' : `RANK ${c.rank}`, { origin: [1, 0], color: open ? C.faint : C.bad }));
       row.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(c.id));
     });
   }

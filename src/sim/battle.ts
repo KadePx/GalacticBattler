@@ -23,17 +23,19 @@ export interface BUnit {
   revives: number; // Revenant rebuilds left
   attacks: number; // attacks made so far (Swarm Queen)
   mark: number; // extra damage this ship takes (Spotter / Sera marks)
+  evade: number; // hits that will miss it (Rift Skimmer's Blink)
 }
 
 export type BEvent =
-  | { t: number; k: 'shot'; s: number; d: number; dmg: number; blocked: boolean; hp: number; sh: number; ram?: boolean; zap?: boolean }
+  | { t: number; k: 'shot'; s: number; d: number; dmg: number; blocked: boolean; hp: number; sh: number; ram?: boolean; zap?: boolean; miss?: boolean }
   | { t: number; k: 'heal'; s: number; d: number; amt: number; hp: number }
   | { t: number; k: 'jam'; s: number; d: number }
   | { t: number; k: 'buff'; u: number; atk: number; hp: number; label: string }
   | { t: number; k: 'cloak'; u: number; on: boolean }
   | { t: number; k: 'revive'; u: number; hp: number }
   | { t: number; k: 'spawn'; s: number; unit: BUnit }
-  | { t: number; k: 'die'; u: number };
+  | { t: number; k: 'die'; u: number }
+  | { t: number; k: 'drag'; s: number; u: number; before: number };
 
 export interface BattleResult {
   units: BUnit[]; // starting state, in line order per side
@@ -68,7 +70,7 @@ function factory(next: { uid: number }, scale: number): UnitFactory {
     hp = Math.max(1, Math.round(hp * scale));
     return {
       uid: next.uid++, side, def, level, atk, hp, maxHp: hp, cd,
-      timer: Math.max(1, Math.min(cd, timer)), shield: 0, cloak: false, alive: true, revives: 0, attacks: 0, mark: 0,
+      timer: Math.max(1, Math.min(cd, timer)), shield: 0, cloak: false, alive: true, revives: 0, attacks: 0, mark: 0, evade: 0,
     };
   };
 }
@@ -82,7 +84,7 @@ function fighter(make: UnitFactory, side: 0 | 1, snap: Snapshot, level: number, 
   return make(side, 'fighter', level, atk + sq + hive + count(relics, 'targeting'), hp + sq + 2 * hive, cd, cd);
 }
 
-function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
+function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): BUnit[] {
   const r = (id: string) => count(snap.relics, id);
   const counts = traitCounts(snap.fleet, snap.relics);
   const tl = (id: keyof typeof counts) => traitLevel(id, counts[id]);
@@ -99,7 +101,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     if (s.def === 'torpedo' || s.def === 'lance' || s.def === 'siege') atk += 2 * r('warheads');
     if (s.def === 'drone') atk += 2 * r('nanites'); // drones heal 2x ATK, so this is +4 healing
     if (has('strike')) atk += [0, 1, 2][tl('strike')];
-    if (has('artillery') && tl('artillery') >= 1) atk += 2;
+    if (has('artillery') && tl('artillery') >= 1) atk += 1;
     if (cp === 'vance.a' && L >= 2) atk += 1;
     if (cp === 'nyx.a' && has('strike')) atk += 1;
     if (cp === 'juno.b' && s.def === 'drone') atk += 1; // drones heal 2x ATK, so +2 healing
@@ -111,6 +113,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     if (tl('tech') >= 2) hp += 3;
     if (cp === 'nyx.a' && has('strike')) hp += 1;
     if (s.def === 'gunboat' && L >= 2) hp += 3;
+    if (s.def === 'dread' && L >= 2) atk += 2;
     if (cp === 'vance.a' && L >= 2) hp += 1;
     if (cp === 'kael.b' && has('guard')) hp += 4;
     if (cp === 'juno.b' && has('tech')) hp += 2;
@@ -120,6 +123,9 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
       hp += [0, 2, 2][tl('reaver')];
     }
     if (s.def === 'picket' && L >= 3) hp += 2;
+    if (cp === 'tess.a') hp += snap.bench ?? 0;
+    if (has('void') && tl('void') >= 2) atk += 1;
+    if (has('void') && cp === 'nihl.a') atk += 1;
 
     // Overclock can't push a ship below 3 ticks; on the fastest ships a tick is too big a share.
     let cd = r('overclock') ? Math.max(Math.min(d.cd, 3), d.cd - r('overclock')) : d.cd;
@@ -127,9 +133,10 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     if (has('strike') && tl('strike') >= 2) cd -= 1;
     if (s.def === 'scout') cd -= L - 1;
     if (s.def === 'siege' && L >= 2) cd -= 2;
+    if (s.def === 'railgun' && L >= 2) cd -= 1;
 
     let timer = Math.max(2, cd) - 2 * r('alpha');
-    if (has('artillery') && tl('artillery') >= 2) timer -= 3;
+    if (has('artillery') && tl('artillery') >= 2) timer -= 1;
     if (cp === 'nyx.b' && has('strike')) timer -= 3;
     if (cp === 'orin.a' && has('artillery')) timer -= 2;
     if ((s.def === 'torpedo' && L >= 2) || (s.def === 'siege' && L >= 3)) timer = 1;
@@ -142,6 +149,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     if (s.def === 'revenant') u.revives = L >= 3 ? 2 : 1;
     if (s.def === 'picket' && L >= 2) u.shield += L >= 3 ? 2 : 1;
     if (s.def === 'bastion') u.shield += 1;
+    if (s.def === 'skimmer') u.evade = L >= 2 ? 2 : 1;
     out.push(u);
   }
 
@@ -192,6 +200,17 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
     const lead = out.find((x) => SHIPS[x.def].classes.includes('concord'));
     if (lead) lead.shield += 2;
   }
+  for (const f of out.filter((x) => x.def === 'flagship')) {
+    for (const x of out) {
+      if (!SHIPS[x.def].classes.includes('concord')) continue;
+      x.atk += f.level >= 2 ? 4 : 3;
+      if (f.level >= 3) {
+        x.hp += 3;
+        x.maxHp += 3;
+      }
+    }
+  }
+  if (out[0] && r('phase')) out[0].evade += r('phase');
   if (tl('concord') >= 2) {
     for (const u of out.filter((x) => SHIPS[x.def].classes.includes('concord')).slice(0, 2)) u.shield += 1;
   }
@@ -199,14 +218,14 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory): BUnit[] {
   // Mines go in FRONT of the line (after front-ship effects, so those still land on a real ship).
   const mines: BUnit[] = [];
   const mine = (dmg: number) => {
-    const m = make(side, 'mine', 1, dmg, 1, SHIPS.mine.cd, SHIPS.mine.cd);
+    const m = make(side, 'mine', 1, Math.round(dmg * scale), 1, SHIPS.mine.cd, SHIPS.mine.cd);
     m.hp = m.maxHp = 1;
     mines.push(m);
   };
   for (const u of out) {
     if (u.def !== 'minelayer') continue;
     // LV1: 1 mine. LV2: mines hit 2 harder. LV3: 2 mines. Explosions grow with the Mine Layer's ATK.
-    for (let k = 0; k < (u.level >= 3 ? 2 : 1); k++) mine(u.atk + 1 + (u.level >= 2 ? 2 : 0));
+    for (let k = 0; k < (u.level >= 3 ? 2 : 1); k++) mine(u.atk + 2 + (u.level >= 2 ? 2 : 0));
   }
   for (let k = 0; k < r('minefield'); k++) mine(2);
   out.unshift(...mines);
@@ -230,9 +249,10 @@ interface Shot {
 
 export function simulate(a: Snapshot, b: Snapshot): BattleResult {
   const next = { uid: 1 };
-  const make = factory(next, hullScale(Math.max(a.round, b.round)));
+  const scale = hullScale(Math.max(a.round, b.round));
+  const make = factory(next, scale);
   const snaps = [a, b];
-  const units = [...buildSide(a, 0, make), ...buildSide(b, 1, make)];
+  const units = [...buildSide(a, 0, make, scale), ...buildSide(b, 1, make, scale)];
   // Juno's Jamming Field delays the whole enemy line.
   snaps.forEach((snap, side) => {
     if (passiveId(snap.cmd) !== 'juno.a') return;
@@ -246,6 +266,22 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
   const sideCp = snaps.map((snap) => passiveId(snap.cmd));
   const initial = units.map((u) => ({ ...u }));
   const events: BEvent[] = [];
+  for (const side of [0, 1] as const) {
+    const dragged = new Set<BUnit>();
+    for (const g of units.filter((u) => u.side === side && u.def === 'grappler')) {
+      for (let k = 0; k < (g.level >= 3 ? 2 : 1); k++) {
+        const foesReal = units.filter((u) => u.side !== side && !isSummon(u.def));
+        const free = foesReal.filter((u) => !dragged.has(u));
+        const victim = free[free.length - 1];
+        if (free.length < 2 || victim === foesReal[0]) continue;
+        dragged.add(victim);
+        units.splice(units.indexOf(victim), 1);
+        units.splice(units.indexOf(foesReal[0]), 0, victim);
+        if (g.level >= 2) victim.timer += 3;
+        events.push({ t: 1, k: 'drag', s: g.uid, u: victim.uid, before: foesReal[0].uid });
+      }
+    }
+  }
   const line = (side: number) => units.filter((u) => u.alive && u.side === side);
   // Cloaked ships can't be picked unless nothing else is left.
   const targets = (side: number) => {
@@ -261,6 +297,14 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
   };
 
   const lastStand = [false, false];
+  const echoChamber = [false, false];
+  /** Leave a Void Echo on that side (a battle-only unit at the back of the line). */
+  const spawnEcho = (side: 0 | 1, atk: number, hp: number, src: BUnit) => {
+    if (line(side).length >= MAX_LINE) return;
+    const e = make(side, 'echo', 1, atk, hp, SHIPS.echo.cd, SHIPS.echo.cd);
+    units.push(e);
+    events.push({ t, k: 'spawn', s: src.uid, unit: { ...e } });
+  };
   /** A visible Picket on that side, which pulls snipes onto itself. */
   const picket = (side: number) => line(side).find((u) => u.def === 'picket' && !u.cloak);
 
@@ -282,7 +326,14 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
   const hit = (sh: Shot, bonus: number) => {
     const { s, d } = sh;
     const before = d.hp;
-    const dmg = sh.dmg + bonus + d.mark;
+    const dmg = sh.dmg + bonus + d.mark + (sh.first && sideCp[s.side] === 'tess.b' ? 2 : 0);
+    // Blink: the hit misses entirely (zaps and explosions can't be dodged).
+    if (d.evade > 0 && !sh.zap && !sh.ram && d.hp > 0) {
+      d.evade--;
+      events.push({ t, k: 'shot', s: s.uid, d: d.uid, dmg: 0, blocked: true, hp: d.hp, sh: d.shield, miss: true });
+      if (d.def === 'skimmer' && d.level >= 3) buff(d, 2, 0, '+2 ATK');
+      return;
+    }
     let blocked = false;
     if (d.shield > 0 && !sh.pierce) {
       d.shield--;
@@ -291,6 +342,43 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       d.hp -= dmg;
     }
     events.push({ t, k: 'shot', s: s.uid, d: d.uid, dmg, blocked, hp: Math.max(0, d.hp), sh: d.shield, ram: sh.ram, zap: sh.zap });
+    // Thorns: Ironmaw (and Guard ships with Thorn Plating) hit back. Thorns can't be dodged and never chain.
+    if (!blocked && !sh.zap && s.alive) {
+      let thorns = d.def === 'ironmaw' ? 2 * d.level : 0;
+      if (SHIPS[d.def]?.classes.includes('guard') && !isSummon(s.def)) thorns += count(snaps[d.side].relics, 'thorns');
+      if (thorns) hit({ s: d, d: s, dmg: thorns, pierce: true, zap: true }, 0);
+    }
+    if (!blocked && !sh.zap && before > 0 && s.alive && s.hp > 0) {
+      const dealt = Math.max(0, Math.min(dmg - bonus, before));
+      // Void life-steal: Wraith and Oblivion heal from damage; Void ships heal per hit with the faction bonus.
+      let heal = 0;
+      let gain = 0;
+      if (s.def === 'wraith') {
+        heal += s.level >= 2 ? dealt : Math.ceil(dealt / 2);
+        if (s.level >= 3) gain += 1;
+      }
+      if (s.def === 'oblivion') heal += s.level >= 3 ? dealt : Math.ceil(dealt / 2);
+      if (SHIPS[s.def]?.classes.includes('void')) {
+        const vl = sideTl[s.side]('void');
+        heal += vl >= 2 ? Math.ceil(dealt * 0.7) : vl >= 1 ? Math.ceil(dealt * 0.5) : 0;
+        if (sideCp[s.side] === 'nihl.a') heal += 3;
+      }
+      heal = Math.min(heal, dealt + (sideCp[s.side] === 'nihl.a' ? 3 : 0)); // never more than the hit took (plus Hunger)
+      if (gain) buff(s, gain, 0, `+${gain} ATK`);
+      const healed = Math.min(heal, s.maxHp - s.hp);
+      if (healed > 0) {
+        s.hp += healed;
+        events.push({ t, k: 'heal', s: s.uid, d: s.uid, amt: healed, hp: s.hp });
+      }
+      // Siphon drains ATK; at LV2 it hands the stolen ATK to your front ship.
+      if (s.def === 'siphon' && d.hp > 0 && d.atk > 0) {
+        const drain = Math.min(d.atk, s.level >= 3 ? 2 : 1);
+        d.atk -= drain;
+        events.push({ t, k: 'buff', u: d.uid, atk: d.atk, hp: d.hp, label: `-${drain} ATK` });
+        const front = ships(line(s.side))[0];
+        if (s.level >= 2 && front) buff(front, drain, 0, `+${drain}`);
+      }
+    }
     if (sh.jam && !blocked) {
       const jammer = count(snaps[s.side].relics, 'jammer');
       d.timer += sh.jam + (sh.drain ? 2 * jammer : 0);
@@ -356,6 +444,17 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       const front = targets(1 - u.side)[0];
       if (front) hit({ s: u, d: front, dmg: u.atk, ram: true }, 0);
     }
+    // Void Herald leaves Echoes; Nihl's Echo Chamber gives the first real loss an Echo.
+    if (u.def === 'herald' && !rebuilt) {
+      if (u.level >= 3) {
+        spawnEcho(u.side, 4, 4, u);
+        spawnEcho(u.side, 4, 4, u);
+      } else spawnEcho(u.side, u.level >= 2 ? 5 : 3, u.level >= 2 ? 5 : 3, u);
+    }
+    if (!rebuilt && !isSummon(u.def) && sideCp[u.side] === 'nihl.b' && !echoChamber[u.side]) {
+      echoChamber[u.side] = true;
+      spawnEcho(u.side, 2, 2, u);
+    }
     // Fighters and mines are disposable: losing one doesn't feed Salvagers,
     // Vengeance or Reavers (otherwise swarms of 1-HP units snowball those effects).
     if (isSummon(u.def)) return;
@@ -420,7 +519,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           shots.push({ s: u, d: lowest(ships(foes)), dmg: u.atk, pierce: L >= 2, onKill: L >= 3 ? 'reload' : undefined });
           break;
         case 'dread':
-          for (const f of foes.slice(0, L + 1)) shots.push({ s: u, d: f, dmg: u.atk });
+          for (const f of foes.slice(0, L >= 3 ? 3 : 2)) shots.push({ s: u, d: f, dmg: u.atk });
           break;
         case 'gunboat':
           for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk });
@@ -430,6 +529,12 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           break;
         case 'siege':
           for (const f of foes) shots.push({ s: u, d: f, dmg: u.atk });
+          break;
+        case 'railgun':
+          for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, pierce: true });
+          break;
+        case 'oblivion':
+          for (const f of foes.slice(0, L >= 2 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, pierce: true });
           break;
         case 'spotter':
           for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk });
@@ -475,6 +580,11 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     for (const u of acting) {
       if (!u.alive) continue;
       if (u.def === 'raider') buff(u, u.level, 0, `+${u.level} ATK`);
+      // Voidmother spawns Echoes every few attacks.
+      if (u.def === 'voidmother' && (u.level >= 3 || u.attacks % 2 === 0)) {
+        const n = u.level >= 2 ? 5 : 3;
+        spawnEcho(u.side, n, n, u);
+      }
       // Swarm Queen launches fighters mid-battle.
       if (u.def === 'queen' && (u.level >= 2 || u.attacks % 2 === 0) && line(u.side).length < MAX_LINE) {
         const strong = u.level >= 3 ? 2 : 1;

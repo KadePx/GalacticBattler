@@ -63,7 +63,7 @@ export const COMMANDERS: CommanderDef[] = [
     id: 'orin', name: 'Orin', title: 'Lord Gunner', style: 'artillery', rank: 4, color: '#ff5e7e',
     passives: {
       a: { name: 'Opening Barrage', desc: 'Artillery ships fire 2 ticks sooner.' },
-      b: { name: 'Big Guns', desc: 'Your highest-ATK ship gets +3 ATK.' },
+      b: { name: 'Big Guns', desc: 'Your top-ATK ship gets +3 ATK.' },
     },
     power: { name: 'OVERCHARGE', desc: 'Selected ship: +1 ATK for the run.', cost: 2, target: true },
     starter: 'interceptor',
@@ -94,6 +94,24 @@ export const COMMANDERS: CommanderDef[] = [
     },
     power: { name: 'SCRAP RAID', desc: '+1 scrap if you have 2+ Reavers.', cost: 0, target: false },
     starter: 'scrapper',
+  },
+  {
+    id: 'nihl', name: 'Nihl', title: 'Void Oracle', style: 'void', rank: 8, color: '#c070ff',
+    passives: {
+      a: { name: 'Hunger', desc: 'Void ships +1 ATK, heal +3 per hit.' },
+      b: { name: 'Echo Chamber', desc: 'First ship lost leaves a 2/2 Echo.' },
+    },
+    power: { name: 'RIFT', desc: 'Shop ship becomes a Void ship.', cost: 1, target: false },
+    starter: 'wraith',
+  },
+  {
+    id: 'tess', name: 'Tess', title: 'Chief Engineer', style: 'engineer', rank: 9, color: '#ff8a3a',
+    passives: {
+      a: { name: 'Spare Parts', desc: 'Each benched ship: your fleet +1 HP.' },
+      b: { name: 'Hot Start', desc: 'Each ship\'s first shot deals +2.' },
+    },
+    power: { name: 'REFIT', desc: 'Reroll a ship within its tier.', cost: 2, target: true },
+    starter: 'gunboat',
   },
 ];
 

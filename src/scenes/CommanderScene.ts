@@ -11,9 +11,9 @@ import { SHIPS } from '../sim/ships';
 import { audio } from '../game/audio';
 
 const STYLE_LABEL: Record<string, string> = {
-  balanced: 'ALL-ROUNDER', fortress: 'GUARD / DEFENSE', blitz: 'STRIKE / SPEED',
+  balanced: 'ALL-ROUNDER', engineer: 'REFITS / BENCH', fortress: 'GUARD / DEFENSE', blitz: 'STRIKE / SPEED',
   swarm: 'FIGHTERS / SWARM', artillery: 'ARTILLERY', control: 'TECH / CONTROL',
-  concord: 'SHIELDS / CONCORD', reaver: 'KILLS / REAVERS',
+  concord: 'SHIELDS / CONCORD', reaver: 'KILLS / REAVERS', void: 'LIFE-STEAL / VOID',
 };
 
 const hexInt = (h: string) => Phaser.Display.Color.HexStringToColor(h).color;
@@ -54,7 +54,7 @@ export class CommanderScene extends Phaser.Scene {
     const hi = rankXp(rank + 1);
     this.add2s(bar(this, 410, 8, 62, 6, (p.xp - lo) / (hi - lo), 0x7fe7ff));
 
-    COMMANDERS.forEach((c, i) => this.card(c.id, 8 + (i % 2) * 86, 26 + Math.floor(i / 2) * 60));
+    COMMANDERS.forEach((c, i) => this.card(c.id, 8 + (i % 2) * 86, 26 + Math.floor(i / 2) * 48));
     this.detail(this.sel);
   }
 
@@ -69,13 +69,13 @@ export class CommanderScene extends Phaser.Scene {
     const lvl = cmdLevel(progress(p, id).xp);
     const isSel = this.sel === id;
     const w = 82;
-    const h = 57;
+    const h = 46;
     this.add2(panel(this, x, y, w, h, isSel ? 0x162050 : C.panel, isSel ? C.highlight : C.border));
-    if (unlocked && lvl >= CMD_MAX_LEVEL) this.add2(this.add.rectangle(x + w / 2, y + 16, 28, 28).setStrokeStyle(1, C.highlight));
-    this.add2(this.add.image(x + w / 2, y + 16, portraitKey(id, !unlocked)).setScale(1.5));
-    this.add2(txt(this, x + w / 2, y + 31, c.name.toUpperCase(), { origin: [0.5, 0], color: unlocked ? c.color : C.dim }));
-    this.add2(txt(this, x + w / 2, y + 43, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
-      origin: [0.5, 0], color: unlocked ? C.gold : '#6a76a0',
+    if (unlocked && lvl >= CMD_MAX_LEVEL) this.add2(this.add.rectangle(x + 17, y + 23, 28, 28).setStrokeStyle(1, C.highlight));
+    this.add2(this.add.image(x + 17, y + 23, portraitKey(id, !unlocked)).setScale(1.5));
+    this.add2(txt(this, x + 33, y + 11, c.name.toUpperCase(), { color: unlocked ? c.color : C.dim }));
+    this.add2(txt(this, x + 33, y + 25, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
+      color: unlocked ? C.gold : '#6a76a0',
     }));
     const hit = this.add2(this.add.rectangle(x + w / 2, y + h / 2, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
     hit.on('pointerup', () => {
@@ -123,7 +123,7 @@ export class CommanderScene extends Phaser.Scene {
       this.add2(panel(this, bx, by, 138, 54, chosen ? 0x162050 : 0x0b1026, chosen ? C.highlight : 0x262e50));
       this.add2(txt(this, bx + 5, by + 5, ps.name.toUpperCase(), { color: available ? c.color : C.dim, wrap: 128 }));
       this.add2(txt(this, bx + 5, by + 18, ps.desc, { color: available ? C.text : '#6a76a0', wrap: 130 }));
-      if (slot === 'b' && lvl < 3) this.add2(txt(this, bx + 133, by + 5, 'LV3', { origin: [1, 0], color: C.bad }));
+      if (slot === 'b' && lvl < 3) this.add2(txt(this, bx + 136, by - 12, 'UNLOCKS AT LV3', { origin: [1, 0], color: C.bad }));
       if (available) {
         const hit = this.add2(this.add.rectangle(bx + 69, by + 27, 138, 54, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
         hit.on('pointerup', () => {

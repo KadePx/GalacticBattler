@@ -75,8 +75,9 @@ export function relicFit(id: string, run: Run): RelicFit {
         : { kind: 'all', slots: [], note: 'Best with many small ships' };
     }
     case 'banner_c':
-    case 'banner_r': {
-      const f: ShipClass = id === 'banner_c' ? 'concord' : 'reaver';
+    case 'banner_r':
+    case 'banner_v': {
+      const f: ShipClass = id === 'banner_c' ? 'concord' : id === 'banner_r' ? 'reaver' : 'void';
       const have = traitCounts(fleet, run.relics)[f];
       const slots = fleet.map((s, i) => (s && SHIPS[s.def].classes.includes(f) ? i : -1)).filter((i) => i >= 0);
       const next = TRAIT_MAP[f].tiers.find((t) => have < t.n)?.n;

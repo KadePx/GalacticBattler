@@ -169,12 +169,27 @@ export function usePower(run: Run, slot: number | null): string | null {
       if (run.shop.length && run.shop.every((_, i) => run.frozen?.[i])) return 'Everything is frozen';
       restock(run, true);
       break;
-    case 'sera': {
-      // Replace a random unfrozen shipyard slot with a random Concord ship you could normally see.
+    case 'sera':
+    case 'nihl': {
+      // Replace a random unfrozen shipyard slot with a random faction ship you could normally see.
+      const faction = c.id === 'sera' ? 'concord' : 'void';
       const slots = run.shop.map((_, i) => i).filter((i) => !run.frozen?.[i]);
       if (!slots.length) return 'Everything is frozen';
-      const pool = SHOP_SHIPS.filter((d) => d.classes.includes('concord') && d.tier <= tierCap(run.round));
+      const pool = SHOP_SHIPS.filter((d) => d.classes.includes(faction) && d.tier <= tierCap(run.round));
       run.shop[slots[Math.floor(rand(run) * slots.length)]] = pick(run, pool).id;
+      break;
+    }
+    case 'tess': {
+      // REFIT: turn the ship into a random other ship of the same tier, keeping its level and bonuses.
+      const old = SHIPS[target!.def];
+      // Never into a type you already have (copies that can't merge would be a trap).
+      const owned = new Set([...run.fleet, ...(run.bench ?? [])].filter(Boolean).map((f) => f!.def));
+      const pool = SHOP_SHIPS.filter((d) => d.tier === old.tier && !owned.has(d.id));
+      if (!pool.length) return 'Nothing to refit into';
+      const nu = pick(run, pool);
+      target!.atk = Math.max(nu.atk, nu.atk + (target!.atk - old.atk));
+      target!.hp = Math.max(nu.hp, nu.hp + (target!.hp - old.hp));
+      target!.def = nu.id;
       break;
     }
     case 'grisk': {
@@ -297,6 +312,7 @@ export function makeSnapshot(run: Run, name = 'You'): Snapshot {
     wins: run.wins, lives: run.lives, fleet: run.fleet.map((s) => (s ? { ...s } : null)),
     relics: [...run.relics], createdAt: Date.now(),
     cmd: run.cmd ? { id: run.cmd, p: run.passive ?? 'a' } : undefined,
+    bench: (run.bench ?? []).filter(Boolean).length,
   };
 }
 

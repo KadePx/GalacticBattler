@@ -40,8 +40,8 @@ const SHOP_X = (i: number) => 48 + i * 56;
 const SHOP_Y = 150;
 const STRIP = { x: 4, y: 199, w: 350, h: 66 };
 const SELL = { x: 418, y: 214, w: 100, h: 18 };
-const SYN = { x: 362, y: 38, w: 112, h: 100 };
-const POWER = { x: 362, y: 141, w: 112, h: 38 };
+const SYN = { x: 362, y: 38, w: 112, h: 104 };
+const POWER = { x: 362, y: 144, w: 112, h: 36 };
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
 
 export class ShopScene extends Phaser.Scene {
@@ -487,10 +487,10 @@ export class ShopScene extends Phaser.Scene {
       .setStrokeStyle(this.armed ? 2 : 1, ready ? col : 0x2a3150));
     this.add2(this.add.image(x + 12, y + h / 2, portraitKey(cmd.id)).setAlpha(ready ? 1 : 0.5));
     // Three short lines: power name, cost, state.
-    this.add2(txt(this, x + 24, y + 4, cmd.power.name, { color: ready ? cmd.color : C.dim }));
-    this.add2(txt(this, x + 24, y + 15, `${cmd.power.cost} SCRAP`, { color: broke && !used ? C.bad : C.gold }));
+    this.add2(txt(this, x + 24, y + 3, cmd.power.name, { color: ready ? cmd.color : C.dim }));
+    this.add2(txt(this, x + 24, y + 14, `${cmd.power.cost} SCRAP`, { color: broke && !used ? C.bad : C.gold }));
     const state = used ? 'USED' : this.armed ? (cmd.power.target ? 'PICK SHIP' : 'TAP AGAIN') : broke ? 'NOT ENOUGH' : blocked ?? 'READY';
-    this.add2(txt(this, x + 24, y + 26, state, { color: used || broke ? C.dim : this.armed ? C.gold : C.hp }));
+    this.add2(txt(this, x + 24, y + 25, state, { color: used || broke || blocked ? C.dim : this.armed ? C.gold : C.hp }));
     // A slow glow while the power is ready, so it's easy to spot.
     if (ready && !this.armed) this.tweens.add({ targets: card, alpha: 0.7, duration: 900, yoyo: true, repeat: -1 });
     card.setInteractive({ useHandCursor: true });
@@ -616,20 +616,20 @@ export class ShopScene extends Phaser.Scene {
 
     // One line per synergy: name, then "have/next" (gold when maxed). Factions sit under a divider.
     TRAITS.forEach((tr, i) => {
-      const y = SYN.y + 15 + i * 13 + (tr.faction ? 3 : 0);
+      const y = SYN.y + 14 + i * 12 + (tr.faction ? 3 : 0);
       const n = counts[tr.id];
       const lvl = traitLevel(tr.id, n);
       const next = tr.tiers.find((t) => n < t.n)?.n;
-      const row = add(this.add.rectangle(SYN.x + SYN.w / 2, y + 4, SYN.w - 4, 13, 0xffffff, 0.001));
+      const row = add(this.add.rectangle(SYN.x + SYN.w / 2, y + 4, SYN.w - 4, 12, 0xffffff, 0.001));
       this.infoTarget(row, { trait: tr.id });
-      if (lvl > 0) add(this.add.rectangle(SYN.x + 3, y + 4, 2, 11, hexInt(tr.color)));
+      if (lvl > 0) add(this.add.rectangle(SYN.x + 3, y + 4, 2, 10, hexInt(tr.color)));
       const name = add(txt(this, SYN.x + 7, y, tr.short, { color: lvl > 0 ? tr.color : C.dim }));
       if (adds.includes(tr.id)) add(txt(this, name.x + name.width + 3, y, '+1', { color: C.hp }));
       add(txt(this, SYN.x + SYN.w - 4, y, next ? `${n}/${next}` : `${n} MAX`, {
         origin: [1, 0], color: !next ? C.gold : lvl > 0 ? C.text : C.faint,
       }));
     });
-    const fy = SYN.y + 15 + TRAITS.filter((t) => !t.faction).length * 13 + 1;
+    const fy = SYN.y + 14 + TRAITS.filter((t) => !t.faction).length * 12 + 1;
     add(this.add.rectangle(SYN.x + SYN.w / 2, fy, SYN.w - 10, 1, 0x262e50));
   }
 

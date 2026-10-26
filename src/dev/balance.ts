@@ -273,6 +273,7 @@ function passives() {
       for (let i = 0; i < N; i++) {
         const a = botSnapshot(20000 + i * 17 + round, round);
         a.cmd = pid === 'none' ? undefined : { id: pid.split('.')[0], p: pid.split('.')[1] as 'a' | 'b' };
+        if (pid === 'tess.a') a.bench = 2; // bots don't bench ships; assume a typical bench
         const r = simulate(a, foe(i + 9000, round));
         n++;
         if (r.winner === 0) w++;

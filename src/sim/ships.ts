@@ -6,9 +6,9 @@
 //   a accent    A accent light  w window (cockpit glass)
 //   e engine    E engine core   m gun metal   g gun shadow
 
-export type ShipClass = 'strike' | 'guard' | 'artillery' | 'tech' | 'concord' | 'reaver';
+export type ShipClass = 'strike' | 'guard' | 'artillery' | 'tech' | 'concord' | 'reaver' | 'void';
 /** The two factions are counted like classes, but drawn as a separate synergy group. */
-export const FACTIONS: ShipClass[] = ['concord', 'reaver'];
+export const FACTIONS: ShipClass[] = ['concord', 'reaver', 'void'];
 
 export interface ShipDef {
   id: string;
@@ -77,7 +77,7 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   bulwark: {
-    id: 'bulwark', name: 'Bulwark', tier: 1, atk: 1, hp: 9, cd: 6, classes: ['guard', 'concord'],
+    id: 'bulwark', name: 'Bulwark', tier: 1, atk: 1, hp: 8, cd: 6, classes: ['guard', 'concord'],
     desc: 'Starts with a shield that blocks a hit.',
     perks: ['Starts with 2 shields.', 'Also shields the ship behind it.'], accent: ['#2fc6ff', '#a8ecff'],
     sprite: [
@@ -95,7 +95,7 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   drone: {
-    id: 'drone', name: 'Repair Drone', tier: 1, atk: 3, hp: 6, cd: 5, classes: ['tech', 'concord'],
+    id: 'drone', name: 'Repair Drone', tier: 1, atk: 2, hp: 6, cd: 6, classes: ['tech', 'concord'],
     desc: 'Repairs the most damaged ally by 2x ATK.',
     perks: ['Repairs 2 allies at once.', 'Repairs every damaged ally.'], accent: ['#33d16a', '#a8ffbe'],
     sprite: [
@@ -249,9 +249,9 @@ export const SHIPS: Record<string, ShipDef> = {
 
   // ---------- Tier 3 ----------
   dread: {
-    id: 'dread', name: 'Dreadnought', tier: 3, atk: 5, hp: 16, cd: 7, classes: ['guard', 'artillery', 'concord'],
+    id: 'dread', name: 'Dreadnought', tier: 3, atk: 4, hp: 13, cd: 7, classes: ['guard', 'artillery', 'concord'],
     desc: 'Broadsides hit the 2 front enemies.',
-    perks: ['Broadsides hit 3 enemies.', 'Broadsides hit 4 enemies.'], accent: ['#e8a020', '#ffe08a'],
+    perks: ['Broadsides +2 ATK.', 'Broadsides hit 3 enemies.'], accent: ['#e8a020', '#ffe08a'],
     sprite: [
       '.......oooooooo.........',
       '.....oohhllllllhoo......',
@@ -343,7 +343,7 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   revenant: {
-    id: 'revenant', name: 'Revenant', tier: 3, atk: 4, hp: 11, cd: 5, classes: ['guard', 'reaver'],
+    id: 'revenant', name: 'Revenant', tier: 3, atk: 3, hp: 10, cd: 5, classes: ['guard', 'reaver'],
     desc: 'First time it dies, it rebuilds at half HP.',
     perks: ['Rebuilds with full HP.', 'Rebuilds twice.'], accent: ['#9cff3a', '#e8ffb0'],
     sprite: [
@@ -432,8 +432,8 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
   minelayer: {
-    id: 'minelayer', name: 'Mine Layer', tier: 2, atk: 1, hp: 5, cd: 7, classes: ['artillery', 'reaver'],
-    desc: 'Lays a mine; it explodes for ATK +1.',
+    id: 'minelayer', name: 'Mine Layer', tier: 2, atk: 1, hp: 6, cd: 6, classes: ['artillery', 'reaver'],
+    desc: 'Lays a mine; it blows up for ATK +2.',
     perks: ['Its mines hit 2 harder.', 'Lays 2 mines.'], accent: ['#e0b030', '#fff0a0'],
     sprite: [
       '...oooooooo.....',
@@ -466,11 +466,194 @@ export const SHIPS: Record<string, ShipDef> = {
     ],
   },
 
+  // ---------- Wave 2: Concord ----------
+  railgun: {
+    id: 'railgun', name: 'Railgun', tier: 2, atk: 7, hp: 8, cd: 5, classes: ['artillery', 'concord'],
+    desc: 'Its shots pierce shields.',
+    perks: ['Fires 1 tick faster.', 'Hits the front 2 enemies.'], accent: ['#7fd0ff', '#e0f6ff'],
+    sprite: [
+      '..ooooo...........',
+      '.ohlllloooooooooo.',
+      'eohllllmmmmmmmmmAo',
+      'EobbbbbbhhhhhhhhAA',
+      'EobbwwbbmmmmmmmmAo',
+      'eossssssooooooooo.',
+      '..ooooo...........',
+    ],
+  },
+  flagship: {
+    id: 'flagship', name: 'Flagship', tier: 3, atk: 4, hp: 20, cd: 7, classes: ['tech', 'concord'],
+    desc: 'Battle start: Concord ships +3 ATK.',
+    perks: ['Gives +4 ATK instead.', 'Also gives Concord ships +3 HP.'], accent: ['#ffd166', '#fff0c0'],
+    sprite: [
+      '......oooooooooo......',
+      '....oohhllllllhhoo....',
+      '..oohlllaAAaallllhoo..',
+      '.ohllllllllllllllllho.',
+      'eohlmmollllllllommllho',
+      'EEobbbbbbbbbbbbbbbbwwo',
+      'EEobaaAAaaaaaaaaAAaabo',
+      'EEobbbbbbbbbbbbbbbbbso',
+      'eeosmmossssssssommssoo',
+      '.osssssssssssssssssso.',
+      '..oossssaAAassssssoo..',
+      '....oossssssssssoo....',
+      '......oooooooooo......',
+    ],
+  },
+  // ---------- Wave 2: Reavers ----------
+  grappler: {
+    id: 'grappler', name: 'Grappler', tier: 2, atk: 2, hp: 6, cd: 5, classes: ['strike', 'reaver'],
+    desc: 'Drags the rearmost enemy to the front.',
+    perks: ['Dragged ship starts 3 ticks late.', 'Drags the 2 rearmost enemies.'], accent: ['#c0a060', '#f0e0b0'],
+    sprite: [
+      'oo.............',
+      'oaoo.......ooo.',
+      'eoaallooooomAAo',
+      'EobbbbbbbbbmmAo',
+      'EobbwwbbbbbbboA',
+      'Eosssssssssmmo.',
+      'eoaassooooomAAo',
+      'oaoo.......ooo.',
+      'oo.............',
+    ],
+  },
+  ironmaw: {
+    id: 'ironmaw', name: 'Ironmaw', tier: 3, atk: 5, hp: 22, cd: 7, classes: ['guard', 'reaver'],
+    desc: 'Thorns: anything that hits it takes 2.',
+    perks: ['Thorns deal 4.', 'Thorns deal 6.'], accent: ['#a04020', '#ff9060'],
+    sprite: [
+      '...o..o..o..o..o....',
+      '..oAooAooAooAooAo...',
+      '.ohhllllllllllllhoo.',
+      'eohllllllllllllllhoo',
+      'EEobbbbbbbbbbbbbbbwo',
+      'EEobmmbbmmbbmmbbmmAA',
+      'EEobbbbbbbbbbbbbbbbo',
+      'EEobmmbbmmbbmmbbmmAA',
+      'EEobbbbbbbbbbbbbbbso',
+      'eeossssssssssssssoo.',
+      '.ossssssssssssssso..',
+      '..oAooAooAooAooAo...',
+      '...o..o..o..o..o....',
+    ],
+  },
+
+  // ---------- Void Collective ----------
+  wraith: {
+    id: 'wraith', name: 'Wraith', tier: 1, atk: 3, hp: 8, cd: 4, classes: ['strike', 'void'],
+    desc: 'Heals itself for half the damage it deals.',
+    perks: ['Heals for the full damage.', 'Also gains +1 ATK per hit.'], accent: ['#b070ff', '#e8c8ff'],
+    sprite: [
+      '.oo..........',
+      'oAAoo........',
+      'eoaaalooo....',
+      'EobbbbbbllAo.',
+      'EobwwbbbbbbaA',
+      'Eosbbbbbbbsso',
+      'eossaasoo....',
+      'oAAoo........',
+      '.oo..........',
+    ],
+  },
+  siphon: {
+    id: 'siphon', name: 'Siphon', tier: 1, atk: 2, hp: 9, cd: 4, classes: ['tech', 'void'],
+    desc: 'Each hit drains 1 ATK from its target.',
+    perks: ['Gives stolen ATK to your front ship.', 'Drains 2 ATK per hit.'], accent: ['#40e0c0', '#b0fff0'],
+    sprite: [
+      '...oooo.....',
+      '..oAAAAo....',
+      'eoaabbaaoo..',
+      'Eobbbbbbbbo.',
+      'EobbwwbbbbAA',
+      'Eobbbbbbbbo.',
+      'eoaassaaoo..',
+      '..oAAAAo....',
+      '...oooo.....',
+    ],
+  },
+  skimmer: {
+    id: 'skimmer', name: 'Rift Skimmer', tier: 2, atk: 4, hp: 7, cd: 4, classes: ['strike', 'void'],
+    desc: 'Blink: the first hit on it misses.',
+    perks: ['The first 2 hits miss.', '+2 ATK every time a hit misses.'], accent: ['#d050ff', '#f0b8ff'],
+    sprite: [
+      'oo..............',
+      'oaoo............',
+      'eoaaallooooo....',
+      'EobbbbbbbbbllooA',
+      'EobbbbbwwbbbbbAA',
+      'Eosssssssssssoo.',
+      'eoaassoooooo....',
+      'oaoo............',
+      'oo..............',
+    ],
+  },
+  herald: {
+    id: 'herald', name: 'Void Herald', tier: 2, atk: 3, hp: 11, cd: 6, classes: ['guard', 'void'],
+    desc: 'When destroyed, leaves a 3/3 Echo.',
+    perks: ['Its Echo is 5/5.', 'Leaves 2 Echoes (4/4).'], accent: ['#8070ff', '#d0c8ff'],
+    sprite: [
+      '.....oooooo.....',
+      '...ooAAllAAoo...',
+      '..oAAllllllAAo..',
+      'eoallllllllllao.',
+      'Eobbbbbbbbbbbbwo',
+      'EobaAAAAAAAAaabo',
+      'Eobbbbbbbbbbbbso',
+      'eoassssssssssao.',
+      '..oAAssssssAAo..',
+      '...ooAAssAAoo...',
+      '.....oooooo.....',
+    ],
+  },
+  oblivion: {
+    id: 'oblivion', name: 'Oblivion', tier: 3, atk: 8, hp: 16, cd: 6, classes: ['artillery', 'void'],
+    desc: 'Piercing shots heal it for half damage.',
+    perks: ['Hits the front 2 enemies.', 'Heals for the full damage.'], accent: ['#ff40c0', '#ffb0e8'],
+    sprite: [
+      '..oooooo..............',
+      '.oAlllllo.............',
+      'eoAllllllooooooooooo..',
+      'EobbbbbbbbbbbbbbbbbAAo',
+      'EobbaaaabbbbbbbbbbbbAE',
+      'EobbbbwwbbbbbbbbbbbAAo',
+      'Eosssssssssssssssssoo.',
+      'eoAsssssooooooooooo...',
+      '.oAssssso.............',
+      '..oooooo..............',
+    ],
+  },
+  voidmother: {
+    id: 'voidmother', name: 'Voidmother', tier: 3, atk: 5, hp: 19, cd: 6, classes: ['tech', 'void'],
+    desc: 'Every 2nd attack spawns a 3/3 Echo.',
+    perks: ['Its Echoes are 5/5.', 'Spawns an Echo every attack.'], accent: ['#9040ff', '#e0b0ff'],
+    sprite: [
+      '......oooooooo......',
+      '....ooAAllllAAoo....',
+      '..ooAllllllllllAoo..',
+      '.oAlllaAllllAalllAo.',
+      'eoAllAAAAllAAAAllAoo',
+      'EobbbbaAbbbbAabbbbwo',
+      'Eobbbbbbbbbbbbbbbbbo',
+      'EobbbbaAbbbbAabbbbso',
+      'eoAssAAAAssAAAAssAoo',
+      '.oAsssaAssssAasssAo.',
+      '..ooAssssssssssAoo..',
+      '....ooAAssssAAoo....',
+      '......oooooooo......',
+    ],
+  },
+
   // ---------- Summons ----------
   fighter: {
     id: 'fighter', name: 'Fighter', tier: 0, atk: 1, hp: 2, cd: 4, classes: [],
     desc: 'Launched from a carrier, hangar or queen.', perks: ['', ''], accent: ['#9b5cff', '#d4b8ff'],
     sprite: ['oo......', 'oaoo....', 'EobbwwAo', 'oaoo....', 'oo......'],
+  },
+  echo: {
+    id: 'echo', name: 'Echo', tier: 0, atk: 3, hp: 3, cd: 4, classes: [],
+    desc: 'A Void copy that fights at the back.', perks: ['', ''], accent: ['#c070ff', '#f0d8ff'],
+    sprite: ['.oooo....', 'oAbbAoo..', 'Ebbwbbbo.', 'EbbbbbbAo', 'Ebbwbbbo.', 'oAbbAoo..', '.oooo....'],
   },
   mine: {
     id: 'mine', name: 'Mine', tier: 0, atk: 4, hp: 1, cd: 99, classes: [],
@@ -480,7 +663,7 @@ export const SHIPS: Record<string, ShipDef> = {
 };
 
 /** Battle-only units (fighters, mines): not bought, no synergy, skipped by snipes and torpedoes. */
-export const isSummon = (def: string) => def === 'fighter' || def === 'mine';
+export const isSummon = (def: string) => def === 'fighter' || def === 'mine' || def === 'echo';
 
 export const SHOP_SHIPS = Object.values(SHIPS).filter((s) => s.tier > 0);
 

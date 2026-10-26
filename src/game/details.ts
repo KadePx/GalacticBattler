@@ -113,7 +113,7 @@ function drawTrait(scene: Phaser.Scene, add: Add, id: ShipClass, count: number |
     im.setScale(Math.min(2, (pitch - 4) / im.width));
   });
   cy += 22 * Math.ceil(members.length / perRow) + 2;
-  if (members.length > 6) return cy;
+  if (tr.faction || members.length > 5) return cy;
   const names = add(txt(scene, x, cy, members.map((s) => s.name).join(', '), { wrap: w, color: C.faint }));
   return names.y + names.height + 4;
 }

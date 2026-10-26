@@ -40,7 +40,7 @@ export const TERMS: Term[] = [
   },
   {
     id: 'fighter', name: 'FIGHTER', match: /fighter/i,
-    desc: 'A small ship launched behind your line during battle. Not bought, no synergy. Torpedoes and Lances skip fighters, and losing one doesn\'t trigger on-death effects.',
+    desc: 'A small ship launched behind your line during battle. Not bought, no synergy. Torpedoes and Lances skip fighters (and mines and Echoes), and losing one doesn\'t trigger on-death effects.',
   },
   {
     id: 'zap', name: 'ZAP', match: /\bzap/i,
@@ -64,7 +64,7 @@ export const TERMS: Term[] = [
   },
   {
     id: 'down', name: 'GOES DOWN', match: /goes down|ally lost|per ally|on death|dies/i,
-    desc: 'When a ship is destroyed (or rebuilds). Triggers Salvagers (either side), Interceptors, Vengeance and Reavers. Fighters and mines don\'t count.',
+    desc: 'When a ship is destroyed (or rebuilds). Triggers Salvagers (either side), Interceptors, Heralds, Vengeance and Reavers. Fighters, mines and Echoes don\'t count.',
   },
   {
     id: 'mark', name: 'MARK', match: /\bmark/i,
@@ -72,7 +72,7 @@ export const TERMS: Term[] = [
   },
   {
     id: 'mine', name: 'MINE', match: /\bmine/i,
-    desc: 'A 1-HP charge placed in front of your line. Enemies shoot it first; when destroyed it explodes on the front enemy.',
+    desc: 'A 1-HP charge placed in front of your line. Enemies shoot it first; when destroyed it explodes on the front enemy. Explosions grow in later rounds.',
   },
   {
     id: 'cleave', name: 'CLEAVE', match: /cleave/i,
@@ -83,8 +83,32 @@ export const TERMS: Term[] = [
     desc: 'When this ship\'s shot destroys an enemy ship. Fighters and mines don\'t count.',
   },
   {
-    id: 'faction', name: 'FACTIONS', match: /concord|reaver/i,
-    desc: 'Every ship is Concord (disciplined navy: shields, marks) or Reaver (raiders: kills, mines, cleave). Faction bonuses stack with class bonuses.',
+    id: 'faction', name: 'FACTIONS', match: /concord|reaver|\bvoid\b/i,
+    desc: 'Every ship has a faction: Concord (shields, marks), Reavers (kills, mines) or Void (life-steal, echoes). Stacks with class bonuses.',
+  },
+  {
+    id: 'blink', name: 'BLINK / MISS', match: /blink|\bmiss/i,
+    desc: 'The next hit on this ship misses completely. Zaps and explosions can\'t be dodged.',
+  },
+  {
+    id: 'heal', name: 'LIFE-STEAL', match: /heals? (itself|it )|heal \d+%|heal \+\d per hit/i,
+    desc: 'The ship repairs itself when its shots deal damage, up to its starting HP.',
+  },
+  {
+    id: 'drain', name: 'DRAIN', match: /drains?\b/i,
+    desc: 'Permanently lowers the target\'s ATK for this battle.',
+  },
+  {
+    id: 'thorns', name: 'THORNS', match: /thorns|deal \d back|hits it takes/i,
+    desc: 'Whenever an enemy shot lands on this ship, the attacker takes damage back. Thorns pierce shields and never chain.',
+  },
+  {
+    id: 'drag', name: 'DRAG', match: /drags?\b/i,
+    desc: 'Moves an enemy from the back of its line to the front before the battle starts, so it gets shot first.',
+  },
+  {
+    id: 'echo', name: 'ECHO', match: /\becho/i,
+    desc: 'A Void copy that fights at the back of your line. Battle-only: not bought, no synergy, doesn\'t trigger on-death effects.'
   },
   {
     id: 'endless', name: 'ENDLESS',

@@ -24,8 +24,11 @@ export const RELICS: RelicDef[] = [
   { id: 'salvage', name: 'Salvage Rights', desc: '+2 scrap every round.', color: 0xffd166, glyph: '$' },
   { id: 'banner_c', name: 'Concord Banner', desc: 'Counts as one more Concord ship.', color: 0xa8c8ff, glyph: 'C' },
   { id: 'banner_r', name: 'Reaver Flag', desc: 'Counts as one more Reaver ship.', color: 0xff8a4a, glyph: 'R' },
+  { id: 'banner_v', name: 'Void Sigil', desc: 'Counts as one more Void ship.', color: 0xc070ff, glyph: 'X' },
   { id: 'minefield', name: 'Minefield', desc: 'Lay 1 mine in front of your line.', color: 0xe0b030, glyph: '*' },
   { id: 'trophy', name: 'Trophy Rack', desc: 'Your ships gain +3 ATK per kill.', color: 0xd87830, glyph: 'K' },
+  { id: 'phase', name: 'Phase Coils', desc: 'Your front ship blinks: the first hit misses.', color: 0xd050ff, glyph: 'P' },
+  { id: 'thorns', name: 'Thorn Plating', desc: 'Guard ships deal 1 back when hit by ships.', color: 0xa04020, glyph: 'T' },
   { id: 'magnet', name: 'Scrap Magnet', desc: 'Selling ships gives +1 scrap.', color: 0xb0b8d0, glyph: 'M' },
 ];
 

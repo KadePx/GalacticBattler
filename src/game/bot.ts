@@ -50,17 +50,21 @@ export const ARCHETYPES: Archetype[] = [
   },
   {
     id: 'concord', label: 'CONCORD FLEET', titles: ['Marshal', 'Commodore', 'Lieutenant'],
-    core: ['picket', 'spotter', 'bastion', 'aegis', 'reflector', 'bulwark', 'lance'], relics: ['banner_c', 'matrix', 'plating'],
+    core: ['flagship', 'bastion', 'spotter', 'railgun', 'aegis', 'picket'], relics: ['banner_c', 'matrix', 'plating'],
   },
   {
     id: 'reaver', label: 'REAVER FLEET', titles: ['Reaver', 'Warlord', 'Cutthroat'],
-    core: ['revenant', 'ravager', 'raider', 'phantom', 'scrapper', 'interceptor'], relics: ['trophy', 'banner_r', 'alpha'],
+    core: ['revenant', 'ravager', 'ironmaw', 'grappler', 'raider', 'phantom', 'scrapper'], relics: ['trophy', 'banner_r', 'alpha'],
+  },
+  {
+    id: 'void', label: 'VOID FLEET', titles: ['Oracle', 'Hollow One', 'Riftborn'],
+    core: ['oblivion', 'voidmother', 'skimmer', 'herald', 'wraith'], relics: ['banner_v', 'plating', 'vengeance'],
   },
 ];
 
 const BOT_COMMANDER: Record<string, string> = {
   swarm: 'ryx', fortress: 'kael', artillery: 'orin', blitz: 'nyx', martyr: 'nyx', control: 'juno', balanced: 'vance',
-  concord: 'sera', reaver: 'grisk',
+  concord: 'sera', reaver: 'grisk', void: 'nihl',
 };
 
 const NAMES = ['Vex', 'Nyx', 'Korr', 'Talon', 'Ryn', 'Zed', 'Mox', 'Skarn', 'Ilya', 'Drax', 'Quill', 'Juno', 'Sable', 'Orin'];
@@ -71,6 +75,8 @@ const FRONT_PRIORITY: Record<string, number> = {
   carrier: 3, ion: 3, command: 3, scout: 4, phantom: 4, salvager: 4.5, lance: 5, queen: 5.5,
   torpedo: 6, siege: 6, drone: 6,
   picket: 1.2, bastion: 0.7, spotter: 4.5, scrapper: 2.5, minelayer: 5, ravager: 2,
+  herald: 0.8, skimmer: 1.5, wraith: 2.5, siphon: 4, oblivion: 5, voidmother: 5,
+  ironmaw: 0.6, grappler: 2, railgun: 5, flagship: 3,
 };
 
 /** Extra scrap bots get in later rounds, so the back half of a run stays a challenge. */

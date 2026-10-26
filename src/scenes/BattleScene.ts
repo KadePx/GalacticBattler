@@ -305,6 +305,23 @@ export class BattleScene extends Phaser.Scene {
         });
         return;
       }
+      case 'drag': {
+        const g = this.views.get(e.s);
+        const v = this.views.get(e.u);
+        const before = this.views.get(e.before);
+        if (!g || !v || !before) return;
+        // Reorder the view list so layout() puts the dragged ship up front.
+        const all = [...this.views.entries()].filter(([id]) => id !== e.u);
+        const at = all.findIndex(([id]) => id === e.before);
+        all.splice(at, 0, [e.u, v]);
+        this.views = new Map(all);
+        const hook = this.add.graphics().lineStyle(1, 0xffb347, 1).lineBetween(g.spr.x, g.spr.y, v.spr.x, v.spr.y);
+        this.tweens.add({ targets: hook, alpha: 0, duration: 420, onComplete: () => hook.destroy() });
+        popup(this, v.spr.x, v.spr.y - 24, 'DRAG', '#ffb347');
+        audio.play('debuff');
+        this.layout(v.u.side);
+        return;
+      }
       case 'spawn': {
         const q = this.views.get(e.s);
         const v = this.makeView(e.unit, q ? { ...q.pos } : undefined);
@@ -322,6 +339,16 @@ export class BattleScene extends Phaser.Scene {
     const d = this.views.get(e.d);
     if (!s || !d) return;
 
+    if (e.k === 'heal' && e.s === e.d) {
+      // Life-steal: green number above the ship itself.
+      this.time.delayedCall(SHOT_MS, () => {
+        if (!d.alive) return;
+        this.setHp(d, e.hp);
+        popup(this, d.spr.x, d.spr.y - 26, `+${e.amt}`, C.hp);
+        this.flash(d, 0x7dff8a);
+      });
+      return;
+    }
     if (e.k === 'heal') {
       const g = this.add.graphics().lineStyle(1, 0x7dff8a, 1).lineBetween(s.spr.x, s.spr.y, d.spr.x, d.spr.y);
       this.tweens.add({ targets: g, alpha: 0, duration: 300, onComplete: () => g.destroy() });
@@ -378,6 +405,10 @@ export class BattleScene extends Phaser.Scene {
       onComplete: () => {
         proj.destroy();
         if (!d.alive) return;
+        if (e.miss) {
+          popup(this, d.spr.x, d.spr.y - 14, 'MISS', '#ffffff');
+          return;
+        }
         if (e.blocked) {
           popup(this, d.spr.x, d.spr.y - 14, 'BLOCK', C.cyan);
           audio.play('block');
