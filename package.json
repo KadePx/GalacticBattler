@@ -11,9 +11,11 @@
     "balance": "esbuild src/dev/balance.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/balance.mjs --log-level=warning && node node_modules/.cache/balance.mjs"
   },
   "dependencies": {
-    "phaser": "3.90.0"
+    "phaser": "3.90.0",
+    "three": "0.180.0"
   },
   "devDependencies": {
+    "@types/three": "0.180.0",
     "typescript": "5.8.3",
     "vite": "6.3.5"
   }

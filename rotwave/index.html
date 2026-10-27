@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1a1d22" />
+    <meta name="description" content="Rotwave: a low-poly RTS zombie wave defense. Hold the HQ against endless hordes." />
+    <title>Rotwave</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --ink: #eae6da;
+        --dim: #a49f90;
+        --panel: rgba(18, 20, 22, 0.82);
+        --line: rgba(255, 255, 255, 0.1);
+        --green: #7ee06a;
+        --red: #ff5a45;
+        --gold: #ffd166;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #1a1d22; color: var(--ink); overflow: hidden; font: 14px/1.4 Rubik, system-ui, sans-serif; }
+      #game { position: fixed; inset: 0; touch-action: none; }
+      #game canvas { width: 100%; height: 100%; display: block; }
+      button { font: inherit; color: inherit; cursor: pointer; }
+      .hud { position: fixed; z-index: 2; pointer-events: none; }
+      .hud > * { pointer-events: auto; }
+      .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(6px); }
+
+      /* top bar */
+      #top { top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; display: flex; gap: 8px; align-items: stretch; justify-content: center; flex-wrap: wrap; }
+      #top .panel { padding: 7px 14px; display: flex; align-items: center; gap: 10px; }
+      #wave { font-family: Bungee, sans-serif; font-size: 18px; color: var(--gold); letter-spacing: 1px; }
+      #phase { color: var(--dim); }
+      .stat { display: flex; align-items: baseline; gap: 6px; }
+      .stat small { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+      .stat b { font-size: 16px; }
+      .stat.flash b { animation: flash 0.5s; }
+      @keyframes flash { 0%, 60% { color: var(--red); } }
+      #hq { min-width: 170px; }
+      #hq .bar { flex: 1; height: 10px; background: #0b0d10; border-radius: 5px; overflow: hidden; }
+      #hq-fill { height: 100%; width: 100%; background: var(--green); transition: width 0.2s; }
+      #hq-fill.low { background: var(--red); }
+      #next { background: #3b5a2a; border: 1px solid #5f8a44; border-radius: 10px; padding: 6px 12px; font-weight: 600; }
+      #next:hover { background: #4a7034; }
+      #muteHint { color: var(--dim); }
+
+      /* bottom: selection, command card, minimap */
+      #bottom { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: flex-end; }
+      #sel { flex: 1 1 0; min-width: 0; padding: 10px 14px; min-height: 74px; }
+      #sel .hint { color: var(--dim); font-size: 12px; line-height: 1.7; }
+      #sel .hint b { color: var(--ink); font-weight: 600; }
+      .selhead { font-family: Bungee, sans-serif; color: var(--green); }
+      .selhp { margin-top: 6px; height: 6px; background: #0b0d10; border-radius: 3px; overflow: hidden; max-width: 220px; }
+      .selhp i { display: block; height: 100%; background: var(--green); }
+      #selall { margin-top: 6px; display: none; }
+      #cmd { display: flex; gap: 6px; padding: 6px; }
+      .cmd { position: relative; width: 78px; height: 84px; border-radius: 8px; border: 1px solid var(--line); background: #262a2e; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 4px; gap: 1px; }
+      .cmd:hover { background: #30353a; }
+      .cmd.build { background: #2b2a24; }
+      .cmd.active { outline: 2px solid var(--gold); background: #3d3a26; }
+      .cmd.poor { opacity: 0.45; }
+      .cmd .key { position: absolute; top: 3px; left: 6px; font-size: 11px; color: var(--dim); }
+      .cmd .nm { font-size: 11px; font-weight: 600; }
+      .cmd .cost { font-size: 12px; color: var(--gold); font-weight: 700; }
+      .cmd .cost::before { content: '\25C6 '; font-size: 9px; }
+      .cmd .tip { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); width: 180px; padding: 8px 10px; background: #111; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--ink); pointer-events: none; }
+      .cmd:hover .tip { display: block; }
+      .ico { width: 34px; height: 34px; margin-bottom: 2px; background-size: contain; background-repeat: no-repeat; background-position: center; }
+      .ico-rifle { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%228%22%20r%3D%225%22%20fill%3D%22%233d4a2c%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2213%22%20width%3D%2212%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%237a8f50%22/%3E%3Crect%20x%3D%2211%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2217%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2218%22%20y%3D%2215%22%20width%3D%2213%22%20height%3D%223%22%20fill%3D%22%2323262b%22/%3E%3C/svg%3E"); }
+      .ico-gunner { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ccircle%20cx%3D%2215%22%20cy%3D%228%22%20r%3D%225%22%20fill%3D%22%235a4a2c%22/%3E%3Crect%20x%3D%227%22%20y%3D%2213%22%20width%3D%2216%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%23b08848%22/%3E%3Crect%20x%3D%229%22%20y%3D%2224%22%20width%3D%225%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2216%22%20y%3D%2224%22%20width%3D%225%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2216%22%20y%3D%2214%22%20width%3D%2215%22%20height%3D%225%22%20fill%3D%22%2323262b%22/%3E%3Crect%20x%3D%2218%22%20y%3D%2219%22%20width%3D%223%22%20height%3D%224%22%20fill%3D%22%23d9b44a%22/%3E%3C/svg%3E"); }
+      .ico-sniper { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ccircle%20cx%3D%2213%22%20cy%3D%228%22%20r%3D%225%22%20fill%3D%22%232a2f38%22/%3E%3Crect%20x%3D%228%22%20y%3D%2213%22%20width%3D%2210%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%2356647a%22/%3E%3Crect%20x%3D%229%22%20y%3D%2224%22%20width%3D%223%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2214%22%20y%3D%2224%22%20width%3D%223%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2213%22%20y%3D%2215%22%20width%3D%2219%22%20height%3D%222%22%20fill%3D%22%23d0d4da%22/%3E%3Crect%20x%3D%2218%22%20y%3D%2212%22%20width%3D%225%22%20height%3D%223%22%20fill%3D%22%2323262b%22/%3E%3C/svg%3E"); }
+      .ico-wall { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20x%3D%222%22%20y%3D%2220%22%20width%3D%2213%22%20height%3D%228%22%20rx%3D%223%22%20fill%3D%22%23c8b88a%22/%3E%3Crect%20x%3D%2217%22%20y%3D%2220%22%20width%3D%2213%22%20height%3D%228%22%20rx%3D%223%22%20fill%3D%22%23b8a87a%22/%3E%3Crect%20x%3D%229%22%20y%3D%2213%22%20width%3D%2214%22%20height%3D%228%22%20rx%3D%223%22%20fill%3D%22%23d6c696%22/%3E%3Crect%20x%3D%223%22%20y%3D%229%22%20width%3D%2226%22%20height%3D%223%22%20fill%3D%22%238a6a3e%22/%3E%3Crect%20x%3D%225%22%20y%3D%226%22%20width%3D%223%22%20height%3D%2216%22%20fill%3D%22%235a3d2a%22/%3E%3Crect%20x%3D%2224%22%20y%3D%226%22%20width%3D%223%22%20height%3D%2216%22%20fill%3D%22%235a3d2a%22/%3E%3C/svg%3E"); }
+      .ico-turret { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cellipse%20cx%3D%2216%22%20cy%3D%2225%22%20rx%3D%2212%22%20ry%3D%225%22%20fill%3D%22%236a6d70%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2212%22%20width%3D%2212%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%237b8a6a%22/%3E%3Crect%20x%3D%2220%22%20y%3D%2213%22%20width%3D%2211%22%20height%3D%223%22%20fill%3D%22%2323262b%22/%3E%3Crect%20x%3D%2220%22%20y%3D%2218%22%20width%3D%2211%22%20height%3D%223%22%20fill%3D%22%2323262b%22/%3E%3C/svg%3E"); }
+      .ico-grenadier { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ccircle%20cx%3D%2215%22%20cy%3D%228%22%20r%3D%225%22%20fill%3D%22%234a3f2c%22/%3E%3Crect%20x%3D%229%22%20y%3D%2213%22%20width%3D%2212%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%238a7448%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2216%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2216%22%20y%3D%2214%22%20width%3D%2212%22%20height%3D%226%22%20rx%3D%222%22%20fill%3D%22%2323262b%22/%3E%3Ccircle%20cx%3D%2228%22%20cy%3D%229%22%20r%3D%223%22%20fill%3D%22%234a5a2c%22/%3E%3Crect%20x%3D%2227%22%20y%3D%224%22%20width%3D%222%22%20height%3D%223%22%20fill%3D%22%23888%22/%3E%3C/svg%3E"); }
+      .ico-flamer { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ccircle%20cx%3D%2215%22%20cy%3D%228%22%20r%3D%225%22%20fill%3D%22%233a3a3a%22/%3E%3Crect%20x%3D%229%22%20y%3D%2213%22%20width%3D%2212%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%239a5a36%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2216%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2217%22%20y%3D%2215%22%20width%3D%229%22%20height%3D%223%22%20fill%3D%22%2323262b%22/%3E%3Cpath%20d%3D%22M26%2012%20Q32%2016%2026%2021%20Q29%2016%2026%2012Z%22%20fill%3D%22%23ff8a2a%22/%3E%3Crect%20x%3D%224%22%20y%3D%2213%22%20width%3D%224%22%20height%3D%2210%22%20rx%3D%222%22%20fill%3D%22%23c0402a%22/%3E%3C/svg%3E"); }
+      .ico-medic { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ccircle%20cx%3D%2215%22%20cy%3D%228%22%20r%3D%225%22%20fill%3D%22%23e8e4d8%22/%3E%3Crect%20x%3D%229%22%20y%3D%2213%22%20width%3D%2212%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%236a7b4c%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2216%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2213%22%20y%3D%224%22%20width%3D%224%22%20height%3D%228%22%20fill%3D%22%23d8302a%22/%3E%3Crect%20x%3D%2211%22%20y%3D%226%22%20width%3D%228%22%20height%3D%224%22%20fill%3D%22%23d8302a%22/%3E%3Crect%20x%3D%2222%22%20y%3D%2215%22%20width%3D%228%22%20height%3D%228%22%20rx%3D%221%22%20fill%3D%22%23e8e4d8%22/%3E%3Crect%20x%3D%2225%22%20y%3D%2216%22%20width%3D%222%22%20height%3D%226%22%20fill%3D%22%23d8302a%22/%3E%3Crect%20x%3D%2223%22%20y%3D%2218%22%20width%3D%226%22%20height%3D%222%22%20fill%3D%22%23d8302a%22/%3E%3C/svg%3E"); }
+      .ico-engineer { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ccircle%20cx%3D%2215%22%20cy%3D%228%22%20r%3D%225%22%20fill%3D%22%23e0b030%22/%3E%3Crect%20x%3D%229%22%20y%3D%2213%22%20width%3D%2212%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%2356667a%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2216%22%20y%3D%2224%22%20width%3D%224%22%20height%3D%227%22%20fill%3D%22%232b3242%22/%3E%3Crect%20x%3D%2210%22%20y%3D%226%22%20width%3D%2210%22%20height%3D%222%22%20fill%3D%22%232a2a2a%22/%3E%3Crect%20x%3D%2221%22%20y%3D%2212%22%20width%3D%223%22%20height%3D%2213%22%20fill%3D%22%239aa0a6%22%20transform%3D%22rotate%2830%2022%2018%29%22/%3E%3Crect%20x%3D%2219%22%20y%3D%2210%22%20width%3D%227%22%20height%3D%224%22%20fill%3D%22%239aa0a6%22%20transform%3D%22rotate%2830%2022%2018%29%22/%3E%3C/svg%3E"); }
+      .ico-jeep { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20x%3D%222%22%20y%3D%2214%22%20width%3D%2228%22%20height%3D%229%22%20rx%3D%222%22%20fill%3D%22%236f7b4d%22/%3E%3Crect%20x%3D%228%22%20y%3D%229%22%20width%3D%2210%22%20height%3D%226%22%20fill%3D%22%232a3036%22/%3E%3Crect%20x%3D%2218%22%20y%3D%225%22%20width%3D%2210%22%20height%3D%223%22%20fill%3D%22%2323262b%22/%3E%3Crect%20x%3D%2220%22%20y%3D%227%22%20width%3D%222%22%20height%3D%227%22%20fill%3D%22%2323262b%22/%3E%3Ccircle%20cx%3D%228%22%20cy%3D%2224%22%20r%3D%224%22%20fill%3D%22%23151515%22/%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2224%22%20r%3D%224%22%20fill%3D%22%23151515%22/%3E%3C/svg%3E"); }
+      .ico-tank { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20x%3D%222%22%20y%3D%2220%22%20width%3D%2228%22%20height%3D%228%22%20rx%3D%224%22%20fill%3D%22%2323262b%22/%3E%3Crect%20x%3D%224%22%20y%3D%2214%22%20width%3D%2224%22%20height%3D%227%22%20fill%3D%22%235f6d4a%22/%3E%3Crect%20x%3D%229%22%20y%3D%229%22%20width%3D%2212%22%20height%3D%226%22%20rx%3D%221%22%20fill%3D%22%236d7b56%22/%3E%3Crect%20x%3D%2220%22%20y%3D%2210%22%20width%3D%2211%22%20height%3D%223%22%20fill%3D%22%232b2e31%22/%3E%3Ccircle%20cx%3D%228%22%20cy%3D%2224%22%20r%3D%222%22%20fill%3D%22%234a4d50%22/%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2224%22%20r%3D%222%22%20fill%3D%22%234a4d50%22/%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2224%22%20r%3D%222%22%20fill%3D%22%234a4d50%22/%3E%3C/svg%3E"); }
+      .ico-cannon { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cellipse%20cx%3D%2216%22%20cy%3D%2226%22%20rx%3D%2212%22%20ry%3D%224%22%20fill%3D%22%236a6d70%22/%3E%3Crect%20x%3D%229%22%20y%3D%2213%22%20width%3D%2213%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%236d7b56%22/%3E%3Crect%20x%3D%2220%22%20y%3D%2215%22%20width%3D%2211%22%20height%3D%225%22%20fill%3D%22%2323262b%22/%3E%3Crect%20x%3D%2228%22%20y%3D%2214%22%20width%3D%223%22%20height%3D%227%22%20fill%3D%22%232b2e31%22/%3E%3C/svg%3E"); }
+      .ico-flame { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cellipse%20cx%3D%2214%22%20cy%3D%2226%22%20rx%3D%2211%22%20ry%3D%224%22%20fill%3D%22%236a6d70%22/%3E%3Crect%20x%3D%227%22%20y%3D%2213%22%20width%3D%2212%22%20height%3D%2211%22%20rx%3D%225%22%20fill%3D%22%23c0402a%22/%3E%3Crect%20x%3D%2218%22%20y%3D%2216%22%20width%3D%226%22%20height%3D%224%22%20fill%3D%22%2323262b%22/%3E%3Cpath%20d%3D%22M24%2013%20Q32%2018%2024%2023%20Q28%2018%2024%2013Z%22%20fill%3D%22%23ff8a2a%22/%3E%3C/svg%3E"); }
+      .ico-mortar { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cellipse%20cx%3D%2216%22%20cy%3D%2225%22%20rx%3D%2213%22%20ry%3D%225%22%20fill%3D%22%23c8b88a%22/%3E%3Cellipse%20cx%3D%2216%22%20cy%3D%2224%22%20rx%3D%228%22%20ry%3D%223%22%20fill%3D%22%234f4836%22/%3E%3Crect%20x%3D%2214%22%20y%3D%228%22%20width%3D%225%22%20height%3D%2216%22%20rx%3D%221%22%20fill%3D%22%232b2e31%22%20transform%3D%22rotate%2825%2016%2022%29%22/%3E%3C/svg%3E"); }
+      .ico-tower { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20x%3D%229%22%20y%3D%2212%22%20width%3D%222%22%20height%3D%2218%22%20fill%3D%22%237a5a36%22/%3E%3Crect%20x%3D%2221%22%20y%3D%2212%22%20width%3D%222%22%20height%3D%2218%22%20fill%3D%22%237a5a36%22/%3E%3Crect%20x%3D%227%22%20y%3D%2212%22%20width%3D%2218%22%20height%3D%225%22%20fill%3D%22%238a6a3e%22/%3E%3Cpath%20d%3D%22M5%2011%20L16%203%20L27%2011Z%22%20fill%3D%22%235f6d4a%22/%3E%3Crect%20x%3D%2211%22%20y%3D%2220%22%20width%3D%2210%22%20height%3D%222%22%20fill%3D%22%235a3d2a%22/%3E%3C/svg%3E"); }
+      .ico-spikes { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20x%3D%223%22%20y%3D%2222%22%20width%3D%2226%22%20height%3D%225%22%20fill%3D%22%236a4a2e%22/%3E%3Cpath%20d%3D%22M5%2022%20L7%2012%20L9%2022%20M11%2022%20L13%2010%20L15%2022%20M17%2022%20L19%2012%20L21%2022%20M23%2022%20L25%2010%20L27%2022%22%20fill%3D%22%23b0b6bc%22/%3E%3C/svg%3E"); }
+      .ico-airstrike { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20d%3D%22M16%203%20L19%2014%20L30%2018%20L19%2019%20L17%2027%20L21%2030%20L11%2030%20L15%2027%20L13%2019%20L2%2018%20L13%2014Z%22%20fill%3D%22%239aa4b0%22/%3E%3Ccircle%20cx%3D%228%22%20cy%3D%2227%22%20r%3D%222%22%20fill%3D%22%23ff8a2a%22/%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2227%22%20r%3D%222%22%20fill%3D%22%23ff8a2a%22/%3E%3C/svg%3E"); }
+      .ico-artillery { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20d%3D%22M10%204%20L13%204%20L13%2020%20L10%2020Z%22%20fill%3D%22%236b6e70%22%20transform%3D%22rotate%2820%2012%2012%29%22/%3E%3Cpath%20d%3D%22M20%202%20L23%202%20L23%2018%20L20%2018Z%22%20fill%3D%22%236b6e70%22%20transform%3D%22rotate%2820%2021%2010%29%22/%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2225%22%20r%3D%225%22%20fill%3D%22%23ff8a2a%22/%3E%3Ccircle%20cx%3D%2222%22%20cy%3D%2226%22%20r%3D%224%22%20fill%3D%22%23ffc04a%22/%3E%3C/svg%3E"); }
+      .ico-supply { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20d%3D%22M4%2012%20Q16%20-2%2028%2012Z%22%20fill%3D%22%23e8e4d8%22/%3E%3Cpath%20d%3D%22M6%2012%20L12%2020%20M26%2012%20L20%2020%20M16%2012%20L16%2020%22%20stroke%3D%22%239a958a%22%20stroke-width%3D%221%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2219%22%20width%3D%2212%22%20height%3D%2210%22%20fill%3D%22%236b7a4a%22/%3E%3Crect%20x%3D%2215%22%20y%3D%2220%22%20width%3D%222%22%20height%3D%228%22%20fill%3D%22%23d8302a%22/%3E%3Crect%20x%3D%2212%22%20y%3D%2223%22%20width%3D%228%22%20height%3D%222%22%20fill%3D%22%23d8302a%22/%3E%3C/svg%3E"); }
+      .ico-para { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20d%3D%22M3%2013%20Q16%200%2029%2013Z%22%20fill%3D%22%23e8e4d8%22/%3E%3Cpath%20d%3D%22M5%2013%20L14%2021%20M27%2013%20L18%2021%22%20stroke%3D%22%239a958a%22%20stroke-width%3D%221%22/%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2221%22%20r%3D%223%22%20fill%3D%22%233d4a2c%22/%3E%3Crect%20x%3D%2213%22%20y%3D%2224%22%20width%3D%226%22%20height%3D%227%22%20rx%3D%221%22%20fill%3D%22%235a6b3c%22/%3E%3C/svg%3E"); }
+      #cmdbox { padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+      #tabs { display: flex; gap: 4px; }
+      #tabs button { flex: 1; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: #1d2023; color: var(--dim); font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+      #tabs button.on { background: #3b5a2a; color: var(--ink); border-color: #5f8a44; }
+      #tabs small { font-weight: 400; opacity: 0.7; }
+      #cmd { display: grid; grid-template-columns: repeat(5, 66px); gap: 5px; padding: 0; }
+      #cmd .cmd { width: 66px; height: 70px; }
+      #cmd .ico { width: 28px; height: 28px; }
+      #calls { position: fixed; left: 10px; top: 50%; transform: translateY(-50%); z-index: 2; display: flex; flex-direction: column; gap: 6px; padding: 6px; }
+      .call { position: relative; width: 74px; height: 70px; border-radius: 8px; border: 1px solid var(--line); background: #2a2622; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 4px; overflow: visible; }
+      .call:hover { background: #36302a; }
+      .call::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: var(--cd, 0%); background: rgba(0, 0, 0, 0.6); border-radius: 0 0 8px 8px; pointer-events: none; }
+      .call.active { outline: 2px solid var(--gold); background: #3d3a26; }
+      .call.poor:not(.cooling) { opacity: 0.45; }
+      .call .ico { width: 28px; height: 28px; margin-bottom: 1px; }
+      .call .ck { position: absolute; top: 3px; left: 6px; font-size: 11px; color: var(--dim); }
+      .call .cn { font-size: 10px; font-weight: 600; white-space: nowrap; }
+      .call .cost { font-size: 11px; color: var(--gold); font-weight: 700; }
+      .call .cost::before { content: '\25C6 '; font-size: 9px; }
+      .call .cdv { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: Bungee, sans-serif; font-size: 22px; color: #fff; text-shadow: 0 2px 4px #000; z-index: 1; pointer-events: none; }
+      .call .tip { display: none; position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); width: 190px; padding: 8px 10px; background: #111; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--ink); pointer-events: none; text-align: left; z-index: 3; }
+      .call:hover .tip { display: block; }
+      .tip b { color: var(--gold); }
+      #minibox { padding: 6px; }
+      #mini { display: block; width: 160px; height: 160px; border-radius: 6px; cursor: crosshair; image-rendering: pixelated; }
+
+      #dragbox { position: fixed; display: none; border: 1px solid var(--green); background: rgba(126, 224, 106, 0.12); z-index: 3; pointer-events: none; }
+
+      /* banner */
+      #banner { top: 22%; left: 50%; transform: translate(-50%, -10px); text-align: center; opacity: 0; transition: opacity 0.35s, transform 0.35s; pointer-events: none; }
+      #banner.show { opacity: 1; transform: translate(-50%, 0); }
+      #banner-title { font-family: Bungee, sans-serif; font-size: clamp(30px, 6vw, 56px); color: var(--gold); text-shadow: 0 3px 0 #000, 0 0 30px rgba(0, 0, 0, 0.6); }
+      #banner.danger #banner-title { color: var(--red); }
+      #banner-sub { font-size: 16px; text-shadow: 0 2px 4px #000; }
+
+      /* overlays */
+      .overlay { position: fixed; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center; background: rgba(10, 11, 13, 0.55); padding: 16px; }
+      .overlay.show { display: flex; }
+      .card { max-width: 520px; width: 100%; padding: 28px; text-align: center; }
+      .card h1 { font-family: Bungee, sans-serif; font-size: clamp(42px, 10vw, 72px); margin: 0; line-height: 1; color: var(--green); text-shadow: 0 4px 0 #1d3a14; }
+      .card h2 { font-family: Bungee, sans-serif; font-size: 34px; margin: 0 0 8px; color: var(--red); }
+      .card p { color: var(--dim); margin: 12px 0; }
+      .card .controls { text-align: left; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 18px auto; max-width: 380px; font-size: 13px; }
+      .card .controls b { color: var(--ink); }
+      .card .controls span { color: var(--dim); }
+      .big { font-family: Bungee, sans-serif; font-size: 20px; padding: 12px 30px; background: #3b5a2a; border: 1px solid #6a9a4a; border-radius: 10px; margin: 6px; }
+      .big:hover { background: #4a7034; }
+      .big.alt { background: #2a2d31; border-color: #444; }
+      a.big { display: inline-block; text-decoration: none; color: var(--ink); }
+      .best { color: var(--gold); font-weight: 700; }
+      #best-line { color: var(--gold); }
+      .back { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 6; color: var(--dim); text-decoration: none; font-size: 13px; }
+      .back:hover { color: var(--ink); }
+
+      @media (max-width: 760px) {
+        #sel, #muteHint { display: none; }
+        #bottom { flex-wrap: wrap; justify-content: center; }
+        #cmd { grid-template-columns: repeat(5, 52px); }
+        #cmd .cmd { width: 52px; height: 58px; }
+        #cmd .nm { font-size: 9px; }
+        #calls { top: auto; bottom: 170px; transform: none; padding: 4px; gap: 4px; }
+        .call { width: 54px; height: 52px; }
+        .call .cn { display: none; }
+        .ico { width: 26px; height: 26px; }
+        #mini { width: 110px; height: 110px; }
+        #top .panel { padding: 5px 9px; }
+        #selall { display: inline-block; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="dragbox"></div>
+
+    <div id="top" class="hud">
+      <div class="panel"><span id="wave">PREPARE</span><span id="phase"></span></div>
+      <div class="panel stat"><small>Scrap</small><b id="scrap">0</b></div>
+      <div class="panel stat"><small>Squad</small><b id="units">0</b></div>
+      <div class="panel stat"><small>Kills</small><b id="kills">0</b></div>
+      <div class="panel" id="hq"><small style="color: var(--dim); font-size: 11px; letter-spacing: 1px">HQ</small><div class="bar"><div id="hq-fill"></div></div><b id="hq-text"></b></div>
+      <button id="next" style="display: none">Send wave now</button>
+    </div>
+
+    <div id="banner" class="hud"><div id="banner-title"></div><div id="banner-sub"></div></div>
+
+    <div id="calls" class="panel hud"></div>
+
+    <div id="bottom" class="hud">
+      <div id="sel" class="panel"></div>
+      <div id="cmdbox" class="panel"><div id="tabs"><button data-tab="squad">SQUAD <small>Tab</small></button><button data-tab="base">BASE <small>Tab</small></button></div><div id="cmd"></div></div>
+      <div id="minibox" class="panel"><canvas id="mini"></canvas><button id="selall" class="big alt" style="font-size: 12px; padding: 4px 8px; margin: 6px 0 0; width: 100%">Select all</button></div>
+    </div>
+
+    <div id="title" class="overlay">
+      <div class="card panel">
+        <h1>ROTWAVE</h1>
+        <p>The dead are coming in waves, and every wave is bigger than the last. Train a squad, wall off the approaches, and keep the HQ standing for as long as you can.</p>
+        <div class="controls">
+          <b>Drag / click</b><span>Select (Shift adds, double-click picks a type)</span>
+          <b>Right-click</b><span>Move selected units around obstacles</span>
+          <b>1–9</b><span>Train units or build (Tab switches Squad / Base)</span>
+          <b>Z X C V</b><span>Airstrike, Artillery, Supply Drop, Paratroopers</span>
+          <b>R</b><span>Rotate barricade (drag to lay a line)</span>
+          <b>WASD / wheel</b><span>Pan and zoom the camera</span>
+          <b>Q · Space · P</b><span>Select all · Jump to HQ · Pause</span>
+        </div>
+        <button id="play" class="big">Defend</button>
+        <div id="best-line"></div>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay">
+      <div class="card panel">
+        <h1 style="font-size: 44px">PAUSED</h1>
+        <p>M toggles sound.</p>
+        <button id="resume" class="big">Resume</button>
+        <a class="big alt" href="/">Quit to games</a>
+      </div>
+    </div>
+
+    <div id="over" class="overlay">
+      <div class="card panel">
+        <h2>THE HQ HAS FALLEN</h2>
+        <p id="over-stats"></p>
+        <button id="again" class="big">Try again</button>
+        <a class="big alt" href="/">More games</a>
+      </div>
+    </div>
+
+    <a class="back" href="/">&larr; itskade.space</a>
+
+    <script type="module" src="/src/rotwave/main.ts"></script>
+  </body>
+</html>

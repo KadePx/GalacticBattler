@@ -3,39 +3,171 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#05060f" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <title>Galactic Battler</title>
+    <meta name="theme-color" content="#0b0c12" />
+    <meta name="description" content="Free browser games by Kade: Galactic Battler and Rotwave." />
+    <title>itskade.space · games</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Press+Start+2P&family=Bungee&display=swap" rel="stylesheet" />
     <style>
-      html, body { margin: 0; height: 100%; background: #05060f; overflow: hidden; }
-      /* dvh follows the phone's visible area (the address bar comes and goes); vh is the fallback. */
-      /* The frame keeps clear of phone notches; the game is centred inside #app. */
-      #frame {
-        width: 100vw; height: 100vh; height: 100dvh;
-        box-sizing: border-box;
-        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-        touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+      :root {
+        --bg: #0b0c12;
+        --card: rgba(19, 21, 29, 0.8);
+        --line: #232736;
+        --ink: #ecebf2;
+        --dim: #9a9cb0;
       }
-      #app { width: 100%; height: 100%; }
-      canvas { image-rendering: pixelated; image-rendering: crisp-edges; outline: 1px solid #1a2140; }
-      #rotate {
-        display: none; position: fixed; inset: 0; z-index: 10; background: #05060f; color: #ffd166;
-        font: 12px/2 "Press Start 2P", monospace; text-align: center; align-items: center; justify-content: center;
-        padding: 24px; box-sizing: border-box;
+      * { box-sizing: border-box; }
+      html { background: var(--bg); }
+      body { margin: 0; color: var(--ink); font: 16px/1.5 "Space Grotesk", system-ui, sans-serif; }
+      body {
+        min-height: 100vh;
       }
-      #rotate span { color: #7fe7ff; display: block; font-size: 32px; margin-bottom: 16px; }
-      /* Phones held upright: the game is landscape-only. */
-      @media (orientation: portrait) and (max-width: 600px) {
-        #rotate { display: flex; }
+      main { max-width: 1080px; margin: 0 auto; padding: 56px 16px 40px; }
+      header h1 { font-size: clamp(34px, 6vw, 56px); margin: 0; letter-spacing: -1.5px; line-height: 1.05; }
+      header h1 span { color: #8fa4ff; }
+      #sky { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; display: block; }
+      header h1 { text-shadow: 0 0 40px rgba(143, 164, 255, 0.35); }
+
+      .games { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; margin-top: 40px; }
+      .game {
+        display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line);
+        border-radius: 16px; overflow: hidden; color: inherit; text-decoration: none; backdrop-filter: blur(6px);
+        transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
       }
+      .game:hover, .game:focus-visible { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 18px 50px -20px var(--accent); outline: none; }
+      .shot { aspect-ratio: 16 / 9; background: var(--shotbg); background-size: cover; background-position: center; position: relative; }
+      .shot .badge {
+        position: absolute; top: 12px; left: 12px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+        padding: 4px 10px; border-radius: 99px; background: rgba(0, 0, 0, 0.6); color: var(--accent); backdrop-filter: blur(4px);
+      }
+      .body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+      .title { font-size: 22px; margin: 0; }
+      .gb .title { font-family: "Press Start 2P", monospace; font-size: 15px; line-height: 1.5; color: #ffd166; }
+      .rw .title { font-family: Bungee, sans-serif; font-size: 24px; color: #8fe07a; }
+      .desc { color: var(--dim); margin: 0; flex: 1; }
+      .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+      .tags span { font-size: 12px; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--line); color: var(--dim); }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+      .play { text-decoration: none; font-weight: 700; padding: 9px 18px; border-radius: 10px; background: var(--accent); color: #0b0c12; }
+      .extra { font-size: 14px; color: var(--dim); text-decoration: none; }
+      .extra:hover { color: var(--ink); text-decoration: underline; }
+      .gb .shot { image-rendering: pixelated; }
+      .gb { --accent: #ffd166; --shotbg: linear-gradient(135deg, #0a0f2a, #1a1146 60%, #05060f); }
+      .rw { --accent: #8fe07a; --shotbg: linear-gradient(135deg, #3a4a2c, #2b313b 60%, #1a1d22); }
+      footer { margin-top: 56px; color: var(--dim); font-size: 14px; }
+      @media (prefers-reduced-motion: reduce) { .game { transition: none; } .game:hover { transform: none; } }
     </style>
   </head>
   <body>
-    <div id="frame"><div id="app"></div></div>
-    <div id="rotate"><div><span>&#8635;</span>Turn your phone sideways to play</div></div>
-    <script type="module" src="/src/main.ts"></script>
+    <canvas id="sky" aria-hidden="true"></canvas>
+    <main>
+      <header>
+        <h1>itskade<span>.space</span></h1>
+      </header>
+
+      <section class="games">
+        <div class="game gb">
+          <a class="shot" href="/galactic-battler/" style="background-image: url(/thumbs/galactic-battler.png), var(--shotbg)" aria-label="Play Galactic Battler"><span class="badge">PLAY NOW</span></a>
+          <div class="body">
+            <h2 class="title">GALACTIC BATTLER</h2>
+            <p class="desc">Pixel-art space auto-battler. Draft a fleet, stack relics, and watch it fight rival commanders round after round.</p>
+            <div class="tags"><span>Auto-battler</span><span>Roguelike</span><span>Strategy</span></div>
+            <div class="row">
+              <a class="play" href="/galactic-battler/">Play</a>
+              <a class="extra" href="/galactic-battler/patch-notes.html">Patch notes</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="game rw">
+          <a class="shot" href="/rotwave/" style="background-image: url(/thumbs/rotwave.jpg), var(--shotbg)" aria-label="Play Rotwave"><span class="badge">NEW · DEMO</span></a>
+          <div class="body">
+            <h2 class="title">ROTWAVE</h2>
+            <p class="desc">Low-poly RTS zombie defense. Command a squad, raise barricades and turrets, and hold your HQ against endless, growing hordes.</p>
+            <div class="tags"><span>RTS</span><span>Wave defense</span><span>Zombies</span></div>
+            <div class="row">
+              <a class="play" href="/rotwave/">Play</a>
+              <span class="extra">Best on desktop</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer>Made by Kade · more games on the way</footer>
+    </main>
+    <script>
+      // Animated background: drifting nebula glows, twinkling parallax stars that
+      // lean toward the mouse, and the occasional shooting star.
+      (() => {
+        const c = document.getElementById('sky');
+        const g = c.getContext('2d');
+        const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        let w = 0, h = 0, dpr = 1, stars = [], meteors = [];
+        let mx = 0, my = 0, tx = 0, ty = 0;
+        const nebulae = [
+          { x: 0.15, y: 0.1, r: 0.55, c: [90, 110, 255], a: 0.32, s: 0.00007 },
+          { x: 0.9, y: 0.25, r: 0.45, c: [120, 220, 110], a: 0.16, s: 0.00009 },
+          { x: 0.6, y: 0.95, r: 0.6, c: [190, 80, 220], a: 0.22, s: 0.00006 },
+        ];
+        function resize() {
+          dpr = Math.min(devicePixelRatio || 1, 2);
+          w = innerWidth; h = innerHeight;
+          c.width = w * dpr; c.height = h * dpr;
+          g.setTransform(dpr, 0, 0, dpr, 0, 0);
+          const n = Math.round((w * h) / 1800);
+          stars = Array.from({ length: n }, () => ({
+            x: Math.random() * w, y: Math.random() * h,
+            z: Math.random() ** 2, // depth: 0 far, 1 near
+            tw: Math.random() * Math.PI * 2,
+            hue: Math.random() < 0.15 ? (Math.random() < 0.5 ? 210 : 40) : 0,
+          }));
+        }
+        function frame(t) {
+          tx += (mx - tx) * 0.04; ty += (my - ty) * 0.04;
+          g.clearRect(0, 0, w, h);
+          g.globalCompositeOperation = 'lighter';
+          for (const n of nebulae) {
+            const x = (n.x + Math.sin(t * n.s * 6.1) * 0.06) * w - tx * 10;
+            const y = (n.y + Math.cos(t * n.s * 4.7) * 0.05) * h - ty * 10;
+            const r = n.r * Math.max(w, h);
+            const grad = g.createRadialGradient(x, y, 0, x, y, r);
+            grad.addColorStop(0, `rgba(${n.c},${n.a})`);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            g.fillStyle = grad;
+            g.fillRect(0, 0, w, h);
+          }
+          for (const s of stars) {
+            if (!still) s.y += 0.04 + s.z * 0.25;
+            if (s.y > h + 2) { s.y = -2; s.x = Math.random() * w; }
+            const x = s.x - tx * (4 + s.z * 30), y = s.y - ty * (4 + s.z * 30);
+            const tw = still ? 1 : 0.6 + 0.4 * Math.sin(t * 0.002 + s.tw);
+            const size = 0.7 + s.z * 1.9;
+            g.fillStyle = s.hue ? `hsla(${s.hue},90%,80%,${tw})` : `rgba(235,238,255,${tw * (0.5 + s.z * 0.5)})`;
+            g.fillRect(x, y, size, size);
+          }
+          if (!still && Math.random() < 0.006 && meteors.length < 2) {
+            const a = 0.35 + Math.random() * 0.3;
+            meteors.push({ x: Math.random() * w * 0.8, y: Math.random() * h * 0.4, vx: Math.cos(a) * 14, vy: Math.sin(a) * 14, life: 1 });
+          }
+          for (let i = meteors.length - 1; i >= 0; i--) {
+            const m = meteors[i];
+            m.x += m.vx; m.y += m.vy; m.life -= 0.02;
+            if (m.life <= 0) { meteors.splice(i, 1); continue; }
+            const grad = g.createLinearGradient(m.x, m.y, m.x - m.vx * 8, m.y - m.vy * 8);
+            grad.addColorStop(0, `rgba(255,255,255,${m.life})`);
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            g.strokeStyle = grad; g.lineWidth = 1.6;
+            g.beginPath(); g.moveTo(m.x, m.y); g.lineTo(m.x - m.vx * 8, m.y - m.vy * 8); g.stroke();
+          }
+          g.globalCompositeOperation = 'source-over';
+          if (!still) requestAnimationFrame(frame);
+        }
+        addEventListener('resize', () => { resize(); if (still) frame(0); });
+        addEventListener('pointermove', (e) => { mx = e.clientX / w - 0.5; my = e.clientY / h - 0.5; });
+        resize();
+        frame(performance.now()); // paint right away, then keep animating
+      })();
+    </script>
   </body>
 </html>
