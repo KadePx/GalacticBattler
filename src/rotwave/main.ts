@@ -70,6 +70,7 @@ interface Unit extends Ent {
   legs: [THREE.Object3D, THREE.Object3D] | null;
   head: THREE.Object3D | null; // vehicle turret
   ring: THREE.Mesh;
+  ranges: THREE.Group; // range rings, shown while selected
   bar: HpBar;
   canopy: THREE.Object3D | null;
   drop: number; // height while parachuting in; 0 when on the ground
@@ -89,6 +90,7 @@ interface Unit extends Ent {
   repath: number;
   nadeCd: number;
   supportCd: number;
+  face: number | null; // direction to face once the move order is done
 }
 interface BCollider extends Collider {
   owner: Building;
@@ -307,6 +309,32 @@ const ringGeo = new THREE.RingGeometry(0.55, 0.7, 24).rotateX(-Math.PI / 2);
 const ringMat = new THREE.MeshBasicMaterial({ color: 0x7ee06a, transparent: true, opacity: 0.9, depthWrite: false, fog: false });
 const canopyGeo = canopyGeometry();
 
+// Range rings shown under selected units: attack range (white), minimum range
+// (red, grenadiers), and heal/repair reach (green/orange). One geometry per radius.
+const rangeGeos = new Map<number, THREE.RingGeometry>();
+const rangeGeo = (r: number) => {
+  let g = rangeGeos.get(r);
+  if (!g) rangeGeos.set(r, (g = new THREE.RingGeometry(r - 0.07, r, 72).rotateX(-Math.PI / 2)));
+  return g;
+};
+const rangeMat = (color: number, opacity: number) =>
+  new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, fog: false });
+const RANGE_MATS = { attack: rangeMat(0xffffff, 0.35), min: rangeMat(0xff5a45, 0.45), heal: rangeMat(0x7ee06a, 0.5), repair: rangeMat(0xffb85a, 0.5) };
+const HEAL_REACH = 5.5;
+const REPAIR_REACH = 4.5;
+
+function rangeRings(def: UnitDef) {
+  const g = new THREE.Group();
+  g.position.y = 0.07;
+  g.add(new THREE.Mesh(rangeGeo(def.range), RANGE_MATS.attack));
+  if (def.minRange) g.add(new THREE.Mesh(rangeGeo(def.minRange), RANGE_MATS.min));
+  if (def.heal) g.add(new THREE.Mesh(rangeGeo(HEAL_REACH), RANGE_MATS.heal));
+  if (def.repair) g.add(new THREE.Mesh(rangeGeo(REPAIR_REACH), RANGE_MATS.repair));
+  for (const m of g.children) m.renderOrder = 1;
+  g.visible = false;
+  return g;
+}
+
 function spawnUnit(kind: UnitKind, x: number, z: number, drop = 0): Unit {
   const def = UNITS[kind];
   let obj: THREE.Group;
@@ -327,6 +355,8 @@ function spawnUnit(kind: UnitKind, x: number, z: number, drop = 0): Unit {
   ring.scale.setScalar(def.r / 0.42);
   ring.visible = false;
   obj.add(ring);
+  const ranges = rangeRings(def);
+  obj.add(ranges);
   const bar = new HpBar(def.vehicle ? 1.6 : 0.9, kind === 'tank' ? 2.9 : kind === 'jeep' ? 2.6 : 2.5);
   obj.add(bar.group);
   let canopy: THREE.Object3D | null = null;
@@ -339,9 +369,9 @@ function spawnUnit(kind: UnitKind, x: number, z: number, drop = 0): Unit {
   scene.add(obj);
   const u: Unit = {
     id: nextId++, type: 'unit', kind, def, x, z, r: def.r, hp: def.hp, maxHp: def.hp, dead: false,
-    obj, legs, head, ring, bar, canopy, drop, path: [], dest: null, moving: false,
+    obj, legs, head, ring, ranges, bar, canopy, drop, path: [], dest: null, moving: false,
     cd: Math.random() * 0.5, aim: null, retarget: 0, yaw: Math.PI, aimYaw: Math.PI, walk: 0, selected: false,
-    px: x, pz: z, stuck: 0, repath: 0, nadeCd: 4 + Math.random() * 6, supportCd: 0,
+    px: x, pz: z, stuck: 0, repath: 0, nadeCd: 4 + Math.random() * 6, supportCd: 0, face: null,
   };
   units.push(u);
   return u;
@@ -358,6 +388,7 @@ function moveUnit(u: Unit, x: number, z: number) {
   if (!p) return false;
   u.path = p;
   u.dest = { x, z };
+  u.face = null;
   u.moving = true;
   u.stuck = 0;
   u.repath = 0;
@@ -773,6 +804,8 @@ const keys = new Set<string>();
 const mouse = { x: 0, y: 0, inside: false };
 let drag: { x: number; y: number; active: boolean; button: number } | null = null;
 let paintingWalls = false;
+/** right-button drag that lays out a formation line */
+let rdrag: { sx: number; sy: number; a: Pt; active: boolean } | null = null;
 let lastPaint = '';
 const raycaster = new THREE.Raycaster();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -903,7 +936,17 @@ function selected() {
 function setSelected(list: Unit[], additive: boolean) {
   if (!additive) for (const u of units) u.selected = false;
   for (const u of list) u.selected = true;
-  for (const u of units) u.ring.visible = u.selected;
+  for (const u of units) {
+    u.ring.visible = u.selected;
+    u.ranges.visible = u.selected && u.drop === 0;
+  }
+  // one unit: crisp rings; a big group: faint ones, so overlaps don't turn into noise
+  const n = units.filter((u) => u.selected).length;
+  const fade = n <= 2 ? 1 : Math.max(0.35, 1 / Math.sqrt(n / 2));
+  RANGE_MATS.attack.opacity = 0.4 * fade;
+  RANGE_MATS.min.opacity = 0.5 * fade;
+  RANGE_MATS.heal.opacity = 0.55 * fade;
+  RANGE_MATS.repair.opacity = 0.55 * fade;
   refreshSelection();
 }
 const proj = new THREE.Vector3();
@@ -934,27 +977,154 @@ marker.visible = false;
 scene.add(marker);
 let markerLife = 0;
 
-function orderMove(x: number, z: number) {
+interface Slot extends Pt {
+  u: Unit;
+}
+
+/**
+ * Plan where each selected unit stands. With only a point, units form a block
+ * facing the way they're travelling. With a drag from a to b, the front rank
+ * stretches along that line and faces away from where the group is now.
+ * Infantry make up the ranks; vehicles get their own wider rank in front.
+ */
+function planFormation(a: Pt, b: Pt | null): { slots: Slot[]; face: number } {
   const sel = selected();
-  if (!sel.length) return;
-  // infantry form a block; vehicles line up in a wider row in front of it
-  const slots: Pt[] = [];
-  const inf = sel.filter((u) => !u.def.vehicle).sort((a, b) => a.x - b.x || a.z - b.z);
-  const veh = sel.filter((u) => u.def.vehicle).sort((a, b) => a.x - b.x);
-  const cols = Math.ceil(Math.sqrt(inf.length));
-  inf.forEach((_, i) => {
-    const cx = (i % cols) - (cols - 1) / 2;
-    const cz = Math.floor(i / cols) - (Math.ceil(inf.length / cols) - 1) / 2;
-    slots.push({ x: x + cx * 1.4, z: z + cz * 1.4 + (veh.length ? 1.6 : 0) });
+  if (!sel.length) return { slots: [], face: 0 };
+  let gx = 0, gz = 0;
+  for (const u of sel) {
+    gx += u.x;
+    gz += u.z;
+  }
+  gx /= sel.length;
+  gz /= sel.length;
+  const inf = sel.filter((u) => !u.def.vehicle);
+  const veh = sel.filter((u) => u.def.vehicle);
+  const GAP = 1.4, VGAP = 3.2;
+
+  let cx: number, cz: number, dx: number, dz: number, cols: number;
+  let gap = GAP;
+  const len = b ? Math.hypot(b.x - a.x, b.z - a.z) : 0;
+  if (b && len > 0.5) {
+    cx = (a.x + b.x) / 2;
+    cz = (a.z + b.z) / 2;
+    dx = (b.x - a.x) / len;
+    dz = (b.z - a.z) / len;
+    cols = Math.max(1, Math.min(inf.length, Math.round(len / GAP) + 1));
+    // a long drag spreads the rank out to fill it (within reason)
+    if (cols > 1) gap = Math.max(GAP, Math.min(4, len / (cols - 1)));
+  } else {
+    cx = a.x;
+    cz = a.z;
+    // line runs across the direction of travel
+    const tx = cx - gx, tz = cz - gz;
+    const tl = Math.hypot(tx, tz);
+    dx = tl > 0.5 ? -tz / tl : 1;
+    dz = tl > 0.5 ? tx / tl : 0;
+    cols = Math.max(1, Math.ceil(Math.sqrt(inf.length)));
+  }
+  // front is perpendicular to the line, pointing away from the group
+  let fx = -dz, fz = dx;
+  if ((cx - gx) * fx + (cz - gz) * fz < 0) {
+    fx = -fx;
+    fz = -fz;
+  }
+  const face = Math.atan2(fx, fz);
+
+  const slots: Slot[] = [];
+  const rows = Math.ceil(inf.length / cols);
+  const infSpots: Pt[] = [];
+  for (let i = 0; i < inf.length; i++) {
+    const row = Math.floor(i / cols);
+    const inRow = row === rows - 1 ? inf.length - row * cols : cols; // last rank may be short
+    const c = (i % cols) - (inRow - 1) / 2;
+    // rank 0 sits on the line, later ranks stack behind it
+    infSpots.push({ x: cx + dx * c * gap - fx * row * GAP, z: cz + dz * c * gap - fz * row * GAP });
+  }
+  const vehSpots: Pt[] = veh.map((_, i) => {
+    const c = (i - (veh.length - 1) / 2) * Math.max(1, gap / GAP);
+    const fwd = inf.length ? 2.6 : 0;
+    return { x: cx + dx * c * VGAP + fx * fwd, z: cz + dz * c * VGAP + fz * fwd };
   });
-  veh.forEach((_, i) => slots.push({ x: x + (i - (veh.length - 1) / 2) * 3.2, z: z - (inf.length ? 2.4 : 0) }));
-  [...inf, ...veh].forEach((u, i) => {
-    const s = slots[i];
-    moveUnit(u, Math.max(-HALF + 2, Math.min(HALF - 2, s.x)), Math.max(-HALF + 2, Math.min(HALF - 2, s.z)));
-  });
-  marker.position.set(x, 0.07, z);
+  // match units to spots by their position along the line so paths don't cross
+  const along = (p: Pt) => (p.x - cx) * dx + (p.z - cz) * dz;
+  const assign = (us: Unit[], spots: Pt[]) => {
+    const rowsOf = new Map<number, Pt[]>();
+    spots.forEach((sp) => {
+      const r = Math.round(-((sp.x - cx) * fx + (sp.z - cz) * fz) * 100);
+      if (!rowsOf.has(r)) rowsOf.set(r, []);
+      rowsOf.get(r)!.push(sp);
+    });
+    // front-most units take the front rank
+    const byFront = [...us].sort((p, q) => ((q.x - gx) * fx + (q.z - gz) * fz) - ((p.x - gx) * fx + (p.z - gz) * fz));
+    let k = 0;
+    for (const r of [...rowsOf.keys()].sort((p, q) => p - q)) {
+      const rowSpots = rowsOf.get(r)!.sort((p, q) => along(p) - along(q));
+      const rowUnits = byFront.slice(k, k + rowSpots.length).sort((p, q) => along(p) - along(q));
+      rowUnits.forEach((u, i) => slots.push({ u, x: rowSpots[i].x, z: rowSpots[i].z }));
+      k += rowSpots.length;
+    }
+  };
+  assign(inf, infSpots);
+  assign(veh, vehSpots);
+  for (const sl of slots) {
+    sl.x = Math.max(-HALF + 2, Math.min(HALF - 2, sl.x));
+    sl.z = Math.max(-HALF + 2, Math.min(HALF - 2, sl.z));
+  }
+  return { slots, face };
+}
+
+function orderMove(a: Pt, b: Pt | null = null) {
+  const { slots, face } = planFormation(a, b);
+  if (!slots.length) return;
+  for (const sl of slots) {
+    moveUnit(sl.u, sl.x, sl.z);
+    sl.u.face = face;
+  }
+  const c = b ? { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 } : a;
+  marker.position.set(c.x, 0.07, c.z);
   marker.visible = true;
   markerLife = 0.6;
+}
+
+// Formation preview while right-dragging: a ghost ring per unit plus a facing arrow.
+const previewMat = new THREE.MeshBasicMaterial({ color: 0x7ee06a, transparent: true, opacity: 0.55, depthWrite: false, fog: false, side: THREE.DoubleSide });
+const preview = new THREE.Group();
+const previewRings: THREE.Mesh[] = [];
+const arrowShape = new THREE.Shape();
+arrowShape.moveTo(-0.35, 0);
+arrowShape.lineTo(0.35, 0);
+arrowShape.lineTo(0.35, 1.2);
+arrowShape.lineTo(0.8, 1.2);
+arrowShape.lineTo(0, 2.1);
+arrowShape.lineTo(-0.8, 1.2);
+arrowShape.lineTo(-0.35, 1.2);
+arrowShape.closePath();
+const previewArrow = new THREE.Mesh(new THREE.ShapeGeometry(arrowShape).rotateX(Math.PI / 2), previewMat);
+preview.add(previewArrow);
+preview.visible = false;
+scene.add(preview);
+function showPreview(a: Pt, b: Pt) {
+  const { slots, face } = planFormation(a, b);
+  while (previewRings.length < slots.length) {
+    const m = new THREE.Mesh(ringGeo, previewMat);
+    preview.add(m);
+    previewRings.push(m);
+  }
+  previewRings.forEach((m, i) => {
+    const sl = slots[i];
+    m.visible = !!sl;
+    if (!sl) return;
+    m.position.set(sl.x, 0.08, sl.z);
+    m.scale.setScalar(sl.u.r / 0.42);
+  });
+  // arrow sits in front of the line's middle, pointing the way they'll face
+  const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+  previewArrow.position.set(mx + Math.sin(face) * 1.2, 0.09, mz + Math.cos(face) * 1.2);
+  previewArrow.rotation.y = face;
+  preview.visible = true;
+}
+function hidePreview() {
+  preview.visible = false;
 }
 
 // ------------------------------------------------------------ training
@@ -1006,6 +1176,7 @@ function updateUnits(dt: number) {
     // parachuting in
     if (u.drop > 0) {
       u.drop = Math.max(0, u.drop - dt * 4.5);
+      u.ranges.visible = false;
       u.obj.position.set(u.x, u.drop, u.z);
       u.obj.rotation.y = u.yaw + Math.sin(S.time * 2 + u.id) * 0.2;
       if (u.drop === 0 && u.canopy) {
@@ -1124,6 +1295,10 @@ function updateUnits(dt: number) {
         } else u.nadeCd = 1;
       }
     } else if (moveYaw !== null) u.aimYaw = turnToward(u.aimYaw, def.vehicle ? u.yaw : moveYaw, dt * 10);
+    else if (u.face !== null) {
+      u.aimYaw = turnToward(u.aimYaw, u.face, dt * 6);
+      if (def.vehicle) u.yaw = turnToward(u.yaw, u.face, dt * (u.kind === 'tank' ? 1.6 : 3.2));
+    }
 
     // support roles
     u.supportCd -= dt;
@@ -1132,7 +1307,7 @@ function updateUnits(dt: number) {
       if (def.heal) {
         let healed = false;
         for (const o of units) {
-          if (o.dead || o.drop > 0 || o.hp >= o.maxHp || Math.hypot(o.x - u.x, o.z - u.z) > 5.5) continue;
+          if (o.dead || o.drop > 0 || o.hp >= o.maxHp || Math.hypot(o.x - u.x, o.z - u.z) > HEAL_REACH) continue;
           o.hp = Math.min(o.maxHp, o.hp + def.heal * 0.25);
           if (Math.random() < 0.5) fx.sparkle(o.x, 1.2, o.z);
           healed = true;
@@ -1142,7 +1317,7 @@ function updateUnits(dt: number) {
       if (def.repair) {
         let worst: Building | null = null;
         for (const b of buildings) {
-          if (b.dead || b.hp >= b.maxHp || edgeDist(b, u.x, u.z) > 4.5) continue;
+          if (b.dead || b.hp >= b.maxHp || edgeDist(b, u.x, u.z) > REPAIR_REACH) continue;
           if (!worst || b.hp / b.maxHp < worst.hp / worst.maxHp) worst = b;
         }
         if (worst) {
@@ -1165,6 +1340,7 @@ function updateUnits(dt: number) {
     }
     if (u.head) u.head.rotation.y = u.aimYaw - u.yaw;
     if (def.vehicle && u.moving && Math.random() < dt * 6) fx.smoke(u.x - Math.sin(u.yaw) * u.r * 1.3, 0.8, u.z - Math.cos(u.yaw) * u.r * 1.3, 0.2);
+    u.ranges.visible = u.selected;
     u.bar.set(u.hp / u.maxHp, u.selected || u.hp < u.maxHp, u.yaw);
   }
 }
@@ -1649,7 +1825,7 @@ canvas.addEventListener('pointerdown', (ev) => {
       return;
     }
     const p = groundAt(ev.clientX, ev.clientY);
-    if (p) orderMove(p.x, p.z);
+    if (p && selected().length) rdrag = { sx: ev.clientX, sy: ev.clientY, a: { x: p.x, z: p.z }, active: false };
   }
 });
 
@@ -1673,6 +1849,12 @@ canvas.addEventListener('pointermove', (ev) => {
       if (pinchDist > 0) cam.tdist = Math.max(16, Math.min(60, cam.tdist * (pinchDist / d)));
       pinchDist = d;
     }
+    return;
+  }
+  if (rdrag) {
+    if (!rdrag.active && Math.hypot(ev.clientX - rdrag.sx, ev.clientY - rdrag.sy) > 10) rdrag.active = true;
+    const p = groundAt(ev.clientX, ev.clientY);
+    if (rdrag.active && p) showPreview(rdrag.a, { x: p.x, z: p.z });
     return;
   }
   if (paintingWalls && S.placing === 'wall') {
@@ -1725,11 +1907,20 @@ canvas.addEventListener('pointerup', (ev) => {
     if (u) setSelected([u], true);
     else if (selected().length) {
       const p = groundAt(ev.clientX, ev.clientY);
-      if (p) orderMove(p.x, p.z);
+      if (p) orderMove({ x: p.x, z: p.z });
     }
     return;
   }
   paintingWalls = false;
+  if (rdrag && ev.button === 2) {
+    const r = rdrag;
+    rdrag = null;
+    hidePreview();
+    const p = groundAt(ev.clientX, ev.clientY);
+    if (r.active && p) orderMove(r.a, { x: p.x, z: p.z });
+    else orderMove(r.a);
+    return;
+  }
   if (!drag) return;
   const d = drag;
   drag = null;
