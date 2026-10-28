@@ -6,6 +6,7 @@ import { soundButton } from '../game/soundPanel';
 import { getOpponent } from '../game/opponents';
 import { WIN_TARGET, applyResult, makeSnapshot, type Run } from '../game/run';
 import { getRun, saveGhost, saveRun } from '../game/storage';
+import { uploadGhost } from '../game/net';
 import { C, button, panel, popup, txt } from '../game/ui';
 import { OVERLOAD_TICK, hullScale, simulate, type BEvent, type BUnit, type BattleResult, kills } from '../sim/battle';
 import { SHIPS } from '../sim/ships';
@@ -89,6 +90,7 @@ export class BattleScene extends Phaser.Scene {
     // find an opponent, and simulate the whole fight up front.
     const me = makeSnapshot(run);
     saveGhost(me);
+    uploadGhost(me);
     this.opp = getOpponent(run);
     this.res = simulate(me, this.opp);
     for (const e of this.res.events) {

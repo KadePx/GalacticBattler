@@ -9,6 +9,7 @@ import { audio } from '../game/audio';
 import { soundButton } from '../game/soundPanel';
 import { openDetails, type Detail } from '../game/details';
 import { getRun, saveRun } from '../game/storage';
+import { prefetchOpponent } from '../game/net';
 import { C, TIER_COLORS, tierTag, button, historyPips, panel, popup, relicChip, toast, txt } from '../game/ui';
 import { RELIC_MAP } from '../sim/relics';
 import { SHIPS, levelOf, xpForNext, type ShipClass, type ShipDef } from '../sim/ships';
@@ -85,6 +86,7 @@ export class ShopScene extends Phaser.Scene {
     // Shows where a dragged ship will land.
     this.dropMarker = this.add.rectangle(0, 0, BOX + 6, BOX + 6).setStrokeStyle(2, C.highlight).setVisible(false).setDepth(800);
     this.input.dragDistanceThreshold = 4;
+    void prefetchOpponent(run); // look for an online player to fight this round
     if (run.notice) {
       const note = run.notice;
       run.notice = undefined;

@@ -4,7 +4,9 @@ import { getProfile, pilotRank } from '../game/profile';
 import { audio } from '../game/audio';
 import { soundButton } from '../game/soundPanel';
 import { getRun } from '../game/storage';
-import { C, button, txt } from '../game/ui';
+import { C, button, toast, txt } from '../game/ui';
+import { getPilot, setCallsign } from '../game/net';
+import { cleanCallsign } from '../net/ghostRules';
 
 interface Flyer {
   spr: Phaser.GameObjects.Image;
@@ -57,6 +59,19 @@ export class MenuScene extends Phaser.Scene {
     const profile = getProfile();
     this.add.rectangle(240, y + 21, 150, 14, 0x05060f, 0.75);
     txt(this, 240, y + 21, `PILOT RANK ${pilotRank(profile.xp)}`, { origin: 0.5, color: C.cyan });
+
+    // Callsign: the name other players see on your ghost fleet.
+    const callsign = txt(this, 240, 14, `${getPilot().name} [EDIT]`, { origin: 0.5, color: C.cyan })
+      .setInteractive({ useHandCursor: true });
+    callsign.on('pointerup', () => {
+      const typed = window.prompt('Your callsign (3-14 letters or numbers):', getPilot().name);
+      if (typed === null) return;
+      const clean = cleanCallsign(typed);
+      if (!clean) return void toast(this, 'Use 3-14 letters or numbers');
+      setCallsign(clean);
+      callsign.setText(`${clean} [EDIT]`);
+      toast(this, 'Callsign saved', C.gold);
+    });
 
     this.add.rectangle(240, 246, 480, 32, 0x05060f, 0.75);
     txt(this, 240, 246, 'Build a fleet. Win 10 battles before your 5 hull points run out.',

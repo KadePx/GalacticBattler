@@ -81,6 +81,7 @@ export interface Run extends RngState {
   event?: ShopEvent; // this round's shipyard event, if any
   vetSlot?: number; // Veteran for Hire: the shop slot holding a level 2 ship
   notice?: string; // shown once in the shop (what a special reward just did)
+  nextOpp?: Snapshot; // an online player's fleet fetched for this round (snapshot PvP)
 }
 
 export interface RunOptions {
@@ -371,6 +372,7 @@ export function makeSnapshot(run: Run, name = 'You'): Snapshot {
 export function applyResult(run: Run, winner: 0 | 1 | -1, kills = 0) {
   const o: Outcome = winner === 0 ? 'W' : winner === 1 ? 'L' : 'D';
   run.history.push(o);
+  run.nextOpp = undefined;
   // Scrap relics that pay out next round.
   const bounty = count(run.relics, 'bounty') * Math.min(3, kills);
   const insured = o === 'L' ? 4 * count(run.relics, 'insurance') : 0;

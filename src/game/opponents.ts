@@ -1,5 +1,5 @@
-// Picks who you fight this round: a ghost (a real fleet snapshot from another
-// run at the same round) or a bot. Later: ask a server for a ghost instead.
+// Picks who you fight this round: an online player's fleet if one was fetched,
+// else a local ghost (a fleet from another of your runs at the same round) or a bot.
 
 import { hashStr, rand } from '../sim/rng';
 import type { Snapshot } from '../sim/types';
@@ -10,6 +10,8 @@ import { loadGhosts } from './storage';
 const GHOST_CHANCE = 0.6;
 
 export function getOpponent(run: Run): Snapshot {
+  // An online player's fleet, fetched while you shopped (see net.ts).
+  if (run.nextOpp && run.nextOpp.round === run.round) return run.nextOpp;
   const s = { rng: hashStr(`${run.runId}:${run.round}`) };
   const ghosts = loadGhosts().filter((g) => g.round === run.round && g.runId !== run.runId);
   if (ghosts.length && rand(s) < GHOST_CHANCE) {

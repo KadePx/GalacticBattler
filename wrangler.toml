@@ -1,0 +1,11 @@
+# Cloudflare Pages config for itskade.space (project "galactic-battler").
+# The site itself is built by `npm run build` into dist/; functions/ adds the API.
+name = "galactic-battler"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-09-01"
+
+# Snapshot PvP: shared ghost pool used by functions/api/ghosts.ts.
+[[d1_databases]]
+binding = "DB"
+database_name = "galactic-ghosts"
+database_id = "b442a793-c782-49ca-a339-99fc2750f230"
