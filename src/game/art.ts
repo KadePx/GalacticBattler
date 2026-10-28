@@ -1,6 +1,7 @@
 // Builds every texture at startup from pixel maps, so there are no image files yet.
 import Phaser from 'phaser';
 import { SHIPS } from '../sim/ships';
+import { HD_SHIPS } from './shipsHd';
 
 type Palette = Record<string, string>;
 
@@ -158,6 +159,58 @@ function planet(scene: Phaser.Scene) {
   tex.refresh();
 }
 
+/**
+ * Ship textures are built at double resolution and shown at half zoom, so ships take the
+ * same space on screen with twice the detail. Every place that displays a ship divides its
+ * zoom by SHIP_RES.
+ */
+export const SHIP_RES = 2;
+
+/**
+ * Turn a 1x ship map into a 2x one: Scale2x rounds off diagonals, the doubled outline is
+ * thinned back to one pixel, and hull/accent/glass get in-between tones (c k q n).
+ * Hand-drawn 2x sprites can replace this per ship later.
+ */
+function hiResShip(map: string[]): string[] {
+  const h = map.length;
+  const w = Math.max(...map.map((r) => r.length));
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? '.' : map[y][x] ?? '.');
+  const W = w * 2;
+  const H = h * 2;
+  const g: string[][] = Array.from({ length: H }, () => Array(W).fill('.'));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const P = at(x, y), A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+    g[2 * y][2 * x] = C === A && C !== D && A !== B ? A : P;
+    g[2 * y][2 * x + 1] = A === B && A !== C && B !== D ? B : P;
+    g[2 * y + 1][2 * x] = D === C && D !== B && C !== A ? C : P;
+    g[2 * y + 1][2 * x + 1] = B === D && B !== A && D !== C ? D : P;
+  }
+  const get = (x: number, y: number) => (x < 0 || y < 0 || x >= W || y >= H ? '.' : g[y][x]);
+  const n4 = (x: number, y: number) => [get(x - 1, y), get(x + 1, y), get(x, y - 1), get(x, y + 1)];
+  // Thin the outline: drop outline pixels touching the background, then re-close any gap.
+  const drop: [number, number][] = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (g[y][x] === 'o' && n4(x, y).includes('.')) drop.push([x, y]);
+  }
+  for (const [x, y] of drop) g[y][x] = '.';
+  const close: [number, number][] = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (g[y][x] === '.' && n4(x, y).some((c) => c !== '.' && c !== 'o')) close.push([x, y]);
+  }
+  for (const [x, y] of close) g[y][x] = 'o';
+  // Shade tones.
+  const src = g.map((r) => [...r]);
+  const sget = (x: number, y: number) => (x < 0 || y < 0 || x >= W || y >= H ? '.' : src[y][x]);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const c = src[y][x], up = sget(x, y - 1), dn = sget(x, y + 1);
+    if (c === 'b' && (up === 'l' || up === 'h')) g[y][x] = 'c';
+    else if (c === 'b' && dn === 's') g[y][x] = 'k';
+    else if (c === 'a' && (dn === 'o' || dn === 's' || dn === 'b')) g[y][x] = 'q';
+    else if (c === 'w' && up !== 'w' && sget(x - 1, y) !== 'w') g[y][x] = 'n';
+  }
+  return g.map((r) => r.join(''));
+}
+
 /** Blend two #rrggbb colours: k=0 gives a, k=1 gives b. */
 function mix(a: string, b: string, k: number) {
   const pa = parseInt(a.slice(1), 16);
@@ -178,7 +231,7 @@ function mix(a: string, b: string, k: number) {
 function shipPalette(side: 0 | 1, accent: [string, string], skin?: Palette): Palette {
   const f = skin ? { ...FACTION[0], ...skin } : FACTION[side];
   const k = skin ? 0.22 : side === 0 ? 0.42 : 0.3;
-  return {
+  const p: Palette = {
     ...f,
     o: mix(f.o, accent[0], 0.12),
     s: mix(f.s, accent[0], k * 0.8),
@@ -187,16 +240,24 @@ function shipPalette(side: 0 | 1, accent: [string, string], skin?: Palette): Pal
     a: accent[0],
     A: accent[1],
   };
+  // In-between tones used by the 2x sprites.
+  p.c = mix(p.b, p.l, 0.5);
+  p.k = mix(p.b, p.s, 0.5);
+  p.q = mix(p.a, p.o, 0.35);
+  p.n = mix(p.w, '#ffffff', 0.6);
+  p.d = mix(p.s, p.o, 0.45);
+  return p;
 }
 
 export function makeTextures(scene: Phaser.Scene) {
   for (const def of Object.values(SHIPS)) {
+    const sprite = SHIP_RES === 2 ? HD_SHIPS[def.id] ?? hiResShip(def.sprite) : def.sprite;
     for (const side of [0, 1] as const) {
       const pal = shipPalette(side, def.accent);
-      drawMap(scene, side === 0 ? skinShipKey(def.id, null) : `ship_${def.id}_1`, def.sprite, pal, side === 1);
+      drawMap(scene, side === 0 ? skinShipKey(def.id, null) : `ship_${def.id}_1`, sprite, pal, side === 1);
     }
     for (const [id, skin] of Object.entries(SKINS)) {
-      drawMap(scene, skinShipKey(def.id, id), def.sprite, shipPalette(0, def.accent, skin.hull));
+      drawMap(scene, skinShipKey(def.id, id), sprite, shipPalette(0, def.accent, skin.hull));
     }
   }
   // Engine flame, tip pointing left (mirrored for the enemy).
@@ -249,7 +310,7 @@ export function addStarfield(scene: Phaser.Scene, withPlanet = false) {
 export function addShip(scene: Phaser.Scene, x: number, y: number, def: string, side: 0 | 1, scale = 2, flameScale = scale) {
   // Flame first so it draws behind the hull.
   const flame = scene.add.image(x, y, flameKey(side)).setOrigin(side === 0 ? 1 : 0, 0.5).setScale(flameScale);
-  const spr = scene.add.image(x, y, shipKey(def, side)).setScale(scale);
+  const spr = scene.add.image(x, y, shipKey(def, side)).setScale(scale / SHIP_RES);
   syncFlame(spr, flame, side);
   scene.tweens.add({
     targets: flame, scaleX: flameScale * 1.6, duration: 90 + Math.random() * 80, yoyo: true, repeat: -1,

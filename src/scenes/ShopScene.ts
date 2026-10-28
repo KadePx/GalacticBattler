@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { addShip, addStarfield, portraitKey, setPlayerSkin, syncFlame } from '../game/art';
+import { SHIP_RES, addShip, addStarfield, portraitKey, setPlayerSkin, syncFlame } from '../game/art';
 import {
   EVENT_INFO, FLEET_SIZE, REROLL_COST, SALE_COST, SHIP_COST, START_LIVES, VETERAN_COST, TOTAL_SLOTS, isBench, slotGet, winsLabel,
   buy, canMerge, move, powerProblem, quickBuy, reroll, sell, sellValue, toggleFreeze, usePower, type Run,
@@ -112,7 +112,7 @@ export class ShopScene extends Phaser.Scene {
       this.armed = false;
       this.sel = obj.getData('src');
       this.layer.bringToTop(obj);
-      obj.setScale(2.4);
+      obj.setScale(2.4 / SHIP_RES);
       this.updateInfo();
     });
     // On touch the ship is drawn above the finger so you can see where it goes.
@@ -563,7 +563,8 @@ export class ShopScene extends Phaser.Scene {
     const fw = img.frame.width;
     const fh = img.frame.height;
     img.setInteractive({
-      hitArea: new Phaser.Geom.Rectangle(fw / 2 - 12, fh / 2 - 10, 24, 20),
+      // Hit box in texture pixels: 24x20 on screen whatever the texture resolution.
+      hitArea: new Phaser.Geom.Rectangle(fw / 2 - 12 * SHIP_RES, fh / 2 - 10 * SHIP_RES, 24 * SHIP_RES, 20 * SHIP_RES),
       hitAreaCallback: Phaser.Geom.Rectangle.Contains,
       draggable: true,
       useHandCursor: true,

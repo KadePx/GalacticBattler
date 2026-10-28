@@ -344,8 +344,9 @@ export class BattleScene extends Phaser.Scene {
       case 'spawn': {
         const q = this.views.get(e.s);
         const v = this.makeView(e.unit, q ? { ...q.pos } : undefined);
-        v.spr.setScale(0.5);
-        this.tweens.add({ targets: v.spr, scale: 2, duration: 200 });
+        const full = v.spr.scaleX;
+        v.spr.setScale(full / 4);
+        this.tweens.add({ targets: v.spr, scale: full, duration: 200 });
         if (e.reserve) {
           // Reserve Wing: a ship warping in from the bench.
           this.time.delayedCall(260, () => {
@@ -423,7 +424,7 @@ export class BattleScene extends Phaser.Scene {
     const side = s.u.side;
     const dir = side === 0 ? 1 : -1;
     const accent = hexInt(SHIPS[s.u.def].accent[1]);
-    const nose = { x: s.spr.x + (s.spr.width) * dir, y: s.spr.y };
+    const nose = { x: s.spr.x + (s.spr.displayWidth / 2) * dir, y: s.spr.y };
     if (e.ram) popup(this, s.spr.x, s.spr.y - 24, s.u.def === 'interceptor' ? 'RAM!' : 'BOOM!', C.atk);
     else {
       this.tweens.add({ targets: s.pos, x: s.pos.x - 3 * dir, duration: 50, yoyo: true });
@@ -502,7 +503,7 @@ export class BattleScene extends Phaser.Scene {
     if (!v || !v.alive) return;
     v.alive = false;
     const { x, y } = v.spr;
-    const big = v.spr.width > 16;
+    const big = v.spr.displayWidth > 32;
     this.sparks(x, y, big ? 22 : 12, 0xffcf5a);
     this.sparks(x, y, big ? 12 : 6, 0xff5e3a);
     this.sparks(x, y, 6, hexInt(SHIPS[v.u.def].accent[0]));

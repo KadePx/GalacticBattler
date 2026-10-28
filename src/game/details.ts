@@ -9,7 +9,7 @@ import { REWARD_MAP } from './rewards';
 import { SHIPS, levelOf, type ShipClass, type ShipDef } from '../sim/ships';
 import { TRAIT_MAP } from '../sim/traits';
 import type { FleetShip } from '../sim/types';
-import { shipKey } from './art';
+import { SHIP_RES, shipKey } from './art';
 import { termsIn, type Term } from './glossary';
 import { C, TIER_COLORS, button, panel, relicChip, txt } from './ui';
 
@@ -44,7 +44,8 @@ export function drawDetail(scene: Phaser.Scene, add: Add, d: Detail, x: number, 
 function drawShip(scene: Phaser.Scene, add: Add, def: ShipDef, ship: FleetShip | undefined, x: number, y: number, w: number) {
   const tc = TIER_COLORS[def.tier] ?? 0x8a94b8;
   add(scene.add.rectangle(x + 18, y + 16, 36, 30, 0x05060f).setStrokeStyle(1, tc));
-  add(scene.add.image(x + 18, y + 16, shipKey(def.id, 0)).setScale(2));
+  const im = add(scene.add.image(x + 18, y + 16, shipKey(def.id, 0)));
+  im.setScale(Math.min(2 / SHIP_RES, 34 / im.width, 28 / im.height)); // fit the 36x30 frame
   add(txt(scene, x + 42, y + 2, def.name.toUpperCase(), { color: def.accent[1] }));
   const tierLabel = def.tier === 4 ? (w >= 240 ? 'PROTOTYPE' : 'PROTO') : def.tier ? (w >= 240 ? `TIER ${def.tier}` : `T${def.tier}`) : 'LAUNCHED';
   const t = add(txt(scene, x + 42, y + 14, tierLabel, { color: hex(tc) }));
@@ -114,7 +115,7 @@ function drawTrait(scene: Phaser.Scene, add: Add, id: ShipClass, count: number |
   const perRow = Math.max(1, Math.floor(w / pitch));
   members.forEach((s, i) => {
     const im = add(scene.add.image(x + 14 + (i % perRow) * pitch, cy + 10 + Math.floor(i / perRow) * 22, shipKey(s.id, 0)));
-    im.setScale(Math.min(2, (pitch - 4) / im.width));
+    im.setScale(Math.min(2 / SHIP_RES, (pitch - 4) / im.width));
   });
   cy += 22 * Math.ceil(members.length / perRow) + 2;
   if (tr.faction || members.length > 5) return cy;

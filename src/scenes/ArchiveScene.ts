@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { addStarfield, portraitKey, setPlayerSkin, shipKey } from '../game/art';
+import { SHIP_RES, addStarfield, portraitKey, setPlayerSkin, shipKey } from '../game/art';
 import { audio } from '../game/audio';
 import { detailTerms, drawDetail, drawTerms, type Detail } from '../game/details';
 import { TERMS } from '../game/glossary';
@@ -103,7 +103,7 @@ export class ArchiveScene extends Phaser.Scene {
       const tc = TIER_COLORS[s.tier] ?? 0x8a94b8;
       const box = this.add2(this.add.rectangle(x, y, cw - 4, ch - 4, sel ? 0x1f2c66 : 0x0b1026).setStrokeStyle(sel ? 2 : 1, sel ? C.highlight : tc));
       const img = this.add2(this.add.image(x, y + 2, shipKey(s.id, 0)));
-      img.setScale(Math.min(2, (cw - 6) / img.width));
+      img.setScale(Math.min(2 / SHIP_RES, (cw - 6) / img.width));
       this.add2(txt(this, x - cw / 2 + 3, y - ch / 2 + 3, s.tier === 4 ? 'P' : s.tier ? `${s.tier}` : 'F', { color: `#${tc.toString(16).padStart(6, '0')}` }).setStroke('#05060f', 2));
       box.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(s.id));
     });
@@ -198,7 +198,7 @@ export class ArchiveScene extends Phaser.Scene {
           const cy = uy + 26 + Math.floor(i / 7) * 34;
           const tile = this.add2(this.add.rectangle(cx, cy, 34, 30, 0x0b1026).setStrokeStyle(1, TIER_COLORS[s.tier] ?? 0x8a94b8));
           const im = this.add2(this.add.image(cx, cy, shipKey(s.id, 0)));
-          im.setScale(Math.min(2, 30 / im.width));
+          im.setScale(Math.min(2 / SHIP_RES, 30 / im.width));
           tile.setInteractive({ useHandCursor: true }).on('pointerup', () => {
             this.tab = 'ships';
             this.select(s.id);

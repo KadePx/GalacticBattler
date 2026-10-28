@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { addStarfield, portraitKey, setPlayerSkin, shipKey } from '../game/art';
+import { SHIP_RES, addStarfield, portraitKey, setPlayerSkin, shipKey } from '../game/art';
 import { CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, awardRun, cmdLevel, pilotRank, rankXp } from '../game/profile';
 import { WIN_TARGET, endlessWins, goEndless } from '../game/run';
 import { clearRun, getRun, saveRun } from '../game/storage';
@@ -32,7 +32,7 @@ export class GameOverScene extends Phaser.Scene {
     historyPips(this, 240 + ((hist.length - 1) * 9) / 2, 56, hist, 24);
 
     // Front ship on the right, matching the shop and battle. Spacing follows sprite widths.
-    const ships = run.fleet.filter(Boolean).map((s) => this.add.image(0, 82, shipKey(s!.def, 0)).setScale(2));
+    const ships = run.fleet.filter(Boolean).map((s) => this.add.image(0, 82, shipKey(s!.def, 0)).setScale(2 / SHIP_RES));
     const gap = 8;
     const total = ships.reduce((sum, im) => sum + im.displayWidth, 0) + gap * Math.max(0, ships.length - 1);
     let x = 240 + total / 2;
