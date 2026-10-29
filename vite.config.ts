@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
+import { localApi } from './scripts/localApi';
 
 // Snapshot PvP: a short hash of the battle code (src/sim). Online ghosts only meet fleets
 // with the same hash, so a balance change never pits old fleets against new rules.
@@ -13,6 +14,7 @@ for (const f of readdirSync(simDir).sort()) {
 
 // itskade.space hosts several games: each is its own page in the build.
 export default defineConfig({
+  plugins: [localApi()], // dev only: runs functions/api locally
   define: { __SIM_VERSION__: JSON.stringify(simHash.digest('hex').slice(0, 12)) },
   build: {
     chunkSizeWarningLimit: 2000, // Phaser and three.js are big on their own

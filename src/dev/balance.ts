@@ -3,6 +3,7 @@
 //
 //   npm run balance            (default sample sizes)
 //   npm run balance -- 400     (more fights per cell = less noise, slower)
+//   npm run balance -- 300 q   (early-round tier-1 swap test; add B to place the ship at the back)
 
 import { ARCHETYPES, botSnapshot } from '../game/bot';
 import { ENDLESS_REPAIR, setPricing, type Pricing } from '../game/run';
@@ -318,7 +319,40 @@ function earlyRounds() {
   }).join(''));
 }
 
+// ---------- Q: early swap test (which tier-1 ship carries rounds 1-5?) ----------
+function earlySwap() {
+  const n = N * 2;
+  const rs = [1, 2, 3, 4, 5];
+  header(`EARLY SWAP TEST: one slot replaced by a fresh level-1 copy (N=${n} per round)`);
+  console.log(pad('ship', 12) + rs.map((r) => lpad('r' + r, 6)).join('') + lpad('avg', 6));
+  const rows: [string, number[]][] = [];
+  for (const def of Object.values(SHIPS).filter((s) => s.tier === 1)) {
+    rows.push([def.id, rs.map((round) => {
+      let w = 0;
+      for (let i = 0; i < n; i++) {
+        const a = botSnapshot(710000 + i * 13 + round, round, undefined, false);
+        const filled = a.fleet.map((s, k) => (s ? k : -1)).filter((k) => k >= 0);
+        a.fleet[process.argv[3].includes('B') ? filled[filled.length - 1] : filled[i % filled.length]] = { def: def.id, atk: def.atk, hp: def.hp, xp: 0 };
+        if (simulate(a, foe(i + 3100, round)).winner === 0) w++;
+      }
+      return pct(w, n);
+    })]);
+  }
+  rows.sort((x, y) => y[1].reduce((s, v) => s + v, 0) - x[1].reduce((s, v) => s + v, 0));
+  for (const [id, c] of rows) console.log(pad(id, 12) + c.map((v) => lpad(v, 6)).join('') + lpad(Math.round(c.reduce((s, v) => s + v, 0) / c.length), 6));
+  // Plain presence: player fleets with vs without a drone, rounds 1-5.
+  const withD = [0, 0], without = [0, 0];
+  for (const round of rs) for (let i = 0; i < n; i++) {
+    const a = botSnapshot(720000 + i * 13 + round, round, undefined, false);
+    const won = simulate(a, foe(i + 5100, round)).winner === 0 ? 1 : 0;
+    const bucket = a.fleet.some((s) => s?.def === 'drone') ? withD : without;
+    bucket[0] += won; bucket[1]++;
+  }
+  console.log(`player fleets WITH a drone win ${pct(withD[0], withD[1])}% (${withD[1]} fights), WITHOUT ${pct(without[0], without[1])}% (${without[1]})`);
+}
+
 const t0 = Date.now();
+if (process.argv[3]?.includes('q')) earlySwap();
 const only = process.argv[3];
 if (!only || only.includes('a')) styleByRound();
 if (!only || only.includes('b')) fullRuns();

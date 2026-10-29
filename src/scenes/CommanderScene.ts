@@ -4,7 +4,7 @@ import {
   CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, cmdLevel, getProfile, isUnlocked, pilotRank, progress, rankXp, saveProfile,
 } from '../game/profile';
 import { newRun } from '../game/run';
-import { clearRun, saveRun } from '../game/storage';
+import { clearRun, saveRun, useSlot } from '../game/storage';
 import { C, bar, button, panel, txt } from '../game/ui';
 import { COMMANDERS, CMD_MAP, type PassiveSlot } from '../sim/commanders';
 import { SHIPS } from '../sim/ships';
@@ -188,6 +188,7 @@ export class CommanderScene extends Phaser.Scene {
     const lvl = cmdLevel(prog.xp);
     p.last = id;
     saveProfile(p);
+    useSlot('main');
     clearRun();
     saveRun(newRun({
       cmd: id,

@@ -11,6 +11,8 @@ const GHOST_CHANCE = 0.6;
 
 export function getOpponent(run: Run): Snapshot {
   // An online player's fleet, fetched while you shopped (see net.ts).
+  // Daily challenge: everyone meets the same fleets that day.
+  if (run.daily) return botFor(`daily:${run.daily}`, run.round);
   if (run.nextOpp && run.nextOpp.round === run.round) return run.nextOpp;
   const s = { rng: hashStr(`${run.runId}:${run.round}`) };
   const ghosts = loadGhosts().filter((g) => g.round === run.round && g.runId !== run.runId);

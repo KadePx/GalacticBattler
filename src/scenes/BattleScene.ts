@@ -6,7 +6,9 @@ import { soundButton } from '../game/soundPanel';
 import { getOpponent } from '../game/opponents';
 import { WIN_TARGET, applyResult, makeSnapshot, type Run } from '../game/run';
 import { getRun, saveGhost, saveRun } from '../game/storage';
-import { uploadGhost } from '../game/net';
+import { reportGhostFight, uploadGhost } from '../game/net';
+import { buildReport, type BattleReport } from '../game/report';
+import { saveLastFleet } from '../game/share';
 import { C, button, panel, popup, txt } from '../game/ui';
 import { OVERLOAD_TICK, hullScale, simulate, type BEvent, type BUnit, type BattleResult, kills } from '../sim/battle';
 import { SHIPS } from '../sim/ships';
@@ -47,8 +49,14 @@ interface View {
   alive: boolean;
 }
 
+/** A friendly fight against a shared fleet: no run, no rewards, no ghost upload. */
+export interface Duel { me: Snapshot; opp: Snapshot }
+
 export class BattleScene extends Phaser.Scene {
-  private run!: Run;
+  private run: Run | null = null;
+  private duel: Duel | null = null;
+  private report!: BattleReport;
+  private reportObjs: Phaser.GameObjects.GameObject[] = [];
   private res!: BattleResult;
   private opp!: Snapshot;
   private views = new Map<number, View>();
@@ -61,18 +69,22 @@ export class BattleScene extends Phaser.Scene {
   private done = false;
   private speedBtn?: Phaser.GameObjects.Text;
   private speedObjs: Phaser.GameObjects.GameObject[] = [];
+  private skipObjs: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
     super('battle');
   }
 
-  create() {
-    const run = getRun();
-    if (!run) {
+  create(data?: { duel?: Duel }) {
+    this.duel = data?.duel ?? null;
+    const run = this.duel ? null : getRun();
+    if (!run && !this.duel) {
       this.scene.start('menu');
       return;
     }
     this.run = run;
+    this.reportObjs = [];
+    this.skipObjs = [];
     this.views.clear();
     this.byTick.clear();
     this.t = 0;
@@ -82,35 +94,49 @@ export class BattleScene extends Phaser.Scene {
     this.speedBtn = undefined; // the old button was destroyed with the previous battle
     this.speedObjs = [];
     this.setSpeed(savedSpeed());
-    setPlayerSkin(run.skin ? run.cmd : null);
+    setPlayerSkin(run?.skin ? run.cmd ?? null : null);
     audio.setMood('battle');
     addStarfield(this);
 
     // Freeze the fleet into a snapshot (this is what other players would fight),
     // find an opponent, and simulate the whole fight up front.
-    const me = makeSnapshot(run);
-    saveGhost(me);
-    uploadGhost(me);
-    this.opp = getOpponent(run);
+    let me: Snapshot;
+    let gid: number | undefined;
+    if (run) {
+      me = makeSnapshot(run);
+      saveGhost(me);
+      uploadGhost(me);
+      saveLastFleet(me);
+      this.opp = getOpponent(run);
+      // An online player's fleet: report how it went, so its owner sees it.
+      if (!run.daily && run.nextOpp && run.nextOpp.round === run.round) gid = run.nextOppGid;
+    } else {
+      me = this.duel!.me;
+      this.opp = this.duel!.opp;
+    }
     this.res = simulate(me, this.opp);
+    this.report = buildReport(this.res);
+    if (gid) reportGhostFight(gid, this.res.winner);
     for (const e of this.res.events) {
       if (!this.byTick.has(e.t)) this.byTick.set(e.t, []);
       this.byTick.get(e.t)!.push(e);
     }
 
     // Lock in the result now so refreshing the page can't undo a loss.
-    run.lastOpponent = this.opp.name;
-    applyResult(run, this.res.winner, kills(this.res, 0));
-    saveRun(run);
+    if (run) {
+      run.lastOpponent = this.opp.name;
+      applyResult(run, this.res.winner, kills(this.res, 0));
+      saveRun(run);
+    }
 
     // Header
     panel(this, 0, 0, 480, 20, 0x0a0e22, 0x232c52);
     txt(this, 8, 7, 'YOUR FLEET', { color: C.cyan });
-    txt(this, 240, 7, `ROUND ${me.round}`, { origin: [0.5, 0] });
+    txt(this, 240, 7, this.duel ? 'FRIENDLY DUEL' : run?.daily ? `DAILY  ROUND ${me.round}` : `ROUND ${me.round}`, { origin: [0.5, 0] });
     const hull = hullScale(Math.max(me.round, this.opp.round));
     if (hull > 1) txt(this, 240, 44, `HULLS x${hull.toFixed(1)}`, { origin: [0.5, 0], color: C.hp });
     txt(this, 472, 7, this.opp.name.toUpperCase(), { origin: [1, 0], color: C.bad });
-    const tag = this.opp.runId === 'bot' ? this.opp.style ?? 'RAIDER' : 'GHOST FLEET';
+    const tag = this.opp.runId === 'bot' ? this.opp.style ?? 'RAIDER' : this.opp.runId === 'shared' ? 'SHARED FLEET' : 'GHOST FLEET';
     txt(this, 472, 24, `${tag}  ${this.opp.wins} WIN${this.opp.wins === 1 ? '' : 'S'}`, { origin: [1, 0], color: C.dim });
     this.commanderLine(this.opp, 472, 34, 1);
     if (this.opp.relics.length) txt(this, 472, 44, `${this.opp.relics.length} RELICS`, { origin: [1, 0], color: C.dim });
@@ -131,6 +157,12 @@ export class BattleScene extends Phaser.Scene {
     this.speedBtn = sb.label;
     this.speedObjs = sb.objects;
     txt(this, 404, 253, 'SPEED', { origin: [1, 0], color: C.faint });
+    // Skip: play out the rest of the fight very fast (doesn't change your saved speed).
+    const skip = button(this, 320, 256, 56, 20, 'SKIP', () => {
+      this.setSpeed(32);
+      this.skipObjs.forEach((o) => o.destroy());
+    });
+    this.skipObjs = skip.objects;
     soundButton(this, 16, 256);
 
     const banner = txt(this, 240, 70, 'ENGAGE!', { size: 16, origin: 0.5, color: C.gold }).setStroke('#05060f', 4);
@@ -521,17 +553,68 @@ export class BattleScene extends Phaser.Scene {
     const title = w === 0 ? 'VICTORY' : w === 1 ? 'DEFEAT' : 'STALEMATE';
     const color = w === 0 ? C.gold : w === 1 ? C.bad : C.cyan;
     audio.play(w === 0 ? 'victory' : w === 1 ? 'defeat' : 'draw');
-    const sub = w === 0 ? (run.endless ? `+1 WIN  (${run.wins} TOTAL)` : `+1 WIN  (${run.wins}/${WIN_TARGET})`)
+    let sub: string;
+    if (!run) sub = w === 0 ? 'YOUR FLEET WINS THE DUEL' : w === 1 ? 'THEIR FLEET WINS THE DUEL' : 'NOBODY WINS';
+    else sub = w === 0 ? (run.endless ? `+1 WIN  (${run.wins} TOTAL)` : `+1 WIN  (${run.wins}/${WIN_TARGET})`)
       : w === 1 ? `-1 HULL  (${run.lives} LEFT)` : 'NO WIN, NO DAMAGE';
 
     // Result bar along the bottom, so the surviving ships stay visible.
     this.speedBtn?.destroy();
     this.speedObjs.forEach((o) => o.destroy());
-    panel(this, 60, 206, 360, 56, 0x0a0e22, 0x3a4a7a).setDepth(50);
-    txt(this, 72, 216, title, { size: 16, color }).setStroke('#05060f', 4).setDepth(51);
-    txt(this, 72, 240, sub, { color: C.text }).setDepth(51);
-    button(this, 352, 234, 112, 22, 'CONTINUE', () => {
-      this.scene.start(run.phase === 'over' ? 'gameover' : 'relic');
-    }, { fill: 0x3a2a10, color: C.gold }).objects.forEach((o) => (o as Phaser.GameObjects.Rectangle).setDepth(51));
+    this.skipObjs.forEach((o) => o.destroy());
+    const depth = (o: Phaser.GameObjects.GameObject) => (o as Phaser.GameObjects.Rectangle).setDepth(51);
+    panel(this, 40, 196, 400, 68, 0x0a0e22, 0x3a4a7a).setDepth(50);
+    txt(this, 52, 204, title, { size: 16, color }).setStroke('#05060f', 4).setDepth(51);
+    txt(this, 52, 226, sub, { color: C.text }).setDepth(51);
+    txt(this, 52, 240, this.report.headline, { color: w === 1 ? '#ffb0a0' : C.dim, wrap: 250 }).setDepth(51);
+    button(this, 372, 212, 112, 18, 'REPORT', () => this.toggleReport()).objects.forEach(depth);
+    button(this, 372, 240, 112, 22, 'CONTINUE', () => {
+      if (!run) this.scene.start('challenge');
+      else this.scene.start(run.phase === 'over' ? 'gameover' : 'relic');
+    }, { fill: 0x3a2a10, color: C.gold }).objects.forEach(depth);
+  }
+
+  /** Damage, healing and shields for both sides, over the battlefield. */
+  private toggleReport() {
+    if (this.reportObjs.length) {
+      this.reportObjs.forEach((o) => o.destroy());
+      this.reportObjs = [];
+      return;
+    }
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
+      (o as unknown as Phaser.GameObjects.Components.Depth).setDepth(60);
+      this.reportObjs.push(o);
+      return o;
+    };
+    add(this.add.rectangle(240, 98, 480, 196, 0x05060f, 0.6).setInteractive().on('pointerup', () => this.toggleReport()));
+    add(panel(this, 40, 22, 400, 170, 0x0a0e22, 0x3a4a7a));
+    add(txt(this, 52, 30, 'BATTLE REPORT', { color: C.gold }));
+    add(txt(this, 428, 30, 'TAP TO CLOSE', { origin: [1, 0], color: C.faint }));
+    const [me, them] = this.report.sides;
+    const cols = [250, 370];
+    add(txt(this, cols[0], 46, 'YOU', { origin: [1, 0], color: C.cyan }));
+    add(txt(this, cols[1], 46, 'THEM', { origin: [1, 0], color: C.bad }));
+    const rows: [string, number, number][] = [
+      ['DAMAGE DEALT', me.damage, them.damage],
+      ['HEALING', me.healed, them.healed],
+      ['HITS SHIELDED', me.blocked, them.blocked],
+      ['HITS DODGED', me.dodged, them.dodged],
+      ['SHIPS LOST', me.lost, them.lost],
+    ];
+    rows.forEach(([label, a, b], i) => {
+      const y = 58 + i * 12;
+      add(txt(this, 52, y, label, { color: C.dim }));
+      add(txt(this, cols[0], y, String(a), { origin: [1, 0] }));
+      add(txt(this, cols[1], y, String(b), { origin: [1, 0] }));
+    });
+    add(txt(this, 52, 122, 'TOP GUNS', { color: C.gold }));
+    for (const [side, x] of [[0, 52], [1, 248]] as const) {
+      const s = this.report.sides[side];
+      s.top.forEach((t, i) => add(txt(this, x, 134 + i * 11, `${t.name.toUpperCase()} ${t.dmg}`, { color: side === 0 ? C.cyan : '#ffb0a0' })));
+      if (!s.top.length) add(txt(this, x, 134, 'NO DAMAGE', { color: C.faint }));
+    }
+    const fl = me.firstLoss;
+    add(txt(this, 52, 172, fl ? `FIRST LOSS: YOUR ${fl.name.toUpperCase()} AT TICK ${fl.tick}, BY ${fl.by.toUpperCase()}` : 'YOU LOST NO SHIPS',
+      { color: fl ? C.dim : C.hp, wrap: 380 }));
   }
 }

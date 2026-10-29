@@ -82,6 +82,10 @@ export interface Run extends RngState {
   vetSlot?: number; // Veteran for Hire: the shop slot holding a level 2 ship
   notice?: string; // shown once in the shop (what a special reward just did)
   nextOpp?: Snapshot; // an online player's fleet fetched for this round (snapshot PvP)
+  nextOppGid?: number; // that fleet's id in the online pool, to report the result
+  daily?: string; // the daily challenge's day (YYYY-MM-DD), for daily runs
+  loggedAt?: number; // battles played when this run was last logged online
+  dailyRank?: number; // rank on the daily board once the score was accepted
 }
 
 export interface RunOptions {
@@ -89,12 +93,14 @@ export interface RunOptions {
   passive: PassiveSlot;
   starter: boolean;
   skin: boolean;
+  daily?: string; // a daily challenge run: everyone that day gets the same shops and opponents
 }
 
 export function newRun(opts?: RunOptions): Run {
-  const runId = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+  const unique = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+  const runId = opts?.daily ? `d${opts.daily.replace(/-/g, '')}-${unique}` : unique;
   const run: Run = {
-    v: 1, runId, rng: hashStr(runId), round: 1, wins: 0, lives: START_LIVES, scrap: 0,
+    v: 1, runId, rng: hashStr(opts?.daily ? `daily:${opts.daily}` : runId), round: 1, wins: 0, lives: START_LIVES, scrap: 0,
     fleet: Array(FLEET_SIZE).fill(null), bench: Array(BENCH_SIZE).fill(null), shop: [], frozen: [], relics: [], relicOffer: [], history: [], phase: 'shop',
   };
   if (opts && CMD_MAP[opts.cmd]) {
@@ -102,6 +108,7 @@ export function newRun(opts?: RunOptions): Run {
     run.passive = opts.passive;
     run.skin = opts.skin;
   }
+  if (opts?.daily) run.daily = opts.daily;
   startRound(run);
   // Starting ship: paid for out of the first round's scrap, so it's a head start in direction, not power.
   const starter = opts?.starter && run.cmd ? SHIPS[CMD_MAP[run.cmd].starter] : null;
@@ -373,6 +380,7 @@ export function applyResult(run: Run, winner: 0 | 1 | -1, kills = 0) {
   const o: Outcome = winner === 0 ? 'W' : winner === 1 ? 'L' : 'D';
   run.history.push(o);
   run.nextOpp = undefined;
+  run.nextOppGid = undefined;
   // Scrap relics that pay out next round.
   const bounty = count(run.relics, 'bounty') * Math.min(3, kills);
   const insured = o === 'L' ? 4 * count(run.relics, 'insurance') : 0;

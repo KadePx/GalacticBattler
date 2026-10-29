@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import { SHIP_RES, addStarfield, portraitKey, setPlayerSkin, shipKey } from '../game/art';
 import { CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, awardRun, cmdLevel, pilotRank, rankXp } from '../game/profile';
-import { WIN_TARGET, endlessWins, goEndless } from '../game/run';
-import { clearRun, getRun, saveRun } from '../game/storage';
-import { C, bar, button, historyPips, panel, relicChip, txt } from '../game/ui';
+import { WIN_TARGET, endlessWins, goEndless, makeSnapshot, type Run } from '../game/run';
+import { activeSlot, clearRun, getRun, saveRun, saveRunTo } from '../game/storage';
+import { getPilot, logRun, submitDaily } from '../game/net';
+import { shareFleet } from '../game/share';
+import { C, bar, button, historyPips, panel, relicChip, toast, txt } from '../game/ui';
 import { CMD_MAP } from '../sim/commanders';
 import { audio } from '../game/audio';
 
@@ -22,7 +24,7 @@ export class GameOverScene extends Phaser.Scene {
     audio.setMood('menu');
     addStarfield(this);
     const won = run.wins >= WIN_TARGET;
-    const title = run.endless ? 'ENDLESS RUN OVER' : won ? 'FLEET TRIUMPHANT' : 'FLEET DESTROYED';
+    const title = run.daily ? (won ? 'DAILY CLEARED!' : 'DAILY OVER') : run.endless ? 'ENDLESS RUN OVER' : won ? 'FLEET TRIUMPHANT' : 'FLEET DESTROYED';
     txt(this, 240, 22, title, { size: 16, origin: 0.5, color: run.endless ? '#c58cff' : won ? C.gold : C.bad }).setStroke('#05060f', 4);
     const sub = run.endless
       ? `${run.wins} WINS (${WIN_TARGET} + ${endlessWins(run)} ENDLESS) IN ${run.history.length} BATTLES`
@@ -56,11 +58,22 @@ export class GameOverScene extends Phaser.Scene {
       if (ranked || leveled) this.time.delayedCall(500, () => audio.play(ranked ? 'rankup' : 'levelup'));
     }
 
+    // Log the finished run online (balance data); endless runs log again when they end.
+    if (run.loggedAt !== run.history.length) {
+      logRun(run);
+      run.loggedAt = run.history.length;
+      saveRun(run);
+    }
+
+    if (run.daily) return this.dailyButtons(run);
+
     // After a win, the same fleet can keep going in endless mode.
     const canGoOn = won && !run.endless;
-    const bx = canGoOn ? [95, 240, 385] : [170, 310];
+    const bx = canGoOn ? [66, 182, 298, 414] : [124, 240, 356];
+    const w = 108;
+    button(this, bx[canGoOn ? 2 : 1], 252, w, 18, 'SHARE FLEET', () => void this.share(run), { fill: 0x2a1a4a, color: '#c58cff' });
     if (canGoOn) {
-      button(this, bx[0], 252, 130, 18, 'KEEP GOING', () => {
+      button(this, bx[0], 252, w, 18, 'KEEP GOING', () => {
         goEndless(run);
         saveRun(run);
         audio.play('launch');
@@ -68,14 +81,40 @@ export class GameOverScene extends Phaser.Scene {
       }, { fill: 0x2a1a4a, color: '#c58cff' });
       txt(this, 240, 228, 'KEEP GOING = ENDLESS: +2 hull, more XP.', { origin: 0.5, color: '#c58cff' });
     }
-    button(this, bx[canGoOn ? 1 : 0], 252, 130, 18, 'NEW RUN', () => {
+    button(this, bx[canGoOn ? 1 : 0], 252, w, 18, 'NEW RUN', () => {
       clearRun();
       this.scene.start('commanders');
     }, { fill: 0x3a2a10, color: C.gold });
-    button(this, bx[canGoOn ? 2 : 1], 252, 130, 18, 'MENU', () => {
+    button(this, bx[canGoOn ? 3 : 2], 252, w, 18, 'MENU', () => {
       clearRun();
       this.scene.start('menu');
     });
+  }
+
+  /** Daily runs: send the score, then the board. The run is kept (it marks today as played). */
+  private dailyButtons(run: Run) {
+    const rankT = txt(this, 240, 228, run.dailyRank !== undefined ? this.rankText(run.dailyRank) : 'SENDING SCORE...', { origin: 0.5, color: C.gold });
+    if (run.dailyRank === undefined) {
+      const slot = activeSlot();
+      void submitDaily(run).then((rank) => {
+        if (rank === null) return void (rankT.active && rankT.setText('OFFLINE: score will send later'));
+        run.dailyRank = rank;
+        saveRunTo(slot, run);
+        if (rankT.active) rankT.setText(this.rankText(rank));
+      });
+    }
+    button(this, 124, 252, 108, 18, 'DAILY BOARD', () => this.scene.start('daily'), { fill: 0x3a2a10, color: C.gold });
+    button(this, 240, 252, 108, 18, 'SHARE FLEET', () => void this.share(run), { fill: 0x2a1a4a, color: '#c58cff' });
+    button(this, 356, 252, 108, 18, 'MENU', () => this.scene.start('menu'));
+  }
+
+  private rankText(rank: number) {
+    return rank > 0 ? `DAILY RANK #${rank}` : 'SCORE SENT';
+  }
+
+  private async share(run: Run) {
+    const how = await shareFleet(makeSnapshot(run, getPilot().name));
+    if (how === 'copied') toast(this, 'Fleet link copied! Send it to a friend.', C.gold);
   }
 
   private rewards(a: NonNullable<ReturnType<typeof awardRun>>) {
