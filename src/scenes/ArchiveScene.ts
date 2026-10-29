@@ -7,7 +7,7 @@ import { getProfile, isUnlocked } from '../game/profile';
 import { soundButton } from '../game/soundPanel';
 import { C, TIER_COLORS, button, panel, relicChip, txt } from '../game/ui';
 import { COMMANDERS, CMD_MAP } from '../sim/commanders';
-import { RELICS } from '../sim/relics';
+import { BOSS_RELICS, RELICS } from '../sim/relics';
 import { REWARDS } from '../game/rewards';
 import { SHIPS, type ShipClass } from '../sim/ships';
 import { TRAITS } from '../sim/traits';
@@ -29,7 +29,7 @@ const DETAIL = { x: 196, y: 48, w: 278, h: 216 };
 const TERMS_PER_PAGE = 10;
 const RELICS_PER_PAGE = 18;
 // Relics, then the one-time bonus cards.
-const RELIC_ROWS = [...RELICS, ...REWARDS];
+const RELIC_ROWS = [...RELICS, ...BOSS_RELICS, ...REWARDS];
 
 /** Reference for everything in the game: ships, synergies, relics, commanders and terms. */
 export class ArchiveScene extends Phaser.Scene {

@@ -35,7 +35,7 @@ const cleanHistory = (raw: unknown): string | null =>
 /** One finished run, logged for balance stats. */
 export interface RunLog {
   runId: string;
-  mode: 'normal' | 'daily';
+  mode: 'normal' | 'daily' | 'gauntlet';
   cmd: string | null;
   passive: 'a' | 'b' | null;
   wins: number;
@@ -50,7 +50,7 @@ export function cleanRunLog(raw: unknown): RunLog | string {
   if (!raw || typeof raw !== 'object') return 'not an object';
   const r = raw as Record<string, unknown>;
   if (typeof r.runId !== 'string' || !/^[\w-]{1,40}$/.test(r.runId)) return 'bad run id';
-  if (r.mode !== 'normal' && r.mode !== 'daily') return 'bad mode';
+  if (r.mode !== 'normal' && r.mode !== 'daily' && r.mode !== 'gauntlet') return 'bad mode';
   const cmd = r.cmd === null ? null : typeof r.cmd === 'string' && CMD_MAP[r.cmd] ? r.cmd : undefined;
   if (cmd === undefined) return 'bad commander';
   const passive = r.passive === null ? null : r.passive === 'a' || r.passive === 'b' ? r.passive : undefined;
@@ -77,6 +77,7 @@ export interface DailyScore {
   battles: number;
   cmd: string;
   fleet: ShortFleet;
+  relics: string[];
 }
 
 export function cleanDailyScore(raw: unknown): DailyScore | string {
@@ -94,5 +95,7 @@ export function cleanDailyScore(raw: unknown): DailyScore | string {
   if (typeof r.cmd !== 'string' || !CMD_MAP[r.cmd]) return 'bad commander';
   const fleet = cleanShortFleet(r.fleet);
   if (!fleet) return 'bad fleet';
-  return { day: r.day, wins, lives: r.lives, battles: history.length, cmd: r.cmd, fleet };
+  const relics = r.relics === undefined ? [] : r.relics;
+  if (!Array.isArray(relics) || relics.length > MAX_BATTLES || relics.some((x) => typeof x !== 'string' || !RELIC_MAP[x])) return 'bad relics';
+  return { day: r.day, wins, lives: r.lives, battles: history.length, cmd: r.cmd, fleet, relics: relics as string[] };
 }

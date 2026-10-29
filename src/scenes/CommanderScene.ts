@@ -20,13 +20,15 @@ const hexInt = (h: string) => Phaser.Display.Color.HexStringToColor(h).color;
 
 export class CommanderScene extends Phaser.Scene {
   private sel = 'vance';
+  private gauntlet = false;
   private layer!: Phaser.GameObjects.Container;
 
   constructor() {
     super('commanders');
   }
 
-  create() {
+  create(data?: { gauntlet?: boolean }) {
+    this.gauntlet = !!data?.gauntlet;
     setPlayerSkin(null);
     audio.setMood('menu');
     addStarfield(this);
@@ -48,7 +50,7 @@ export class CommanderScene extends Phaser.Scene {
 
     // Top bar: pilot rank
     this.add2(panel(this, 0, 0, 480, 22, 0x0a0e22, 0x232c52));
-    this.add2(txt(this, 8, 8, 'CHOOSE YOUR COMMANDER', { color: C.gold }));
+    this.add2(txt(this, 8, 8, this.gauntlet ? 'BOSS GAUNTLET: CHOOSE COMMANDER' : 'CHOOSE YOUR COMMANDER', { color: this.gauntlet ? '#ff8a8a' : C.gold }));
     this.add2(txt(this, 300, 8, `PILOT RANK ${rank}`, { color: C.cyan }));
     const lo = rankXp(rank);
     const hi = rankXp(rank + 1);
@@ -195,6 +197,7 @@ export class CommanderScene extends Phaser.Scene {
       passive: lvl >= 3 ? prog.p : 'a',
       starter: lvl >= 4 && prog.starter,
       skin: lvl >= 2 && prog.skin,
+      gauntlet: this.gauntlet,
     }));
     audio.play('launch');
     this.scene.start('shop');

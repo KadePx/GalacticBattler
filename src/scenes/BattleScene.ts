@@ -9,9 +9,11 @@ import { getRun, saveGhost, saveRun } from '../game/storage';
 import { reportGhostFight, uploadGhost } from '../game/net';
 import { buildReport, type BattleReport } from '../game/report';
 import { saveLastFleet } from '../game/share';
+import { sceneFor } from './MenuScene';
 import { C, button, panel, popup, txt } from '../game/ui';
 import { OVERLOAD_TICK, hullScale, simulate, type BEvent, type BUnit, type BattleResult, kills } from '../sim/battle';
-import { SHIPS } from '../sim/ships';
+import { SHIPS, isBoss } from '../sim/ships';
+import { BOSS_INFO } from '../game/gauntlet';
 import { TRAITS, traitCounts, traitLevel } from '../sim/traits';
 import type { Snapshot } from '../sim/types';
 
@@ -47,6 +49,7 @@ interface View {
   popT?: number; // when its last label popped (labels stack upward)
   popN?: number;
   alive: boolean;
+  barW: number; // HP bar width (bosses get a long one)
 }
 
 /** A friendly fight against a shared fleet: no run, no rewards, no ghost upload. */
@@ -104,8 +107,11 @@ export class BattleScene extends Phaser.Scene {
     let gid: number | undefined;
     if (run) {
       me = makeSnapshot(run);
-      saveGhost(me);
-      uploadGhost(me);
+      // Gauntlet fleets carry boss relics, so they stay out of the normal ghost pools.
+      if (!run.gauntlet) {
+        saveGhost(me);
+        uploadGhost(me);
+      }
       saveLastFleet(me);
       this.opp = getOpponent(run);
       // An online player's fleet: report how it went, so its owner sees it.
@@ -132,12 +138,13 @@ export class BattleScene extends Phaser.Scene {
     // Header
     panel(this, 0, 0, 480, 20, 0x0a0e22, 0x232c52);
     txt(this, 8, 7, 'YOUR FLEET', { color: C.cyan });
-    txt(this, 240, 7, this.duel ? 'FRIENDLY DUEL' : run?.daily ? `DAILY  ROUND ${me.round}` : `ROUND ${me.round}`, { origin: [0.5, 0] });
+    txt(this, 240, 7, this.duel ? 'FRIENDLY DUEL' : run?.daily ? `DAILY  ROUND ${me.round}` : run?.gauntlet ? `GAUNTLET  ROUND ${me.round}` : `ROUND ${me.round}`, { origin: [0.5, 0] });
     const hull = hullScale(Math.max(me.round, this.opp.round));
     if (hull > 1) txt(this, 240, 44, `HULLS x${hull.toFixed(1)}`, { origin: [0.5, 0], color: C.hp });
     txt(this, 472, 7, this.opp.name.toUpperCase(), { origin: [1, 0], color: C.bad });
     const tag = this.opp.runId === 'bot' ? this.opp.style ?? 'RAIDER' : this.opp.runId === 'shared' ? 'SHARED FLEET' : 'GHOST FLEET';
-    txt(this, 472, 24, `${tag}  ${this.opp.wins} WIN${this.opp.wins === 1 ? '' : 'S'}`, { origin: [1, 0], color: C.dim });
+    const wasBoss = !!run?.gauntlet && this.opp.style === 'BOSS';
+    txt(this, 472, 24, wasBoss ? 'SECTOR BOSS' : `${tag}  ${this.opp.wins} WIN${this.opp.wins === 1 ? '' : 'S'}`, { origin: [1, 0], color: wasBoss ? C.bad : C.dim });
     this.commanderLine(this.opp, 472, 34, 1);
     if (this.opp.relics.length) txt(this, 472, 44, `${this.opp.relics.length} RELICS`, { origin: [1, 0], color: C.dim });
     this.traitLine(me, 8, 24, 0);
@@ -165,9 +172,17 @@ export class BattleScene extends Phaser.Scene {
     this.skipObjs = skip.objects;
     soundButton(this, 16, 256);
 
-    const banner = txt(this, 240, 70, 'ENGAGE!', { size: 16, origin: 0.5, color: C.gold }).setStroke('#05060f', 4);
-    this.tweens.add({ targets: banner, alpha: 0, delay: 500, duration: 400, onComplete: () => banner.destroy() });
-    this.startDelay = 700;
+    // (The result is already applied, so read the boss from the opponent, not the run.)
+    const bossDef = this.opp.style === 'BOSS' ? this.opp.fleet.find((f) => f && isBoss(f.def))?.def : undefined;
+    const bossFight = !!bossDef;
+    const banner = txt(this, 240, 70, bossDef ? `BOSS: ${BOSS_INFO[bossDef].title}` : 'ENGAGE!',
+      { size: bossFight ? 12 : 16, origin: 0.5, color: bossFight ? C.bad : C.gold }).setStroke('#05060f', 4);
+    if (bossFight) {
+      const tip = txt(this, 240, 86, BOSS_INFO[bossDef!].tip, { origin: 0.5, color: C.text, wrap: 400, align: 'center' }).setStroke('#05060f', 3);
+      this.tweens.add({ targets: tip, alpha: 0, delay: 2200, duration: 500, onComplete: () => tip.destroy() });
+    }
+    this.tweens.add({ targets: banner, alpha: 0, delay: bossFight ? 1600 : 500, duration: 400, onComplete: () => banner.destroy() });
+    this.startDelay = bossFight ? 1800 : 700;
     audio.play('engage');
   }
 
@@ -226,14 +241,15 @@ export class BattleScene extends Phaser.Scene {
 
   private makeView(u: BUnit, from?: { x: number; y: number }) {
     const { spr, flame } = addShip(this, 0, 0, u.def, u.side);
-    const barBg = this.add.rectangle(0, 0, 26, 4, 0x1a0a10).setOrigin(0, 0.5);
-    const bar = this.add.rectangle(0, 0, 24, 2, u.side === 0 ? 0x7dff8a : 0xff5e7e).setOrigin(0, 0.5);
+    const barW = isBoss(u.def) ? 70 : 24;
+    const barBg = this.add.rectangle(0, 0, barW + 2, isBoss(u.def) ? 5 : 4, 0x1a0a10).setOrigin(0, 0.5);
+    const bar = this.add.rectangle(0, 0, barW, isBoss(u.def) ? 3 : 2, u.side === 0 ? 0x7dff8a : 0xff5e7e).setOrigin(0, 0.5);
     const hpT = txt(this, 0, 0, `${u.hp}`, { origin: 0.5, color: C.text });
-    const shield = u.shield > 0 ? this.makeShield(u.shield) : null;
+    const shield = u.shield > 0 ? this.makeShield(u.shield, u.def) : null;
     if (u.cloak) spr.setAlpha(0.3);
     const v: View = {
       u: { ...u }, pos: { x: from?.x ?? 0, y: from?.y ?? 0 }, phase: Math.random() * Math.PI * 2,
-      spr, flame, barBg, bar, hpT, shield, alive: true,
+      spr, flame, barBg, bar, hpT, shield, alive: true, barW,
     };
     this.views.set(u.uid, v);
     return v;
@@ -246,11 +262,12 @@ export class BattleScene extends Phaser.Scene {
     const k = v.popN ?? 0;
     v.popN = k + 1;
     v.popT = now;
-    popup(this, v.spr.x, v.spr.y - 24 - 9 * Math.min(k, 3), text, color);
+    popup(this, v.spr.x, v.spr.y - v.spr.displayHeight / 2 - 14 - 9 * Math.min(k, 3), text, color);
   }
 
-  private makeShield(n: number) {
-    return this.add.ellipse(0, 0, 44, 32).setStrokeStyle(n > 1 ? 2 : 1, 0x7fe7ff).setFillStyle(0x7fe7ff, 0.1);
+  private makeShield(n: number, def = '') {
+    const big = isBoss(def);
+    return this.add.ellipse(0, 0, big ? 90 : 44, big ? 60 : 32).setStrokeStyle(n > 1 ? 2 : 1, 0x7fe7ff).setFillStyle(0x7fe7ff, 0.1);
   }
 
   /** Every frame: move sprites to their tweened base position plus a gentle idle bob. */
@@ -260,15 +277,31 @@ export class BattleScene extends Phaser.Scene {
       const { x, y } = v.pos;
       v.spr.setPosition(Math.round(x), Math.round(y + Math.sin(time * 0.003 + v.phase) * 1.5));
       syncFlame(v.spr, v.flame, v.u.side);
-      v.barBg.setPosition(x - 13, y + 20);
-      v.bar.setPosition(x - 12, y + 20);
-      v.hpT.setPosition(x, y + 28);
+      const below = isBoss(v.u.def) ? v.spr.displayHeight / 2 + 6 : 20;
+      v.barBg.setPosition(x - v.barW / 2 - 1, y + below);
+      v.bar.setPosition(x - v.barW / 2, y + below);
+      v.hpT.setPosition(x, y + below + 8);
       v.shield?.setPosition(v.spr.x, v.spr.y);
     }
   }
 
   private layout(side: number, animate = true) {
     const line = [...this.views.values()].filter((v) => v.alive && v.u.side === side);
+    // A boss holds the middle of its side; everything else flies in rows above and below it.
+    const boss = line.find((v) => isBoss(v.u.def));
+    const others = line.filter((v) => v !== boss);
+    const place = (v: View, p: { x: number; y: number }) => {
+      if (animate) this.tweens.add({ targets: v.pos, x: p.x, y: p.y, duration: 260, ease: 'Quad.easeOut' });
+      else { v.pos.x = p.x; v.pos.y = p.y; }
+    };
+    if (boss) {
+      const dir = side === 0 ? -1 : 1;
+      place(boss, { x: 240 + dir * 128, y: 142 });
+      const cols = Math.max(1, Math.ceil(others.length / 2));
+      const step = Math.min(36, Math.floor(196 / cols));
+      others.forEach((v, i) => place(v, { x: 240 + dir * (30 + Math.floor(i / 2) * step), y: 142 + (i % 2 ? 50 : -50) }));
+      return;
+    }
     line.forEach((v, i) => {
       const p = this.pos(side, i, line.length);
       if (animate) this.tweens.add({ targets: v.pos, x: p.x, y: p.y, duration: 260, ease: 'Quad.easeOut' });
@@ -279,7 +312,7 @@ export class BattleScene extends Phaser.Scene {
   private setHp(v: View, hp: number) {
     if (!v.alive || !v.hpT.active) return;
     v.u.hp = hp;
-    v.bar.width = Math.max(0, Math.round((24 * hp) / v.u.maxHp));
+    v.bar.width = Math.max(0, Math.round((v.barW * hp) / v.u.maxHp));
     v.hpT.setText(`${hp}`);
   }
 
@@ -554,7 +587,11 @@ export class BattleScene extends Phaser.Scene {
     const color = w === 0 ? C.gold : w === 1 ? C.bad : C.cyan;
     audio.play(w === 0 ? 'victory' : w === 1 ? 'defeat' : 'draw');
     let sub: string;
+    const g = run?.gauntlet;
+    const bossFight = this.opp.style === 'BOSS';
     if (!run) sub = w === 0 ? 'YOUR FLEET WINS THE DUEL' : w === 1 ? 'THEIR FLEET WINS THE DUEL' : 'NOBODY WINS';
+    else if (g && bossFight) sub = w === 0 ? `BOSS DESTROYED  (${g.beaten}/3)` : `-2 HULL (${run.lives} LEFT), REMATCH NEXT`;
+    else if (g) sub = w === 0 ? 'SECTOR BATTLE WON' : w === 1 ? `-1 HULL  (${run.lives} LEFT)` : 'NO WIN, NO DAMAGE';
     else sub = w === 0 ? (run.endless ? `+1 WIN  (${run.wins} TOTAL)` : `+1 WIN  (${run.wins}/${WIN_TARGET})`)
       : w === 1 ? `-1 HULL  (${run.lives} LEFT)` : 'NO WIN, NO DAMAGE';
 
@@ -570,7 +607,7 @@ export class BattleScene extends Phaser.Scene {
     button(this, 372, 212, 112, 18, 'REPORT', () => this.toggleReport()).objects.forEach(depth);
     button(this, 372, 240, 112, 22, 'CONTINUE', () => {
       if (!run) this.scene.start('challenge');
-      else this.scene.start(run.phase === 'over' ? 'gameover' : 'relic');
+      else this.scene.start(sceneFor(run.phase));
     }, { fill: 0x3a2a10, color: C.gold }).objects.forEach(depth);
   }
 

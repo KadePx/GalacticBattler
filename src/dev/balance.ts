@@ -9,7 +9,9 @@ import { ARCHETYPES, botSnapshot } from '../game/bot';
 import { ENDLESS_REPAIR, setPricing, type Pricing } from '../game/run';
 import { simulate } from '../sim/battle';
 import { COMMANDERS } from '../sim/commanders';
-import { RELICS } from '../sim/relics';
+import { BOSS_RELICS, RELICS } from '../sim/relics';
+import { BOSS_ROUND, BOSS_TUNING, bossSnapshot } from '../game/gauntlet';
+import { hashStr } from '../sim/rng';
 import { SHIPS, levelOf } from '../sim/ships';
 import type { Snapshot } from '../sim/types';
 
@@ -351,7 +353,35 @@ function earlySwap() {
   console.log(`player fleets WITH a drone win ${pct(withD[0], withD[1])}% (${withD[1]} fights), WITHOUT ${pct(without[0], without[1])}% (${without[1]})`);
 }
 
+// ---------- G: Gauntlet bosses (bot-skill player, with boss relics from earlier sectors) ----------
+function bosses() {
+  const n = N * 2;
+  header(`GAUNTLET BOSSES: player win % per sector (N=${n})`);
+  const [hm, am] = (process.argv[4] ?? "1,1").split(",").map(Number); // try multipliers: npm run balance -- 300 g 2,1.5
+  if (hm !== 1 || am !== 1) for (const t of Object.values(BOSS_TUNING)) { t.hp = t.hp.map((v) => Math.round(v * hm)); t.atk = t.atk.map((v) => Math.round(v * am)); if (t.pHp) t.pHp = t.pHp.map((v) => Math.round(v * hm)); if (t.pAtk) t.pAtk = t.pAtk.map((v) => Math.round(v * am)); }
+  console.log(pad('boss', 12) + [1, 2, 3].map((s) => lpad(`S${s} r${BOSS_ROUND(s)}`, 9)).join('') + lpad('ticks', 8));
+  for (const id of Object.keys(BOSS_TUNING)) {
+    const ticks: number[] = [];
+    const cells = [1, 2, 3].map((sector) => {
+      const round = BOSS_ROUND(sector);
+      let w = 0;
+      for (let i = 0; i < n; i++) {
+        const me = botSnapshot(810000 + i * 29 + round, round, undefined, false);
+        // Earlier bosses paid out a boss relic each.
+        for (let k = 1; k < sector; k++) me.relics.push(BOSS_RELICS[(i + k) % BOSS_RELICS.length].id);
+        const escorts = botSnapshot(hashStr(`b${i}:${round}`), round).fleet.filter((s): s is NonNullable<typeof s> => !!s);
+        const r = simulate(me, bossSnapshot(id, sector, round, escorts));
+        if (r.winner === 0) w++;
+        ticks.push(r.ticks);
+      }
+      return pct(w, n);
+    });
+    console.log(pad(id, 12) + cells.map((v) => lpad(v, 9)).join('') + lpad((ticks.reduce((a, b) => a + b, 0) / ticks.length).toFixed(1), 8));
+  }
+}
+
 const t0 = Date.now();
+if (process.argv[3]?.includes('g')) bosses();
 if (process.argv[3]?.includes('q')) earlySwap();
 const only = process.argv[3];
 if (!only || only.includes('a')) styleByRound();

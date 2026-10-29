@@ -71,7 +71,8 @@ export class MenuScene extends Phaser.Scene {
       button(this, 240, y, 160, 20, 'CONTINUE', () => this.scene.start(sceneFor(saved!.phase)));
       y += 26;
     }
-    button(this, 240, y, 160, 20, 'NEW RUN', () => this.scene.start('commanders'), { fill: 0x3a2a10, color: C.gold });
+    button(this, 199, y, 78, 20, 'NEW RUN', () => this.scene.start('commanders'), { fill: 0x3a2a10, color: C.gold });
+    button(this, 281, y, 78, 20, 'GAUNTLET', () => this.scene.start('commanders', { gauntlet: true }), { fill: 0x4a1420, color: '#ff8a8a' });
     y += 26;
     const daily = dailyState();
     button(this, 199, y, 78, 20, daily === 'playing' ? 'DAILY >' : 'DAILY', () => this.scene.start('daily'),
@@ -141,4 +142,4 @@ export class MenuScene extends Phaser.Scene {
   }
 }
 
-export const sceneFor = (phase: string) => (phase === 'relic' ? 'relic' : phase === 'over' ? 'gameover' : 'shop');
+export const sceneFor = (phase: string) => (phase === 'relic' ? 'relic' : phase === 'over' ? 'gameover' : phase === 'route' ? 'route' : 'shop');

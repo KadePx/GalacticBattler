@@ -6,6 +6,7 @@ import { hashStr, pick, rand, type RngState } from '../sim/rng';
 import type { FleetShip, Snapshot } from '../sim/types';
 import { CMD_MAP, type PassiveSlot } from '../sim/commanders';
 import { isReward, rollRewardOffer } from './rewards';
+import { BOSS_HULL_LOSS, SECTORS, bossNext, bossRelicOffer, gauntletLabel, newGauntlet, rollRoute, type GauntletState } from './gauntlet';
 
 export const START_LIVES = 5;
 export const WIN_TARGET = 10;
@@ -33,7 +34,7 @@ export const BENCH_SIZE = 3;
 /** Hull points repaired when a won run continues into endless mode. */
 export const ENDLESS_REPAIR = 2;
 
-export type Phase = 'shop' | 'relic' | 'over';
+export type Phase = 'shop' | 'relic' | 'route' | 'over';
 
 /** Shipyard events: about one round in three, from round 2. */
 export type ShopEvent = 'sale' | 'supply' | 'veteran' | 'elite' | 'rolls';
@@ -86,6 +87,7 @@ export interface Run extends RngState {
   daily?: string; // the daily challenge's day (YYYY-MM-DD), for daily runs
   loggedAt?: number; // battles played when this run was last logged online
   dailyRank?: number; // rank on the daily board once the score was accepted
+  gauntlet?: GauntletState; // Boss Gauntlet runs
 }
 
 export interface RunOptions {
@@ -94,6 +96,7 @@ export interface RunOptions {
   starter: boolean;
   skin: boolean;
   daily?: string; // a daily challenge run: everyone that day gets the same shops and opponents
+  gauntlet?: boolean; // a Boss Gauntlet run
 }
 
 export function newRun(opts?: RunOptions): Run {
@@ -109,6 +112,7 @@ export function newRun(opts?: RunOptions): Run {
     run.skin = opts.skin;
   }
   if (opts?.daily) run.daily = opts.daily;
+  if (opts?.gauntlet) run.gauntlet = newGauntlet(run);
   startRound(run);
   // Starting ship: paid for out of the first round's scrap, so it's a head start in direction, not power.
   const starter = opts?.starter && run.cmd ? SHIPS[CMD_MAP[run.cmd].starter] : null;
@@ -390,12 +394,80 @@ export function applyResult(run: Run, winner: 0 | 1 | -1, kills = 0) {
   }
   if (o === 'W') run.wins++;
   if (o === 'L') run.lives--;
+  if (run.gauntlet) return gauntletResult(run, run.gauntlet, o);
   if ((!run.endless && run.wins >= WIN_TARGET) || run.lives <= 0) {
     run.phase = 'over';
   } else {
     run.phase = 'relic';
     run.relicOffer = rewardOffer(run);
   }
+}
+
+/** After a Gauntlet battle: boss outcomes, route rewards, and what comes next. */
+function gauntletResult(run: Run, g: GauntletState, o: Outcome) {
+  g.bossReward = false;
+  const over = () => { run.phase = 'over'; };
+  if (bossNext(g)) {
+    if (o === 'L') run.lives = Math.max(0, run.lives - (BOSS_HULL_LOSS - 1)); // a boss loss costs 2 hull in all
+    if (o === 'W') {
+      g.beaten++;
+      if (g.beaten >= SECTORS) return over();
+      g.sector++;
+      g.step = 0;
+      g.node = 'raid';
+      g.bossReward = true;
+      run.phase = 'relic';
+      run.relicOffer = bossRelicOffer(run, run.relics);
+      return;
+    }
+    if (run.lives <= 0) return over();
+    // Lost or drew: a normal reward, then the same boss again.
+    run.phase = 'relic';
+    run.relicOffer = rewardOffer(run);
+    return;
+  }
+  g.step++;
+  if (run.lives <= 0) return over();
+  if (o === 'W' && g.node === 'elite') {
+    run.boost = { ...run.boost, scrap: (run.boost?.scrap ?? 0) + 5 };
+    addNotice(run, '+5 SCRAP FROM THE ELITE FIGHT');
+  }
+  if (g.node === 'salvage' || g.node === 'dock') {
+    // No reward pick on these routes: straight on to the next round.
+    if (o === 'W' && g.node === 'salvage') {
+      run.boost = { ...run.boost, scrap: (run.boost?.scrap ?? 0) + 6 };
+      addNotice(run, '+6 SCRAP SALVAGED');
+    }
+    if (o === 'W' && g.node === 'dock' && run.lives < START_LIVES) {
+      run.lives++;
+      addNotice(run, 'HULL REPAIRED: +1');
+    }
+    run.relicOffer = [];
+    run.round++;
+    run.phase = 'shop';
+    startRound(run);
+    routeIfNeeded(run);
+    return;
+  }
+  run.phase = 'relic';
+  run.relicOffer = rewardOffer(run);
+}
+
+/** In a Gauntlet, the next regular battle starts with a route choice. */
+function routeIfNeeded(run: Run) {
+  const g = run.gauntlet;
+  if (!g || bossNext(g) || run.phase !== 'shop') return;
+  g.choices = rollRoute(run, run.lives < START_LIVES);
+  run.phase = 'route';
+}
+
+/** Pick the route for the next Gauntlet battle, then go shopping. */
+export function chooseRoute(run: Run, i: number) {
+  const g = run.gauntlet;
+  if (!g?.choices?.[i]) return;
+  g.node = g.choices[i];
+  g.choices = undefined;
+  run.phase = 'shop';
 }
 
 function rewardOffer(run: Run): string[] {
@@ -431,7 +503,8 @@ export function powerProblem(run: Run): string | null {
 export const endlessWins = (run: Run) => (run.endless ? run.history.slice(run.endlessFrom ?? 0).filter((o) => o === 'W').length : 0);
 
 /** Top-bar label: "WINS 3/10", or "ENDLESS 14W" once endless. */
-export const winsLabel = (run: Run) => (run.endless ? `ENDLESS ${run.wins}W` : `WINS ${run.wins}/${WIN_TARGET}`);
+export const winsLabel = (run: Run) =>
+  run.gauntlet ? gauntletLabel(run.gauntlet) : run.endless ? `ENDLESS ${run.wins}W` : `WINS ${run.wins}/${WIN_TARGET}`;
 
 export function chooseRelic(run: Run, id: string) {
   if (isReward(id)) applyReward(run, id);
@@ -439,7 +512,9 @@ export function chooseRelic(run: Run, id: string) {
   run.relicOffer = [];
   run.round++;
   run.phase = 'shop';
+  if (run.gauntlet) run.gauntlet.bossReward = false;
   startRound(run);
+  routeIfNeeded(run);
 }
 
 /** Give a ship 1 XP; a level-up adds +1/+1 like a merge does. */

@@ -1,7 +1,7 @@
 // Deterministic battle simulator. Same two snapshots in -> same result out,
 // on any machine. No randomness, no rendering. The game plays back the event log.
 
-import { SHIPS, isSummon, levelOf } from './ships';
+import { SHIPS, isBoss, isSummon, levelOf } from './ships';
 import { count } from './relics';
 import { passiveId } from './commanders';
 import { traitCounts, traitLevel } from './traits';
@@ -53,6 +53,8 @@ export const MAX_TICKS = 300;
 export const OVERLOAD_TICK = 80;
 const overloadBonus = (t: number) => (t > OVERLOAD_TICK ? Math.floor((t - OVERLOAD_TICK) / 10) + 1 : 0);
 const MAX_LINE = 10; // spawns stop when a side has this many ships alive
+/** Armor that makes the Citadel take 1 damage per hit while a Pylon stands. */
+const FORTIFIED = 999;
 
 /**
  * Hull scaling: ATK grows faster than HP over a run, so late fights would end
@@ -101,7 +103,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     const L = levelOf(s.xp);
     const has = (c: string) => d.classes.includes(c as never);
 
-    let atk = s.atk + r('targeting');
+    let atk = s.atk + r('targeting') + 2 * r('b_crown');
     if (s.def === 'torpedo' || s.def === 'lance' || s.def === 'siege') atk += 2 * r('warheads');
     if (s.def === 'drone') atk += 2 * r('nanites'); // drones heal 2x ATK, so this is +4 healing
     if (has('strike')) atk += [0, 1, 2][tl('strike')];
@@ -110,7 +112,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     if (cp === 'nyx.a' && has('strike')) atk += 1;
     if (cp === 'juno.b' && s.def === 'drone') atk += 1; // drones heal 2x ATK, so +2 healing
 
-    let hp = s.hp + 3 * r('plating') - 2 * r('overclock'); // Overclock trades hull for speed
+    let hp = s.hp + 3 * r('plating') - 2 * r('overclock') + 3 * r('b_crown'); // Overclock trades hull for speed
     if (has('guard')) hp += [0, 5, 9][tl('guard')];
     if (has('strike')) hp += [0, 2, 2][tl('strike')];
     if (has('tech') && tl('tech') >= 1) hp += 2;
@@ -150,6 +152,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     if (s.def === 'siege' && L >= 2) cd -= 2;
     if (s.def === 'railgun' && L >= 2) cd -= 1;
     if (s.def === 'nova' && L >= 3) cd -= 2;
+    cd -= r('b_warp');
 
     let timer = Math.max(2, cd) - 2 * r('alpha');
     if (has('artillery') && tl('artillery') >= 2) timer -= 1;
@@ -167,6 +170,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     if (s.def === 'picket' && L >= 2) u.shield += L >= 3 ? 2 : 1;
     if (s.def === 'bastion') u.shield += 1;
     if (s.def === 'skimmer') u.evade = L >= 2 ? 2 : 1;
+    u.shield += r('b_aegis');
     out.push(u);
   }
 
@@ -190,6 +194,12 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     for (let k = 0; k < 2; k++) out.push(fighter(make, side, snap, u.level, f, f));
   }
   for (let k = 0; k < r('hangar'); k++) out.push(fighter(make, side, snap, 1, 2, 2));
+  for (let k = 0; k < 2 * r('b_hive'); k++) out.push(fighter(make, side, snap, 1, 3, 3));
+  // Hive Mothership: starts with 2 fighters out (stronger in later sectors).
+  for (const u of [...out]) {
+    if (u.def !== 'mothership') continue;
+    for (let k = 0; k < 2; k++) out.push(fighter(make, side, snap, u.level, u.level + 1, u.level + 1));
+  }
   if (cp === 'ryx.a') {
     const n = Math.floor(snap.fleet.filter(Boolean).length / 3);
     // Plain 1/1 fighters: they don't get relic bonuses, or swarm builds snowball.
@@ -311,6 +321,21 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     for (const x of units) if (x.side === o.side && x.def !== 'overseer') x.timer = Math.max(1, x.timer - 2);
   }
   const line = (side: number) => units.filter((u) => u.alive && u.side === side);
+  // Bosses. The Citadel is fortified (1 damage per hit) while a Pylon stands; the Void
+  // Leviathan curses the enemy fleet. Both are announced on the first tick.
+  for (const c of units.filter((u) => u.def === 'citadel')) {
+    if (!units.some((u) => u.side === c.side && u.def === 'pylon')) continue;
+    c.armor = FORTIFIED;
+    events.push({ t: 1, k: 'buff', u: c.uid, atk: c.atk, hp: c.hp, label: 'FORTIFIED' });
+  }
+  for (const m of units.filter((u) => u.def === 'voidmaw')) {
+    for (const x of units) {
+      if (x.side === m.side || x.curse) continue;
+      x.curse = true;
+      events.push({ t: 1, k: 'buff', u: x.uid, atk: x.atk, hp: x.hp, label: 'CURSED' });
+    }
+  }
+  const phased = new Set<BUnit>(); // bosses that already hit their half-HP phase
   // Cloaked ships can't be picked unless nothing else is left.
   const targets = (side: number) => {
     const l = line(side);
@@ -395,6 +420,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
         heal += vl >= 2 ? Math.ceil(dealt * 0.7) : vl >= 1 ? Math.ceil(dealt * 0.5) : 0;
         if (sideCp[s.side] === 'nihl.a') heal += 3;
       }
+      heal += Math.ceil(dealt / 3) * count(snaps[s.side].relics, 'b_maw');
       heal = Math.min(heal, dealt + (sideCp[s.side] === 'nihl.a' ? 3 : 0)); // never more than the hit took (plus Hunger)
       if (gain) buff(s, gain, 0, `+${gain} ATK`);
       const healed = s.curse ? 0 : Math.min(heal, s.maxHp - s.hp);
@@ -420,7 +446,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       if (s.def === 'hexer' && s.level >= 2 && d.atk > 0) d.atk -= 1;
       events.push({ t, k: 'buff', u: d.uid, atk: d.atk, hp: d.hp, label: 'CURSED' });
     }
-    if (sh.jam && !blocked) {
+    if (sh.jam && !blocked && !isBoss(d.def)) { // bosses can't be jammed
       const jammer = count(snaps[s.side].relics, 'jammer');
       d.timer += sh.jam + (sh.drain ? 2 * jammer : 0);
       events.push({ t, k: 'jam', s: s.uid, d: d.uid });
@@ -497,6 +523,14 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     if (!rebuilt && !isSummon(u.def) && sideCp[u.side] === 'nihl.b' && !echoChamber[u.side]) {
       echoChamber[u.side] = true;
       spawnEcho(u.side, 2, 2, u);
+    }
+    // The last Pylon down: the Citadel loses its fortification.
+    if (u.def === 'pylon' && !line(u.side).some((x) => x.def === 'pylon' && x !== u)) {
+      for (const c of line(u.side)) {
+        if (c.def !== 'citadel' || c.armor < FORTIFIED) continue;
+        c.armor = 0;
+        events.push({ t, k: 'buff', u: c.uid, atk: c.atk, hp: c.hp, label: 'EXPOSED' });
+      }
     }
     // Fighters and mines are disposable: losing one doesn't feed Salvagers,
     // Vengeance or Reavers (otherwise swarms of 1-HP units snowball those effects).
@@ -581,7 +615,17 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
           for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, jam: L >= 2 ? 7 : 5, drain: true, pierce: true }); // ion bolts go through shields
           break;
         case 'siege':
+        case 'citadel':
           for (const f of foes) shots.push({ s: u, d: f, dmg: u.atk });
+          break;
+        case 'warlord':
+          for (const f of phased.has(u) ? foes : foes.slice(0, 3)) shots.push({ s: u, d: f, dmg: u.atk });
+          break;
+        case 'voidmaw':
+          for (const f of foes.slice(0, 3)) shots.push({ s: u, d: f, dmg: u.atk });
+          break;
+        case 'mothership':
+          for (const f of foes.slice(0, 2)) shots.push({ s: u, d: f, dmg: u.atk });
           break;
         case 'railgun':
           for (const f of foes.slice(0, L >= 3 ? 2 : 1)) shots.push({ s: u, d: f, dmg: u.atk, pierce: true });
@@ -685,6 +729,12 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
         units.push(fi);
         events.push({ t, k: 'spawn', s: u.uid, unit: { ...fi } });
       }
+      // Hive Mothership: a fighter with every attack.
+      if (u.def === 'mothership' && line(u.side).length < MAX_LINE) {
+        const f = fighter(make, u.side, snaps[u.side], u.level, u.level + 1, u.level + 1);
+        units.push(f);
+        events.push({ t, k: 'spawn', s: u.uid, unit: { ...f } });
+      }
       // Swarm Queen launches fighters mid-battle.
       if (u.def === 'queen' && (u.level >= 2 || u.attacks % 2 === 0) && line(u.side).length < MAX_LINE) {
         const strong = u.level >= 3 ? 2 : 1;
@@ -700,6 +750,21 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
       u.burnT--;
       u.hp -= u.burn;
       events.push({ t, k: 'shot', s: u.uid, d: u.uid, dmg: u.burn, blocked: false, hp: Math.max(0, u.hp), sh: u.shield, burn: true });
+    }
+
+    // Boss phases at half HP: the Dreadnought enrages, the Void Leviathan splits.
+    for (const u of units) {
+      if (!u.alive || u.hp <= 0 || phased.has(u) || u.hp > u.maxHp / 2) continue;
+      if (u.def === 'warlord') {
+        phased.add(u);
+        u.cd = Math.max(2, Math.floor(u.cd / 2));
+        u.timer = Math.min(u.timer, 1);
+        events.push({ t, k: 'buff', u: u.uid, atk: u.atk, hp: u.hp, label: 'ENRAGED' });
+      } else if (u.def === 'voidmaw') {
+        phased.add(u);
+        events.push({ t, k: 'buff', u: u.uid, atk: u.atk, hp: u.hp, label: 'SPLIT' });
+        for (let k = 0; k < 2; k++) spawnEcho(u.side, Math.ceil(u.atk / 2), Math.ceil(u.maxHp / 5), u);
+      }
     }
 
     // Deaths, with on-death triggers that can chain into more deaths.

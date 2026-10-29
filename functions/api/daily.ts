@@ -10,9 +10,10 @@ import { ensureSchema, json, readBody, tooFast, type Ctx, type D1 } from '../../
 const TOP = 20;
 const ORDER = 'wins DESC, lives DESC, battles ASC, created ASC';
 
-interface Row { player: string; name: string; wins: number; lives: number; battles: number; cmd: string; fleet: string; created: number }
+interface Row { player: string; name: string; wins: number; lives: number; battles: number; cmd: string; fleet: string; relics: string | null; created: number }
 const view = (r: Row, rank: number) => ({
   rank, name: r.name, wins: r.wins, lives: r.lives, battles: r.battles, cmd: r.cmd, fleet: JSON.parse(r.fleet),
+  relics: r.relics ? JSON.parse(r.relics) : [],
 });
 
 /** Scores only count for today, or yesterday (a run that started before midnight UTC). */
@@ -59,10 +60,10 @@ export async function onRequestPost({ request, env }: Ctx): Promise<Response> {
   if (await tooFast(env.DB, 'daily', 'player', body.player, 5)) return json({ error: 'slow down' }, 429);
   const row: Row = {
     player: body.player, name, wins: score.wins, lives: score.lives, battles: score.battles,
-    cmd: score.cmd, fleet: JSON.stringify(score.fleet), created: Date.now(),
+    cmd: score.cmd, fleet: JSON.stringify(score.fleet), relics: JSON.stringify(score.relics), created: Date.now(),
   };
-  await env.DB.prepare('INSERT OR IGNORE INTO daily (day, player, name, wins, lives, battles, cmd, fleet, created) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)')
-    .bind(score.day, row.player, row.name, row.wins, row.lives, row.battles, row.cmd, row.fleet, row.created).run();
+  await env.DB.prepare('INSERT OR IGNORE INTO daily (day, player, name, wins, lives, battles, cmd, fleet, relics, created) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)')
+    .bind(score.day, row.player, row.name, row.wins, row.lives, row.battles, row.cmd, row.fleet, row.relics, row.created).run();
   const saved = await env.DB.prepare('SELECT * FROM daily WHERE day = ?1 AND player = ?2').bind(score.day, row.player).first<Row>();
   return json({ ok: true, rank: saved ? await rankOf(env.DB, score.day, saved) : null });
 }

@@ -5,6 +5,7 @@ import { WIN_TARGET, endlessWins, goEndless, makeSnapshot, type Run } from '../g
 import { activeSlot, clearRun, getRun, saveRun, saveRunTo } from '../game/storage';
 import { getPilot, logRun, submitDaily } from '../game/net';
 import { shareFleet } from '../game/share';
+import { gauntletCleared } from '../game/gauntlet';
 import { C, bar, button, historyPips, panel, relicChip, toast, txt } from '../game/ui';
 import { CMD_MAP } from '../sim/commanders';
 import { audio } from '../game/audio';
@@ -23,10 +24,12 @@ export class GameOverScene extends Phaser.Scene {
     setPlayerSkin(run.skin ? run.cmd : null);
     audio.setMood('menu');
     addStarfield(this);
-    const won = run.wins >= WIN_TARGET;
-    const title = run.daily ? (won ? 'DAILY CLEARED!' : 'DAILY OVER') : run.endless ? 'ENDLESS RUN OVER' : won ? 'FLEET TRIUMPHANT' : 'FLEET DESTROYED';
+    const won = run.gauntlet ? gauntletCleared(run.gauntlet) : run.wins >= WIN_TARGET;
+    const title = run.gauntlet ? (won ? 'GAUNTLET CONQUERED!' : `FELL IN SECTOR ${run.gauntlet.sector}`) : run.daily ? (won ? 'DAILY CLEARED!' : 'DAILY OVER') : run.endless ? 'ENDLESS RUN OVER' : won ? 'FLEET TRIUMPHANT' : 'FLEET DESTROYED';
     txt(this, 240, 22, title, { size: 16, origin: 0.5, color: run.endless ? '#c58cff' : won ? C.gold : C.bad }).setStroke('#05060f', 4);
-    const sub = run.endless
+    const sub = run.gauntlet
+      ? `${run.gauntlet.beaten} OF 3 BOSSES BEATEN IN ${run.history.length} BATTLES`
+      : run.endless
       ? `${run.wins} WINS (${WIN_TARGET} + ${endlessWins(run)} ENDLESS) IN ${run.history.length} BATTLES`
       : `${run.wins} WINS IN ${run.history.length} BATTLES`;
     txt(this, 240, 42, sub, { origin: 0.5 });
@@ -68,7 +71,7 @@ export class GameOverScene extends Phaser.Scene {
     if (run.daily) return this.dailyButtons(run);
 
     // After a win, the same fleet can keep going in endless mode.
-    const canGoOn = won && !run.endless;
+    const canGoOn = won && !run.endless && !run.gauntlet;
     const bx = canGoOn ? [66, 182, 298, 414] : [124, 240, 356];
     const w = 108;
     button(this, bx[canGoOn ? 2 : 1], 252, w, 18, 'SHARE FLEET', () => void this.share(run), { fill: 0x2a1a4a, color: '#c58cff' });

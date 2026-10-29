@@ -10,6 +10,7 @@ import { RELIC_MAP, count } from '../sim/relics';
 import { REWARD_MAP, isReward } from '../game/rewards';
 import { SHIPS, levelOf } from '../sim/ships';
 import { TRAITS, traitCounts, traitLevel } from '../sim/traits';
+import { sceneFor } from './MenuScene';
 
 const CARD = { w: 140, h: 122, y: 59 };
 const CARD_X = (i: number) => 86 + i * 154; // centres
@@ -62,10 +63,11 @@ export class RelicScene extends Phaser.Scene {
     historyPips(this, 470, 10, run.history).forEach((o) => this.add2(o));
 
     const last = run.history[run.history.length - 1];
-    const head = last === 'W' ? 'VICTORY SALVAGE' : last === 'L' ? 'EMERGENCY REFIT' : 'FIELD UPGRADE';
-    this.add2(txt(this, 240, 32, head, { size: 16, origin: 0.5, color: last === 'L' ? C.bad : C.gold }).setStroke('#05060f', 4));
+    const bossReward = !!run.gauntlet?.bossReward;
+    const head = bossReward ? 'BOSS DEFEATED!' : last === 'W' ? 'VICTORY SALVAGE' : last === 'L' ? 'EMERGENCY REFIT' : 'FIELD UPGRADE';
+    this.add2(txt(this, 240, 32, head, { size: 16, origin: 0.5, color: bossReward ? '#ff8a8a' : last === 'L' ? C.bad : C.gold }).setStroke('#05060f', 4));
     const anySpecial = run.relicOffer.some(isReward);
-    this.add2(txt(this, 240, 45, anySpecial ? 'Pick a relic (lasts all run) or a one-time BONUS.' : 'Pick a relic. It lasts for the rest of the run.', { origin: 0.5, color: C.dim }));
+    this.add2(txt(this, 240, 45, bossReward ? 'Pick a BOSS RELIC. Only bosses drop these.' : anySpecial ? 'Pick a relic (lasts all run) or a one-time BONUS.' : 'Pick a relic. It lasts for the rest of the run.', { origin: 0.5, color: bossReward ? '#ffb0b0' : C.dim }));
 
     run.relicOffer.forEach((id, i) => this.card(id, CARD_X(i)));
     this.fleetStrip();
@@ -183,6 +185,6 @@ export class RelicScene extends Phaser.Scene {
     chooseRelic(this.run, this.picked);
     audio.play('relic');
     saveRun(this.run);
-    this.scene.start('shop');
+    this.scene.start(sceneFor(this.run.phase)); // the shop, or a Gauntlet route pick first
   }
 }

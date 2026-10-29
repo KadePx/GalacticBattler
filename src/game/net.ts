@@ -126,7 +126,7 @@ export async function fetchGhostNews(): Promise<GhostNews | null> {
 
 // ---------- daily challenge ----------
 
-export interface DailyEntry { rank: number; name: string; wins: number; lives: number; battles: number; cmd: string; fleet: ShortFleet }
+export interface DailyEntry { rank: number; name: string; wins: number; lives: number; battles: number; cmd: string; fleet: ShortFleet; relics?: string[] }
 export interface DailyBoard { day: string; total: number; top: DailyEntry[]; me: DailyEntry | null }
 
 export const fetchDaily = (day: string) =>
@@ -141,7 +141,7 @@ export async function submitDaily(run: Run): Promise<number | null> {
   const pilot = getPilot();
   const res = await postJson<{ ok?: boolean; rank?: number | null }>('/api/daily', {
     player: pilot.id, name: pilot.name, day: run.daily, history: run.history.join(''), lives: run.lives,
-    cmd: run.cmd, fleet: shortFleet(run),
+    cmd: run.cmd, fleet: shortFleet(run), relics: run.relics,
   });
   return res?.ok ? res.rank ?? 0 : null;
 }
@@ -153,7 +153,7 @@ export function logRun(run: Run) {
   if (!run.history.length) return;
   const log: RunLog = {
     runId: run.runId,
-    mode: run.daily ? 'daily' : 'normal',
+    mode: run.daily ? 'daily' : run.gauntlet ? 'gauntlet' : 'normal',
     cmd: run.cmd ?? null,
     passive: run.cmd ? run.passive ?? 'a' : null,
     wins: run.wins,

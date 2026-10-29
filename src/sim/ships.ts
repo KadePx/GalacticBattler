@@ -851,7 +851,38 @@ export const SHIPS: Record<string, ShipDef> = {
     desc: 'Explodes at the front enemy when destroyed.', perks: ['', ''], accent: ['#ff4040', '#ffb0b0'],
     sprite: ['...a...', '.a.o.a.', '..obo..', 'aobEboa', '..obo..', '.a.o.a.', '...a...'],
   },
+
+  // ---------- Gauntlet bosses (battle-only; drawn from hand-made 2x sprites in shipsHd.ts) ----------
+  mothership: {
+    id: 'mothership', name: 'Hive Mothership', tier: 0, atk: 4, hp: 40, cd: 4, classes: [],
+    desc: 'Hits the front 2 and launches a fighter every attack.', perks: ['', ''], accent: ['#ff4fb0', '#ffb0e0'],
+    sprite: ['..oooo..', '.oaAAao.', 'Eobbbbwo', '.oaAAao.', '..oooo..'],
+  },
+  citadel: {
+    id: 'citadel', name: 'The Citadel', tier: 0, atk: 3, hp: 40, cd: 5, classes: [],
+    desc: 'Hits every enemy. Shrugs off hits while a Pylon stands.', perks: ['', ''], accent: ['#3dffd0', '#c0fff0'],
+    sprite: ['.oooooo.', 'oaAAAAao', 'Eobbbbwo', 'oaAAAAao', '.oooooo.'],
+  },
+  pylon: {
+    id: 'pylon', name: 'Shield Pylon', tier: 0, atk: 2, hp: 10, cd: 5, classes: [],
+    desc: 'While any Pylon stands, the Citadel takes 1 damage per hit.', perks: ['', ''], accent: ['#3dffd0', '#c0fff0'],
+    sprite: ['.oo.', 'oAao', 'oaAo', '.oo.'],
+  },
+  warlord: {
+    id: 'warlord', name: "Admiral's Dreadnought", tier: 0, atk: 4, hp: 40, cd: 5, classes: [],
+    desc: 'Broadsides hit 3. At half HP it enrages: twice as fast, hits all.', perks: ['', ''], accent: ['#ffb030', '#ffe8a0'],
+    sprite: ['..oooo..', '.oaAAao.', 'Eobbbbwo', '.oaAAao.', '..oooo..'],
+  },
+  voidmaw: {
+    id: 'voidmaw', name: 'Void Leviathan', tier: 0, atk: 4, hp: 40, cd: 5, classes: [],
+    desc: 'Hits the front 3. Curses your fleet (no healing). Splits at half HP.', perks: ['', ''], accent: ['#b040ff', '#e8b0ff'],
+    sprite: ['..oooo..', '.oaAAao.', 'Eobbbbwo', '.oaAAao.', '..oooo..'],
+  },
 };
+
+/** Gauntlet bosses: drawn large, with their own HP bar and battle rules. */
+export const BOSSES = ['mothership', 'citadel', 'warlord', 'voidmaw'] as const;
+export const isBoss = (def: string) => (BOSSES as readonly string[]).includes(def);
 
 /** Battle-only units (fighters, mines): not bought, no synergy, skipped by snipes and torpedoes. */
 export const isSummon = (def: string) => def === 'fighter' || def === 'mine' || def === 'echo';

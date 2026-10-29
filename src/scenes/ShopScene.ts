@@ -10,6 +10,7 @@ import { soundButton } from '../game/soundPanel';
 import { openDetails, type Detail } from '../game/details';
 import { getRun, saveRun } from '../game/storage';
 import { prefetchOpponent } from '../game/net';
+import { NODE_INFO, bossNext } from '../game/gauntlet';
 import { C, TIER_COLORS, tierTag, button, historyPips, panel, popup, relicChip, toast, txt } from '../game/ui';
 import { RELIC_MAP } from '../sim/relics';
 import { SHIPS, levelOf, xpForNext, type ShipClass, type ShipDef } from '../sim/ships';
@@ -68,6 +69,10 @@ export class ShopScene extends Phaser.Scene {
     const run = getRun();
     if (!run) {
       this.scene.start('menu');
+      return;
+    }
+    if (run.phase === 'route') {
+      this.scene.start('route');
       return;
     }
     this.run = run;
@@ -383,7 +388,9 @@ export class ShopScene extends Phaser.Scene {
       this.add2(this.add.image(12 + i * 10, 10, i < run.lives ? 'heart' : 'heart_empty'));
     }
     this.add2(txt(this, 70, 7, winsLabel(run), { color: run.endless ? '#c58cff' : C.gold }));
-    this.add2(txt(this, 190, 7, `ROUND ${run.round}`));
+    const g = run.gauntlet;
+    if (g) this.add2(txt(this, 190, 7, bossNext(g) ? 'VS BOSS!' : `VS ${NODE_INFO[g.node].name.split(' ').pop()}`, { color: bossNext(g) ? C.bad : NODE_INFO[g.node].color }));
+    else this.add2(txt(this, 190, 7, `ROUND ${run.round}`));
     soundButton(this, 176, 10).forEach((o) => this.add2(o));
     this.add2(this.add.image(300, 10, 'coin'));
     this.add2(txt(this, 308, 7, `${run.scrap} SCRAP`, { color: C.gold }));
@@ -497,7 +504,8 @@ export class ShopScene extends Phaser.Scene {
     const selShip = this.sel?.kind === 'fleet' ? slotGet(run, this.sel.i) : null;
     const sellLabel = selShip ? `SELL +${sellValue(run, selShip)}` : 'SELL';
     const b2 = button(this, SELL.x, SELL.y, SELL.w, SELL.h, sellLabel, () => this.clickSell(), { fill: 0x3a1420 });
-    const b3 = button(this, 418, 244, 100, 24, 'BATTLE!', () => this.clickBattle(), { fill: 0x3a2a10, color: C.gold });
+    const bossUp = !!this.run.gauntlet && bossNext(this.run.gauntlet);
+    const b3 = button(this, 418, 244, 100, 24, bossUp ? 'FIGHT BOSS' : 'BATTLE!', () => this.clickBattle(), { fill: bossUp ? 0x4a1420 : 0x3a2a10, color: bossUp ? '#ff8a8a' : C.gold });
     [...b1.objects, ...b2.objects, ...b3.objects].forEach((o) => this.add2(o));
 
     this.drawPowerCard();

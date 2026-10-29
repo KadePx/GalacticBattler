@@ -7,11 +7,15 @@ import { dailyCommander, dailyState, dayKey, newDailyRun } from '../game/daily';
 import { fetchDaily, getPilot, submitDaily, type DailyEntry } from '../game/net';
 import { WIN_TARGET } from '../game/run';
 import { peekRun, saveRun, saveRunTo, useSlot } from '../game/storage';
-import { C, button, panel, txt } from '../game/ui';
+import { C, button, panel, relicChip, txt } from '../game/ui';
+import { fleetRow } from '../game/fleetRow';
+import { SHIPS } from '../sim/ships';
 import { CMD_MAP } from '../sim/commanders';
 import { sceneFor } from './MenuScene';
 
 export class DailyScene extends Phaser.Scene {
+  private preview: Phaser.GameObjects.GameObject[] = [];
+
   constructor() {
     super('daily');
   }
@@ -20,6 +24,7 @@ export class DailyScene extends Phaser.Scene {
     setPlayerSkin(null);
     audio.setMood('menu');
     addStarfield(this);
+    this.preview = [];
     const day = dayKey();
     const cmd = dailyCommander(day);
     const state = dailyState();
@@ -68,9 +73,10 @@ export class DailyScene extends Phaser.Scene {
       loading.destroy();
       txt(this, 458, 50, `${board.total} PILOT${board.total === 1 ? '' : 'S'}`, { origin: [1, 0], color: C.dim });
       if (!board.top.length) txt(this, 332, 140, 'No scores yet.\nBe the first!', { origin: 0.5, color: C.dim, align: 'center' });
-      const rows = board.top.slice(0, board.me && board.me.rank > 12 ? 11 : 12);
+      else txt(this, 332, 232, 'TAP A PILOT TO SEE THEIR BUILD', { origin: 0.5, color: C.faint });
+      const rows = board.top.slice(0, board.me && board.me.rank > 11 ? 10 : 11);
       rows.forEach((e, i) => this.row(e, 66 + i * 13, e.name === getPilot().name && board.me?.rank === e.rank));
-      if (board.me && board.me.rank > rows.length) this.row(board.me, 66 + 12 * 13, true);
+      if (board.me && board.me.rank > rows.length) this.row(board.me, 66 + 11 * 13, true);
     });
 
     button(this, 60, 256, 88, 16, 'MENU', () => this.scene.start('menu'));
@@ -85,6 +91,43 @@ export class DailyScene extends Phaser.Scene {
     txt(this, 408, y, `${e.lives}HP`, { origin: [1, 0], color: C.hp });
     const c = CMD_MAP[e.cmd];
     txt(this, 458, y, c ? c.name.slice(0, 4).toUpperCase() : '', { origin: [1, 0], color: c?.color ?? C.dim });
+    const hit = this.add.rectangle(332, y + 4, 266, 13, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
+    hit.on('pointerover', () => this.showBuild(e));
+    hit.on('pointerup', () => this.showBuild(e));
+    hit.on('pointerout', () => this.hideBuild());
+  }
+
+  /** A pilot's final build, drawn over the left panel: commander, fleet and relics. */
+  private showBuild(e: DailyEntry) {
+    this.hideBuild();
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
+      (o as unknown as Phaser.GameObjects.Components.Depth).setDepth(20);
+      this.preview.push(o);
+      return o;
+    };
+    add(panel(this, 12, 44, 176, 196, 0x0a0e22, 0x6a7cc0));
+    add(txt(this, 22, 50, `#${e.rank} ${e.name}`, { color: C.gold, wrap: 160 }));
+    const c = CMD_MAP[e.cmd];
+    add(txt(this, 22, 62, `${c?.name.toUpperCase() ?? ''}  ${e.wins >= WIN_TARGET ? 'CLEARED' : `${e.wins} WINS`}  ${e.lives} HULL`, { color: c?.color ?? C.dim, wrap: 160 }));
+    fleetRow(this, e.fleet.map((f) => f[0]), 100, 90, 0, 160).forEach(add);
+    add(txt(this, 22, 106, 'FLEET (FRONT FIRST)', { color: C.faint }));
+    e.fleet.forEach(([def, lv], i) => {
+      add(txt(this, 22, 118 + i * 11, `LV${lv} ${(SHIPS[def]?.name ?? def).toUpperCase()}`, { color: lv >= 3 ? C.gold : lv === 2 ? C.cyan : C.text }));
+    });
+    const relics = e.relics ?? [];
+    const ry = 118 + Math.max(1, e.fleet.length) * 11 + 6;
+    add(txt(this, 22, ry, relics.length ? 'RELICS' : 'NO RELICS RECORDED', { color: C.faint }));
+    const perRow = 10;
+    relics.slice(0, 20).forEach((id, i) => {
+      const chip = relicChip(this, 28 + (i % perRow) * 16, ry + 18 + Math.floor(i / perRow) * 16, id);
+      add(chip.bg);
+      add(chip.t);
+    });
+  }
+
+  private hideBuild() {
+    this.preview.forEach((o) => o.destroy());
+    this.preview = [];
   }
 
   /** A finished daily whose score didn't reach the server yet (offline at the time). */

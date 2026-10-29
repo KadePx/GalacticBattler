@@ -40,6 +40,15 @@ export const RELICS: RelicDef[] = [
   { id: 'dice', name: 'Loaded Dice', desc: 'Your first 2 rerolls each round are free.', color: 0xf0f0f0, glyph: 'D' },
 ];
 
-export const RELIC_MAP: Record<string, RelicDef> = Object.fromEntries(RELICS.map((r) => [r.id, r]));
+/** Boss relics: only offered for beating a Gauntlet boss. Never in normal reward offers. */
+export const BOSS_RELICS: RelicDef[] = [
+  { id: 'b_crown', name: "Admiral's Crown", desc: 'All ships +2 ATK and +3 HP.', color: 0xffb030, glyph: 'W' },
+  { id: 'b_hive', name: 'Hive Core', desc: 'Launch 2 extra 3/3 fighters each battle.', color: 0xff4fb0, glyph: 'H' },
+  { id: 'b_aegis', name: 'Citadel Grid', desc: 'All ships start with a shield.', color: 0x3dffd0, glyph: 'G' },
+  { id: 'b_maw', name: 'Void Heart', desc: 'All ships heal for a third of the damage they deal.', color: 0xb040ff, glyph: 'V' },
+  { id: 'b_warp', name: 'Warp Core', desc: 'All ships attack 1 tick faster (min 2).', color: 0x7fe7ff, glyph: 'Z' },
+];
+
+export const RELIC_MAP: Record<string, RelicDef> = Object.fromEntries([...RELICS, ...BOSS_RELICS].map((r) => [r.id, r]));
 
 export const count = (relics: readonly string[], id: string) => relics.filter((r) => r === id).length;

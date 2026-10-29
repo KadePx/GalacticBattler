@@ -103,7 +103,8 @@ export const XP_ENDLESS_WIN = 5; // extra per endless win, on top of the normal 
 export function runXp(run: Run): RunXp {
   const battles = run.history.length * XP_PER_BATTLE;
   const wins = run.wins * XP_PER_WIN;
-  const clear = run.wins >= WIN_TARGET ? XP_CLEAR : 0;
+  const cleared = run.gauntlet ? run.gauntlet.beaten >= 3 : run.wins >= WIN_TARGET;
+  const clear = (cleared ? XP_CLEAR : 0) + 20 * (run.gauntlet?.beaten ?? 0); // +20 per boss beaten
   const endless = endlessWins(run) * XP_ENDLESS_WIN;
   return { battles, wins, clear, endless, total: battles + wins + clear + endless };
 }

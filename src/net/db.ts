@@ -52,6 +52,8 @@ export async function ensureSchema(db: D1) {
     db.prepare('CREATE INDEX IF NOT EXISTS runs_ver ON runs (ver, created)'),
     db.prepare('CREATE INDEX IF NOT EXISTS runs_player ON runs (player, created)'),
   ]);
+  // Columns added after launch (fails harmlessly once they exist).
+  try { await db.prepare('ALTER TABLE daily ADD COLUMN relics TEXT').run(); } catch { /* already there */ }
   schemaReady = true;
 }
 
