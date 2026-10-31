@@ -48,6 +48,16 @@ async function start() {
   };
   if (app) new ResizeObserver(refit).observe(app);
   window.visualViewport?.addEventListener('resize', refit);
+
+  // Phones drop fullscreen when you switch apps, but the page isn't always told, so the
+  // game would still think it's fullscreen and the button wouldn't work. Leave it cleanly
+  // ourselves when the page is hidden; the player can tap FULLSCREEN again on return.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && game.scale.isFullscreen) {
+      try { game.scale.stopFullscreen(); } catch { /* already left */ }
+    }
+    if (!document.hidden) refit();
+  });
 }
 
 /**

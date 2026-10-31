@@ -124,9 +124,13 @@ export class MenuScene extends Phaser.Scene {
       const sync = () => fs.label.active && fs.label.setText(label());
       this.scale.on('enterfullscreen', sync);
       this.scale.on('leavefullscreen', sync);
+      // Coming back from another app: fullscreen may have ended without an event.
+      const onVisible = () => { if (!document.hidden) this.time.delayedCall(300, sync); };
+      document.addEventListener('visibilitychange', onVisible);
       this.events.once('shutdown', () => {
         this.scale.off('enterfullscreen', sync);
         this.scale.off('leavefullscreen', sync);
+        document.removeEventListener('visibilitychange', onVisible);
       });
     }
   }

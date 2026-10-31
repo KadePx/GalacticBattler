@@ -68,13 +68,25 @@ class AudioEngine {
     }
   }
 
+  /** Muted, or both volumes at zero: the game makes no sound at all. */
+  private get silent() {
+    return this.settings.muted || (this.settings.music <= 0 && this.settings.sfx <= 0);
+  }
+
   /** Call from a user gesture. Safe to call many times. */
   unlock() {
-    // iPhones treat web audio as "ambient" by default, so the silent switch mutes it.
-    // Asking for "playback" makes the game audible like a video would be (Safari 16.4+).
+    // iPhones treat web audio as "ambient" by default: it mixes with other apps' audio, and
+    // the silent switch mutes it. "playback" makes the game audible like a video, but it also
+    // pauses the player's own music or audiobook, so only ask for it when our music is on.
     const nav = navigator as unknown as { audioSession?: { type: string } };
     if (nav.audioSession) {
-      try { nav.audioSession.type = 'playback'; } catch { /* not supported */ }
+      const type = !this.settings.muted && this.settings.music > 0 ? 'playback' : 'ambient';
+      try { if (nav.audioSession.type !== type) nav.audioSession.type = type; } catch { /* not supported */ }
+    }
+    // Silent: keep the audio engine stopped, so it never holds the device's audio.
+    if (this.silent) {
+      if (this.ctx?.state === 'running') void this.ctx.suspend();
+      return;
     }
     if (!this.ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -131,7 +143,7 @@ class AudioEngine {
     document.addEventListener('visibilitychange', () => {
       if (!this.ctx) return;
       if (document.hidden) void this.ctx.suspend();
-      else this.ctx.resume().catch(() => { /* resumes on the next tap */ });
+      else if (!this.silent) this.ctx.resume().catch(() => { /* resumes on the next tap */ });
     });
   }
 
@@ -151,6 +163,7 @@ class AudioEngine {
     this.settings.sfx = Math.max(0, Math.min(1, this.settings.sfx));
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
     this.apply();
+    this.unlock(); // settings change from a tap: start, stop or switch the audio session to match
   }
 
   // ---------- building blocks ----------
