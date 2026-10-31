@@ -141,16 +141,18 @@ export class ArchiveScene extends Phaser.Scene {
 
   private commanderList() {
     const p = getProfile();
-    const rowH = 19;
+    // Rows shrink to fit the list as commanders are added.
+    const pitch = Math.min(21.5, LIST.h / COMMANDERS.length);
+    const rowH = pitch - 2.5;
     COMMANDERS.forEach((c, i) => {
-      const y = LIST.y + i * (rowH + 2.5);
+      const y = LIST.y + i * pitch;
       const sel = this.pick.cmdrs === c.id;
       const open = isUnlocked(p, c.id);
       const row = this.add2(this.add.rectangle(LIST.x + LIST.w / 2, y + rowH / 2, LIST.w, rowH, sel ? 0x1f2c66 : 0x0b1026)
         .setStrokeStyle(1, sel ? C.highlight : 0x262e50));
       this.add2(this.add.image(LIST.x + 12, y + rowH / 2, portraitKey(c.id, !open)).setScale(1));
-      this.add2(txt(this, LIST.x + 26, y + 6, c.name.toUpperCase(), { color: open ? c.color : C.dim }));
-      this.add2(txt(this, LIST.x + LIST.w - 6, y + 6, open ? 'OPEN' : `RANK ${c.rank}`, { origin: [1, 0], color: open ? C.faint : C.bad }));
+      this.add2(txt(this, LIST.x + 26, y + rowH / 2 - 3, c.name.toUpperCase(), { color: open ? c.color : C.dim }));
+      this.add2(txt(this, LIST.x + LIST.w - 6, y + rowH / 2 - 3, open ? 'OPEN' : `RANK ${c.rank}`, { origin: [1, 0], color: open ? C.faint : C.bad }));
       row.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(c.id));
     });
   }

@@ -26,6 +26,10 @@ const FLAME: Palette[] = [
 // Commander hull colours (unlocked at commander level 2). They replace the
 // player's steel blue; the enemy always stays crimson so sides never get confused.
 const SKINS: Record<string, { hull: Palette; flame: Palette }> = {
+  juul: {
+    hull: { s: '#1c2440', b: '#34406a', l: '#6a78a8', h: '#dfe6ff', w: '#e0a060', e: '#ffb050' },
+    flame: { a: '#a05a10', b: '#ffb050', c: '#fff0d0' },
+  },
   vance: {
     hull: { s: '#5a4520', b: '#9a7a3a', l: '#d8b870', h: '#fff0c8', w: '#fff3a0', e: '#ffb02f' },
     flame: { a: '#b06a00', b: '#ffc23a', c: '#fff6d0' },
@@ -497,6 +501,28 @@ const PORTRAITS: Record<string, { map: string[]; pal: Palette }> = {
       '.oooooooooooooo.',
     ],
     pal: { o: '#0a0614', k: '#2a1a3a', h: '#3a2a58', v: '#ff70e0', a: '#4a2a70', A: '#c070ff' },
+  },
+  juul: {
+    // Retired Space Force colonel: coiffed hair and a full, groomed mustache.
+    map: [
+      '...ooooooooo....',
+      '..oHHHHHHhhhoo..',
+      '.oHHHhhhhhhhhho.',
+      '.ohhhhhhhhhhhho.',
+      '.ohhkkkkkkkkhho.',
+      '.ohkkkkkkkkkkho.',
+      '.ohkMMMkkMMMkho.',
+      'oKkkwvkkkkwvkkKo',
+      'oKkkkkkKKkkkkkKo',
+      '.okkkkkKKkkkkko.',
+      '.okkMMMMMMMMkko.',
+      '.okMMHMMMMHMMko.',
+      '.okMkKKKKKKkMko.',
+      '..okkkkkkkkkko..',
+      '...ookkKKkkoo...',
+      'oaaAAaoddoaaraao',
+    ],
+    pal: { o: '#0c0806', h: '#6b4126', H: '#a06a3c', k: '#e2b08c', K: '#b8825c', v: '#1a1a2a', w: '#f0f0f0', M: '#4a2a16', a: '#3c4c66', A: '#ffd166', r: '#d83a3a', d: '#c8ccd8' },
   },
   tess: {
     map: [

@@ -93,8 +93,11 @@ export function cleanSnapshot(raw: unknown, name: string): Snapshot | string {
     reserve = r;
   }
 
+  // Juul's SALUTE: only a ship that's actually in the fleet, and only with Juul.
+  const salute = cmd?.id === 'juul' && typeof s.salute === 'string' && fleet.some((f) => f?.def === s.salute) ? s.salute : undefined;
+
   return {
     v: 1, id: s.id, runId: s.runId, name, round, wins: s.wins, lives: s.lives,
-    fleet, relics, createdAt: Date.now(), cmd, bench, reserve,
+    fleet, relics, createdAt: Date.now(), cmd, bench, reserve, salute,
   };
 }

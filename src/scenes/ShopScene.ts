@@ -440,6 +440,8 @@ export class ShopScene extends Phaser.Scene {
       const lvl = levelOf(ship.xp);
       for (let s = 0; s < lvl; s++) this.add2(this.add.image(x + 15 - (lvl - 1 - s) * 7, SLOT_Y - 15, 'star'));
       this.classPips(x, SLOT_Y + 16, def);
+      // Juul's SALUTE: this ship counts twice for synergies this round.
+      if (!bench && run.salute === ship.def) this.add2(txt(this, x - 19, SLOT_Y + 4, 'x2', { color: '#e0a060' }).setStroke('#05060f', 2));
       this.add2(txt(this, x - 4, SLOT_Y + 23, `${ship.atk}`, { origin: [1, 0], color: C.atk }));
       this.add2(txt(this, x + 4, SLOT_Y + 23, `${ship.hp}`, { color: C.hp }));
     }
@@ -648,7 +650,7 @@ export class ShopScene extends Phaser.Scene {
     if (!info || 'freeze' in info) return null;
     if ('def' in info) return { def: info.def, ship: info.ship };
     if ('relic' in info) return { relic: info.relic };
-    if ('trait' in info) return { trait: info.trait, count: traitCounts(this.run.fleet, this.run.relics)[info.trait] };
+    if ('trait' in info) return { trait: info.trait, count: traitCounts(this.run.fleet, this.run.relics, this.run.salute)[info.trait] };
     if (this.armed) return null;
     return { cmd: info.cmd, passive: this.run.passive ?? 'a' };
   }
@@ -658,7 +660,7 @@ export class ShopScene extends Phaser.Scene {
     const add = <T extends Phaser.GameObjects.GameObject>(o: T) => { this.synLayer.add(o); return o; };
     add(panel(this, SYN.x, SYN.y, SYN.w, SYN.h));
     add(txt(this, SYN.x + 6, SYN.y + 4, 'SYNERGY', { color: C.dim }));
-    const counts = traitCounts(this.run.fleet, this.run.relics);
+    const counts = traitCounts(this.run.fleet, this.run.relics, this.run.salute);
     const adds = preview && !this.run.fleet.some((s) => s?.def === preview.id) ? preview.classes : [];
 
     // One line per synergy: name, then "have/next" (gold when maxed). Factions sit under a divider.
@@ -740,7 +742,7 @@ export class ShopScene extends Phaser.Scene {
     }
     if ('trait' in info) {
       const tr = TRAIT_MAP[info.trait];
-      const n = traitCounts(this.run.fleet, this.run.relics)[info.trait];
+      const n = traitCounts(this.run.fleet, this.run.relics, this.run.salute)[info.trait];
       add(txt(this, L, row(0), `${tr.name} SYNERGY`, { color: tr.color }));
       add(txt(this, R, row(0), `${n} COUNTED`, { origin: [1, 0], color: C.dim }));
       tr.tiers.forEach((tier, k) => {

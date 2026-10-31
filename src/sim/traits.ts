@@ -48,7 +48,7 @@ export const TRAITS: TraitDef[] = [
 export const TRAIT_MAP = Object.fromEntries(TRAITS.map((t) => [t.id, t])) as Record<ShipClass, TraitDef>;
 
 /** Distinct ships per class/faction. Banner relics each count as one more faction ship. */
-export function traitCounts(fleet: readonly (FleetShip | null)[], relics: readonly string[] = []): Record<ShipClass, number> {
+export function traitCounts(fleet: readonly (FleetShip | null)[], relics: readonly string[] = [], salute?: string): Record<ShipClass, number> {
   const counts: Record<ShipClass, number> = { strike: 0, guard: 0, artillery: 0, tech: 0, concord: 0, reaver: 0, void: 0 };
   counts.concord += count(relics, 'banner_c');
   counts.reaver += count(relics, 'banner_r');
@@ -59,6 +59,8 @@ export function traitCounts(fleet: readonly (FleetShip | null)[], relics: readon
     seen.add(s.def);
     for (const c of SHIPS[s.def].classes) counts[c]++;
   }
+  // Juul's SALUTE: the saluted ship counts as a second copy, while it's in the fleet.
+  if (salute && seen.has(salute)) for (const c of SHIPS[salute].classes) counts[c]++;
   return counts;
 }
 

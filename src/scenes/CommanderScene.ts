@@ -14,6 +14,7 @@ const STYLE_LABEL: Record<string, string> = {
   balanced: 'ALL-ROUNDER', engineer: 'REFITS / BENCH', fortress: 'GUARD / DEFENSE', blitz: 'STRIKE / SPEED',
   swarm: 'FIGHTERS / SWARM', artillery: 'ARTILLERY', control: 'TECH / CONTROL',
   concord: 'SHIELDS / CONCORD', reaver: 'KILLS / REAVERS', void: 'LIFE-STEAL / VOID',
+  formation: 'FORMATION / VETERANS',
 };
 
 const hexInt = (h: string) => Phaser.Display.Color.HexStringToColor(h).color;
@@ -56,7 +57,10 @@ export class CommanderScene extends Phaser.Scene {
     const hi = rankXp(rank + 1);
     this.add2s(bar(this, 410, 8, 62, 6, (p.xp - lo) / (hi - lo), 0x7fe7ff));
 
-    COMMANDERS.forEach((c, i) => this.card(c.id, 8 + (i % 2) * 86, 26 + Math.floor(i / 2) * 48));
+    // Two columns; rows shrink to fit as commanders are added (5 rows = 48px, 6 rows = 40px).
+    const rows = Math.ceil(COMMANDERS.length / 2);
+    const pitch = Math.min(48, Math.floor(240 / rows));
+    COMMANDERS.forEach((c, i) => this.card(c.id, 8 + (i % 2) * 86, 26 + Math.floor(i / 2) * pitch, pitch - 2));
     this.detail(this.sel);
   }
 
@@ -64,19 +68,19 @@ export class CommanderScene extends Phaser.Scene {
     objs.forEach((o) => this.add2(o));
   }
 
-  private card(id: string, x: number, y: number) {
+  private card(id: string, x: number, y: number, h = 46) {
     const c = CMD_MAP[id];
     const p = getProfile();
     const unlocked = isUnlocked(p, id);
     const lvl = cmdLevel(progress(p, id).xp);
     const isSel = this.sel === id;
     const w = 82;
-    const h = 46;
+    const mid = Math.round(h / 2);
     this.add2(panel(this, x, y, w, h, isSel ? 0x162050 : C.panel, isSel ? C.highlight : C.border));
-    if (unlocked && lvl >= CMD_MAX_LEVEL) this.add2(this.add.rectangle(x + 13, y + 23, 23, 23).setStrokeStyle(1, C.highlight));
-    this.add2(this.add.image(x + 13, y + 23, portraitKey(id, !unlocked)).setScale(1.25));
-    this.add2(txt(this, x + 25, y + 11, c.name.toUpperCase(), { color: unlocked ? c.color : C.dim }));
-    this.add2(txt(this, x + 25, y + 25, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
+    if (unlocked && lvl >= CMD_MAX_LEVEL) this.add2(this.add.rectangle(x + 13, y + mid, 23, 23).setStrokeStyle(1, C.highlight));
+    this.add2(this.add.image(x + 13, y + mid, portraitKey(id, !unlocked)).setScale(1.25));
+    this.add2(txt(this, x + 25, y + mid - 12, c.name.toUpperCase(), { color: unlocked ? c.color : C.dim }));
+    this.add2(txt(this, x + 25, y + mid + 2, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
       color: unlocked ? C.gold : '#6a76a0',
     }));
     const hit = this.add2(this.add.rectangle(x + w / 2, y + h / 2, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
@@ -144,7 +148,7 @@ export class CommanderScene extends Phaser.Scene {
     // Level options
     const starter = SHIPS[c.starter];
     this.toggle(X + 8, 198, 'COMMANDER COLOURS', 2, lvl, unlocked && prog.skin, () => { prog.skin = !prog.skin; });
-    this.toggle(X + 8, 212, `START WITH A ${starter.name.toUpperCase()}`, 4, lvl, unlocked && prog.starter, () => { prog.starter = !prog.starter; });
+    this.toggle(X + 8, 212, `START WITH ${/^[AEIOU]/i.test(starter.name) ? 'AN' : 'A'} ${starter.name.toUpperCase()}`, 4, lvl, unlocked && prog.starter, () => { prog.starter = !prog.starter; });
     if (unlocked && lvl >= 2) {
       setPlayerSkin(prog.skin ? id : null);
       const { spr, flame } = addShip(this, X + 262, 205, c.starter, 0, 2);

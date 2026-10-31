@@ -92,12 +92,12 @@ function fighter(make: UnitFactory, side: 0 | 1, snap: Snapshot, level: number, 
 
 function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): BUnit[] {
   const r = (id: string) => count(snap.relics, id);
-  const counts = traitCounts(snap.fleet, snap.relics);
+  const counts = traitCounts(snap.fleet, snap.relics, snap.salute);
   const tl = (id: keyof typeof counts) => traitLevel(id, counts[id]);
   const cp = passiveId(snap.cmd);
   const out: BUnit[] = [];
 
-  for (const s of snap.fleet) {
+  for (const [i, s] of snap.fleet.entries()) {
     if (!s || !SHIPS[s.def]) continue;
     const d = SHIPS[s.def];
     const L = levelOf(s.xp);
@@ -143,6 +143,13 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     if (has('void') && tl('void') >= 1) hp += 2;
     if (has('void') && tl('void') >= 2) atk += 1;
     if (has('void') && cp === 'nihl.a') atk += 1;
+    // Juul's Formation Flying: +1 ATK for each neighbouring slot holding a ship that shares a class.
+    if (cp === 'juul.a') {
+      for (const n of [snap.fleet[i - 1], snap.fleet[i + 1]]) {
+        if (n && SHIPS[n.def]?.classes.some((c) => has(c))) atk += 1;
+      }
+    }
+    if (cp === 'juul.b' && L >= 2) hp += 4;
 
     // Overclock can't push a ship below 3 ticks; on the fastest ships a tick is too big a share.
     let cd = r('overclock') ? Math.max(Math.min(d.cd, 3), d.cd - r('overclock')) : d.cd;
@@ -171,6 +178,7 @@ function buildSide(snap: Snapshot, side: 0 | 1, make: UnitFactory, scale = 1): B
     if (s.def === 'bastion') u.shield += 1;
     if (s.def === 'skimmer') u.evade = L >= 2 ? 2 : 1;
     u.shield += r('b_aegis');
+    if (cp === 'juul.b' && L >= 3) u.shield += 1;
     out.push(u);
   }
 
@@ -295,7 +303,7 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
   });
   // Per-side synergy levels and passives, for effects that fire mid-battle.
   const sideTl = snaps.map((snap) => {
-    const c = traitCounts(snap.fleet, snap.relics);
+    const c = traitCounts(snap.fleet, snap.relics, snap.salute);
     return (id: keyof typeof c) => traitLevel(id, c[id]);
   });
   const sideCp = snaps.map((snap) => passiveId(snap.cmd));

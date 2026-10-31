@@ -113,6 +113,15 @@ export const COMMANDERS: CommanderDef[] = [
     power: { name: 'REFIT', desc: 'Reroll a ship within its tier.', cost: 2, target: true },
     starter: 'gunboat',
   },
+  {
+    id: 'juul', name: 'Juul', title: 'Space Force Legend', style: 'formation', rank: 10, color: '#e0a060',
+    passives: {
+      a: { name: 'Formation Flying', desc: '+1 ATK per neighbour that shares a class.' },
+      b: { name: 'Old Guard', desc: 'Level 2+ ships +4 HP. Level 3: +1 shield.' },
+    },
+    power: { name: 'SALUTE', desc: 'Ship counts twice for synergies.', cost: 1, target: true },
+    starter: 'interceptor',
+  },
 ];
 
 export const CMD_MAP: Record<string, CommanderDef> = Object.fromEntries(COMMANDERS.map((c) => [c.id, c]));

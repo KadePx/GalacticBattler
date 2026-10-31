@@ -5,6 +5,7 @@
 import type { FleetShip, Snapshot } from '../sim/types';
 import { levelOf } from '../sim/ships';
 import type { RunLog, ShortFleet } from '../net/apiRules';
+import { cleanCallsign } from '../net/ghostRules';
 import { getRun, read, saveRun, write } from './storage';
 import type { Run } from './run';
 
@@ -26,10 +27,25 @@ const randomId = () => Array.from({ length: 16 }, () => Math.floor(Math.random()
 const pickOne = <T>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
 /** This browser's pilot: a random id plus a callsign other players see. */
+/** A random callsign the server accepts (3-14 characters). */
+function randomCallsign(): string {
+  for (;;) {
+    const name = `${pickOne(ADJ)} ${pickOne(NOUN)} ${10 + Math.floor(Math.random() * 90)}`;
+    if (cleanCallsign(name) === name) return name;
+  }
+}
+
 export function getPilot(): Pilot {
   const saved = read<Pilot>(PILOT_KEY);
-  if (saved?.id && saved.name) return saved;
-  const pilot = { id: randomId(), name: `${pickOne(ADJ)} ${pickOne(NOUN)} ${10 + Math.floor(Math.random() * 90)}` };
+  if (saved?.id && saved.name) {
+    // Older builds could generate names over 14 characters, which the server rejects.
+    // Those were never accepted online, so swap in a valid one.
+    if (cleanCallsign(saved.name)) return saved;
+    const fixed = { ...saved, name: randomCallsign() };
+    write(PILOT_KEY, fixed);
+    return fixed;
+  }
+  const pilot = { id: randomId(), name: randomCallsign() };
   write(PILOT_KEY, pilot);
   return pilot;
 }

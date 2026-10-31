@@ -195,7 +195,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Active synergies for a fleet, e.g. "STRIKE 2  TECH 4". */
   private traitLine(snap: Snapshot, x: number, y: number, side: 0 | 1) {
-    const counts = traitCounts(snap.fleet, snap.relics);
+    const counts = traitCounts(snap.fleet, snap.relics, snap.salute);
     const active = TRAITS.filter((tr) => traitLevel(tr.id, counts[tr.id]) > 0);
     let cx = x;
     // Stay on this side of the screen: stop before reaching the middle.

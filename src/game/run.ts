@@ -70,6 +70,7 @@ export interface Run extends RngState {
   passive?: PassiveSlot;
   skin?: boolean;
   powerUsed?: boolean; // shop power, once per round
+  salute?: string; // ship id saluted this round (Juul): counts twice for synergies
   // XP already paid for this run (an endless run can pay out a second time).
   xpAwarded?: { pilotBefore: number; cmdBefore: number; paid?: number; last?: number };
   // Endless: keep playing after a win; the run only ends when the hull runs out.
@@ -153,6 +154,7 @@ function restock(run: Run, deep: boolean | 'scan' = false) {
 export function startRound(run: Run) {
   run.scrap = ROUND_SCRAP + 2 * count(run.relics, 'salvage') + (runPassive(run) === 'vance.b' ? 1 : 0) + (run.boost?.scrap ?? 0) + prospectorScrap(run.fleet);
   run.powerUsed = false;
+  run.salute = undefined;
   restock(run, !!run.boost?.market);
   run.market = run.boost?.market ? 2 : 0;
   run.freeRolls = 2 * count(run.relics, 'dice');
@@ -239,6 +241,10 @@ export function usePower(run: Run, slot: number | null): string | null {
       target!.def = nu.id;
       break;
     }
+    case 'juul':
+      if (slot! >= FLEET_SIZE) return 'Pick a ship in your fleet, not the bench';
+      run.salute = target!.def;
+      break;
     case 'grisk': {
       const reavers = new Set(run.fleet.filter((f) => f && SHIPS[f.def].classes.includes('reaver')).map((f) => f!.def)).size;
       if (reavers < 2) return 'Needs 2 different Reaver ships';
@@ -377,6 +383,7 @@ export function makeSnapshot(run: Run, name = 'You'): Snapshot {
     cmd: run.cmd ? { id: run.cmd, p: run.passive ?? 'a' } : undefined,
     bench: (run.bench ?? []).filter(Boolean).length,
     reserve: firstBenched(run),
+    salute: run.salute,
   };
 }
 
