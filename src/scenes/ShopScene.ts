@@ -17,6 +17,7 @@ import { SHIPS, levelOf, xpForNext, type ShipClass, type ShipDef } from '../sim/
 import { TRAITS, TRAIT_MAP, traitCounts, traitLevel } from '../sim/traits';
 import type { FleetShip } from '../sim/types';
 import { hullScale } from '../sim/battle';
+import { combosFor, fleetBattleStats, gainLabel, hasGain, type BattleStats } from '../game/combos';
 
 type Src = { kind: 'shop' | 'fleet'; i: number };
 type Tgt = { kind: 'slot'; i: number } | { kind: 'sell' };
@@ -60,6 +61,7 @@ export class ShopScene extends Phaser.Scene {
   private touch = false; // last input was a finger
   private dragging = false;
   private flames: Phaser.GameObjects.Image[] = [];
+  private battle: (BattleStats | null)[] = []; // battle-start stats of each fleet slot
 
   constructor() {
     super('shop');
@@ -417,6 +419,7 @@ export class ShopScene extends Phaser.Scene {
     const selDef = this.selectedDef();
     const cmdColor = run.cmd ? hexInt(CMD_MAP[run.cmd].color) : C.highlight;
     const targeting = this.armed && !!run.cmd && CMD_MAP[run.cmd].power.target;
+    this.battle = fleetBattleStats(run);
     for (let i = 0; i < TOTAL_SLOTS; i++) {
       const ship = slotGet(run, i);
       const x = SLOT_X(i);
@@ -442,8 +445,16 @@ export class ShopScene extends Phaser.Scene {
       this.classPips(x, SLOT_Y + 16, def);
       // Juul's SALUTE: this ship counts twice for synergies this round.
       if (!bench && run.salute === ship.def) this.add2(txt(this, x - 19, SLOT_Y + 4, 'x2', { color: '#e0a060' }).setStroke('#05060f', 2));
-      this.add2(txt(this, x - 4, SLOT_Y + 23, `${ship.atk}`, { origin: [1, 0], color: C.atk }));
-      this.add2(txt(this, x + 4, SLOT_Y + 23, `${ship.hp}`, { color: C.hp }));
+      // Fleet ships show what they'll fight with; boosted numbers are underlined.
+      const st = bench ? null : this.battle[i];
+      const atk = this.add2(txt(this, x - 4, SLOT_Y + 23, `${st?.atk ?? ship.atk}`, { origin: [1, 0], color: C.atk }));
+      const hp = this.add2(txt(this, x + 4, SLOT_Y + 23, `${st?.hp ?? ship.hp}`, { color: C.hp }));
+      if (st && st.atk > ship.atk) this.add2(this.add.rectangle(atk.x - atk.width / 2, SLOT_Y + 32, atk.width, 1, hexInt(C.atk)));
+      if (st && st.hp > ship.hp) this.add2(this.add.rectangle(hp.x + hp.width / 2, SLOT_Y + 32, hp.width, 1, hexInt(C.hp)));
+      // Shields at battle start: small cyan diamonds down the right edge.
+      for (let k = 0; k < Math.min(3, st?.shield ?? 0); k++) {
+        this.add2(this.add.rectangle(x + 17, SLOT_Y - 4 + k * 6, 4, 4, 0x7fe7ff).setAngle(45));
+      }
     }
 
     // Shipyard
@@ -631,8 +642,51 @@ export class ShopScene extends Phaser.Scene {
       this.synLayer.removeAll(true);
       this.drawSynergy(preview);
     }
+    this.drawCombos(info);
     this.drawStrip(info);
     this.drawMoreButton(info);
+  }
+
+  /**
+   * Show what's comboing with what. Focus a fleet ship: every ship, relic and the commander
+   * that boosts it lights up, labelled with what it adds. Focus a synergy: the ships counting
+   * toward it light up.
+   */
+  private drawCombos(info: Info) {
+    if (this.dragging || !info) return;
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T) => { this.infoLayer.add(o); return o; };
+    const ring = (x: number, y: number, w: number, h: number, col: number) =>
+      add(this.add.rectangle(x, y, w, h).setStrokeStyle(2, col));
+    const label = (x: number, y: number, text: string, col: string) =>
+      add(txt(this, x, y, text, { origin: [0.5, 0], color: col }).setStroke('#05060f', 3));
+
+    if ('trait' in info) {
+      const col = hexInt(TRAIT_MAP[info.trait].color);
+      this.run.fleet.forEach((s, i) => {
+        if (s && SHIPS[s.def].classes.includes(info.trait)) ring(SLOT_X(i), SLOT_Y, BOX + 4, BOX + 4, col);
+      });
+      return;
+    }
+    if (!('def' in info) || !info.ship) return;
+    const i = this.run.fleet.indexOf(info.ship);
+    if (i < 0) return;
+    const c = combosFor(this.run, i);
+    if (!c) return;
+    ring(SLOT_X(i), SLOT_Y, BOX + 4, BOX + 4, C.highlight);
+    for (const p of c.partners) {
+      ring(SLOT_X(p.slot), SLOT_Y, BOX + 4, BOX + 4, 0x7fe7ff);
+      label(SLOT_X(p.slot), SLOT_Y - 29, gainLabel(p.gain), C.cyan);
+    }
+    for (const r of c.relics) {
+      const k = this.run.relics.indexOf(r.id);
+      if (k >= 0 && k < 16) ring(66 + k * 17, 28, 17, 17, 0x7fe7ff);
+    }
+    if (hasGain(c.commander) && this.run.cmd) {
+      ring(POWER.x + POWER.w / 2, POWER.y + POWER.h / 2, POWER.w + 2, POWER.h + 2, 0x7fe7ff);
+      // Covers the card's state line while a ship is focused.
+      add(this.add.rectangle(POWER.x + 23, POWER.y + 23, POWER.w - 26, 11, 0x0e1430).setOrigin(0));
+      add(txt(this, POWER.x + 24, POWER.y + 25, gainLabel(c.commander), { color: C.cyan }));
+    }
   }
 
   /** "MORE" opens a full card with every detail and definitions of the terms used. */
@@ -764,9 +818,15 @@ export class ShopScene extends Phaser.Scene {
     } else {
       add(txt(this, R, row(0), `TIER ${def.tier}`, { origin: [1, 0], color: hex(TIER_COLORS[def.tier]) }));
     }
-    const atk = add(txt(this, L, row(1), `ATK ${ship?.atk ?? def.atk}`, { color: C.atk }));
-    const hp = add(txt(this, atk.x + atk.width + 10, row(1), `HP ${ship?.hp ?? def.hp}`, { color: C.hp }));
-    add(txt(this, hp.x + hp.width + 10, row(1), `EVERY ${def.cd}T`, { color: C.dim }));
+    // Fleet ships: own stats + battle bonus (the lit-up ships, relics and commander add it).
+    const slot = ship ? this.run.fleet.indexOf(ship) : -1;
+    const st = slot >= 0 ? this.battle[slot] : null;
+    const own = { atk: ship?.atk ?? def.atk, hp: ship?.hp ?? def.hp };
+    const plus = (n: number) => (n > 0 ? `+${n}` : '');
+    const atk = add(txt(this, L, row(1), `ATK ${own.atk}${plus((st?.atk ?? own.atk) - own.atk)}`, { color: C.atk }));
+    const hp = add(txt(this, atk.x + atk.width + 10, row(1), `HP ${own.hp}${plus((st?.hp ?? own.hp) - own.hp)}`, { color: C.hp }));
+    // Short form when bonuses make the line long, so it doesn't run into the classes.
+    add(txt(this, hp.x + hp.width + 10, row(1), st && (st.atk > own.atk || st.hp > own.hp) ? `${def.cd}T` : `EVERY ${def.cd}T`, { color: C.dim }));
     let cx = R;
     [...def.classes].reverse().forEach((c) => {
       const t = add(txt(this, cx, row(1), TRAIT_MAP[c].short, { origin: [1, 0], color: TRAIT_MAP[c].color }));
