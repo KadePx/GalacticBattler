@@ -12,6 +12,7 @@ import { DailyScene } from './scenes/DailyScene';
 import { ChallengeScene } from './scenes/ChallengeScene';
 import { RouteScene } from './scenes/RouteScene';
 import { installAudioUnlock } from './game/audio';
+import { installFullscreenRestore } from './game/fullscreen';
 
 async function start() {
   // The pixel font must be loaded before Phaser draws any text.
@@ -49,15 +50,8 @@ async function start() {
   if (app) new ResizeObserver(refit).observe(app);
   window.visualViewport?.addEventListener('resize', refit);
 
-  // Phones drop fullscreen when you switch apps, but the page isn't always told, so the
-  // game would still think it's fullscreen and the button wouldn't work. Leave it cleanly
-  // ourselves when the page is hidden; the player can tap FULLSCREEN again on return.
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && game.scale.isFullscreen) {
-      try { game.scale.stopFullscreen(); } catch { /* already left */ }
-    }
-    if (!document.hidden) refit();
-  });
+  installFullscreenRestore(game);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refit(); });
 }
 
 /**

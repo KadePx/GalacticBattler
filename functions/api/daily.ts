@@ -52,6 +52,14 @@ export async function onRequestPost({ request, env }: Ctx): Promise<Response> {
   if (!isPlayerId(body.player)) return json({ error: 'bad player' }, 400);
   const name = cleanCallsign(body.name);
   if (!name) return json({ error: 'bad callsign' }, 400);
+
+  // A pilot changed their callsign: their scores stay, under the new name.
+  if (body.rename === true) {
+    await ensureSchema(env.DB);
+    await env.DB.prepare('UPDATE daily SET name = ?1 WHERE player = ?2').bind(name, body.player).run();
+    return json({ ok: true });
+  }
+
   const score = cleanDailyScore(body);
   if (typeof score === 'string') return json({ error: score }, 422);
   if (!dayOpen(score.day)) return json({ error: 'day closed' }, 409);

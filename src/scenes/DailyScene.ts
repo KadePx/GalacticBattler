@@ -4,7 +4,7 @@ import Phaser from 'phaser';
 import { addStarfield, portraitKey, setPlayerSkin } from '../game/art';
 import { audio } from '../game/audio';
 import { dailyCommander, dailyState, dayKey, newDailyRun } from '../game/daily';
-import { fetchDaily, getPilot, submitDaily, type DailyEntry } from '../game/net';
+import { fetchDaily, submitDaily, type DailyEntry } from '../game/net';
 import { WIN_TARGET } from '../game/run';
 import { peekRun, saveRun, saveRunTo, useSlot } from '../game/storage';
 import { C, button, panel, relicChip, txt } from '../game/ui';
@@ -13,6 +13,12 @@ import { SHIPS } from '../sim/ships';
 import { CMD_MAP } from '../sim/commanders';
 import { sceneFor } from './MenuScene';
 
+/** The first daily challenge; the board can be browsed back to here. */
+const FIRST_DAY = '2026-10-29';
+const DAY_MS = 86_400_000;
+/** The day before or after a YYYY-MM-DD key. */
+const shiftDay = (d: string, by: number) => dayKey(Date.parse(`${d}T12:00:00Z`) + by * DAY_MS);
+
 export class DailyScene extends Phaser.Scene {
   private preview: Phaser.GameObjects.GameObject[] = [];
 
@@ -20,14 +26,24 @@ export class DailyScene extends Phaser.Scene {
     super('daily');
   }
 
-  create() {
+  create(data?: { boardDay?: string }) {
     setPlayerSkin(null);
     audio.setMood('menu');
     addStarfield(this);
     this.preview = [];
     const day = dayKey();
+    const yesterday = dayKey(Date.now() - 86_400_000);
     const cmd = dailyCommander(day);
     const state = dailyState();
+    const run = peekRun('daily');
+    // Your last finished daily, if it can still be scored (today's, or yesterday's).
+    const finished = run?.phase === 'over' && (run.daily === day || run.daily === yesterday) ? run : null;
+    // The day rolls over at midnight UTC (evening in the Americas), so right after a late run
+    // the board you just played on is yesterday's: show that one until today's is started.
+    // Any past day's board can be viewed; only today's challenge can be played.
+    const asked = data?.boardDay;
+    const boardDay = asked && asked >= FIRST_DAY && asked <= day ? asked
+      : state === 'new' && finished?.daily === yesterday ? yesterday : day;
 
     txt(this, 240, 14, 'DAILY CHALLENGE', { size: 16, origin: 0.5, color: C.gold }).setStroke('#05060f', 4);
     txt(this, 240, 32, `${day}  (NEW CHALLENGE AT MIDNIGHT UTC)`, { origin: 0.5, color: C.dim });
@@ -42,7 +58,6 @@ export class DailyScene extends Phaser.Scene {
     txt(this, 22, 112, 'Same commander, starting shop and rivals for everyone. Only your first finished run counts.',
       { color: C.text, wrap: 158 });
 
-    const run = peekRun('daily');
     const status = txt(this, 22, 186, '', { color: C.dim, wrap: 158 });
     if (state === 'playing' && run) {
       status.setText(`IN PROGRESS: ${run.wins} WINS, ${run.lives} HULL${run.daily !== day ? ' (YESTERDAY)' : ''}`);
@@ -53,8 +68,11 @@ export class DailyScene extends Phaser.Scene {
     } else if (state === 'done' && run) {
       const result = run.wins >= WIN_TARGET ? 'CLEARED!' : `${run.wins} WIN${run.wins === 1 ? '' : 'S'}`;
       status.setText(`DONE: ${result}\nCome back tomorrow.`);
-      if (run.dailyRank === undefined) void this.resend();
     } else {
+      if (finished) {
+        const result = finished.wins >= WIN_TARGET ? 'CLEARED' : `${finished.wins} WINS`;
+        status.setText(`YESTERDAY: ${result}${finished.dailyRank ? `, RANK ${finished.dailyRank}` : ''}`);
+      }
       button(this, 100, 226, 156, 20, 'START', () => {
         useSlot('daily');
         saveRun(newDailyRun(day));
@@ -63,19 +81,26 @@ export class DailyScene extends Phaser.Scene {
       }, { fill: 0x3a2a10, color: C.gold });
     }
 
+    // A score that didn't reach the server yet (offline, or rejected by an older server).
+    if (finished && finished.dailyRank === undefined) void this.resend(boardDay);
+
     // Right: the board.
     panel(this, 196, 44, 272, 196);
-    txt(this, 206, 50, 'LEADERBOARD', { color: C.gold });
+    const label = boardDay === day ? 'TODAY' : boardDay === yesterday ? 'YESTERDAY' : boardDay;
+    if (boardDay > FIRST_DAY) button(this, 210, 54, 14, 12, '<', () => this.scene.restart({ boardDay: shiftDay(boardDay, -1) }));
+    txt(this, 222, 50, label, { color: C.gold });
+    if (boardDay < day) button(this, 222 + label.length * 8 + 12, 54, 14, 12, '>', () => this.scene.restart({ boardDay: shiftDay(boardDay, 1) }));
+    if (boardDay < yesterday) txt(this, 332, 218, 'PAST CHALLENGE: VIEW ONLY', { origin: 0.5, color: C.faint });
     const loading = txt(this, 332, 140, 'LOADING...', { origin: 0.5, color: C.dim });
-    void fetchDaily(day).then((board) => {
+    void fetchDaily(boardDay).then((board) => {
       if (!this.scene.isActive()) return;
       if (!board) return void loading.setText('OFFLINE: board unavailable');
       loading.destroy();
       txt(this, 458, 50, `${board.total} PILOT${board.total === 1 ? '' : 'S'}`, { origin: [1, 0], color: C.dim });
-      if (!board.top.length) txt(this, 332, 140, 'No scores yet.\nBe the first!', { origin: 0.5, color: C.dim, align: 'center' });
+      if (!board.top.length) txt(this, 332, 140, boardDay === day ? 'No scores yet.\nBe the first!' : 'No scores that day.', { origin: 0.5, color: C.dim, align: 'center' });
       else txt(this, 332, 232, 'TAP A PILOT TO SEE THEIR BUILD', { origin: 0.5, color: C.faint });
       const rows = board.top.slice(0, board.me && board.me.rank > 11 ? 10 : 11);
-      rows.forEach((e, i) => this.row(e, 66 + i * 13, e.name === getPilot().name && board.me?.rank === e.rank));
+      rows.forEach((e, i) => this.row(e, 66 + i * 13, board.me?.rank === e.rank));
       if (board.me && board.me.rank > rows.length) this.row(board.me, 66 + 11 * 13, true);
     });
 
@@ -131,13 +156,13 @@ export class DailyScene extends Phaser.Scene {
   }
 
   /** A finished daily whose score didn't reach the server yet (offline at the time). */
-  private async resend() {
+  private async resend(boardDay: string) {
     const run = peekRun('daily');
     if (!run || run.phase !== 'over' || run.dailyRank !== undefined) return;
     const rank = await submitDaily(run);
     if (rank === null) return;
     run.dailyRank = rank;
     saveRunTo('daily', run);
-    if (this.scene.isActive()) this.scene.restart();
+    if (this.scene.isActive()) this.scene.restart({ boardDay });
   }
 }

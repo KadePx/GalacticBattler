@@ -51,7 +51,10 @@ export function getPilot(): Pilot {
 }
 
 export function setCallsign(name: string) {
-  write(PILOT_KEY, { ...getPilot(), name });
+  const pilot = { ...getPilot(), name };
+  write(PILOT_KEY, pilot);
+  // Daily scores keep their place on the board under the new name.
+  void postJson('/api/daily', { player: pilot.id, name, rename: true }, true);
 }
 
 /** GET some JSON with a timeout; null on any failure. */

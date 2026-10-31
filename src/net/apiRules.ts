@@ -89,7 +89,9 @@ export function cleanDailyScore(raw: unknown): DailyScore | string {
   const wins = [...history].filter((c) => c === 'W').length;
   const losses = [...history].filter((c) => c === 'L').length;
   if (wins > DAILY_WIN_TARGET) return 'bad wins';
-  if (!isInt(r.lives, 0, MAX_LIVES) || r.lives !== MAX_LIVES - losses) return 'bad lives';
+  // Each loss costs a hull point, but Hull Repair cards can give them back, so hull can be
+  // higher than 5 - losses (never lower).
+  if (!isInt(r.lives, 0, MAX_LIVES) || r.lives < MAX_LIVES - losses) return 'bad lives';
   // The run has to have ended: 10 wins, or out of hull.
   if (wins < DAILY_WIN_TARGET && r.lives > 0) return 'run not over';
   if (typeof r.cmd !== 'string' || !CMD_MAP[r.cmd]) return 'bad commander';
