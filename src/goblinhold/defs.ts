@@ -251,7 +251,7 @@ export const GOBS: Record<GobKind, GobDef> = {
 };
 
 export const WAVE = {
-  base: 3,
+  base: 4,
   perDay: 1.5,
   perSettler: 0.5, // over 8 settlers
   assaultMult: 1.5,

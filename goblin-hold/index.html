@@ -152,6 +152,8 @@
       .offer img { width: 24px; height: 24px; image-rendering: pixelated; }
       .offer small { display: block; color: var(--dim); font-size: 11px; }
       .offer.sold { opacity: 0.5; }
+      .offer.owned { border-color: var(--gold); background: #3a321c; }
+      .offer.owned button { color: var(--gold); opacity: 1; }
 
       #toasts { top: calc(max(8px, env(safe-area-inset-top)) + 84px); left: 8px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; max-width: 300px; }
       .toast { padding: 5px 10px; background: var(--panel); border-left: 3px solid var(--line2); border-radius: 4px; font-size: 13px; animation: tin 0.25s; }
@@ -161,7 +163,7 @@
       .toast.out { opacity: 0; transition: opacity 0.5s; }
       @keyframes tin { from { opacity: 0; transform: translateX(-10px); } }
 
-      #banner { top: 18%; left: 50%; transform: translate(-50%, -8px); text-align: center; opacity: 0; transition: opacity 0.4s, transform 0.4s; pointer-events: none; }
+      #banner { top: 36%; left: 50%; transform: translate(-50%, -8px); text-align: center; opacity: 0; transition: opacity 0.4s, transform 0.4s; pointer-events: none; }
       #banner.show { opacity: 1; transform: translate(-50%, 0); }
       #banner { padding: 10px 26px 12px; background: rgba(24, 16, 10, 0.72); border: 1px solid rgba(141, 108, 72, 0.6); border-radius: 10px; }
       #banner-t { font-family: var(--px); font-weight: 700; font-size: clamp(34px, 8vw, 64px); color: var(--gold); text-shadow: 0 4px 0 #2a1a10, 0 0 2px #000; }

@@ -160,6 +160,12 @@ export function assignHomes(g: Game) {
 
 // ---------- waves ----------
 export function makeWave(g: Game, day: number): Wave {
+  const savedRng = g.rng;
+  g.rng = (g.seed ^ Math.imul(day + 1, 2654435761)) | 0;
+  try { return makeWaveInner(g, day); } finally { g.rng = savedRng; }
+}
+
+function makeWaveInner(g: Game, day: number): Wave {
   const sd = seasonDay(g, day);
   const kind: Wave['kind'] = sd === SEASON_DAYS ? 'boss' : sd === 3 ? 'assault' : 'raid';
   const pop = g.settlers.length;
@@ -221,7 +227,7 @@ function queueWave(g: Game) {
     let t = perEntry.get(gr.entry) ?? 3;
     for (let i = 0; i < gr.count; i++) {
       g.spawn.push({ t, entry: gr.entry, kind: gr.kind });
-      t += WAVE.spacing * (0.7 + rand(g) * 0.6);
+      t += WAVE.spacing * (g.day <= 3 ? 1.8 : 1) * (0.7 + rand(g) * 0.6);
     }
     perEntry.set(gr.entry, t + 1);
   }
@@ -736,7 +742,7 @@ function runTask(g: Game, s: Settler, dt: number) {
 function summarise(list: string[]) {
   const c = new Map<string, number>();
   for (const k of list) c.set(k, (c.get(k) ?? 0) + 1);
-  return [...c].map(([k, n]) => (n > 1 ? `${n} ${k.toLowerCase()}s` : `a ${k.toLowerCase()}`)).join(', ');
+  return [...c].map(([k, n]) => (n > 1 ? `${n} ${k.toLowerCase()}s` : `${/^[aeiou]/i.test(k) ? 'an' : 'a'} ${k.toLowerCase()}`)).join(', ');
 }
 
 function needsBreak(g: Game, s: Settler) {
@@ -919,7 +925,7 @@ function destroyBuilding(g: Game, b: Building, byGoblins: boolean) {
   }
   rebuild(g);
   assignHomes(g);
-  if (byGoblins) {
+  if (byGoblins && b.done) {
     g.night.buildingsLost++;
     (g.night.wrecked ??= []).push(BUILD[b.kind].name);
     if (b.kind !== 'trap') for (const s of g.settlers) s.needs.safety = Math.max(0, s.needs.safety - 8);

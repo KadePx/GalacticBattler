@@ -195,7 +195,7 @@ const BUFF_TEXT: Record<string, string> = {
 };
 let confirmEnd = false;
 let confirmTimer = 0;
-const nudged: { dusk: number; food: number; beds: number } = { dusk: 0, food: 0, beds: 0 };
+const nudged: { dusk: number; food: number; beds: number; build: number } = { dusk: 0, food: 0, beds: 0, build: 0 };
 /** Rough days of food left: each settler eats about 1.7 food a day. */
 function foodDays(g: Game) { return g.settlers.length ? g.res.food / (g.settlers.length * 2.5) : 99; }
 function idleSettlers() {
@@ -262,7 +262,7 @@ function refreshTop() {
   const comp = (Object.keys(counts) as GobKind[]).map((k) => `<span class="gob" data-tip="<b>${GOBS[k].name}</b><br>${GOBS[k].desc}"><img src="${IMG['gob_' + k]}" alt="">${counts[k]}</span>`).join('');
   const from = [...new Set(w.groups.map((gr) => g!.entries[gr.entry].name))].join(' + ');
   const omen = w.omen ? ` <span class="buff" data-tip="<b>Omen: ${OMENS[w.omen].name}</b><br>${OMENS[w.omen].desc}">${OMENS[w.omen].name}</span>` : '';
-  const label = (w.kind === 'boss' ? '<b class="boss">BOSS NIGHT</b>' : w.kind === 'assault' ? '<b class="assault">Assault</b>' : '<b>Raid</b>') + omen;
+  const label = (w.kind === 'boss' ? `<b class="boss">${w.groups.some((x) => x.kind === 'warchief') ? 'BOSS NIGHT' : 'WARBAND'}</b>` : w.kind === 'assault' ? '<b class="assault">Assault</b>' : '<b>Raid</b>') + omen;
   const btn = $<HTMLButtonElement>('phaseBtn');
   const fc = $('fc-text');
   let html = '';
@@ -273,7 +273,8 @@ function refreshTop() {
   if (ph === 'day') { btn.textContent = confirmEnd ? 'Sure? Tap again' : 'End day ▸'; btn.className = 'act' + (confirmEnd ? ' warnbtn' : ''); btn.disabled = false; btn.dataset.tip = 'End the day early: guards go to their posts and the night starts after dusk.'; }
   else if (ph === 'dusk') { btn.textContent = `Start night (${Math.ceil(DUSK_LEN - g.phaseT)})`; btn.className = 'act horn'; btn.disabled = false; btn.dataset.tip = 'Skip the rest of dusk and bring on the raid.'; }
   else if (ph === 'night') { btn.textContent = 'Defend!'; btn.className = 'act horn'; btn.disabled = true; }
-  else { btn.textContent = '...'; btn.disabled = true; }
+  else { btn.textContent = ''; btn.disabled = true; }
+  btn.style.display = ph === 'dawn' ? 'none' : '';
 }
 
 $('phaseBtn').addEventListener('click', () => {
@@ -356,15 +357,16 @@ function settlerCard(s: Settler): string {
   return `<h3><span><img class="portrait" src="${iconOf(settlerSprites(s.job, s.look)[0], 22)}" alt="">${s.name}</span><button class="x" data-act="close">&times;</button></h3>
     <div class="sub">${JOBS[s.job].name} · ${activity(g!, s)} · ${home}</div>
     <div>${traits}${sick}</div>
+    ${promo}
+    <div class="jobs">${jobs}</div>
+    ${post}
     <div class="needs">
       <span>Health</span><div class="nb"><i style="width:${Math.round((s.hp / s.maxHp) * 100)}%;background:${s.hp < s.maxHp * 0.5 ? 'var(--red)' : 'var(--green)'}"></i></div>
       ${needBar('Hunger', s.needs.hunger)}${needBar('Rest', s.needs.rest)}${needBar('Warmth', s.needs.warmth)}${needBar('Safety', s.needs.safety)}
     </div>
     <div class="moodline"><span>Mood <b>${m}</b> · works at <b>${eff}%</b></span><span>${m >= 76 ? 'Inspired' : m < 15 ? 'Breaking down' : m < 30 ? 'Miserable' : ''}</span></div>
     <div class="mems">${parts.map((p) => `<div class="moodline"><span>${p.label}</span><span class="${p.v >= 0 ? 'pos' : 'neg'}">${p.v > 0 ? '+' : ''}${p.v}</span></div>`).join('') || '<span class="desc">Nothing much on their mind.</span>'}</div>
-    ${promo}
-    <div class="jobs">${jobs}</div>
-    ${post}`;
+`;
 }
 
 function buildingCard(id: number): string {
@@ -631,10 +633,10 @@ const STEPS: Step[] = [
   { text: () => 'Two settlers have no bed. Pick <b>Build ▸ Hut</b> and place it near the keep.', done: (g) => nb(g, 'hut') >= 2, glow: 'hut' },
   { text: (g) => `Goblins come from the ${entryName(g)} tonight along the red dashed trail. Pick <b>Defend ▸ Palisade</b> and drag a line across it near the keep (${Math.min(3, nb(g, 'wall') + nb(g, 'stonewall'))}/3). Goblins walk around short walls, so close the gap to the trees.`, done: (g) => nb(g, 'wall') + nb(g, 'stonewall') >= 3, glow: 'wall' },
   { text: () => 'When you’re ready, tap <b>End day</b> (or wait for sunset). Your archer mans the tower and militia hold the blue flag.', done: (g) => g.phase !== 'day', glow: 'phaseBtn' },
-  { text: () => 'Night! Towers and guards fight on their own; you can still lay walls. Try <b>2x</b> or <b>3x</b> speed.', done: (g) => g.day >= 2 },
+  { text: (g) => (g.phase === 'dusk' ? 'Dusk: guards are heading to their posts. The goblins arrive at nightfall.' : 'Towers and guards fight on their own; you can still lay walls. Try <b>2x</b> or <b>3x</b> speed.'), done: (g) => g.day >= 2 || g.phase === 'dawn' },
   { text: (g) => `Food lasts about ${foodDays(g).toFixed(0)} days. Make someone a <b>Forager</b> or <b>Fisher</b>, or build a second <b>Farm</b>.`, done: (g) => nb(g, 'farm') >= 2 || g.settlers.some((s) => s.job === 'forager' || s.job === 'fisher'), glow: 'farm' },
-  { text: () => 'Stone builds markets, gardens, stone walls and keep upgrades. Make someone a <b>Quarrier</b>.', done: (g) => g.settlers.some((s) => s.job === 'quarrier') },
-  { text: () => 'Charters below pay out rewards. Every 3rd night is an assault and every 5th a boss night. The hold is yours!', done: () => performance.now() - tutShownAt > 14000 },
+  { text: () => 'Stone builds markets, gardens, stone walls and keep upgrades. Make a newcomer or a woodcutter a <b>Quarrier</b> (keep your builder building!).', done: (g) => g.settlers.some((s) => s.job === 'quarrier') },
+  { text: () => 'Last tip: charters (goals with rewards) appear here next. Every 3rd night is an assault and every 5th a boss night. The hold is yours!', done: () => performance.now() - tutShownAt > 14000 },
 ];
 let goalHTML = '';
 let tabSetFor = -1;
@@ -702,13 +704,14 @@ function banner(t: string, s: string, danger = false) {
 let appChoice: boolean | null = null;
 function showDawn() {
   if (!g) return;
-  $('dawn-t').textContent = g.wave.kind === 'boss' ? 'The warband is broken' : `Night ${g.day} is held`;
+  $('dawn-t').textContent = g.wave.kind === 'boss' ? 'The warband is broken' : g.night.lost.length ? `Night ${g.day}: the hold stands` : `Night ${g.day} is held`;
   $('dawn-list').innerHTML = g.report.map((r) => `<li>${r}</li>`).join('');
   const a = g.applicant;
   $('dawn-app').innerHTML = a
     ? `<div class="applicant"><b>${a.name}</b> (${applicantText(a)}) wanders up and asks to join the hold.${g.settlers.length >= bedCount(g) ? '<br><span class="desc">There is no free bed: they would sleep on the keep floor.</span>' : ''}<div class="row center"><button class="small" id="appYes">Welcome them</button><button class="small" id="appNo">Turn them away</button></div></div>`
     : '';
   appChoice = a ? null : false;
+  $('dawn-app').style.minHeight = '';
   const go = $<HTMLButtonElement>('dawnGo');
   const next = g.day + 1;
   const nextSeason = season(g, next) !== season(g) ? ` · ${SEASONS[season(g, next)].name} begins` : '';
@@ -717,6 +720,7 @@ function showDawn() {
   $('dawn').classList.add('show');
   const choose = (v: boolean) => {
     appChoice = v;
+    $('dawn-app').style.minHeight = `${$('dawn-app').offsetHeight}px`;
     $('dawn-app').innerHTML = `<div class="applicant">${v ? `<b>${a!.name}</b> will join at sunrise.` : `${a!.name} heads off down the road.`}</div>`;
     go.disabled = false;
     sfx('click');
@@ -727,6 +731,7 @@ function showDawn() {
 $('dawnGo').addEventListener('click', () => {
   if (!g || g.phase !== 'dawn') return;
   beginDay(g, !!appChoice);
+  { const k = bld(g, g.keepId); if (k) { view.cam.x = (k.x + 1.5) * TILE; view.cam.y = (k.y + 2) * TILE; clampCam(view); } }
   $('dawn').classList.remove('show');
   saveGame(g);
   const sd = seasonDay(g);
@@ -775,10 +780,11 @@ function showMeta() {
     <div class="renownbig">✦ ${m.renown} renown</div>
     <div class="offers">${UNLOCKS.map((u) => {
       const own = m.unlocks.includes(u.id);
-      return `<div class="offer${own ? ' sold' : ''}"><span class="ustar">✦</span><span><b>${u.name}</b><small>${u.desc}</small></span><button class="small" data-unlock="${u.id}" ${own || m.renown < u.cost ? 'disabled' : ''}>${own ? 'Owned' : `${u.cost} ✦`}</button></div>`;
+      return `<div class="offer${own ? ' owned' : ''}"><span class="ustar">✦</span><span><b>${u.name}</b><small>${u.desc}</small></span><button class="small" data-unlock="${u.id}" ${own || m.renown < u.cost ? 'disabled' : ''}>${own ? 'Owned' : `${u.cost} ✦`}</button></div>`;
     }).join('')}</div>
     <button class="big alt" id="metaClose">Back</button>`;
   $('meta').classList.add('show');
+  $('backLink').style.display = 'none';
   $('title').classList.remove('show');
   $('metaClose').addEventListener('click', () => { $('meta').classList.remove('show'); showTitle(); });
 }
@@ -1016,6 +1022,7 @@ function handleEvents() {
   for (const e of events.splice(0)) {
     sfx(e.k);
     spawnFx(e);
+    if (e.k === 'dusk' || e.k === 'dawn') hideTip();
     if (e.k === 'dusk') banner('DUSK', 'Guards to their posts.');
     if (e.k === 'horn') {
       hideTip();
@@ -1051,7 +1058,7 @@ function frame(now: number) {
     demoView.cam.z = Math.max(2, Math.min(3, view.w / 420));
     // keep the hold visible beside the title card on wide screens
     demoView.cam.x = 23.5 * TILE - (view.w > 900 ? view.w * 0.3 / demoView.cam.z : 0);
-    demoView.cam.y = 17 * TILE - (view.w > 900 ? 0 : view.h * 0.3 / demoView.cam.z);
+    demoView.cam.y = 17 * TILE;
     clampCam(demoView);
     step(demo, real);
     if (demo.phase !== 'day') { demo = null; }
@@ -1080,6 +1087,7 @@ function frame(now: number) {
       uiT = 0.2; refreshTop(); refreshBar(); renderCard(); refreshRoster(); refreshTrade(); refreshGoal();
       if (g.phase !== 'dawn' && !g.over) { if (checkCharters(g).length) { buildBar(); refreshTop(); } }
       // gentle nudges
+      if (g.phase === 'day' && nudged.build !== g.day && g.blds.some((b) => !b.done) && !g.settlers.some((s) => s.job === 'builder')) { nudged.build = g.day; showToast('Nobody is building! Make someone a Builder or your sites will sit unfinished.', 'bad'); }
       if (g.phase === 'day' && dayLen(g) - g.phaseT <= 20 && nudged.dusk !== g.day) { nudged.dusk = g.day; showToast('The sun is setting. Last chance to lay walls.', 'warn'); sfx('dusk'); }
     }
     saveT += real;
