@@ -28,22 +28,31 @@ async function start() {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'app',
-    width: 480,
-    height: 270,
+    // Drawn at RES x the 480x270 layout (each scene's camera zooms in to match). A 1-pixel
+    // border then covers whole screen pixels, instead of sitting on the line between two,
+    // where some phone GPUs drop it (boxes with missing sides).
+    width: 480 * RES,
+    height: 270 * RES,
     pixelArt: true,
     backgroundColor: '#05060f',
     audio: { noAudio: true }, // the game makes its own sound (src/game/audio.ts)
-    scale: { mode: Phaser.Scale.NONE, zoom: fitZoom(), autoCenter: Phaser.Scale.CENTER_BOTH },
+    scale: { mode: Phaser.Scale.NONE, zoom: fitZoom() / RES, autoCenter: Phaser.Scale.CENTER_BOTH },
     scene: [BootScene, MenuScene, ShopScene, BattleScene, RelicScene, GameOverScene, GalleryScene, CommanderScene, ArchiveScene, DailyScene, ChallengeScene, RouteScene],
   });
   (window as unknown as { __game: Phaser.Game }).__game = game;
+  // Every scene keeps laying out in 480x270 world pixels: its camera zooms in from the top-left.
+  game.events.once(Phaser.Core.Events.READY, () => {
+    for (const s of game.scene.scenes) {
+      s.events.on(Phaser.Scenes.Events.CREATE, () => s.cameras.main.setOrigin(0, 0).setZoom(RES));
+    }
+  });
   installAudioUnlock();
 
   // Re-fit whenever the window (or phone orientation) changes. This also covers a
   // page that had no size yet when the game booted (hidden tab, iframe).
   const app = document.getElementById('app');
   const refit = () => {
-    const z = fitZoom();
+    const z = fitZoom() / RES;
     if (Math.abs(game.scale.zoom - z) > 0.001) game.scale.setZoom(z);
     else game.scale.refresh();
   };
@@ -60,6 +69,8 @@ async function start() {
  * Small screens (phones) just fill the space, since every pixel counts there.
  */
 const MAX_ZOOM = 3;
+/** Internal render scale (see the game config). Layout code never needs to know about it. */
+const RES = 2;
 function fitZoom(): number {
   const app = document.getElementById('app');
   // #app sits inside the safe-area padding, so its size is the space we can use.

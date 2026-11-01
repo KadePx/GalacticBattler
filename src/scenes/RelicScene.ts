@@ -67,7 +67,7 @@ export function relicTips(
     let best = 0;
     let bd = Infinity;
     chips.forEach((c, k) => {
-      const d = (c.x - p.x) ** 2 + (c.y - p.y) ** 2;
+      const d = (c.x - p.worldX) ** 2 + (c.y - p.worldY) ** 2;
       if (d < bd) { bd = d; best = k; }
     });
     return best;

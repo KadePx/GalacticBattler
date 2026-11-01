@@ -274,14 +274,14 @@ export class BattleScene extends Phaser.Scene {
     // Ships: tap (or hover) one to inspect it; tap it again or empty space to close.
     this.input.on('pointermove', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
       if (p.wasTouch || this.resultShown || (this.stripKey && !this.stripHover && !this.stripUntil)) return;
-      const v = over.length ? undefined : this.shipAt(p.x, p.y);
+      const v = over.length ? undefined : this.shipAt(p.worldX, p.worldY);
       if (v) {
         if (this.stripUid !== v.u.uid) this.inspect(v, true);
       } else if (this.stripHover && this.stripUid >= 0) this.closeStrip();
     });
     this.input.on('pointerup', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
       if (over.length || this.resultShown) return;
-      const v = this.shipAt(p.x, p.y);
+      const v = this.shipAt(p.worldX, p.worldY);
       if (v && (this.stripUid !== v.u.uid || this.stripHover)) this.inspect(v, false);
       else this.closeStrip();
     });
