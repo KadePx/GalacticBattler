@@ -46,6 +46,7 @@ export interface Settler {
   away: number; // seconds left on an expedition (not on the map)
   look: number;
   promo?: string; // promotion path taken
+  atk?: number; // attack animation timer
 }
 
 export interface Building {
@@ -83,6 +84,7 @@ export interface Goblin {
   slow: number;
   buff: number; // warchief aura
   root?: number; // stuck in a pit
+  atk?: number; // attack animation timer
 }
 
 export interface Shot {

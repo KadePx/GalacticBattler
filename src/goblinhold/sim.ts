@@ -320,7 +320,7 @@ export function activity(g: Game, s: Settler): string {
     case 'tend': return 'Tending the sick';
     case 'train': return 'Drilling';
     case 'wander': return s.job === 'farmer' && season(g) === 'winter' ? 'Idle (fields frozen)' : 'Idling';
-    case 'guard': return s.inside ? `Manning a ${b ? BUILD[b.kind].name.toLowerCase() : 'post'}` : 'On guard';
+    case 'guard': { const n = b ? BUILD[b.kind].name.toLowerCase() : 'post'; return s.inside ? `Manning ${/^[aeiou]/.test(n) ? 'an' : 'a'} ${n}` : 'On guard'; }
     case 'shelter': return s.inside ? 'Sheltering' : 'Running for shelter';
     case 'recover': return 'Recovering at the healer';
     case 'flee': return 'Fleeing!';
@@ -370,6 +370,63 @@ function moveDirect(g: Game, e: { x: number; y: number; face: number; walk: numb
   else if (free(g, Math.floor(e.x), Math.floor(ny))) e.y = ny;
   // only count it as moving if we actually got closer
   return Math.hypot(tx - e.x, ty - e.y) < d - 1e-4;
+}
+
+/** Is the straight line between two points walkable for a settler? */
+function clearLine(g: Game, x0: number, y0: number, x1: number, y1: number) {
+  const d = Math.hypot(x1 - x0, y1 - y0);
+  const n = Math.ceil(d / 0.25);
+  for (let i = 1; i <= n; i++) {
+    const k = i / n, x = x0 + (x1 - x0) * k, y = y0 + (y1 - y0) * k;
+    if (!settlerFree(g, Math.floor(x), Math.floor(y))) return false;
+    // keep a little clearance so we don't clip building corners
+    if (!settlerFree(g, Math.floor(x + 0.3), Math.floor(y)) || !settlerFree(g, Math.floor(x - 0.3), Math.floor(y))) return false;
+  }
+  return true;
+}
+
+// combat routes are short-lived, so they live outside the save
+const chaseRoute = new Map<number, { path: number[]; t: number; goal: number }>();
+
+/** Move toward a (possibly moving) point: straight if the way is clear, otherwise along a fresh A* route. */
+function chase(g: Game, s: Settler, tx: number, ty: number, dt: number): boolean {
+  const d = Math.hypot(tx - s.x, ty - s.y);
+  if (d < 1.1 || clearLine(g, s.x, s.y, tx, ty)) { chaseRoute.delete(s.id); return moveDirect(g, s, tx, ty, speedOf(g, s), dt, settlerFree); }
+  const gx = Math.floor(tx), gy = Math.floor(ty), goal = idx(gx, gy);
+  let r = chaseRoute.get(s.id);
+  if (r) r.t -= dt;
+  if (!r || r.t <= 0 || !r.path.length || (r.goal !== goal && Math.hypot((r.goal % MAP_W) - gx, Math.floor(r.goal / MAP_W) - gy) > 1.5)) {
+    let p = findPath(g, Math.floor(s.x), Math.floor(s.y), gx, gy);
+    if (!p) { const nf = nearestFree(g, tx, ty); p = findPath(g, Math.floor(s.x), Math.floor(s.y), Math.floor(nf.x), Math.floor(nf.y)); }
+    if (!p) { chaseRoute.delete(s.id); return moveDirect(g, s, tx, ty, speedOf(g, s), dt, settlerFree); }
+    r = { path: p, t: 0.45 + (s.id % 5) * 0.05, goal };
+    chaseRoute.set(s.id, r);
+  }
+  if (!r.path.length) return moveDirect(g, s, tx, ty, speedOf(g, s), dt, settlerFree) || true;
+  // skip waypoints we can already see past (smooths the zig-zag)
+  while (r.path.length > 1) {
+    const n = r.path[1];
+    if (!clearLine(g, s.x, s.y, (n % MAP_W) + 0.5, Math.floor(n / MAP_W) + 0.5)) break;
+    r.path.shift();
+  }
+  const w = r.path[0];
+  const wx = (w % MAP_W) + 0.5, wy = Math.floor(w / MAP_W) + 0.5;
+  if (Math.hypot(wx - s.x, wy - s.y) < 0.12) { r.path.shift(); return true; }
+  const ok = moveDirect(g, s, wx, wy, speedOf(g, s), dt, settlerFree);
+  if (!ok) r.t = 0; // blocked: replan next tick
+  return true;
+}
+
+/** Fighters don't stack on one tile. */
+function spread(g: Game, s: Settler, dt: number) {
+  for (const o of g.settlers) {
+    if (o === s || o.inside || o.away > 0) continue;
+    const dx = s.x - o.x, dy = s.y - o.y, d = Math.hypot(dx, dy);
+    if (d > 0.62 || d < 1e-4) continue;
+    const push = (0.62 - d) * 3 * dt;
+    const nx = s.x + (dx / d) * push, ny = s.y + (dy / d) * push;
+    if (settlerFree(g, Math.floor(nx), Math.floor(ny))) { s.x = nx; s.y = ny; }
+  }
 }
 
 function goTo(g: Game, s: Settler, tx: number, ty: number, tw = 0, th = 0): boolean {
@@ -786,8 +843,9 @@ function guard(g: Game, s: Settler, dt: number, b: Building | undefined) {
     s.cool -= dt;
     if (tgt) {
       s.face = tgt.x > s.x ? 1 : -1;
-      if (s.cool <= 0) { s.cool = ARCHER.rate * (promoOf(s) === 'volley' ? 0.75 : 1); fire(g, 'arrow', s.x, s.y - 0.4, 'g', tgt.id, ARCHER.dmg * dmgMult(g, s), undefined, s.id); }
-    } else if (Math.hypot(hx - s.x, hy - s.y) > 1.5) moveDirect(g, s, hx, hy, speedOf(g, s), dt, settlerFree);
+      if (s.cool <= 0) { s.cool = ARCHER.rate * (promoOf(s) === 'volley' ? 0.75 : 1); s.atk = 0.35; fire(g, 'arrow', s.x, s.y - 0.4, 'g', tgt.id, ARCHER.dmg * dmgMult(g, s), undefined, s.id); }
+    } else if (Math.hypot(hx - s.x, hy - s.y) > 1.5) chase(g, s, hx, hy, dt);
+    spread(g, s, dt);
     return;
   }
   // militia & shieldbearers: engage anything near the post, and answer the alarm when goblins reach the hold
@@ -797,18 +855,21 @@ function guard(g: Game, s: Settler, dt: number, b: Building | undefined) {
   s.cool -= dt;
   if (tgt) {
     const d = Math.hypot(tgt.x - s.x, tgt.y - s.y);
-    if (d > st.range) moveDirect(g, s, tgt.x, tgt.y, speedOf(g, s), dt, settlerFree);
+    if (d > st.range) chase(g, s, tgt.x, tgt.y, dt);
     else {
+      chaseRoute.delete(s.id);
       s.face = tgt.x > s.x ? 1 : -1;
       if (s.cool <= 0) {
         s.cool = st.rate * (promoOf(s) === 'berserker' ? 0.8 : 1);
         hitGoblin(g, tgt, st.dmg * dmgMult(g, s), s);
+        s.atk = 0.3;
         emit('slash', tgt.x, tgt.y);
       }
     }
   } else if (Math.hypot(hx - s.x, hy - s.y) > 1.2) {
-    if (!moveDirect(g, s, hx, hy, speedOf(g, s), dt, settlerFree)) { s.task = null; }
+    if (!chase(g, s, hx, hy, dt)) { s.task = null; }
   }
+  spread(g, s, dt);
 }
 
 function finishBuilding(g: Game, b: Building, by?: Settler) {
@@ -1263,6 +1324,7 @@ function updateSettler(g: Game, s: Settler, dt: number) {
     return;
   }
   s.hitT = Math.max(0, s.hitT - dt);
+  if (s.atk) s.atk = Math.max(0, s.atk - dt);
   updateNeeds(g, s, dt);
   if (!g.settlers.includes(s)) return;
   const combat = JOBS[s.job].combat;
@@ -1512,7 +1574,14 @@ export function step(g: Game, dt: number) {
   }
   for (const s of [...g.settlers]) updateSettler(g, s, dt);
   omenNow = g.phase === 'night' ? g.wave.omen : undefined;
-  for (const gb of [...g.goblins]) { if (g.over) return; if (g.goblins.includes(gb)) updateGoblin(g, gb, dt); }
+  for (const gb of [...g.goblins]) {
+    if (g.over) return;
+    if (!g.goblins.includes(gb)) continue;
+    const c0 = gb.cool;
+    updateGoblin(g, gb, dt);
+    if (gb.atk) gb.atk = Math.max(0, gb.atk - dt);
+    if (gb.cool > c0 + 0.01) gb.atk = 0.3; // just attacked
+  }
   for (const b of [...g.blds]) { b.hitT = Math.max(0, b.hitT - dt); updateDefense(g, b, dt); }
   updateShots(g, dt);
   for (const f of g.floaters) { f.t -= dt; f.y -= dt * 0.8; }

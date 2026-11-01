@@ -14,7 +14,9 @@ import {
   bedsOf, canPromote, events, fortify, upgrade, GOODS, promoOf, promote, hasMarket, mood, moodParts, newGame, place, placeWalls, price, season, seasonDay, setJob, soundHorn, step, toasts, trade, unlocked,
   wallLine, year,
 } from './sim';
-import { icon, iconOf, settlerSprites, toDataURL, goblinSprites } from './sprites';
+import { icon, iconOf, toDataURL } from './sprites';
+import { goblinSprites, settlerSprites } from './chars';
+import { crewHTML, crewMini, focusOf, hoverHTML, portrait, toggleCrewMini } from './crew';
 import { clearSave, Game, getBest, loadGame, saveGame, Settler } from './state';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -26,7 +28,7 @@ let speed = 1;
 let lastSpeed = 1;
 let postMode = 0; // settler id waiting for a post
 let barTab: 'build' | 'defend' = 'build';
-const view: View = { cam: { x: 0, y: 0, z: 2 }, sel: null, tool: null, hover: null, drag: null, w: 0, h: 0, dpr: 1 };
+const view: View = { cam: { x: 0, y: 0, z: 2 }, sel: null, tool: null, hover: null, drag: null, w: 0, h: 0, dpr: 1, hl: 0 };
 
 // ---------- sizing ----------
 function resize() {
@@ -216,8 +218,9 @@ function totalWave(g: Game) { return g.wave.groups.reduce((a, gr) => a + gr.coun
 
 function refreshTop() {
   if (!g) return;
-  const topB = $('top').getBoundingClientRect().bottom, fcB = $('forecast').getBoundingClientRect().bottom;
+  const topB = $('top').getBoundingClientRect().bottom;
   document.documentElement.style.setProperty('--topB', `${Math.round(topB)}px`);
+  const fcB = $('forecast').getBoundingClientRect().bottom; // measured after the forecast moves under the new top bar
   document.documentElement.style.setProperty('--fcB', `${Math.round(Math.max(topB, fcB))}px`);
   const sea = season(g);
   $('day').textContent = `DAY ${g.day}`;
@@ -332,12 +335,12 @@ function needBar(label: string, v: number) {
 function settlerCard(s: Settler): string {
   const m = mood(g!, s);
   const parts = moodParts(g!, s).sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 5);
-  const traits = s.traits.map((t) => `<span class="trait" title="${TRAITS[t]?.desc ?? ''}">${TRAITS[t]?.name ?? t}</span>`).join('');
+  const traits = s.traits.map((t) => `<span class="trait" data-tip="${TRAITS[t]?.desc ?? ''}">${TRAITS[t]?.name ?? t}</span>`).join('');
   const jobs = JOB_ORDER.map((j) => {
     const jd = JOBS[j];
     const cost = jd.gold && !s.gear.includes(j) ? `<small>${jd.gold}g gear</small>` : '';
     const missing = jd.needs && !g!.blds.some((b) => b.kind === jd.needs && b.done) ? ' warn' : '';
-    return `<button data-job="${j}" class="${s.job === j ? 'on' : ''}${missing}" title="${jd.desc}">${jd.name}${cost}</button>`;
+    return `<button data-job="${j}" class="${s.job === j ? 'on' : ''}${missing}" data-tip="<b>${jd.name}</b><br>${jd.desc}${jd.gold && !s.gear.includes(j) ? `<br>Gear costs ${jd.gold} gold.` : ''}${missing ? '<br><i>Needs a ' + BUILD[jd.needs!].name.toLowerCase() + ' first.</i>' : ''}">${jd.name}${cost}</button>`;
   }).join('');
   const home = s.home ? (bld(g!, s.home)?.kind === 'barracks' ? 'Bunks in the barracks' : 'Has a bed') : 'No bed';
   const post = JOBS[s.job].combat
@@ -349,12 +352,12 @@ function settlerCard(s: Settler): string {
     if (p) promo = `<div class="promo"><b>${PROMOS[p].name}</b> · ${PROMOS[p].desc}</div>`;
     else if (canPromote(g!, s)) {
       const paths = Object.entries(PROMOS).filter(([, d]) => d.job === s.job);
-      promo = `<div class="promo ready"><b>Ready for promotion!</b> ${PROMO_GOLD}${resIcon('gold')}${mood(g!, s) < PROMO_MOOD ? ` · needs mood ${PROMO_MOOD}` : ''}<div class="row">${paths.map(([id, d]) => `<button class="small" data-promo="${id}" title="${d.desc}"><b>${d.name}</b></button>`).join('')}</div><div class="desc">${paths.map(([, d]) => `${d.name}: ${d.desc}`).join('<br>')}</div></div>`;
+      promo = `<div class="promo ready"><b>Ready for promotion!</b> ${PROMO_GOLD}${resIcon('gold')}${mood(g!, s) < PROMO_MOOD ? ` · needs mood ${PROMO_MOOD}` : ''}<div class="row">${paths.map(([id, d]) => `<button class="small" data-promo="${id}" data-tip="${d.desc}"><b>${d.name}</b></button>`).join('')}</div><div class="desc">${paths.map(([, d]) => `${d.name}: ${d.desc}`).join('<br>')}</div></div>`;
     } else promo = `<div class="xp"><span>Experience</span><div class="nb"><i style="width:${Math.min(100, Math.round((s.xp / PROMO_XP) * 100))}%;background:var(--blue)"></i></div></div>`;
   }
   const eff = Math.round(efficiency(g!, s) * 100);
   const sick = s.sick > 0 ? '<span class="trait bad">Feverish</span>' : '';
-  return `<h3><span><img class="portrait" src="${iconOf(settlerSprites(s.job, s.look)[0], 22)}" alt="">${s.name}</span><button class="x" data-act="close">&times;</button></h3>
+  return `<h3><span><img class="portrait" src="${portrait(s, 36)}" alt="">${s.name}</span><button class="x" data-act="close">&times;</button></h3>
     <div class="sub">${JOBS[s.job].name} · ${activity(g!, s)} · ${home}</div>
     <div>${traits}${sick}</div>
     ${promo}
@@ -477,6 +480,67 @@ $('card').addEventListener('click', (e) => {
   refreshRoster(true);
 });
 $('postCancel').addEventListener('click', () => { postMode = 0; $('postHint').classList.remove('show'); });
+
+// ---------- crew sidebar ----------
+let crewKey = '';
+function refreshCrew(force = false) {
+  const el = $('crew');
+  const side = $('roster').classList.contains('show') || $('trade').classList.contains('show');
+  document.body.classList.toggle('siding', side);
+  if (!g || !g.settlers.length) { el.classList.remove('show'); return; }
+  el.classList.add('show');
+  el.classList.toggle('mini', crewMini());
+  // stretch down to just above whatever sits below it on this layout (charters on phones, the build bar otherwise)
+  const top = el.getBoundingClientRect().top;
+  const goal = $('goal'), narrow = window.innerWidth <= 760;
+  const below = narrow && goal.classList.contains('show') ? goal.getBoundingClientRect().top : $('bar').getBoundingClientRect().top;
+  el.style.maxHeight = `${Math.max(120, below - top - 10)}px`;
+  const html = crewHTML(g, view.sel?.t === 's' ? view.sel.id : 0);
+  if (html === crewKey && !force) return;
+  crewKey = html;
+  patch(el, html);
+}
+function focusSettler(s: Settler) {
+  if (!g) return;
+  view.sel = { t: 's', id: s.id };
+  clearTool();
+  if (s.away <= 0) { const f = focusOf(g, s); view.cam.x = f.x * TILE; view.cam.y = f.y * TILE; clampCam(view); }
+  renderCard(true);
+  refreshCrew(true);
+}
+$('crew').addEventListener('click', (e) => {
+  const el = e.target as HTMLElement;
+  const act = (el.closest('[data-act]') as HTMLElement | null)?.dataset.act;
+  if (act === 'jobs') { toggleRoster(); return; }
+  if (act === 'mini') { toggleCrewMini(); hideTip(); refreshCrew(true); sfx('click'); return; }
+  const row = el.closest('.cr') as HTMLElement | null;
+  const s = row && g ? g.settlers.find((q) => q.id === Number(row.dataset.sid)) : undefined;
+  if (s) { focusSettler(s); sfx('click'); }
+});
+$('crew').addEventListener('pointerover', (e) => {
+  const row = (e.target as HTMLElement).closest('.cr') as HTMLElement | null;
+  view.hl = row ? Number(row.dataset.sid) : 0;
+});
+$('crew').addEventListener('pointerleave', () => { view.hl = 0; });
+
+// ---------- map hover tooltips ----------
+let mouse: { x: number; y: number } | null = null;
+let mtipT = 0;
+function hideMtip() { $('mtip').classList.remove('show'); }
+function showMtip() {
+  if (!g || !mouse || view.tool || gesture || g.event || g.phase === 'dawn') { hideMtip(); return; }
+  const t = screenToTile(view, mouse.x, mouse.y);
+  const html = hoverHTML(g, t.x, t.y);
+  const el = $('mtip');
+  if (!html) { hideMtip(); return; }
+  if (el.innerHTML !== html) el.innerHTML = html;
+  el.classList.add('show');
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let x = mouse.x + 16, y = mouse.y + 18;
+  if (x + w > window.innerWidth - 8) x = mouse.x - w - 12;
+  if (y + h > window.innerHeight - 8) y = mouse.y - h - 12;
+  el.style.left = `${x}px`; el.style.top = `${y}px`;
+}
 
 // ---------- roster ----------
 let rosterHTML = '';
@@ -816,6 +880,7 @@ function start(game: Game) {
   barTab = 'build';
   centerOnKeep();
   for (const id of ['title', 'dawn', 'over', 'pause', 'trade', 'roster']) $(id).classList.remove('show');
+  crewKey = '';
   g.floaters = [];
   document.body.classList.remove('intitle');
   demo = null;
@@ -853,6 +918,7 @@ function tileAt(sx: number, sy: number) {
 
 cv.addEventListener('pointerdown', (e) => {
   unlock();
+  hideMtip(); mtipT = 0;
   cv.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size >= 2) {
@@ -874,7 +940,7 @@ cv.addEventListener('pointerdown', (e) => {
 
 cv.addEventListener('pointermove', (e) => {
   const prev = pointers.get(e.pointerId);
-  if (e.pointerType === 'mouse') { const t = tileAt(e.clientX, e.clientY); view.hover = { x: t.x, y: t.y }; }
+  if (e.pointerType === 'mouse') { const t = tileAt(e.clientX, e.clientY); view.hover = { x: t.x, y: t.y }; mouse = { x: e.clientX, y: e.clientY }; mtipT = 0.35; hideMtip(); }
   if (!prev) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (!gesture) return;
@@ -919,7 +985,7 @@ function endPointer(e: PointerEvent) {
 }
 cv.addEventListener('pointerup', endPointer);
 cv.addEventListener('pointercancel', endPointer);
-cv.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !pointers.size) view.hover = null; });
+cv.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !pointers.size) view.hover = null; mouse = null; hideMtip(); });
 cv.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function zoomAt(sx: number, sy: number, f: number) {
@@ -1049,6 +1115,8 @@ let demo: Game | null = null;
 const demoView: View = { cam: { x: 0, y: 0, z: 2.5 }, sel: null, tool: null, hover: null, drag: null, w: 0, h: 0, dpr: 1 };
 let saveT = 0;
 function frame(now: number) {
+  requestAnimationFrame(frame); // scheduled first, so one bad frame can never stop the game
+  if (view.w < 1 || view.h < 1) { last = now; return; }
   const real = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (!g) {
@@ -1084,17 +1152,18 @@ function frame(now: number) {
     draw(ctx, g, view, paused ? 0 : real * speed, now / 1000);
     uiT -= real;
     if (uiT <= 0) {
-      uiT = 0.2; refreshTop(); refreshBar(); renderCard(); refreshRoster(); refreshTrade(); refreshGoal();
+      uiT = 0.2; refreshTop(); refreshBar(); renderCard(); refreshRoster(); refreshTrade(); refreshGoal(); refreshCrew();
+      if ($('mtip').classList.contains('show')) showMtip();
       if (g.phase !== 'dawn' && !g.over) { if (checkCharters(g).length) { buildBar(); refreshTop(); } }
       // gentle nudges
       if (g.phase === 'day' && nudged.build !== g.day && g.blds.some((b) => !b.done) && !g.settlers.some((s) => s.job === 'builder')) { nudged.build = g.day; showToast('Nobody is building! Make someone a Builder or your sites will sit unfinished.', 'bad'); }
       if (g.phase === 'day' && dayLen(g) - g.phaseT <= 20 && nudged.dusk !== g.day) { nudged.dusk = g.day; showToast('The sun is setting. Last chance to lay walls.', 'warn'); sfx('dusk'); }
     }
+    if (mtipT > 0) { mtipT -= real; if (mtipT <= 0) showMtip(); }
     saveT += real;
     if (saveT > 30 && !paused) { saveT = 0; saveGame(g); }
     if (bannerT > 0) { bannerT -= real; if (bannerT <= 0) $('banner').classList.remove('show'); }
   }
-  requestAnimationFrame(frame);
 }
 
 document.addEventListener('visibilitychange', () => { if (document.hidden && g) saveGame(g); });

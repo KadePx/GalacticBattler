@@ -1,9 +1,10 @@
 // Canvas renderer: terrain, y-sorted sprites, night lighting, overlays.
 import { BALLISTA, BRAZIER, BUILD, BuildKind, DAY_LEN, DUSK_LEN, JOBS, LINE_KINDS, MAP_H, MAP_W, Season, T_BUSH, T_ROCK, T_SAPLING, T_TREE, TILE, TOWER } from './defs';
 import { bldAtTile, canPlace, flowVersion, tracePath } from './map';
+import { CH, Carry, GOB_CANVAS, GOB_EYES, goblinFrame, Pose, settlerFrame } from './chars';
 import {
-  bushSprite, goblinSprites, paintBallista, paintGarden, paintBarracks, paintBrazier, paintEntryBanner, paintFarm, paintFlag, paintGround, paintHealer, paintHut,
-  paintKeep, paintMarket, paintStake, paintStoneWall, paintTower, paintTrap, rockSprite, saplingSprite, settlerSprites, Spr, treeSprite,
+  ART, bushSprite, paintBallista, paintGarden, paintBarracks, paintBrazier, paintEntryBanner, paintFarm, paintFlag, paintGround, paintHealer, paintHut,
+  paintKeep, paintMarket, paintStake, paintStoneWall, paintTower, stoneWallTile, paintTrap, rockSprite, saplingSprite, Spr, treeSprite,
 } from './sprites';
 import { Building, Game, hasRelic, idx, Settler } from './state';
 import { FxEvent, buildCost, canPay, dayLen, season, unlocked, wallLine } from './sim';
@@ -19,6 +20,7 @@ export interface View {
   w: number;
   h: number;
   dpr: number;
+  hl?: number; // settler highlighted from the crew list
 }
 
 let ground: HTMLCanvasElement | null = null;
@@ -40,6 +42,20 @@ function spr(key: string, make: () => Spr): Spr {
   if (!s) { s = make(); sprCache.set(key, s); }
   return s;
 }
+/** Sprites are ART times finer than world units: draw them at their world size. */
+function B(ctx: CanvasRenderingContext2D, s: Spr, x: number, y: number) { ctx.drawImage(s, x, y, s.width / ART, s.height / ART); }
+const W = (s: Spr) => s.width / ART;
+const flashCache = new WeakMap<Spr, Spr>();
+/** A white silhouette of a sprite, for hit flashes. */
+function flashOf(s: Spr): Spr {
+  let f = flashCache.get(s);
+  if (f) return f;
+  f = document.createElement('canvas'); f.width = s.width; f.height = s.height;
+  const x = f.getContext('2d')!;
+  x.drawImage(s, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#ffffff'; x.fillRect(0, 0, f.width, f.height);
+  flashCache.set(s, f);
+  return f;
+}
 const baselineCache = new WeakMap<Spr, number>();
 /** Last opaque row of a sprite, so every building sits on its footprint the same way. */
 function baseline(s: Spr) {
@@ -48,6 +64,7 @@ function baseline(s: Spr) {
   const d = s.getContext('2d')!.getImageData(0, 0, s.width, s.height).data;
   b = s.height - 1;
   outer: for (let y = s.height - 1; y >= 0; y--) for (let x = 0; x < s.width; x++) if (d[(y * s.width + x) * 4 + 3] > 40) { b = y; break outer; }
+  b = (b + 1) / ART - 1; // in world units
   baselineCache.set(s, b);
   return b;
 }
@@ -148,6 +165,24 @@ function activityIcon(s: Settler): string {
   return '';
 }
 
+const WORK_TASKS = new Set(['chop', 'quarry', 'forage', 'build', 'repair', 'farm', 'fish', 'trade', 'tend', 'train']);
+/** Which animation a settler shows right now. */
+function settlerPose(s: Settler, walking: boolean, now: number): { pose: Pose; fr: number } {
+  if ((s.atk ?? 0) > 0) return { pose: 'attack', fr: Math.min(2, Math.floor((1 - s.atk! / (s.job === 'archer' ? 0.35 : 0.3)) * 3)) };
+  const k = s.task?.k ?? '';
+  if (!walking && WORK_TASKS.has(k) && !s.path.length) {
+    if (k === 'train') return { pose: 'attack', fr: Math.floor(now * 3 + s.id) % 3 };
+    // swing cycle: hold the wind-up, then strike
+    const seq = [0, 0, 1, 2, 3, 3];
+    const speed = k === 'farm' || k === 'forage' ? 6 : k === 'fish' || k === 'trade' || k === 'tend' ? 2.5 : 8;
+    return { pose: 'work', fr: seq[Math.floor(now * speed + s.id * 1.7) % seq.length] };
+  }
+  if (walking) return { pose: 'walk', fr: Math.floor(s.walk * 0.75) % 4 };
+  return { pose: 'idle', fr: Math.floor(now * 1.2 + s.id * 0.37) % 2 };
+}
+/** Top of a goblin's head relative to its sprite's top, for health bars. */
+function gobTop(kind: keyof typeof GOB_CANVAS) { return kind === 'warchief' ? 4 : kind === 'brute' ? 4 : 5; }
+
 // ---------- main draw ----------
 export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number, now: number) {
   const sea = season(g);
@@ -164,7 +199,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number
   const sx0 = shake > 0.1 ? (Math.random() - 0.5) * shake * k : 0, sy0 = shake > 0.1 ? (Math.random() - 0.5) * shake * k : 0;
   const ox = Math.round(w * dpr / 2 - v.cam.x * k + sx0), oy = Math.round(h * dpr / 2 - v.cam.y * k + sy0);
   ctx.setTransform(k, 0, 0, k, ox, oy);
-  ctx.drawImage(ground!, 0, 0);
+  ctx.drawImage(ground!, 0, 0, ground!.width / ART, ground!.height / ART);
 
   const P = (tx: number) => tx * TILE;
 
@@ -174,7 +209,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number
   g.entries.forEach((e, i) => {
     const ex = Math.min(Math.max(e.x, 0.6), MAP_W - 1.6), ey = Math.max(e.y, 0.4);
     ctx.globalAlpha = entriesTonight.has(i) ? 1 : 0.35;
-    ctx.drawImage(banner, Math.round(P(ex) + 2), Math.round(P(ey) - 4));
+    B(ctx, banner, Math.round(P(ex) + 2), Math.round(P(ey) - 4));
     ctx.globalAlpha = 1;
   });
 
@@ -186,7 +221,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number
     const stage = b.kind === 'farm' ? (b.done ? (g.day + Math.floor(g.phaseT / 50)) % 3 : 0) : b.kind === 'trap' && b.sprung ? 1 : 0;
     const s = bldSprite(b.kind, sea, stage)!;
     ctx.globalAlpha = b.done ? (b.kind === 'trap' ? 0.85 : 1) : 0.45;
-    ctx.drawImage(s, P(b.x), P(b.y));
+    B(ctx, s, P(b.x), P(b.y));
     ctx.globalAlpha = 1;
     if (!b.done) progressBar(ctx, b);
   }
@@ -200,15 +235,15 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number
     const tx = i % MAP_W, ty = Math.floor(i / MAP_W);
     if (t === T_TREE) {
       const sp = treeSprite(tx * 7 + ty * 3, sea);
-      list.push({ y: ty + 0.9, f: () => { shadow(ctx, P(tx) + 8, P(ty) + 14, 7); ctx.drawImage(sp, P(tx) + 8 - (sp.width >> 1), P(ty) + 15 - baseline(sp)); } });
+      list.push({ y: ty + 0.9, f: () => { shadow(ctx, P(tx) + 8, P(ty) + 14, 7); B(ctx, sp, P(tx) + 8 - Math.round(W(sp) / 2), P(ty) + 15 - baseline(sp)); } });
     } else if (t === T_ROCK) {
       const sz = g.amount[i] > 6 ? 2 : g.amount[i] > 3 ? 1 : 0;
       const sp = rockSprite(tx + ty, sz, sea);
-      list.push({ y: ty + 0.7, f: () => ctx.drawImage(sp, P(tx), P(ty) + 2) });
+      list.push({ y: ty + 0.7, f: () => B(ctx, sp, P(tx), P(ty) + 2) });
     } else if (t === T_BUSH) {
       const sp = bushSprite(sea === 'winter' ? 0 : g.amount[i], sea);
-      list.push({ y: ty + 0.7, f: () => ctx.drawImage(sp, P(tx), P(ty) + 3) });
-    } else list.push({ y: ty + 0.8, f: () => ctx.drawImage(spr('sapling', saplingSprite), P(tx) + 4, P(ty) + 6) });
+      list.push({ y: ty + 0.7, f: () => B(ctx, sp, P(tx), P(ty) + 3) });
+    } else list.push({ y: ty + 0.8, f: () => B(ctx, spr('sapling', saplingSprite), P(tx) + 4, P(ty) + 6) });
   }
   for (const b of g.blds) {
     if (b.kind === 'farm' || b.kind === 'trap' || b.kind === 'garden') continue;
@@ -227,15 +262,23 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number
     if (s.inside || s.away > 0) continue;
     list.push({
       y: s.y, f: () => {
-        const sp = settlerSprites(s.job, s.look);
-        const fr = (s.face < 0 ? 2 : 0) + (walking ? Math.floor(s.walk) % 2 : 0);
-        const px = Math.round(P(s.x) - 5 + (s.hitT > 0 ? 1 : 0)), py = Math.round(P(s.y) - 12 - (walking && Math.floor(s.walk) % 2 ? 1 : 0));
+        const { pose, fr } = settlerPose(s, walking, now);
+        const carry: Carry = s.carry > 0 ? (s.job === 'fisher' ? 'fish' : s.carryRes === 'gold' ? '' : (s.carryRes as Carry)) : '';
+        const sp = settlerFrame(s.job, s.look, pose, fr, s.face, carry, s.promo && JOBS[s.job].combat ? s.promo : '');
+        const px = P(s.x) - CH.ax / ART + (s.hitT > 0 ? 0.5 : 0), py = P(s.y) - CH.ay / ART + 0.5;
         shadow(ctx, P(s.x), P(s.y) + 0.5, 4);
         if (v.sel?.t === 's' && v.sel.id === s.id) ring(ctx, P(s.x), P(s.y), '#ffe14a');
-        ctx.drawImage(sp[fr], px, py);
-        drawTool(ctx, s.job, s.face, px, py, s.task?.k ?? '', now, s.carry, s.carryRes);
-        if (s.promo && JOBS[s.job].combat) { ctx.fillStyle = '#ffd166'; ctx.fillRect(px + 4, py + 7, 3, 1); ctx.fillRect(px + 5, py + 8, 1, 1); }
-        if (s.hitT > 0) { ctx.fillStyle = 'rgba(255,80,60,0.5)'; ctx.fillRect(px + 1, py + 1, 8, 11); }
+        if (v.hl === s.id) ring(ctx, P(s.x), P(s.y), Math.floor(now * 4) % 2 ? '#ffffff' : '#ffe14a');
+        B(ctx, sp, px, py);
+        if (s.job === 'fisher' && s.task?.k === 'fish' && !walking) {
+          // casting line from the rod tip to a bobbing float
+          const tipX = P(s.x) + s.face * 7.5, tipY = P(s.y) - 13;
+          const fx = P(s.x) + s.face * 13, fy = P(s.y) + 1 + Math.sin(now * 3 + s.id) * 0.6;
+          ctx.strokeStyle = 'rgba(240,240,240,0.75)'; ctx.lineWidth = 0.5;
+          ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.quadraticCurveTo(fx, tipY, fx, fy); ctx.stroke();
+          ctx.fillStyle = '#e05a48'; ctx.fillRect(fx - 0.5, fy - 0.5, 1, 1);
+        }
+        if (s.hitT > 0) { ctx.globalAlpha = 0.6; B(ctx, flashOf(sp), px, py); ctx.globalAlpha = 1; }
       },
     });
   }
@@ -243,19 +286,22 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number
     const walking = moved(gb.id, gb.x, gb.y);
     list.push({
       y: gb.y, f: () => {
-        const sp = goblinSprites(gb.kind);
-        const fr = (gb.face < 0 ? 2 : 0) + (walking ? Math.floor(gb.walk) % 2 : 0);
-        const s0 = sp[fr];
-        const px = Math.round(P(gb.x) - s0.width / 2), py = Math.round(P(gb.y) - s0.height + 1);
-        shadow(ctx, P(gb.x), P(gb.y) + 0.5, Math.max(4, s0.width / 2 - 1));
+        const pose: Pose = gb.atk ? 'attack' : walking ? 'walk' : 'idle';
+        const fr = pose === 'attack' ? Math.min(2, Math.floor((1 - gb.atk! / 0.3) * 3)) : pose === 'walk' ? Math.floor(gb.walk * 0.75) % 4 : Math.floor(now * 1.6 + gb.id * 0.31) % 2;
+        const s0 = goblinFrame(gb.kind, pose, fr, gb.face);
+        const cv = GOB_CANVAS[gb.kind];
+        const px = P(gb.x) - cv.ax / ART, py = P(gb.y) - cv.ay / ART + 0.5;
+        const top = py + gobTop(gb.kind);
+        shadow(ctx, P(gb.x), P(gb.y) + 0.5, Math.max(4, cv.w / ART / 2 - 4));
         if (gb.kind === 'warchief') { ctx.strokeStyle = 'rgba(224,90,72,0.45)'; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.ellipse(P(gb.x), P(gb.y), 64, 40, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
         if (v.sel?.t === 'g' && v.sel.id === gb.id) ring(ctx, P(gb.x), P(gb.y), '#ff6a4a');
-        if (gb.buff > 0) { ctx.fillStyle = 'rgba(255,90,60,0.35)'; ctx.fillRect(px, py - 2, s0.width, 2); }
-        ctx.drawImage(s0, px, py);
-        drawGobWeapon(ctx, gb.kind, gb.face, px, py, s0.width, now);
-        if (gb.slow > 0) { ctx.fillStyle = 'rgba(255,140,40,0.5)'; ctx.fillRect(px + 2, py + s0.height - 3, s0.width - 4, 2); }
-        if (gb.hitT > 0) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(px + 1, py + 1, s0.width - 2, s0.height - 2); }
-        if (gb.hp < gb.maxHp || gb.kind === 'warchief') bar(ctx, P(gb.x) - (gb.kind === 'warchief' ? 10 : 5), py - 3, gb.kind === 'warchief' ? 20 : 10, gb.hp / gb.maxHp, '#e0503a');
+        if (gb.buff > 0) { ctx.fillStyle = 'rgba(255,90,60,0.35)'; ctx.beginPath(); ctx.ellipse(P(gb.x), P(gb.y), 6, 2.5, 0, 0, Math.PI * 2); ctx.fill(); }
+        B(ctx, s0, px, py);
+        if (gb.kind === 'sapper') { ctx.fillStyle = Math.floor(now * 10) % 2 ? '#ffe066' : '#ff8a2a'; const sx = P(gb.x) + gb.face * 4, sy = P(gb.y) - 10.5; ctx.fillRect(sx, sy, 1, 1); }
+        if (gb.slow > 0) { ctx.fillStyle = 'rgba(255,140,40,0.5)'; ctx.fillRect(P(gb.x) - 4, P(gb.y) - 2, 8, 1.5); }
+        if ((gb.root ?? 0) > 0) { ctx.fillStyle = '#5a4632'; ctx.fillRect(P(gb.x) - 5, P(gb.y) - 1, 10, 2); }
+        if (gb.hitT > 0) { ctx.globalAlpha = 0.7; B(ctx, flashOf(s0), px, py); ctx.globalAlpha = 1; }
+        if (gb.hp < gb.maxHp || gb.kind === 'warchief') bar(ctx, P(gb.x) - (gb.kind === 'warchief' ? 10 : 5), top - 3, gb.kind === 'warchief' ? 20 : 10, gb.hp / gb.maxHp, '#e0503a');
       },
     });
   }
@@ -305,27 +351,40 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number
 
   // overlays above the darkness: goblin eyes glow so raiders stay readable at night
   if (dk > 0.2) {
+    ctx.globalAlpha = Math.min(1, dk * 1.6);
     for (const gb of g.goblins) {
-      const sp = goblinSprites(gb.kind)[0];
-      const px = Math.round(P(gb.x) - sp.width / 2), py = Math.round(P(gb.y) - sp.height + 1);
-      ctx.fillStyle = gb.kind === 'slinger' || gb.kind === 'brute' || gb.kind === 'warchief' ? '#ff8a5a' : '#ffe14a';
-      ctx.globalAlpha = Math.min(1, dk * 1.6);
-      const eyeY = py + (gb.kind === 'warchief' ? 5 : 4);
-      const ex = gb.face > 0 ? px + sp.width - 4 : px + 3;
-      ctx.fillRect(ex, eyeY, 1, 1);
-      ctx.fillRect(ex + (gb.face > 0 ? -2 : 2), eyeY, 1, 1);
-      ctx.globalAlpha = 1;
+      const cv = GOB_CANVAS[gb.kind];
+      const eyes = GOB_EYES.get(gb.kind);
+      if (!eyes) continue;
+      ctx.fillStyle = gb.kind === 'slinger' || gb.kind === 'brute' || gb.kind === 'warchief' ? '#ff8a5a' : gb.kind === 'shaman' ? '#9cf07a' : '#ffe14a';
+      for (const [ex, ey] of eyes) {
+        const rx = gb.face > 0 ? ex : cv.w - 1 - ex;
+        ctx.fillRect(P(gb.x) + (rx - cv.ax) / ART, P(gb.y) + (ey - cv.ay) / ART + 0.5, 1, 1);
+      }
     }
+    ctx.globalAlpha = 1;
   }
   for (const b of g.blds) {
     if (b.done && b.hp < b.maxHp && b.kind !== 'flag' && b.kind !== 'trap') { const d = BUILD[b.kind]; bar(ctx, P(b.x + d.w / 2) - 8, P(b.y) - (b.kind === 'tower' ? 26 : b.kind === 'keep' ? 18 : 10), 16, b.hp / b.maxHp, '#7ee06a'); }
   }
   for (const s of g.settlers) {
     if (s.inside || s.away > 0) continue;
-    const px = P(s.x), py = P(s.y) - 15;
+    const px = P(s.x), py = P(s.y) - 16;
     if (s.hp < s.maxHp) bar(ctx, px - 5, py, 10, s.hp / s.maxHp, '#7ee06a');
     const ic = activityIcon(s);
-    if (ic) drawGlyph(ctx, ic, Math.round(px) - 3, Math.round(py) - 7 + (Math.floor(now * 3) % 2));
+    if (ic) drawGlyph(ctx, ic, Math.round(px) - 3, Math.round(py) - 8 + (Math.floor(now * 2.5) % 2) * 0.5);
+    if (v.hl === s.id) {
+      const by = py - 6 + Math.sin(now * 6) * 1.2;
+      ctx.fillStyle = '#1a1210'; ctx.beginPath(); ctx.moveTo(px - 3.5, by - 3.5); ctx.lineTo(px + 3.5, by - 3.5); ctx.lineTo(px, by + 0.5); ctx.fill();
+      ctx.fillStyle = '#ffe14a'; ctx.beginPath(); ctx.moveTo(px - 2.5, by - 3); ctx.lineTo(px + 2.5, by - 3); ctx.lineTo(px, by - 0.5); ctx.fill();
+    }
+  }
+  // buildings being hit at night get a pulsing alarm marker
+  if (g.phase === 'night') for (const b of g.blds) {
+    if (!b.done || b.hitT <= 0 || b.kind === 'trap' || b.kind === 'flag') continue;
+    const d = BUILD[b.kind];
+    const mx = P(b.x + d.w / 2), my = P(b.y) - (b.kind === 'tower' ? 30 : b.kind === 'keep' ? 24 : b.kind === 'wall' || b.kind === 'stonewall' ? 4 : 14);
+    alarm(ctx, mx, my, now);
   }
   if (v.sel?.t === 'b') {
     const b = g.blds.find((q) => q.id === v.sel!.id);
@@ -349,6 +408,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number
   ctx.globalAlpha = 1;
 
   drawGhost(ctx, g, v);
+  if (g.phase === 'night') drawOffscreen(ctx, g, v, now);
 
   // weather: snow in winter, in screen space
   if (sea === 'winter') drawSnow(ctx, v, dt);
@@ -448,9 +508,9 @@ function drawBuilding(ctx: CanvasRenderingContext2D, g: Game, b: Building, sea: 
     if (b.kind !== 'flag') shadow(ctx, px + fw / 2, py + fh - 1, fw / 2);
     // ballista crew stands behind the machine
     if (b.kind === 'ballista' && b.occupant) drawOccupant(ctx, g, b, px + 3, py - 4);
-    const bx = px + Math.round((fw - s.width) / 2) + shake;
+    const bx = px + Math.round((fw - W(s)) / 2) + shake;
     const by = b.kind === 'flag' ? py + 2 : py + fh - baseline(s) + 1;
-    ctx.drawImage(s, bx, by);
+    B(ctx, s, bx, by);
     if (b.kind === 'keep' && (b.level ?? 0) > 0) {
       // fortified keeps fly pennants from every turret
       const cols = (b.level ?? 0) > 1 ? ['#ffd166', '#3f63a8'] : ['#3f63a8', '#3f63a8'];
@@ -464,7 +524,7 @@ function drawBuilding(ctx: CanvasRenderingContext2D, g: Game, b: Building, sea: 
     if (b.kind === 'tower' && b.occupant) drawOccupant(ctx, g, b, bx + 5, by + 5, by + 15);
     // upgrade pips
     if (b.kind !== 'keep' && (b.level ?? 0) > 0) {
-      for (let i = 0; i < (b.level ?? 0); i++) { ctx.fillStyle = '#2b1d18'; ctx.fillRect(bx + s.width - 4 - i * 4, by - 1, 4, 4); ctx.fillStyle = '#ffd166'; ctx.fillRect(bx + s.width - 3 - i * 4, by, 2, 2); }
+      for (let i = 0; i < (b.level ?? 0); i++) { ctx.fillStyle = '#2b1d18'; ctx.fillRect(bx + W(s) - 4 - i * 4, by - 1, 4, 4); ctx.fillStyle = '#ffd166'; ctx.fillRect(bx + W(s) - 3 - i * 4, by, 2, 2); }
     }
   }
   ctx.globalAlpha = 1;
@@ -480,17 +540,18 @@ function drawBuilding(ctx: CanvasRenderingContext2D, g: Game, b: Building, sea: 
   }
   if (b.hitT > 0 && b.kind !== 'wall' && b.kind !== 'stonewall') {
     const s = bldSprite(b.kind, sea);
-    if (s) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35; ctx.drawImage(s, px + Math.round((fw - s.width) / 2), b.kind === 'flag' ? py + 2 : py + fh - baseline(s) + 1); ctx.restore(); }
+    if (s) { ctx.save(); ctx.globalAlpha = 0.45; B(ctx, flashOf(s), px + Math.round((fw - W(s)) / 2), b.kind === 'flag' ? py + 2 : py + fh - baseline(s) + 1); ctx.restore(); }
   }
 }
 
 function drawOccupant(ctx: CanvasRenderingContext2D, g: Game, b: Building, x: number, y: number, clipBottom?: number) {
   const s = g.settlers.find((q) => q.id === b.occupant);
   if (!s) return;
-  const sp = settlerSprites(s.job, s.look);
+  const atk = (s.atk ?? 0) > 0;
+  const sp = settlerFrame(s.job, s.look, atk ? 'attack' : 'idle', atk ? Math.min(2, Math.floor((1 - s.atk! / 0.35) * 3)) : 0, s.face, '', s.promo ?? '');
   ctx.save();
-  if (clipBottom !== undefined) { ctx.beginPath(); ctx.rect(x - 4, y - 20, 20, clipBottom - (y - 20)); ctx.clip(); }
-  ctx.drawImage(sp[s.face < 0 ? 2 : 0], x, y - 5);
+  if (clipBottom !== undefined) { ctx.beginPath(); ctx.rect(x - 8, y - 24, 26, clipBottom - (y - 24)); ctx.clip(); }
+  B(ctx, sp, x + 5 - CH.ax / ART, y + 6 - CH.ay / ART + 1);
   ctx.restore();
 }
 
@@ -505,39 +566,19 @@ function drawWall(ctx: CanvasRenderingContext2D, g: Game, b: Building, px: numbe
   if (isWall(1, 0)) { ctx.fillRect(px + 8, py + 6, 9, 2); ctx.fillRect(px + 8, py + 10, 9, 2); }
   if (isWall(0, 1)) { ctx.fillRect(px + 4, py + 9, 2, 16); ctx.fillRect(px + 10, py + 9, 2, 16); }
   const cols = h || !v ? [1, 6, 11] : [2, 8];
-  for (const sx of cols) ctx.drawImage(stake, px + sx - 1, py + 1);
-  if (v) for (const sx of [5, 11]) ctx.drawImage(stake, px + sx - 1, py + 7);
+  for (const sx of cols) B(ctx, stake, px + sx - 1, py + 1);
+  if (v) for (const sx of [5, 11]) B(ctx, stake, px + sx - 1, py + 7);
   if ((b.level ?? 0) > 0) { ctx.fillStyle = '#cfd4da'; for (const sx of cols) ctx.fillRect(px + sx, py + 6, 1, 1); }
 }
 
 function drawStoneWall(ctx: CanvasRenderingContext2D, g: Game, b: Building, sea: Season, px: number, py: number) {
-  // Drawn per tile so lines join up: a light walkway on top, a block face only where the wall ends to the south.
+  // per-tile pieces that join up with their neighbours
   const isWall = (dx: number, dy: number) => bldAtTile(g, b.x + dx, b.y + dy)?.kind === 'stonewall';
-  const top = sea === 'winter' ? '#eef3f6' : '#cbc3b4', face = '#b8b0a2', dark = '#968e82', line = '#726b62', out = '#2b1d18';
-  const n = isWall(0, -1), s = isWall(0, 1), w = isWall(-1, 0), e = isWall(1, 0);
-  const x0 = w ? px : px + 1, x1 = e ? px + 16 : px + 15;
-  const yTop = n ? py : py + 1;
-  const yFace = py + 9;
-  shadow(ctx, px + 8, py + 15, 7);
-  // walkway
-  ctx.fillStyle = out; ctx.fillRect(x0 - (w ? 0 : 1), yTop - (n ? 0 : 1), x1 - x0 + (w ? 0 : 1) + (e ? 0 : 1), (s ? py + 16 : yFace) - yTop + (n ? 0 : 1));
-  ctx.fillStyle = top; ctx.fillRect(x0, yTop, x1 - x0, (s ? py + 16 : yFace) - yTop);
-  ctx.fillStyle = dark; ctx.fillRect(x0, yTop + 3, x1 - x0, 1);
-  if (!e) { ctx.fillStyle = line; ctx.fillRect(x1 - 2, yTop, 2, (s ? py + 16 : yFace) - yTop); }
-  if (!w) { ctx.fillStyle = '#e4ddd0'; ctx.fillRect(x0, yTop, 1, (s ? py + 16 : yFace) - yTop); }
-  // merlons along open edges
-  ctx.fillStyle = face;
-  if (!n) for (let x = x0 + 1; x < x1 - 1; x += 4) { ctx.fillStyle = out; ctx.fillRect(x - 1, yTop - 3, 4, 3); ctx.fillStyle = face; ctx.fillRect(x, yTop - 2, 2, 2); }
-  if (!s) {
-    // south face with block courses
-    ctx.fillStyle = out; ctx.fillRect(x0 - (w ? 0 : 1), yFace, x1 - x0 + (w ? 0 : 1) + (e ? 0 : 1), 8);
-    ctx.fillStyle = face; ctx.fillRect(x0, yFace, x1 - x0, 7);
-    ctx.fillStyle = line;
-    ctx.fillRect(x0, yFace + 3, x1 - x0, 1);
-    for (let x = x0 + ((b.x % 2) ? 2 : 5); x < x1; x += 6) ctx.fillRect(x, yFace, 1, 3);
-    for (let x = x0 + ((b.x % 2) ? 5 : 2); x < x1; x += 6) ctx.fillRect(x, yFace + 4, 1, 3);
-    ctx.fillStyle = dark; ctx.fillRect(x0, yFace + 6, x1 - x0, 1);
-  }
+  if (!isWall(0, 1)) shadow(ctx, px + 8, py + 15.5, 8);
+  // the wall's cast shadow falls to the east, which gives north-south runs their height
+  if (!isWall(1, 0)) { ctx.fillStyle = 'rgba(20,30,10,0.2)'; ctx.fillRect(px + 15, py + 1, 4, isWall(0, 1) ? 16 : 14); }
+  B(ctx, stoneWallTile(isWall(0, -1), isWall(0, 1), isWall(-1, 0), isWall(1, 0), sea), px, py - 4);
+  if ((b.level ?? 0) > 0) { ctx.fillStyle = '#ffd166'; ctx.fillRect(px + 7, py + 2, 2, 1); }
 }
 
 function progressBar(ctx: CanvasRenderingContext2D, b: Building) {
@@ -565,64 +606,70 @@ function circle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, 
   ctx.setLineDash([]);
 }
 
-function drawTool(ctx: CanvasRenderingContext2D, job: string, face: number, px: number, py: number, task: string, now: number, carry: number, carryRes: string) {
-  const hx = face > 0 ? px + 8 : px + 1;
-  const swing = ['chop', 'quarry', 'build', 'repair', 'farm', 'forage'].includes(task) && Math.floor(now * 4) % 2 === 0;
-  const R = (x: number, y: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
-  switch (job) {
-    case 'woodcutter': R(hx, py + (swing ? 3 : 5), 1, 5, '#6a4426'); R(hx + (face > 0 ? 0 : -1), py + (swing ? 2 : 4), 2, 2, '#c8ccd2'); break;
-    case 'quarrier': R(hx, py + (swing ? 3 : 5), 1, 5, '#6a4426'); R(hx - 1, py + (swing ? 2 : 4), 3, 1, '#8a9096'); break;
-    case 'builder': R(hx, py + (swing ? 4 : 6), 1, 4, '#6a4426'); R(hx - (face > 0 ? 0 : 1), py + (swing ? 3 : 5), 2, 1, '#8a9096'); break;
-    case 'farmer': R(hx, py + (swing ? 2 : 3), 1, 7, '#8a6036'); R(hx - (face > 0 ? -1 : 1), py + (swing ? 9 : 10), 2, 1, '#8a9096'); break;
-    case 'fisher': if (task === 'fish') { R(hx, py + 2, 1, 6, '#8a6036'); ctx.strokeStyle = 'rgba(240,240,240,0.7)'; ctx.beginPath(); ctx.moveTo(hx + 0.5, py + 2); ctx.lineTo(hx + face * 9, py + 12 + Math.sin(now * 3)); ctx.stroke(); } break;
-    case 'forager': R(face > 0 ? px + 1 : px + 7, py + 7, 3, 3, '#8a6036'); if (carry) R(face > 0 ? px + 1 : px + 7, py + 7, 3, 1, '#d8304a'); break;
-    case 'militia': R(hx, py - 3, 1, 12, '#7a5228'); R(hx, py - 4, 1, 2, '#e0e4ea'); R(face > 0 ? px + 1 : px + 6, py + 6, 3, 4, '#8a5a32'); break;
-    case 'shieldbearer': R(face > 0 ? px + 6 : px, py + 4, 4, 7, '#8a9096'); R(face > 0 ? px + 7 : px + 1, py + 5, 2, 5, '#cfd4da'); R(face > 0 ? px + 7 : px + 1, py + 7, 2, 1, '#b73a2e'); break;
-    case 'archer': R(hx, py + 3, 1, 6, '#7a4a22'); R(hx + (face > 0 ? -1 : 1), py + 2, 1, 1, '#7a4a22'); R(hx + (face > 0 ? -1 : 1), py + 9, 1, 1, '#7a4a22'); break;
-    case 'healer': R(face > 0 ? px + 7 : px + 1, py + 6, 2, 3, '#f2efe6'); R(face > 0 ? px + 7 : px + 1, py + 7, 2, 1, '#6aa040'); break;
-    case 'trader': R(face > 0 ? px + 7 : px + 1, py + 6, 2, 2, '#ffd166'); break;
-  }
-  if (carry > 0 && job !== 'forager' && job !== 'fisher') {
-    const c = carryRes === 'wood' ? ['#b07a44', '#d39a5e'] : carryRes === 'stone' ? ['#968e82', '#b8b0a2'] : ['#d8304a', '#ff7a8a'];
-    R(px + 2, py + 5, 6, 2, c[0]); R(px + 3, py + 4, 4, 1, c[1]);
-  }
-  if (carry > 0 && job === 'fisher') { R(px + 3, py + 6, 4, 2, '#9ab8d0'); R(px + 2, py + 6, 1, 2, '#6a8aa8'); }
-}
-
-function drawGobWeapon(ctx: CanvasRenderingContext2D, kind: string, face: number, px: number, py: number, w: number, now: number) {
-  const hx = face > 0 ? px + w - 2 : px + 1;
-  const R = (x: number, y: number, ww: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x, y, ww, h); };
-  switch (kind) {
-    case 'scrapper': R(hx, py + 4, 1, 5, '#a8acb2'); R(hx, py + 8, 1, 2, '#6a4426'); break;
-    case 'slinger': R(hx, py + 6, 1, 3, '#6a4426'); R(hx, py + 5, 1, 1, '#c8c0a8'); break;
-    case 'brute': R(hx - (face > 0 ? 0 : 1), py + 3, 2, 7, '#7a5228'); R(hx - 1, py + 2, 3, 3, '#5a3a20'); break;
-    case 'sapper': R(hx, py + 5, 1, 3, '#6a4426'); R(hx, py + 3 + (Math.floor(now * 8) % 2), 1, 2, '#ffb84a'); break;
-    case 'shaman': R(hx, py, 1, 12, '#6a4426'); R(hx - 1, py - 1, 3, 2, '#9cf07a'); break;
-    case 'warchief': R(px + w / 2 - 1, py - 8, 1, 10, '#5a3a20'); R(px + w / 2, py - 8, 6, 5, '#b73a2e'); R(px + w / 2 + 2, py - 7, 2, 2, '#ffe14a'); R(hx - 1, py + 4, 3, 9, '#cfd4da'); break;
-  }
-}
-
 // tiny 5x5 status glyphs
-const GLYPH: Record<string, { rows: string[]; c: string }> = {
-  food: { rows: ['.XX..', 'XXXX.', 'XXXXX', '.XXXX', '..XX.'], c: '#e86a3a' },
-  zzz: { rows: ['XXXX.', '..X..', '.X...', 'XXXX.', '.....'], c: '#a8c8ff' },
-  cold: { rows: ['X.X.X', '.XXX.', 'XXXXX', '.XXX.', 'X.X.X'], c: '#bfe8ff' },
-  scared: { rows: ['..X..', '..X..', '..X..', '.....', '..X..'], c: '#ffd166' },
-  sulk: { rows: ['.XXX.', 'XXXXX', 'XXXXX', '.X.X.', 'X.X..'], c: '#9aa0b0' },
-  idle: { rows: ['.XXX.', '...X.', '..X..', '.....', '..X..'], c: '#e8e0c8' },
-  sick: { rows: ['X...X', '.XXX.', '.X.X.', '.XXX.', 'X...X'], c: '#a8e070' },
+const GLYPH: Record<string, { rows: string[]; c: string; d: string }> = {
+  food: { rows: ['.XX..', 'XXXX.', 'XXXXX', '.XXXX', '..XX.'], c: '#e86a3a', d: '#d0502a' },
+  zzz: { rows: ['XXXX.', '..X..', '.X...', 'XXXX.', '.....'], c: '#a8c8ff', d: '#3a68c0' },
+  cold: { rows: ['X.X.X', '.XXX.', 'XXXXX', '.XXX.', 'X.X.X'], c: '#bfe8ff', d: '#2a90c8' },
+  scared: { rows: ['..X..', '..X..', '..X..', '.....', '..X..'], c: '#ffd166', d: '#d0502a' },
+  sulk: { rows: ['.XXX.', 'XXXXX', 'XXXXX', '.X.X.', 'X.X..'], c: '#9aa0b0', d: '#5a6070' },
+  idle: { rows: ['.XXX.', '...X.', '..X..', '.....', '..X..'], c: '#e8e0c8', d: '#8a6a2a' },
+  sick: { rows: ['X...X', '.XXX.', '.X.X.', '.XXX.', 'X...X'], c: '#a8e070', d: '#4a9a2a' },
 };
 function drawGlyph(ctx: CanvasRenderingContext2D, name: string, x: number, y: number) {
   const gl = GLYPH[name];
   if (!gl) return;
+  // a little white speech bubble with a dark rim and a tail, the glyph inside in colour
   ctx.fillStyle = '#1a1210';
-  ctx.fillRect(x - 1, y - 1, 7, 7);
-  ctx.fillStyle = gl.c;
+  ctx.fillRect(x - 1.5, y - 1.5, 8, 8); ctx.fillRect(x - 2, y - 1, 9, 7); ctx.fillRect(x + 1.5, y + 6, 2, 1.5);
+  ctx.fillStyle = '#fbf6ea';
+  ctx.fillRect(x - 1, y - 1, 7, 7); ctx.fillRect(x - 1.5, y - 0.5, 8, 6); ctx.fillRect(x + 2, y + 6, 1, 1);
+  ctx.fillStyle = gl.d;
   gl.rows.forEach((r, yy) => { for (let xx = 0; xx < 5; xx++) if (r[xx] === 'X') ctx.fillRect(x + xx, y + yy, 1, 1); });
 }
 
+function alarm(ctx: CanvasRenderingContext2D, x: number, y: number, now: number) {
+  const k = 1 + Math.sin(now * 10) * 0.12;
+  ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
+  ctx.fillStyle = '#1a1210'; ctx.beginPath(); ctx.arc(0, 0, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#e0503a'; ctx.beginPath(); ctx.arc(0, 0, 3.7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff2e0'; ctx.fillRect(-0.5, -2.5, 1, 3); ctx.fillRect(-0.5, 1.2, 1, 1);
+  ctx.restore();
+}
+
+/** Arrows at the screen edge pointing at goblins out of view, so a raid never happens off-camera unnoticed. */
+function drawOffscreen(ctx: CanvasRenderingContext2D, g: Game, v: View, now: number) {
+  if (!g.goblins.length) return;
+  const W = v.w * v.dpr, H = v.h * v.dpr, k = v.cam.z * v.dpr, m = 26 * v.dpr;
+  const groups = new Map<string, { x: number; y: number; n: number; boss: boolean }>();
+  for (const gb of g.goblins) {
+    const sx = W / 2 + (gb.x * TILE - v.cam.x) * k, sy = H / 2 + (gb.y * TILE - v.cam.y) * k;
+    if (sx > 0 && sx < W && sy > 0 && sy < H) continue;
+    const ang = Math.atan2(sy - H / 2, sx - W / 2);
+    const key = String(Math.round(ang / 0.35));
+    const gr = groups.get(key) ?? { x: 0, y: 0, n: 0, boss: false };
+    gr.x += sx; gr.y += sy; gr.n++; gr.boss ||= gb.kind === 'warchief';
+    groups.set(key, gr);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (const gr of groups.values()) {
+    const cx = gr.x / gr.n - W / 2, cy = gr.y / gr.n - H / 2;
+    const sc = Math.min((W / 2 - m) / Math.abs(cx || 1e-6), (H / 2 - m) / Math.abs(cy || 1e-6));
+    const x = W / 2 + cx * sc, y = H / 2 + cy * sc, a = Math.atan2(cy, cx);
+    const s = v.dpr * (1 + Math.sin(now * 6) * 0.08);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.scale(s, s);
+    ctx.fillStyle = 'rgba(26,18,16,0.9)'; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-6, -11); ctx.lineTo(-6, 11); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = gr.boss ? '#ffd166' : '#e0503a'; ctx.beginPath(); ctx.moveTo(11, 0); ctx.lineTo(-4, -8); ctx.lineTo(-4, 8); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.font = `bold ${11 * v.dpr}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const tx = x - Math.cos(a) * 20 * v.dpr, ty = y - Math.sin(a) * 20 * v.dpr;
+    ctx.fillStyle = '#1a1210'; ctx.fillText(String(gr.n), tx + v.dpr, ty + v.dpr);
+    ctx.fillStyle = '#fff2e0'; ctx.fillText(String(gr.n), tx, ty);
+  }
+}
+
 function drawDark(ctx: CanvasRenderingContext2D, g: Game, v: View, dk: number, ox: number, oy: number, k: number, now: number) {
-  const W = Math.ceil(v.w / 2), H = Math.ceil(v.h / 2);
+  const W = Math.max(1, Math.ceil(v.w / 2)), H = Math.max(1, Math.ceil(v.h / 2));
   if (!dark || dark.width !== W || dark.height !== H) { dark = document.createElement('canvas'); dark.width = W; dark.height = H; }
   const d = dark.getContext('2d')!;
   d.globalCompositeOperation = 'source-over';
@@ -659,6 +706,7 @@ function drawDark(ctx: CanvasRenderingContext2D, g: Game, v: View, dk: number, o
   ctx.drawImage(dark, 0, 0, v.w * v.dpr, v.h * v.dpr);
   ctx.globalCompositeOperation = 'lighter';
   for (const l of lights) {
+    if (l.r < 2) continue;
     const x = (l.x * TILE * k + ox), y = (l.y * TILE * k + oy), r = l.r * TILE * k * 0.6 * flick;
     const gr = ctx.createRadialGradient(x, y, 0, x, y, r);
     gr.addColorStop(0, `rgba(${l.c},${0.22 * dk})`);
@@ -706,9 +754,9 @@ function drawGhost(ctx: CanvasRenderingContext2D, g: Game, v: View) {
       const s = kind === 'farm' ? bldSprite('farm', sea, 2) : kind === 'brazier' ? bldSprite('brazier', sea, 1) : bldSprite(kind, sea);
       if (s) {
         ctx.globalAlpha = 0.6;
-        const bx = t.x * TILE + Math.round((d.w * TILE - s.width) / 2);
+        const bx = t.x * TILE + Math.round((d.w * TILE - W(s)) / 2);
         const by = kind === 'flag' ? t.y * TILE + 2 : kind === 'farm' || kind === 'trap' || kind === 'garden' ? t.y * TILE : (t.y + d.h) * TILE - baseline(s) + 1;
-        ctx.drawImage(s, bx, by);
+        B(ctx, s, bx, by);
         ctx.globalAlpha = 1;
       }
     }

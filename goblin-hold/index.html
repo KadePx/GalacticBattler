@@ -224,6 +224,43 @@
       #toolChip.show { display: flex; }
       #toolChip b { color: var(--gold); font-family: var(--px); font-weight: 400; font-size: 15px; }
       #goal { top: calc(var(--fcB, 92px) + 8px); left: 8px; width: 290px; padding: 8px 10px; display: none; font-size: 13px; }
+      #crew { top: calc(var(--fcB, 92px) + 8px); right: 8px; width: 214px; padding: 6px 5px 6px 6px; display: none; flex-direction: column; gap: 4px; font-size: 12px; }
+      #crew.show { display: flex; }
+      body.siding #crew { display: none; }
+      #crew .ch { display: flex; justify-content: space-between; align-items: center; gap: 4px; font-family: var(--px); color: var(--gold); font-size: 15px; padding: 0 2px; }
+      #crew .ch small { font-family: system-ui, sans-serif; font-size: 11px; color: var(--dim); }
+      #crew .ch button { padding: 1px 6px; margin-left: 3px; }
+      #crew .list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; scrollbar-width: thin; padding-right: 2px; }
+      #crew .cr { display: grid; grid-template-columns: 26px 1fr auto; gap: 5px; align-items: center; padding: 2px 4px 4px 2px; border-radius: 5px; border-left: 3px solid var(--jc); background: rgba(255, 255, 255, 0.035); cursor: pointer; position: relative; }
+      #crew .cr:hover { background: rgba(255, 209, 102, 0.1); }
+      #crew .cr.sel { background: rgba(255, 209, 102, 0.2); box-shadow: inset 0 0 0 1px rgba(255, 209, 102, 0.5); }
+      #crew .cr.alert { animation: crewPulse 1.4s ease-in-out infinite; }
+      @keyframes crewPulse { 50% { background: rgba(224, 90, 72, 0.22); } }
+      #crew .cr img { width: 26px; height: 26px; image-rendering: pixelated; }
+      #crew .t { min-width: 0; line-height: 1.15; }
+      #crew .t b { display: block; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+      #crew .t small { display: block; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; }
+      #crew .r { display: flex; align-items: center; gap: 4px; }
+      #crew .md { width: 8px; height: 8px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1px #1a1210; }
+      #crew .hp { position: absolute; left: 31px; right: 6px; bottom: 1px; height: 2px; background: rgba(0, 0, 0, 0.35); border-radius: 1px; }
+      #crew .hp i { display: block; height: 100%; border-radius: 1px; }
+      .tag { font-size: 9.5px; font-weight: 700; padding: 1px 4px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.02em; white-space: nowrap; }
+      .tag.bad { background: #5a2218; color: #ffb09a; }
+      .tag.warn { background: #4a3a18; color: var(--gold); }
+      .tag.good { background: #1e4a2a; color: #9cf07a; }
+      .tag:not(.bad):not(.warn):not(.good) { color: var(--dim); }
+      .badc { color: #ff8a70; }
+      .warnc { color: var(--gold); }
+      #crew.mini { width: auto; }
+      #crew.mini .ch > span:first-child, #crew.mini .t, #crew.mini .r .tag { display: none; }
+      #crew.mini .cr { grid-template-columns: 26px auto; padding-right: 3px; }
+      #crew.mini .hp { left: 3px; }
+      #crew.mini .ch { justify-content: center; }
+      #mtip { position: fixed; z-index: 6; pointer-events: none; background: rgba(28, 21, 16, 0.96); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; font-size: 12px; line-height: 1.4; max-width: 260px; color: var(--ink); display: none; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+      #mtip.show { display: block; }
+      #mtip b { color: var(--gold); }
+      #mtip b.badc { color: #ff8a70; }
+      #mtip small { color: var(--dim); }
       #goal.show { display: block; }
       .gstep { display: flex; gap: 8px; align-items: flex-start; }
       .gstep b { color: var(--gold); font-weight: 600; }
@@ -281,6 +318,12 @@
         #toasts { top: calc(var(--fcB, 120px) + 8px); }
         #bar .tools { -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); padding-right: 24px; }
         #goal { top: auto; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); left: 8px; right: 8px; width: auto; font-size: 12px; }
+        #crew, #crew.mini { width: auto; padding: 4px 3px; }
+        #crew .ch > span:first-child, #crew .t, #crew .r .tag { display: none; }
+        #crew .cr { grid-template-columns: 26px auto; padding-right: 3px; }
+        #crew .hp { left: 3px; }
+        #crew .ch button[data-act="mini"] { display: none; }
+        body.carded #crew { display: none; }
         #toolChip { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); }
         body.tooling #goal { display: none; }
         #postHint { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); }
@@ -321,6 +364,8 @@
     <div id="toolChip" class="panel hud"><span id="chipText"></span><button class="small" id="chipDone">✕ Done</button></div>
     <div id="banner" class="hud"><div id="banner-t"></div><div id="banner-s"></div></div>
     <div id="card" class="panel hud"></div>
+    <div id="crew" class="panel hud"></div>
+    <div id="mtip" class="hud"></div>
     <div id="roster" class="panel hud side"></div>
     <div id="trade" class="panel hud side"></div>
     <div id="postHint" class="panel hud">Tap a tower, ballista or guard post to assign. <button class="small" id="postCancel">Cancel</button></div>
