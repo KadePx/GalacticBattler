@@ -107,7 +107,7 @@ export interface Floater { x: number; y: number; text: string; color: string; t:
 export interface WaveGroup { entry: number; kind: GobKind; count: number; }
 export interface Wave { day: number; kind: 'raid' | 'assault' | 'boss'; groups: WaveGroup[]; mult: number; omen?: string; }
 
-export interface NightStats { kills: number; lost: string[]; gold: number; hurt: string[]; buildingsLost: number; rescued: string[]; heroes?: Record<string, number>; }
+export interface NightStats { kills: number; lost: string[]; gold: number; hurt: string[]; buildingsLost: number; rescued: string[]; heroes?: Record<string, number>; wrecked?: string[]; }
 
 export interface Applicant { name: string; traits: string[]; }
 

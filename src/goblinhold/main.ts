@@ -162,8 +162,9 @@ function showTip(el: Element, html: string, ms = 0) {
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   let x = r.left + r.width / 2 - tw / 2;
   x = Math.max(8, Math.min(window.innerWidth - tw - 8, x));
-  let y = r.top - th - 8;
+  let y = r.top < 140 ? r.bottom + 8 : r.top - th - 8;
   if (y < 8) y = r.bottom + 8;
+  if (y + th > window.innerHeight - 8) y = r.top - th - 8;
   tip.style.left = `${x}px`; tip.style.top = `${y}px`;
   clearTimeout(tipHide);
   if (ms) tipHide = window.setTimeout(hideTip, ms);
@@ -193,6 +194,7 @@ const BUFF_TEXT: Record<string, string> = {
   embargo: 'The guilds shun you: market prices are worse.', coldsnap: 'Settlers lose warmth twice as fast.',
 };
 let confirmEnd = false;
+let confirmTimer = 0;
 const nudged: { dusk: number; food: number; beds: number } = { dusk: 0, food: 0, beds: 0 };
 /** Rough days of food left: each settler eats about 1.7 food a day. */
 function foodDays(g: Game) { return g.settlers.length ? g.res.food / (g.settlers.length * 2.5) : 99; }
@@ -214,6 +216,9 @@ function totalWave(g: Game) { return g.wave.groups.reduce((a, gr) => a + gr.coun
 
 function refreshTop() {
   if (!g) return;
+  const topB = $('top').getBoundingClientRect().bottom, fcB = $('forecast').getBoundingClientRect().bottom;
+  document.documentElement.style.setProperty('--topB', `${Math.round(topB)}px`);
+  document.documentElement.style.setProperty('--fcB', `${Math.round(Math.max(topB, fcB))}px`);
   const sea = season(g);
   $('day').textContent = `DAY ${g.day}`;
   $('season').textContent = `${SEASONS[sea].name} ${seasonDay(g)}/${SEASON_DAYS}${year(g) > 1 ? ` · Y${year(g)}` : ''}`;
@@ -242,6 +247,8 @@ function refreshTop() {
   mv.textContent = String(m);
   mv.className = m >= 65 ? 'good' : m >= 40 ? '' : 'bad';
   for (const b of Array.from(document.querySelectorAll<HTMLElement>('#speed button'))) b.classList.toggle('on', Number(b.dataset.speed) === speed);
+  $('speedCycle').textContent = `${speed || lastSpeed}x`;
+  $('speedCycle').classList.toggle('on', speed > 0);
   // relics and effects
   const relics = g.relics.map((r) => `<img src="${IMG['relic_' + r]}" alt="" data-tip="<b>${RELICS[r].name}</b><br>${RELICS[r].desc}">`).join('');
   const buffs = g.buffs.map((b) => `<span class="buff" data-tip="${BUFF_TEXT[b.id] ?? b.id}">${BUFF_NAME[b.id] ?? b.id}</span>`).join('');
@@ -273,7 +280,9 @@ $('phaseBtn').addEventListener('click', () => {
   if (!g) return;
   if (g.phase === 'day') {
     const early = g.day <= 2 || g.phaseT < dayLen(g) * 0.5;
-    if (early && !confirmEnd) { confirmEnd = true; setTimeout(() => { confirmEnd = false; refreshTop(); }, 3000); refreshTop(); return; }
+    const tutPointing = (g.tut ?? -1) >= 0 && STEPS[g.tut!]?.glow === 'phaseBtn';
+    if (early && !confirmEnd && !tutPointing) { confirmEnd = true; clearTimeout(confirmTimer); confirmTimer = window.setTimeout(() => { confirmEnd = false; refreshTop(); }, 4000); refreshTop(); return; }
+    clearTimeout(confirmTimer);
     confirmEnd = false;
     callDusk(g);
   } else if (g.phase === 'dusk') soundHorn(g);
@@ -281,7 +290,7 @@ $('phaseBtn').addEventListener('click', () => {
 });
 $('speed').addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest('button') as HTMLElement | null;
-  if (b) setSpeed(Number(b.dataset.speed));
+  if (b) setSpeed(b.dataset.speed === 'cycle' ? (speed >= 3 || speed === 0 ? 1 : speed + 1) : Number(b.dataset.speed));
 });
 function setSpeed(s: number) {
   if (s > 0) lastSpeed = s;
@@ -491,7 +500,7 @@ function refreshRoster(force = false) {
     const opts = JOB_ORDER.map((j) => `<option value="${j}" ${s.job === j ? 'selected' : ''}>${JOBS[j].name}${JOBS[j].gold && !s.gear.includes(j) ? ` (${JOBS[j].gold}g)` : ''}</option>`).join('');
     return `<div class="rrow"><span class="nm" data-sid="${s.id}">${s.name}<small>${activity(g!, s)}</small></span><select data-sid="${s.id}">${opts}</select><span class="md" style="color:${m >= 60 ? 'var(--green)' : m >= 35 ? 'var(--ink)' : 'var(--red)'}">${m}</span>${warn}</div>`;
   }).join('');
-  const html = `<h3>Settlers (${g.settlers.length})<button class="x" data-act="close">&times;</button></h3><div class="jobsum">${sum}</div>${rows}`;
+  const html = `<h3>Settlers (${g.settlers.length})<button class="x" data-act="close">&times;</button></h3><div class="jobsum">${sum}</div><div class="rrow rhead"><span>Name · doing</span><span>Job</span><span>Mood</span><span></span></div>${rows}`;
   if (html === rosterHTML && !force) return;
   rosterHTML = html;
   patch(r, html);
@@ -619,7 +628,7 @@ let tutShownAt = 0;
 const STEPS: Step[] = [
   { text: () => 'Tap a settler to see what they need and change their job.', done: () => view.sel?.t === 's' },
   { text: () => 'Two settlers have no bed. Pick <b>Build ▸ Hut</b> and place it near the keep.', done: (g) => nb(g, 'hut') >= 2, glow: 'hut' },
-  { text: (g) => `Goblins come from the ${entryName(g)} tonight: follow the footprints and the red arrow. Pick <b>Defend ▸ Palisade</b> and drag a short line across their path.`, done: (g) => nb(g, 'wall') + nb(g, 'stonewall') >= 4, glow: 'wall' },
+  { text: (g) => `Goblins come from the ${entryName(g)} tonight along the red dashed trail. Pick <b>Defend ▸ Palisade</b> and drag a line across it near the keep (${Math.min(3, nb(g, 'wall') + nb(g, 'stonewall'))}/3). Goblins walk around short walls, so close the gap to the trees.`, done: (g) => nb(g, 'wall') + nb(g, 'stonewall') >= 3, glow: 'wall' },
   { text: () => 'When you’re ready, tap <b>End day</b> (or wait for sunset). Your archer mans the tower and militia hold the blue flag.', done: (g) => g.phase !== 'day', glow: 'phaseBtn' },
   { text: () => 'Night! Towers and guards fight on their own; you can still lay walls. Try <b>2x</b> or <b>3x</b> speed.', done: (g) => g.day >= 2 },
   { text: (g) => `Food lasts about ${foodDays(g).toFixed(0)} days. Make someone a <b>Forager</b> or <b>Fisher</b>, or build a second <b>Farm</b>.`, done: (g) => nb(g, 'farm') >= 2 || g.settlers.some((s) => s.job === 'forager' || s.job === 'fisher'), glow: 'farm' },
@@ -793,6 +802,7 @@ function start(game: Game) {
   barTab = 'build';
   centerOnKeep();
   for (const id of ['title', 'dawn', 'over', 'pause', 'trade', 'roster']) $(id).classList.remove('show');
+  g.floaters = [];
   document.body.classList.remove('intitle');
   demo = null;
   goalHTML = ''; tutShownAt = performance.now();
@@ -1000,6 +1010,8 @@ function handleEvents() {
     spawnFx(e);
     if (e.k === 'dusk') banner('DUSK', 'Guards to their posts.');
     if (e.k === 'horn') {
+      hideTip();
+      if (g.day <= 2 && g.wave.groups.length) { const en = g.entries[g.wave.groups[0].entry]; const kp = bld(g, g.keepId)!; view.cam.x = ((en.x + kp.x + 1.5) / 2) * TILE; view.cam.y = ((en.y + kp.y + 1.5) / 2) * TILE; clampCam(view); }
       const total = totalWave(g);
       banner(g.wave.kind === 'boss' ? 'BOSS NIGHT' : g.wave.kind === 'assault' ? 'ASSAULT!' : 'NIGHTFALL', `${total} goblins are coming.`, true);
       if (view.tool && !['wall', 'stonewall', 'trap', 'flag'].includes(view.tool)) clearTool();
@@ -1058,7 +1070,7 @@ function frame(now: number) {
     uiT -= real;
     if (uiT <= 0) {
       uiT = 0.2; refreshTop(); refreshBar(); renderCard(); refreshRoster(); refreshTrade(); refreshGoal();
-      if (!paused && g.phase !== 'dawn') { if (checkCharters(g).length) { buildBar(); refreshTop(); } }
+      if (g.phase !== 'dawn' && !g.over) { if (checkCharters(g).length) { buildBar(); refreshTop(); } }
       // gentle nudges
       if (g.phase === 'day' && dayLen(g) - g.phaseT <= 20 && nudged.dusk !== g.day) { nudged.dusk = g.day; showToast('The sun is setting. Last chance to lay walls.', 'warn'); sfx('dusk'); }
     }

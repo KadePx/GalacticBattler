@@ -88,6 +88,8 @@ export function promote(g: Game, s: Settler, id: string): string | null {
   s.hp = Math.max(1, Math.round(s.maxHp * f));
   emit('built', s.x, s.y);
   toast(`${s.name} is now a ${p.name.toLowerCase()}!`, 'good');
+  floater(g, s.x, s.y - 1.2, p.name.toUpperCase() + '!', '#ffd166');
+  emit('relic', s.x, s.y);
   return null;
 }
 
@@ -731,6 +733,12 @@ function runTask(g: Game, s: Settler, dt: number) {
   }
 }
 
+function summarise(list: string[]) {
+  const c = new Map<string, number>();
+  for (const k of list) c.set(k, (c.get(k) ?? 0) + 1);
+  return [...c].map(([k, n]) => (n > 1 ? `${n} ${k.toLowerCase()}s` : `a ${k.toLowerCase()}`)).join(', ');
+}
+
 function needsBreak(g: Game, s: Settler) {
   const n = s.needs;
   return (n.hunger < NEEDS.eatAt && g.res.food >= 1) || n.rest < NEEDS.sleepAt || n.warmth < NEEDS.warmAt;
@@ -913,6 +921,7 @@ function destroyBuilding(g: Game, b: Building, byGoblins: boolean) {
   assignHomes(g);
   if (byGoblins) {
     g.night.buildingsLost++;
+    (g.night.wrecked ??= []).push(BUILD[b.kind].name);
     if (b.kind !== 'trap') for (const s of g.settlers) s.needs.safety = Math.max(0, s.needs.safety - 8);
     emit('collapse', b.x + BUILD[b.kind].w / 2, b.y + BUILD[b.kind].h / 2);
     if (b.kind !== 'wall' && b.kind !== 'stonewall' && b.kind !== 'trap') toast(`The goblins wrecked a ${BUILD[b.kind].name.toLowerCase()}!`, 'bad');
@@ -1345,7 +1354,7 @@ function endNight(g: Game) {
   if (g.wave.omen && n.buildingsLost === 0) g.stats.omenClean = (g.stats.omenClean ?? 0) + 1;
   g.report = [];
   g.report.push(`Goblins slain: ${n.kills} (+${n.gold} gold)`);
-  g.report.push(`Night held: +${gold} gold${flawless ? ' (flawless bonus)' : ''}`);
+  g.report.push(`Night held: +${gold} gold${flawless ? ' (nobody lost: bonus)' : ''}`);
   if (n.lost.length) g.report.push(`Lost: ${n.lost.join(', ')}`);
   else g.report.push('Nobody was lost.');
   if (n.rescued.length) g.report.push(`Saved by the healer: ${n.rescued.join(', ')}`);
@@ -1353,7 +1362,7 @@ function endNight(g: Game) {
   if (hero && hero[1] >= 3) g.report.push(`Hero of the night: ${hero[0]}, with ${hero[1]} goblins slain`);
   const hurt = n.hurt.filter((h) => !n.lost.includes(h));
   if (hurt.length) g.report.push(`Hurt: ${hurt.join(', ')}`);
-  if (n.buildingsLost) g.report.push(`Structures wrecked: ${n.buildingsLost}`);
+  if (n.buildingsLost) g.report.push(`Wrecked: ${summarise(n.wrecked ?? [])}${(n.wrecked ?? []).some((k) => k === 'Hut' || k === 'Barracks') ? ' (fewer beds until rebuilt)' : ''}`);
   // spoils: blueprints and relics
   const missing = BLUEPRINTS.filter((b) => !g.blueprints.includes(b));
   if (missing.length && (g.wave.kind === 'boss' || rand(g) < (g.wave.kind === 'assault' ? 0.5 : 0.18))) {

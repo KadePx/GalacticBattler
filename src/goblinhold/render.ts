@@ -403,40 +403,34 @@ function drawRoutes(ctx: CanvasRenderingContext2D, g: Game, now: number) {
     routeCache.key = key;
     routeCache.paths = entries.map((e) => tracePath(g, g.entries[e].x, g.entries[e].y));
   }
-  // Still goblin footprints along tomorrow's route: faint by day, clearer at dusk, gone once the raid starts.
+  // A static dashed trail along tonight's route, with an arrow at the trailhead. Gone once the raid starts.
   if (g.phase === 'night') return;
-  ctx.globalAlpha = g.phase === 'dusk' ? 0.7 : 0.5;
-  ctx.fillStyle = '#3a1c10';
+  const dusk = g.phase === 'dusk';
   for (const p of routeCache.paths) {
-    for (let i = 1; i < p.length - 2; i++) {
-      const a = p[i], b = p[i + 1];
-      const ax = a % MAP_W, ay = Math.floor(a / MAP_W), bx = b % MAP_W, by = Math.floor(b / MAP_W);
-      const dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1;
-      const nx = -dy / l, ny = dx / l;
-      const side = i % 2 ? 1 : -1;
-      const cx = (ax + 0.5 + dx * 0.5) * TILE + nx * 2 * side, cy = (ay + 0.5 + dy * 0.5) * TILE + ny * 2 * side;
-      // a tiny three-toed print
-      const fx = Math.round(cx), fy = Math.round(cy);
-      ctx.fillRect(fx, fy, 2, 2);
-      ctx.fillRect(fx + Math.round(dx / l * 2 - ny), fy + Math.round(dy / l * 2 + nx), 1, 1);
-      ctx.fillRect(fx + Math.round(dx / l * 2 + ny), fy + Math.round(dy / l * 2 - nx), 1, 1);
-    }
-    // an arrow at the trailhead pointing into the map
-    if (p.length > 3) {
-      const a = p[1], b = p[3];
-      const ax = (a % MAP_W) + 0.5, ay = Math.floor(a / MAP_W) + 0.5, bx = (b % MAP_W) + 0.5, by = Math.floor(b / MAP_W) + 0.5;
+    const pts = p.map((i) => [(i % MAP_W + 0.5) * TILE, (Math.floor(i / MAP_W) + 0.5) * TILE]);
+    if (pts.length < 2) continue;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.setLineDash([5, 5]);
+    ctx.globalAlpha = dusk ? 0.85 : 0.55;
+    ctx.strokeStyle = '#3a120c'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ctx.strokeStyle = '#ff7a5a'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ctx.setLineDash([]);
+    // arrow at the trailhead, gently pulsing at dusk
+    if (pts.length > 3) {
+      const [ax, ay] = pts[1], [bx, by] = pts[3];
       const ang = Math.atan2(by - ay, bx - ax);
+      const sc = dusk ? 1.25 + Math.sin(now * 5) * 0.15 : 1.1;
       ctx.save();
-      ctx.globalAlpha = g.phase === 'dusk' ? 0.95 : 0.75;
-      ctx.translate(bx * TILE, by * TILE);
-      ctx.rotate(ang);
-      ctx.fillStyle = '#2b1d18'; ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-4, -6); ctx.lineTo(-1, 0); ctx.lineTo(-4, 6); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#e8584a'; ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(-3, -4); ctx.lineTo(-1, 0); ctx.lineTo(-3, 4); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 0.95;
+      ctx.translate(bx, by); ctx.rotate(ang); ctx.scale(sc, sc);
+      ctx.fillStyle = '#2b1d18'; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-5, -7); ctx.lineTo(-2, 0); ctx.lineTo(-5, 7); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ff5a45'; ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -5); ctx.lineTo(-1, 0); ctx.lineTo(-4, 5); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
   }
   ctx.globalAlpha = 1;
-  void now;
 }
 const routeCache = { v: -1, key: '', paths: [] as number[][] };
 
@@ -484,7 +478,10 @@ function drawBuilding(ctx: CanvasRenderingContext2D, g: Game, b: Building, sea: 
     ctx.stroke();
     progressBar(ctx, b);
   }
-  if (b.hitT > 0) { ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(px, py - 8, fw, fh + 8); }
+  if (b.hitT > 0 && b.kind !== 'wall' && b.kind !== 'stonewall') {
+    const s = bldSprite(b.kind, sea);
+    if (s) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35; ctx.drawImage(s, px + Math.round((fw - s.width) / 2), b.kind === 'flag' ? py + 2 : py + fh - baseline(s) + 1); ctx.restore(); }
+  }
 }
 
 function drawOccupant(ctx: CanvasRenderingContext2D, g: Game, b: Building, x: number, y: number, clipBottom?: number) {
@@ -498,15 +495,19 @@ function drawOccupant(ctx: CanvasRenderingContext2D, g: Game, b: Building, x: nu
 }
 
 function drawWall(ctx: CanvasRenderingContext2D, g: Game, b: Building, px: number, py: number) {
+  // Palisade: a row of sharpened logs. Runs along x show 3 stakes per tile, runs along y show a staggered pair,
+  // so a line of any direction reads as a solid fence.
   const isWall = (dx: number, dy: number) => bldAtTile(g, b.x + dx, b.y + dy)?.kind === 'wall';
   const stake = spr('stake', paintStake);
+  const h = isWall(1, 0) || isWall(-1, 0), v = isWall(0, 1) || isWall(0, -1);
+  shadow(ctx, px + 8, py + 14, 7);
   ctx.fillStyle = '#633f22';
   if (isWall(1, 0)) { ctx.fillRect(px + 8, py + 6, 9, 2); ctx.fillRect(px + 8, py + 10, 9, 2); }
-  if (isWall(0, 1)) ctx.fillRect(px + 7, py + 10, 2, 12);
-  shadow(ctx, px + 8, py + 14, 6);
-  const stakes = isWall(1, 0) || isWall(-1, 0) ? [1, 6, 11] : [6];
-  for (const sx of stakes) ctx.drawImage(stake, px + sx - 1, py + 3);
-  if (isWall(0, 1)) ctx.drawImage(stake, px + 5, py + 9);
+  if (isWall(0, 1)) { ctx.fillRect(px + 4, py + 9, 2, 16); ctx.fillRect(px + 10, py + 9, 2, 16); }
+  const cols = h || !v ? [1, 6, 11] : [2, 8];
+  for (const sx of cols) ctx.drawImage(stake, px + sx - 1, py + 1);
+  if (v) for (const sx of [5, 11]) ctx.drawImage(stake, px + sx - 1, py + 7);
+  if ((b.level ?? 0) > 0) { ctx.fillStyle = '#cfd4da'; for (const sx of cols) ctx.fillRect(px + sx, py + 6, 1, 1); }
 }
 
 function drawStoneWall(ctx: CanvasRenderingContext2D, g: Game, b: Building, sea: Season, px: number, py: number) {
@@ -514,7 +515,7 @@ function drawStoneWall(ctx: CanvasRenderingContext2D, g: Game, b: Building, sea:
   const isWall = (dx: number, dy: number) => bldAtTile(g, b.x + dx, b.y + dy)?.kind === 'stonewall';
   const top = sea === 'winter' ? '#eef3f6' : '#cbc3b4', face = '#b8b0a2', dark = '#968e82', line = '#726b62', out = '#2b1d18';
   const n = isWall(0, -1), s = isWall(0, 1), w = isWall(-1, 0), e = isWall(1, 0);
-  const x0 = w ? px : px + 2, x1 = e ? px + 16 : px + 14;
+  const x0 = w ? px : px + 1, x1 = e ? px + 16 : px + 15;
   const yTop = n ? py : py + 1;
   const yFace = py + 9;
   shadow(ctx, px + 8, py + 15, 7);

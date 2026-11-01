@@ -493,7 +493,7 @@ export function paintFarm(stage: number, season: Season): Spr {
     const py = 4 + r * 7;
     R(2, py + 2, 44, 3, winter ? '#b0bac2' : '#5e4026');
     R(2, py + 2, 44, 1, winter ? '#dfe6ea' : '#8a6440');
-    if (winter) continue;
+    if (winter) { for (let i = 0; i < 11; i++) if ((i + r) % 2) R(3 + i * 4, py + 1, 1, 2, '#9a8a6a'); continue; }
     for (let i = 0; i < 11; i++) {
       const px = 3 + i * 4;
       if (stage === 0) { R(px + 1, py + 2, 1, 1, '#8ac050'); }
