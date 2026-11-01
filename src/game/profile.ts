@@ -78,6 +78,28 @@ export function saveProfile(p: Profile) {
   write(KEY, p);
 }
 
+/**
+ * A profile that came from somewhere else (a device link), rebuilt field by field so a bad
+ * or old one can't break the game. Unknown commanders are dropped. Null if it isn't a profile.
+ */
+export function cleanProfile(raw: unknown): Profile | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+  const out = blank();
+  out.xp = num(r.xp);
+  out.runs = num(r.runs);
+  if (typeof r.last === 'string' && CMD_MAP[r.last]) out.last = r.last;
+  if (r.bestEndless !== undefined) out.bestEndless = num(r.bestEndless);
+  const cmds = r.cmd && typeof r.cmd === 'object' ? (r.cmd as Record<string, unknown>) : {};
+  for (const [id, v] of Object.entries(cmds)) {
+    if (!CMD_MAP[id] || !v || typeof v !== 'object') continue;
+    const c = v as Record<string, unknown>;
+    out.cmd[id] = { xp: num(c.xp), p: c.p === 'b' ? 'b' : 'a', starter: c.starter === true, skin: c.skin === true };
+  }
+  return out;
+}
+
 export function progress(p: Profile, id: string): CmdProgress {
   if (!p.cmd[id]) p.cmd[id] = { xp: 0, p: 'a', starter: false, skin: false };
   return p.cmd[id];

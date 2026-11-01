@@ -9,9 +9,11 @@ export interface SideReport {
   healed: number;
   blocked: number; // enemy hits this side's shields stopped
   dodged: number; // enemy hits that missed this side
+  jams: number; // jams this side landed on the enemy
   lost: number; // ships this side lost
   top: { name: string; dmg: number }[]; // best damage dealers, most first
-  firstLoss?: { name: string; tick: number; by: string };
+  /** `when` is a plain word (early / mid-fight / late), since ticks mean nothing to players. */
+  firstLoss?: { name: string; tick: number; when: string; by: string };
 }
 
 export interface BattleReport {
@@ -20,6 +22,9 @@ export interface BattleReport {
 }
 
 const nameOf = (u: BUnit | undefined) => (u ? SHIPS[u.def]?.name ?? u.def : 'Unknown');
+/** Ships lost by this tick count as lost early (about two seconds at 1X). */
+const EARLY_TICK = 12;
+const whenOf = (tick: number) => (tick <= EARLY_TICK ? 'early' : tick <= 60 ? 'mid-fight' : 'late');
 
 export function buildReport(res: BattleResult): BattleReport {
   const units = new Map<number, BUnit>(res.units.map((u) => [u.uid, u]));
@@ -27,7 +32,7 @@ export function buildReport(res: BattleResult): BattleReport {
   const dealt = new Map<number, number>(); // by unit uid
   const burnDealt = [0, 0]; // burn damage credited to the side that set the fire
   const lastHitBy = new Map<number, string>();
-  const blank = (): SideReport => ({ damage: 0, healed: 0, blocked: 0, dodged: 0, lost: 0, top: [] });
+  const blank = (): SideReport => ({ damage: 0, healed: 0, blocked: 0, dodged: 0, jams: 0, lost: 0, top: [] });
   const sides: [SideReport, SideReport] = [blank(), blank()];
 
   for (const e of res.events) {
@@ -46,11 +51,16 @@ export function buildReport(res: BattleResult): BattleReport {
         sides[1 - d.side].damage += loss;
         if (e.burn) {
           burnDealt[1 - d.side] += loss;
-          lastHitBy.set(e.d, 'burning');
+          lastHitBy.set(e.d, 'burn damage');
         } else {
           dealt.set(e.s, (dealt.get(e.s) ?? 0) + loss);
           lastHitBy.set(e.d, nameOf(units.get(e.s)));
         }
+        break;
+      }
+      case 'jam': {
+        const s = units.get(e.s);
+        if (s) sides[s.side].jams++;
         break;
       }
       case 'heal': {
@@ -71,7 +81,7 @@ export function buildReport(res: BattleResult): BattleReport {
         if (!u) break;
         const s = sides[u.side];
         s.lost++;
-        if (!s.firstLoss) s.firstLoss = { name: nameOf(u), tick: e.t, by: lastHitBy.get(e.u) ?? 'unknown' };
+        if (!s.firstLoss) s.firstLoss = { name: nameOf(u), tick: e.t, when: whenOf(e.t), by: lastHitBy.get(e.u) ?? 'unknown' };
         break;
       }
     }
@@ -103,6 +113,6 @@ function headline([me, them]: [SideReport, SideReport], winner: 0 | 1 | -1): str
   if (ace && pct(ace.dmg, them.damage) >= 45) return `Their ${ace.name} did ${pct(ace.dmg, them.damage)}% of their damage.`;
   if (them.healed >= Math.max(10, me.damage * 0.3)) return `They healed ${them.healed}, outlasting your ${me.damage} damage.`;
   if (them.blocked >= 3 && them.blocked > me.blocked) return `Their shields blocked ${them.blocked} of your hits.`;
-  if (me.firstLoss && me.firstLoss.tick <= 12) return `Your ${me.firstLoss.name} fell early (to ${me.firstLoss.by}).`;
+  if (me.firstLoss && me.firstLoss.tick <= EARLY_TICK) return `Your ${me.firstLoss.name} fell early (to ${me.firstLoss.by}).`;
   return `You dealt ${me.damage} damage but took ${them.damage}.`;
 }

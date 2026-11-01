@@ -50,6 +50,42 @@ export function getPilot(): Pilot {
   return pilot;
 }
 
+// ---------- device link ----------
+
+/** POST that returns the server's JSON either way, so error messages can be shown. */
+async function postForAnswer<T>(url: string, body: unknown): Promise<T | { error: string }> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS * 2);
+  try {
+    const res = await fetch(url, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal,
+    });
+    const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+    if (!res.ok || !data) return { error: data?.error ?? 'server unavailable' };
+    return data;
+  } catch {
+    return { error: 'offline: check your connection' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Make a 5-digit code another device can use to become this pilot (with this progress). */
+export function createLinkCode(profile: unknown) {
+  const pilot = getPilot();
+  return postForAnswer<{ code: string; expires: number }>('/api/link', { action: 'create', player: pilot.id, name: pilot.name, profile });
+}
+
+/** Trade a code for the linked pilot's id, callsign and progress. Nothing is saved here. */
+export function claimLinkCode(code: string) {
+  return postForAnswer<{ player: string; name: string; profile: unknown }>('/api/link', { action: 'claim', code });
+}
+
+/** Become another pilot (after a device link): same id and callsign from now on. */
+export function adoptPilot(id: string, name: string) {
+  write(PILOT_KEY, { id, name });
+}
+
 export function setCallsign(name: string) {
   const pilot = { ...getPilot(), name };
   write(PILOT_KEY, pilot);

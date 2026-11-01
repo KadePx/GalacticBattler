@@ -3,9 +3,9 @@ import { SHIP_RES, addStarfield, portraitKey, setPlayerSkin, shipKey } from '../
 import { audio } from '../game/audio';
 import { detailTerms, drawDetail, drawTerms, type Detail } from '../game/details';
 import { TERMS } from '../game/glossary';
-import { getProfile, isUnlocked } from '../game/profile';
+import { CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, cmdLevel, getProfile, isUnlocked, progress } from '../game/profile';
 import { soundButton } from '../game/soundPanel';
-import { C, TIER_COLORS, button, panel, relicChip, txt } from '../game/ui';
+import { C, TIER_COLORS, button, panel, relicChip, tierTag, txt } from '../game/ui';
 import { COMMANDERS, CMD_MAP } from '../sim/commanders';
 import { BOSS_RELICS, RELICS } from '../sim/relics';
 import { REWARDS } from '../game/rewards';
@@ -27,7 +27,7 @@ const SHIP_LIST = [...Object.values(SHIPS).filter((s) => s.tier > 0).sort((a, b)
 const LIST = { x: 6, y: 48, w: 184, h: 216 };
 const DETAIL = { x: 196, y: 48, w: 278, h: 216 };
 const TERMS_PER_PAGE = 10;
-const RELICS_PER_PAGE = 18;
+const RELICS_PER_PAGE = 10;
 // Relics, then the one-time bonus cards.
 const RELIC_ROWS = [...RELICS, ...BOSS_RELICS, ...REWARDS];
 
@@ -77,7 +77,11 @@ export class ArchiveScene extends Phaser.Scene {
     }
 
     if (this.tab === 'ships') this.shipGrid();
-    else if (this.tab === 'synergy') this.list(TRAITS.map((t) => ({ id: t.id, label: t.name, color: t.color })));
+    else if (this.tab === 'synergy') {
+      // Classes, then the factions under a divider (as in the shop).
+      const order = [...TRAITS.filter((t) => !t.faction), ...TRAITS.filter((t) => t.faction)];
+      this.list(order.map((t) => ({ id: t.id, label: t.name, color: t.color })), 20, TRAITS.filter((t) => !t.faction).length);
+    }
     else if (this.tab === 'relics') this.relicList();
     else if (this.tab === 'cmdrs') this.commanderList();
     else this.termList();
@@ -104,15 +108,16 @@ export class ArchiveScene extends Phaser.Scene {
       const box = this.add2(this.add.rectangle(x, y, cw - 4, ch - 4, sel ? 0x1f2c66 : 0x0b1026).setStrokeStyle(sel ? 2 : 1, sel ? C.highlight : tc));
       const img = this.add2(this.add.image(x, y + 2, shipKey(s.id, 0)));
       img.setScale(Math.min(2 / SHIP_RES, (cw - 6) / img.width));
-      this.add2(txt(this, x - cw / 2 + 3, y - ch / 2 + 3, s.tier === 4 ? 'P' : s.tier ? `${s.tier}` : 'F', { color: `#${tc.toString(16).padStart(6, '0')}` }).setStroke('#05060f', 2));
+      this.add2(txt(this, x - cw / 2 + 3, y - ch / 2 + 3, s.tier ? tierTag(s.tier) : 'F', { color: `#${tc.toString(16).padStart(6, '0')}` }).setStroke('#05060f', 2));
       box.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(s.id));
     });
   }
 
-  /** A simple selectable column of labels. */
-  private list(items: { id: string; label: string; color: string }[], rowH = 20) {
+  /** A simple selectable column of labels; `split` puts a divider before that row. */
+  private list(items: { id: string; label: string; color: string }[], rowH = 20, split = -1) {
+    if (split > 0) this.add2(this.add.rectangle(LIST.x + LIST.w / 2, LIST.y + split * rowH + 1, LIST.w - 8, 1, 0x3a4a7a));
     items.forEach((it, i) => {
-      const y = LIST.y + i * rowH;
+      const y = LIST.y + i * rowH + (split > 0 && i >= split ? 6 : 0);
       const sel = this.pick[this.tab] === it.id;
       const r = this.add2(this.add.rectangle(LIST.x + LIST.w / 2, y + rowH / 2, LIST.w, rowH - 3, sel ? 0x1f2c66 : 0x0b1026)
         .setStrokeStyle(1, sel ? C.highlight : 0x262e50));
@@ -122,19 +127,19 @@ export class ArchiveScene extends Phaser.Scene {
   }
 
   private relicList() {
-    const rowH = 10.5;
+    const rowH = 20;
     const pages = Math.ceil(RELIC_ROWS.length / RELICS_PER_PAGE);
     this.relicPage = Math.min(this.relicPage, pages - 1);
     this.pager(pages, this.relicPage, (p) => { this.relicPage = p; });
     RELIC_ROWS.slice(this.relicPage * RELICS_PER_PAGE, (this.relicPage + 1) * RELICS_PER_PAGE).forEach((r, i) => {
       const y = LIST.y + i * rowH;
       const sel = this.pick.relics === r.id;
-      const row = this.add2(this.add.rectangle(LIST.x + LIST.w / 2, y + rowH / 2, LIST.w, rowH - 2, sel ? 0x1f2c66 : 0x0b1026)
-        .setStrokeStyle(1, sel ? C.highlight : 0x1d2444));
-      const chip = relicChip(this, LIST.x + 8, y + rowH / 2, r.id, 8);
+      const row = this.add2(this.add.rectangle(LIST.x + LIST.w / 2, y + rowH / 2, LIST.w, rowH - 3, sel ? 0x1f2c66 : 0x0b1026)
+        .setStrokeStyle(1, sel ? C.highlight : 0x262e50));
+      const chip = relicChip(this, LIST.x + 10, y + rowH / 2, r.id, 12);
       this.add2(chip.bg);
       this.add2(chip.t);
-      this.add2(txt(this, LIST.x + 18, y + 2, r.name.toUpperCase(), { color: sel ? C.gold : r.id.startsWith('x:') ? '#e0c8ff' : C.text }));
+      this.add2(txt(this, LIST.x + 22, y + rowH / 2 - 3, r.name.toUpperCase(), { color: sel ? C.gold : r.id.startsWith('x:') ? '#e0c8ff' : C.text }));
       row.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(r.id));
     });
   }
@@ -151,8 +156,11 @@ export class ArchiveScene extends Phaser.Scene {
       const row = this.add2(this.add.rectangle(LIST.x + LIST.w / 2, y + rowH / 2, LIST.w, rowH, sel ? 0x1f2c66 : 0x0b1026)
         .setStrokeStyle(1, sel ? C.highlight : 0x262e50));
       this.add2(this.add.image(LIST.x + 12, y + rowH / 2, portraitKey(c.id, !open)).setScale(1));
-      this.add2(txt(this, LIST.x + 26, y + rowH / 2 - 3, c.name.toUpperCase(), { color: open ? c.color : C.dim }));
-      this.add2(txt(this, LIST.x + LIST.w - 6, y + rowH / 2 - 3, open ? 'OPEN' : `RANK ${c.rank}`, { origin: [1, 0], color: open ? C.faint : C.bad }));
+      this.add2(txt(this, LIST.x + 26, y + rowH / 2 - 3, c.name.toUpperCase(), { color: open ? c.color : C.faint }));
+      const lvl = cmdLevel(progress(p, c.id).xp);
+      this.add2(txt(this, LIST.x + LIST.w - 6, y + rowH / 2 - 3, open ? `CMDR LV${lvl}` : `RANK ${c.rank}`, {
+        origin: [1, 0], color: open ? (lvl >= CMD_MAX_LEVEL ? C.gold : C.dim) : C.bad,
+      }));
       row.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(c.id));
     });
   }
@@ -219,11 +227,27 @@ export class ArchiveScene extends Phaser.Scene {
     let cy = drawDetail(this, add, d, ix, y + 6, iw);
     if (this.tab === 'cmdrs') {
       const c = CMD_MAP[this.pick.cmdrs];
-      const locked = !isUnlocked(getProfile(), c.id);
-      const extra = this.add2(txt(this, ix, cy + 2, locked ? `Unlocks at pilot rank ${c.rank}.` : `Level up to unlock passive 2 (LV3).`, {
-        color: locked ? C.bad : C.faint, wrap: iw,
-      }));
-      cy = extra.y + extra.height + 2;
+      const p = getProfile();
+      const locked = !isUnlocked(p, c.id);
+      const xp = progress(p, c.id).xp;
+      const lvl = locked ? 0 : cmdLevel(xp);
+      cy += 4; // a little air after the power text
+      if (locked) {
+        this.add2(txt(this, ix, cy, `UNLOCKS AT PILOT RANK ${c.rank}`, { color: C.bad }));
+      } else {
+        const next = lvl < CMD_MAX_LEVEL ? CMD_LEVEL_XP[lvl] : null;
+        this.add2(txt(this, ix, cy, `CMDR LV ${lvl}`, { color: C.gold }));
+        this.add2(txt(this, ix + iw, cy, next ? `${xp}/${next} XP` : 'MAX LEVEL', { origin: [1, 0], color: C.dim }));
+      }
+      cy += 12;
+      // What each commander level unlocks: DONE once reached.
+      for (const u of UNLOCKS) {
+        const done = lvl >= u.level;
+        this.add2(txt(this, ix, cy, `LV${u.level}: ${u.text.toUpperCase()}`, { color: done ? C.text : C.faint }));
+        if (done) this.add2(txt(this, ix + iw, cy, 'DONE', { origin: [1, 0], color: C.hp }));
+        cy += 10;
+      }
+      cy += 2;
     }
 
     const terms = detailTerms(d);

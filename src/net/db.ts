@@ -51,6 +51,13 @@ export async function ensureSchema(db: D1) {
     )`),
     db.prepare('CREATE INDEX IF NOT EXISTS runs_ver ON runs (ver, created)'),
     db.prepare('CREATE INDEX IF NOT EXISTS runs_player ON runs (player, created)'),
+    // Device link codes: 5 digits, single use, expire after a few minutes.
+    db.prepare(`CREATE TABLE IF NOT EXISTS links (
+      code TEXT PRIMARY KEY, player TEXT NOT NULL, name TEXT NOT NULL, profile TEXT NOT NULL, created INTEGER NOT NULL
+    )`),
+    // Claim attempts per network address, so codes can't be guessed by trying them all.
+    db.prepare('CREATE TABLE IF NOT EXISTS link_tries (ip TEXT NOT NULL, created INTEGER NOT NULL)'),
+    db.prepare('CREATE INDEX IF NOT EXISTS link_tries_ip ON link_tries (ip, created)'),
   ]);
   // Columns added after launch (fails harmlessly once they exist).
   try { await db.prepare('ALTER TABLE daily ADD COLUMN relics TEXT').run(); } catch { /* already there */ }

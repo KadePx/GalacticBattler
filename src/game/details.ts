@@ -6,15 +6,16 @@ import Phaser from 'phaser';
 import { CMD_MAP } from '../sim/commanders';
 import { RELIC_MAP } from '../sim/relics';
 import { REWARD_MAP } from './rewards';
-import { SHIPS, levelOf, type ShipClass, type ShipDef } from '../sim/ships';
+import { SHIPS, levelOf, xpForNext, type ShipClass, type ShipDef } from '../sim/ships';
 import { TRAIT_MAP } from '../sim/traits';
 import type { FleetShip } from '../sim/types';
 import { SHIP_RES, shipKey } from './art';
-import { termsIn, type Term } from './glossary';
+import { TERMS, termsIn, type Term } from './glossary';
 import { C, TIER_COLORS, button, panel, relicChip, txt } from './ui';
 
 export type Detail =
-  | { def: ShipDef; ship?: FleetShip }
+  /** `boosts`: what lifts this fleet ship in battle, one short line each (the shop passes it). */
+  | { def: ShipDef; ship?: FleetShip; boosts?: string[] }
   | { relic: string }
   | { trait: ShipClass; count?: number }
   | { cmd: string; passive?: 'a' | 'b' };
@@ -31,17 +32,23 @@ export function detailText(d: Detail): string[] {
   return [c.passives.a.desc, c.passives.b.desc, c.power.desc];
 }
 
-export const detailTerms = (d: Detail) => termsIn(...detailText(d));
+/** Terms a detail uses; ship cards always end with TICK and MERGE / LEVEL. */
+export function detailTerms(d: Detail): Term[] {
+  const found = termsIn(...detailText(d));
+  if (!('def' in d) || d.def.tier <= 0) return found;
+  const always = ['tick', 'merge'].map((id) => TERMS.find((t) => t.id === id)).filter((t): t is Term => !!t);
+  return [...found.filter((t) => !always.includes(t)), ...always];
+}
 
 /** Draw a detail card at (x, y), `w` wide. Returns the y just below it. */
 export function drawDetail(scene: Phaser.Scene, add: Add, d: Detail, x: number, y: number, w: number): number {
-  if ('def' in d) return drawShip(scene, add, d.def, d.ship, x, y, w);
+  if ('def' in d) return drawShip(scene, add, d.def, d.ship, x, y, w, d.boosts);
   if ('relic' in d) return drawRelic(scene, add, d.relic, x, y, w);
   if ('trait' in d) return drawTrait(scene, add, d.trait, d.count, x, y, w);
   return drawCommander(scene, add, d.cmd, d.passive, x, y, w);
 }
 
-function drawShip(scene: Phaser.Scene, add: Add, def: ShipDef, ship: FleetShip | undefined, x: number, y: number, w: number) {
+function drawShip(scene: Phaser.Scene, add: Add, def: ShipDef, ship: FleetShip | undefined, x: number, y: number, w: number, boosts?: string[]) {
   const tc = TIER_COLORS[def.tier] ?? 0x8a94b8;
   add(scene.add.rectangle(x + 18, y + 16, 36, 30, 0x05060f).setStrokeStyle(1, tc));
   const im = add(scene.add.image(x + 18, y + 16, shipKey(def.id, 0)));
@@ -75,8 +82,24 @@ function drawShip(scene: Phaser.Scene, add: Add, def: ShipDef, ship: FleetShip |
       const pt = add(txt(scene, x + 32, cy, p, { wrap: w - 32, color: on ? C.gold : C.text }));
       cy += Math.max(label.height, pt.height) + 4;
     });
-    const note = add(txt(scene, x, cy, ship ? `This ship: level ${lvl}` : def.tier === 4 ? 'Prototype: only from rare rewards.' : 'Merge copies to reach LV2 / LV3.', { color: C.faint, wrap: w }));
+    const next = ship ? xpForNext(ship.xp) : null;
+    const note = add(txt(scene, x, cy, ship
+      ? (next ? `XP ${ship.xp}/${next}. Merge copies to level up.` : `LV${lvl}: max level.`)
+      : def.tier === 4 ? 'Prototype: only from rare rewards.' : 'Merge copies to reach LV2 / LV3.', { color: C.faint, wrap: w }));
     cy += note.height + 2;
+  }
+  if (boosts) {
+    // What lifts it in battle right now (ships, relics, commander), as the shop lights them up.
+    cy += 4;
+    add(txt(scene, x, cy, 'BOOSTED BY', { color: C.cyan }));
+    cy += 11;
+    const shown = boosts.slice(0, 4);
+    if (!shown.length) shown.push('Nothing yet.');
+    else if (boosts.length > 4) shown.push(`+${boosts.length - 4} more`);
+    for (const b of shown) {
+      const t = add(txt(scene, x, cy, b, { wrap: w, color: C.text }));
+      cy += t.height + 2;
+    }
   }
   return cy;
 }
@@ -100,8 +123,13 @@ function drawRelic(scene: Phaser.Scene, add: Add, id: string, x: number, y: numb
 function drawTrait(scene: Phaser.Scene, add: Add, id: ShipClass, count: number | undefined, x: number, y: number, w: number) {
   const tr = TRAIT_MAP[id];
   add(txt(scene, x, y + 2, `${tr.name} SYNERGY`, { color: tr.color }));
-  if (count !== undefined) add(txt(scene, x + w, y + 2, `YOU HAVE ${count}`, { origin: [1, 0], color: C.dim }));
   let cy = y + 16;
+  if (count !== undefined) {
+    // Same wording as the shop strip.
+    const next = tr.tiers.find((t) => count < t.n)?.n;
+    add(txt(scene, x, cy, next ? `HAVE ${count} / NEXT ${next}` : 'MAXED', { color: next ? C.dim : C.gold }));
+    cy += 14;
+  }
   const intro = add(txt(scene, x, cy, tr.faction ? 'A faction. Each different ship counts once; banners add one.' : 'Each different ship of this class counts once.', { wrap: w, color: C.dim }));
   cy += intro.height + 6;
   for (const tier of tr.tiers) {
@@ -130,14 +158,14 @@ function drawCommander(scene: Phaser.Scene, add: Add, id: string, passive: 'a' |
   for (const slot of ['a', 'b'] as const) {
     const p = c.passives[slot];
     const active = passive === slot;
-    const head = add(txt(scene, x, cy, `${slot === 'a' ? 'PASSIVE' : 'PASSIVE 2 (LV3)'}: ${p.name}`, {
+    const head = add(txt(scene, x, cy, `${slot === 'a' ? 'PASSIVE' : 'ALT PASSIVE (CMDR LV3)'}: ${p.name}`, {
       color: passive === undefined || active ? C.gold : C.dim, wrap: w,
     }));
     cy += head.height + 2;
     const d = add(txt(scene, x, cy, p.desc + (active ? '  (in use)' : ''), { wrap: w, color: passive === undefined || active ? C.text : C.dim }));
     cy += d.height + 6;
   }
-  const ph = add(txt(scene, x, cy, `POWER: ${c.power.name} (${c.power.cost} SCRAP, ONCE A ROUND)`, { color: C.gold, wrap: w }));
+  const ph = add(txt(scene, x, cy, `POWER: ${c.power.name} (${c.power.cost ? `${c.power.cost} SCRAP` : 'FREE'}, ONCE A ROUND)`, { color: C.gold, wrap: w }));
   cy += ph.height + 2;
   const pd = add(txt(scene, x, cy, c.power.desc, { wrap: w }));
   return pd.y + pd.height + 4;
@@ -186,7 +214,8 @@ export function openDetails(scene: Phaser.Scene, d: Detail, onClose?: () => void
   add(scene.add.rectangle(236, 135, 1, 210, 0x262e50));
   const terms = detailTerms(d);
   add(txt(scene, 248, 28, terms.length ? 'WHAT THESE MEAN' : 'NO SPECIAL TERMS', { color: C.dim }));
-  const left = drawTerms(scene, add, terms, 248, 44, 204, 222);
-  if (left > 0) add(txt(scene, 248, 226, `+${left} more in the Fleet Archive`, { color: C.faint }));
+  // Leave room for the overflow note above CLOSE (which starts at y=229).
+  const left = drawTerms(scene, add, terms, 248, 44, 204, 210);
+  if (left > 0) add(txt(scene, 248, 214, `+${left} more: see Archive`, { color: C.faint }));
   button(scene, 404, 238, 80, 18, 'CLOSE', close, { fill: 0x3a2a10, color: C.gold }).objects.forEach((o) => add(o));
 }

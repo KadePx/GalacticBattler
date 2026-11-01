@@ -3,7 +3,8 @@ import { addShip, addStarfield, setPlayerSkin } from '../game/art';
 import { relicFit, type RelicFit } from '../game/relicFit';
 import { START_LIVES, chooseRelic, winsLabel, type Run } from '../game/run';
 import { getRun, saveRun } from '../game/storage';
-import { C, TIER_COLORS, tierTag, button, historyPips, panel, relicChip, txt } from '../game/ui';
+import { C, TIER_COLORS, tierTag, button, historyPips, levelStars, panel, relicChip, shieldPips, tapZone, txt } from '../game/ui';
+import { fleetBattleStats } from '../game/combos';
 import { CMD_MAP } from '../sim/commanders';
 import { audio } from '../game/audio';
 import { RELIC_MAP, count } from '../sim/relics';
@@ -17,6 +18,73 @@ const CARD_X = (i: number) => 86 + i * 154; // centres
 const FLEET_Y = 222;
 const SHIP_X = (i: number) => 296 - i * 46; // front (slot 0) on the right, like the shop
 
+/**
+ * Owned relic chips are just letters, so one generous tap/hover area over them shows the
+ * nearest chip's name and description in a small box (phones have no hover). The box
+ * sits above `bottom` (or below `top`). Returns the hit area and a hide function.
+ */
+export function relicTips(
+  scene: Phaser.Scene, chips: { id: string; x: number; y: number; size: number }[],
+  area: { x: number; y: number; w: number; h: number }, box: { x: number; w: number; top?: number; bottom?: number },
+) {
+  let tip: Phaser.GameObjects.GameObject[] = [];
+  let shown = -1;
+  let timer: Phaser.Time.TimerEvent | null = null;
+  const hide = () => {
+    tip.forEach((o) => o.destroy());
+    tip = [];
+    shown = -1;
+    timer?.remove();
+    timer = null;
+  };
+  const show = (k: number) => {
+    if (k === shown) return;
+    hide();
+    shown = k;
+    const ch = chips[k];
+    const r = RELIC_MAP[ch.id] ?? REWARD_MAP[ch.id];
+    if (!r) return;
+    const col = `#${r.color.toString(16).padStart(6, '0')}`;
+    const owned = count(chips.map((c) => c.id), ch.id);
+    const name = txt(scene, box.x + 6, 0, owned > 1 ? `${r.name.toUpperCase()} x${owned}` : r.name.toUpperCase(), { color: col });
+    const desc = txt(scene, box.x + 6, 0, r.desc, { wrap: box.w - 12 });
+    const h = name.height + desc.height + 13;
+    const top = box.top ?? (box.bottom ?? 0) - h;
+    name.setY(top + 5);
+    desc.setY(top + 8 + name.height);
+    const bg = panel(scene, box.x, top, box.w, h, 0x05060f, r.color);
+    const mark = scene.add.rectangle(ch.x, ch.y, ch.size + 4, ch.size + 4).setStrokeStyle(1, C.highlight);
+    bg.setDepth(900);
+    name.setDepth(901);
+    desc.setDepth(901);
+    mark.setDepth(901);
+    // The box covers the cards: it swallows the tap that closes it, so no card gets picked.
+    const shield = scene.add.rectangle(box.x + box.w / 2, top + h / 2, box.w, h, 0xffffff, 0.001).setDepth(902).setInteractive();
+    shield.on('pointerup', hide);
+    tip = [bg, name, desc, mark, shield];
+  };
+  const nearest = (p: Phaser.Input.Pointer) => {
+    let best = 0;
+    let bd = Infinity;
+    chips.forEach((c, k) => {
+      const d = (c.x - p.x) ** 2 + (c.y - p.y) ** 2;
+      if (d < bd) { bd = d; best = k; }
+    });
+    return best;
+  };
+  const zone = tapZone(scene, area.x + area.w / 2, area.y + area.h / 2, area.w, area.h);
+  if (!chips.length) zone.disableInteractive();
+  zone.on('pointermove', (p: Phaser.Input.Pointer) => { if (!p.wasTouch) show(nearest(p)); });
+  zone.on('pointerout', (p: Phaser.Input.Pointer) => { if (!p.wasTouch) hide(); });
+  zone.on('pointerup', (p: Phaser.Input.Pointer) => {
+    const k = nearest(p);
+    if (p.wasTouch && k === shown) return hide(); // tap the same chip again to close
+    show(k);
+    if (p.wasTouch) timer = scene.time.delayedCall(3500, hide);
+  });
+  return { zone, hide };
+}
+
 const FIT_COLOR: Record<RelicFit['kind'], string> = { combo: C.hp, all: C.cyan, econ: C.gold, none: C.bad };
 
 export class RelicScene extends Phaser.Scene {
@@ -24,6 +92,7 @@ export class RelicScene extends Phaser.Scene {
   private picked: string | null = null;
   private focus: string | null = null; // hovered card (mouse)
   private layer!: Phaser.GameObjects.Container;
+  private hideTip: (() => void) | null = null;
 
   constructor() {
     super('relic');
@@ -52,6 +121,8 @@ export class RelicScene extends Phaser.Scene {
 
   private refresh() {
     this.tweens.killTweensOf(this.layer.list); // engine flames loop forever otherwise
+    this.hideTip?.();
+    this.hideTip = null;
     this.layer.removeAll(true);
     const run = this.run;
 
@@ -73,7 +144,7 @@ export class RelicScene extends Phaser.Scene {
     this.fleetStrip();
 
     const pickedName = this.picked ? (RELIC_MAP[this.picked] ?? REWARD_MAP[this.picked]).name.toUpperCase() : '';
-    const b = button(this, 240, 257, 220, 18, this.picked ? `TAKE ${pickedName}` : anySpecial ? 'CHOOSE A REWARD' : 'CHOOSE A RELIC', () => this.confirm(), {
+    const b = button(this, 240, 257, 220, 20, this.picked ? `TAKE ${pickedName}` : anySpecial ? 'CHOOSE A REWARD' : 'CHOOSE A RELIC', () => this.confirm(), {
       fill: 0x3a2a10, color: C.gold, disabled: !this.picked,
     });
     b.objects.forEach((o) => this.add2(o));
@@ -103,14 +174,24 @@ export class RelicScene extends Phaser.Scene {
     this.add2(chip.t);
     // Long names wrap to two lines, so the description goes under whatever height the name took.
     const name = this.add2(txt(this, cx, y + 37, r.name.toUpperCase(), { origin: [0.5, 0], color: C.gold, wrap: w - 10, align: 'center' }));
-    this.add2(txt(this, cx, name.y + name.height + 3, r.desc, { origin: [0.5, 0], wrap: w - 12, align: 'center' }));
-    // Fit note pinned to the bottom of the card (at most two lines).
-    this.add2(this.add.rectangle(cx, y + h - 27, w - 12, 1, 0x262e50));
-    this.add2(txt(this, cx, y + h - 4, fit.note, { origin: [0.5, 1], color: FIT_COLOR[fit.kind], wrap: w - 10, align: 'center' }));
+    const desc = this.add2(txt(this, cx, name.y + name.height + 3, r.desc, { origin: [0.5, 0], wrap: w - 12, align: 'center' }));
+    // Fit note pinned to the bottom of the card (at most two lines), under a divider.
+    const note = this.add2(txt(this, cx, y + h - 4, fit.note, { origin: [0.5, 1], color: FIT_COLOR[fit.kind], wrap: w - 10, align: 'center' }));
+    const divY = Math.min(y + h - 27, note.y - note.height - 3);
+    this.add2(this.add.rectangle(cx, divY, w - 12, 1, 0x262e50));
+    // A long name plus a long description can reach the divider: tighten, then lift the text.
+    if (desc.y + desc.height > divY - 2) desc.setLineSpacing(1);
+    const over = desc.y + desc.height - (divY - 2);
+    if (over > 0) {
+      const lift = Math.min(over, 4); // any more would touch the icon
+      name.y -= lift;
+      desc.y -= lift;
+    }
     if (sel) {
       this.add2(this.add.rectangle(cx, y + h / 2, w + 2, h + 2).setStrokeStyle(2, C.highlight));
-      this.add2(this.add.rectangle(cx, y - 1, 70, 11, 0x3a2a10).setStrokeStyle(1, C.highlight));
-      this.add2(txt(this, cx, y, 'SELECTED', { origin: 0.5, color: C.gold }));
+      // Picking takes two taps: say so on the card itself.
+      this.add2(this.add.rectangle(cx, y - 1, 80, 11, 0x3a2a10).setStrokeStyle(1, C.highlight));
+      this.add2(txt(this, cx, y, 'TAP AGAIN', { origin: 0.5, color: C.gold }));
     }
 
     const hit = this.add2(this.add.rectangle(cx, y + h / 2, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
@@ -139,11 +220,19 @@ export class RelicScene extends Phaser.Scene {
 
     // Owned relics and commander on the left.
     this.add2(txt(this, 10, 204, run.relics.length ? 'RELICS' : 'NONE YET', { color: C.faint }));
-    run.relics.slice(0, 12).forEach((id, i) => {
-      const c = relicChip(this, 15 + (i % 6) * 13, 223 + Math.floor(i / 6) * 13, id, 11);
+    const chips = run.relics.slice(0, 12).map((id, i) => ({ id, x: 15 + (i % 6) * 13, y: 223 + Math.floor(i / 6) * 13, size: 11 }));
+    chips.forEach((ch) => {
+      const c = relicChip(this, ch.x, ch.y, ch.id, ch.size);
       this.add2(c.bg);
       this.add2(c.t);
     });
+    if (chips.length) {
+      // Tap/hover a chip for its name and effect; the box opens over the cards' lower edge.
+      const tips = relicTips(this, chips, { x: 5, y: 208, w: 86, h: 35 }, { x: 6, w: 236, bottom: 182 });
+      this.add2(tips.zone);
+      this.hideTip = tips.hide;
+    }
+    const stats = fleetBattleStats({ ...run, salute: undefined }); // last round's SALUTE is over // what each ship fights with: the same numbers as the shop
 
     run.fleet.forEach((s, i) => {
       const x = SHIP_X(i);
@@ -159,10 +248,11 @@ export class RelicScene extends Phaser.Scene {
       this.add2(flame);
       this.add2(spr);
       this.add2(txt(this, x - 18, FLEET_Y - 16, tierTag(tier), { color: `#${TIER_COLORS[tier].toString(16).padStart(6, '0')}` }).setStroke('#05060f', 2));
-      const lvl = levelOf(s.xp);
-      if (lvl > 1) this.add2(txt(this, x + 18, FLEET_Y - 17, `${lvl}`, { origin: [1, 0], color: C.gold }));
-      this.add2(txt(this, x - 3, FLEET_Y + 9, `${s.atk}`, { origin: [1, 0], color: C.atk }));
-      this.add2(txt(this, x + 3, FLEET_Y + 9, `${s.hp}`, { color: C.hp }));
+      levelStars(this, x + 15, FLEET_Y - 14, levelOf(s.xp)).forEach((o) => this.add2(o));
+      const st = stats[i];
+      shieldPips(this, x + 17, FLEET_Y - 8, st?.shield ?? 0).forEach((o) => this.add2(o));
+      this.add2(txt(this, x - 3, FLEET_Y + 9, `${st?.atk ?? s.atk}`, { origin: [1, 0], color: C.atk }));
+      this.add2(txt(this, x + 3, FLEET_Y + 9, `${st?.hp ?? s.hp}`, { color: C.hp }));
     });
 
     // Right side: commander passive and active synergies.
@@ -172,12 +262,21 @@ export class RelicScene extends Phaser.Scene {
       this.add2(txt(this, 470, ry, cmd.name.toUpperCase(), { origin: [1, 0], color: cmd.color }));
       ry += 12;
     }
-    const counts = traitCounts(run.fleet, run.relics);
+    // Active synergies as "have/next" like the shop's panel ("MAX" in gold once maxed).
+    const counts = traitCounts(run.fleet, run.relics); // last round's SALUTE is over
     const active = TRAITS.filter((t) => traitLevel(t.id, counts[t.id]) > 0);
-    if (!active.length) this.add2(txt(this, 470, ry, 'no synergy', { origin: [1, 0], color: C.faint }));
-    active.slice(0, 3).forEach((t, k) => {
-      this.add2(txt(this, 470, ry + k * 11, `${t.short} ${counts[t.id]}`, { origin: [1, 0], color: t.color }));
+    if (!active.length) this.add2(txt(this, 470, ry, 'NO SYNERGY', { origin: [1, 0], color: C.faint }));
+    const room = cmd ? 4 : 5;
+    const rows = active.length > room ? active.slice(0, room - 1) : active;
+    rows.forEach((t, k) => {
+      const n = counts[t.id];
+      const next = t.tiers.find((tier) => n < tier.n)?.n;
+      const num = this.add2(txt(this, 470, ry + k * 11, next ? `${n}/${next}` : `${n} MAX`, { origin: [1, 0], color: next ? C.text : C.gold }));
+      this.add2(txt(this, num.x - num.width - 8, ry + k * 11, t.short, { origin: [1, 0], color: t.color }));
     });
+    if (rows.length < active.length) {
+      this.add2(txt(this, 470, ry + rows.length * 11, `+${active.length - rows.length} MORE`, { origin: [1, 0], color: C.faint }));
+    }
   }
 
   private confirm() {

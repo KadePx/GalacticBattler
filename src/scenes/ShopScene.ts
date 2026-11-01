@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { SHIP_RES, addShip, addStarfield, portraitKey, setPlayerSkin, syncFlame } from '../game/art';
 import {
   EVENT_INFO, FLEET_SIZE, REROLL_COST, SALE_COST, SHIP_COST, START_LIVES, VETERAN_COST, TOTAL_SLOTS, isBench, slotGet, winsLabel,
-  buy, canMerge, move, powerProblem, quickBuy, reroll, sell, sellValue, toggleFreeze, usePower, type Run,
+  buy, canMerge, costAt, move, powerProblem, quickBuy, reroll, sell, sellValue, toggleFreeze, usePower, type Run,
 } from '../game/run';
 import { CMD_MAP } from '../sim/commanders';
 import { audio } from '../game/audio';
@@ -11,17 +11,18 @@ import { openDetails, type Detail } from '../game/details';
 import { getRun, saveRun } from '../game/storage';
 import { prefetchOpponent } from '../game/net';
 import { NODE_INFO, bossNext } from '../game/gauntlet';
-import { C, TIER_COLORS, tierTag, button, historyPips, panel, popup, relicChip, toast, txt } from '../game/ui';
+import { C, TIER_COLORS, tierTag, button, historyPips, levelStars, panel, popup, relicChip, shieldPips, tapZone, toast, txt, type TextOpts } from '../game/ui';
 import { RELIC_MAP } from '../sim/relics';
-import { SHIPS, levelOf, xpForNext, type ShipClass, type ShipDef } from '../sim/ships';
+import { MAX_XP, SHIPS, levelOf, xpForNext, type ShipClass, type ShipDef } from '../sim/ships';
 import { TRAITS, TRAIT_MAP, traitCounts, traitLevel } from '../sim/traits';
 import type { FleetShip } from '../sim/types';
 import { hullScale } from '../sim/battle';
-import { combosFor, fleetBattleStats, gainLabel, hasGain, type BattleStats } from '../game/combos';
+import { combosFor, fleetBattleStats, gainLabel, hasGain, type BattleStats, type Gain } from '../game/combos';
 
 type Src = { kind: 'shop' | 'fleet'; i: number };
 type Tgt = { kind: 'slot'; i: number } | { kind: 'sell' };
-type Info = { def: ShipDef; ship?: FleetShip } | { relic: string } | { trait: ShipClass } | { cmd: string } | { freeze: number } | null;
+type Note = 'lives' | 'history' | 'event' | 'scale';
+type Info = { def: ShipDef; ship?: FleetShip } | { relic: string } | { trait: ShipClass } | { cmd: string } | { freeze: number } | { note: Note } | null;
 const hexInt = (h: string) => Phaser.Display.Color.HexStringToColor(h).color;
 /** One short tip at a time in the empty info strip, changing each round. */
 const SHOP_TIPS = [
@@ -44,7 +45,9 @@ const SHOP_Y = 150;
 const STRIP = { x: 4, y: 199, w: 350, h: 66 };
 const SELL = { x: 418, y: 214, w: 100, h: 18 };
 const SYN = { x: 362, y: 38, w: 112, h: 104 };
-const POWER = { x: 362, y: 144, w: 112, h: 36 };
+const POWER = { x: 362, y: 144, w: 112, h: 34 };
+/** Top of synergy panel row `i` (factions sit a little lower, under a divider). */
+const SYN_ROW_Y = (i: number) => SYN.y + 14 + i * 12 + (TRAITS[i].faction ? 3 : 0);
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
 
 export class ShopScene extends Phaser.Scene {
@@ -62,6 +65,7 @@ export class ShopScene extends Phaser.Scene {
   private dragging = false;
   private flames: Phaser.GameObjects.Image[] = [];
   private battle: (BattleStats | null)[] = []; // battle-start stats of each fleet slot
+  private battleNagAt = -1e9; // when BATTLE! last warned about unspent scrap
 
   constructor() {
     super('shop');
@@ -83,6 +87,7 @@ export class ShopScene extends Phaser.Scene {
     this.pinned = null;
     this.armed = false;
     this.dragging = false;
+    this.battleNagAt = -1e9;
     setPlayerSkin(run.skin ? run.cmd : null);
     audio.setMood('shop');
     addStarfield(this);
@@ -159,6 +164,12 @@ export class ShopScene extends Phaser.Scene {
   }
 
   private perform(src: Src, tgt: Tgt) {
+    if (src.kind === 'shop' && tgt.kind === 'sell') {
+      // A shipyard ship dropped on SELL: nothing to sell, just put it back.
+      this.sel = null;
+      this.refresh();
+      return;
+    }
     const levelsBefore = this.levels();
     let err: string | null = null;
     if (src.kind === 'shop') {
@@ -281,6 +292,10 @@ export class ShopScene extends Phaser.Scene {
   private clickReroll() {
     if (this.dragging) return;
     this.armed = false;
+    if (!this.run.market && !this.run.freeRolls && this.run.scrap < REROLL_COST) {
+      toast(this, `NEED ${REROLL_COST} SCRAP`);
+      return;
+    }
     const err = reroll(this.run);
     if (err) toast(this, err);
     else audio.play('reroll');
@@ -363,6 +378,13 @@ export class ShopScene extends Phaser.Scene {
       toast(this, 'Your fleet is empty!');
       return;
     }
+    // Scrap doesn't carry over: warn once, a second tap within 3s fights anyway.
+    const now = this.time.now;
+    if (this.run.scrap >= REROLL_COST && now - this.battleNagAt > 3000) {
+      this.battleNagAt = now;
+      toast(this, `${this.run.scrap} SCRAP UNSPENT. TAP AGAIN TO FIGHT`, C.gold);
+      return;
+    }
     saveRun(this.run);
     this.scene.start('battle');
   }
@@ -389,6 +411,7 @@ export class ShopScene extends Phaser.Scene {
     for (let i = 0; i < START_LIVES; i++) {
       this.add2(this.add.image(12 + i * 10, 10, i < run.lives ? 'heart' : 'heart_empty'));
     }
+    this.infoTarget(this.add2(tapZone(this, 12 + (START_LIVES - 1) * 5, 10, START_LIVES * 10 + 2, 20)), { note: 'lives' });
     this.add2(txt(this, 70, 7, winsLabel(run), { color: run.endless ? '#c58cff' : C.gold }));
     const g = run.gauntlet;
     if (g) this.add2(txt(this, 190, 7, bossNext(g) ? 'VS BOSS!' : `VS ${NODE_INFO[g.node].name.split(' ').pop()}`, { color: bossNext(g) ? C.bad : NODE_INFO[g.node].color }));
@@ -397,6 +420,8 @@ export class ShopScene extends Phaser.Scene {
     this.add2(this.add.image(300, 10, 'coin'));
     this.add2(txt(this, 308, 7, `${run.scrap} SCRAP`, { color: C.gold }));
     historyPips(this, 470, 10, run.history).forEach((o) => this.add2(o));
+    const pips = Math.min(10, run.history.length);
+    if (pips) this.infoTarget(this.add2(tapZone(this, 470 - (pips - 1) * 4.5, 10, pips * 9 + 4, 20)), { note: 'history' });
 
     // Relics (tap or hover a chip to read it)
     this.add2(txt(this, 8, 25, 'RELICS', { color: C.dim }));
@@ -407,13 +432,16 @@ export class ShopScene extends Phaser.Scene {
       const chip = relicChip(this, 66 + i * 17, 28, id, 14);
       this.add2(chip.bg);
       this.add2(chip.t);
-      this.infoTarget(chip.bg, { relic: id });
+      // The chips are small: a finger-sized hit area (as wide as the chip spacing, so they don't overlap).
+      this.infoTarget(this.add2(this.add.rectangle(66 + i * 17, 28, 17, 20, 0xffffff, 0.001)), { relic: id });
     });
     if (run.relics.length > maxChips) this.add2(txt(this, 66 + maxChips * 17 - 6, 25, `+${run.relics.length - maxChips}`, { color: C.dim }));
 
     // Bench (left) and fleet (right)
     this.add2(txt(this, 6, 38, 'BENCH', { color: C.dim }));
-    this.add2(txt(this, 134, 38, 'YOUR FLEET', { color: C.cyan }));
+    // A picked-up fleet or bench ship: say how to put it down.
+    const holding = this.sel?.kind === 'fleet' && !!slotGet(run, this.sel.i);
+    this.add2(txt(this, 134, 38, holding ? 'TAP A SLOT TO MOVE' : 'YOUR FLEET', { color: holding ? C.gold : C.cyan }));
     this.add2(txt(this, 352, 38, 'FRONT>', { origin: [1, 0], color: C.dim }));
     this.add2(this.add.rectangle(131, SLOT_Y, 1, BOX + 8, 0x232c52));
     const selDef = this.selectedDef();
@@ -440,8 +468,7 @@ export class ShopScene extends Phaser.Scene {
       this.shipSprite(x, SLOT_Y, def, { kind: 'fleet', i }, ship);
       // Tier label top-left (same as the shipyard), level stars top-right.
       this.add2(txt(this, x - 19, SLOT_Y - 18, tierTag(def.tier), { color: hex(TIER_COLORS[def.tier]) }).setStroke('#05060f', 2));
-      const lvl = levelOf(ship.xp);
-      for (let s = 0; s < lvl; s++) this.add2(this.add.image(x + 15 - (lvl - 1 - s) * 7, SLOT_Y - 15, 'star'));
+      levelStars(this, x + 15, SLOT_Y - 15, levelOf(ship.xp)).forEach((o) => this.add2(o));
       this.classPips(x, SLOT_Y + 16, def);
       // Juul's SALUTE: this ship counts twice for synergies this round.
       if (!bench && run.salute === ship.def) this.add2(txt(this, x - 19, SLOT_Y + 4, 'x2', { color: '#e0a060' }).setStroke('#05060f', 2));
@@ -451,16 +478,23 @@ export class ShopScene extends Phaser.Scene {
       const hp = this.add2(txt(this, x + 4, SLOT_Y + 23, `${st?.hp ?? ship.hp}`, { color: C.hp }));
       if (st && st.atk > ship.atk) this.add2(this.add.rectangle(atk.x - atk.width / 2, SLOT_Y + 32, atk.width, 1, hexInt(C.atk)));
       if (st && st.hp > ship.hp) this.add2(this.add.rectangle(hp.x + hp.width / 2, SLOT_Y + 32, hp.width, 1, hexInt(C.hp)));
-      // Shields at battle start: small cyan diamonds down the right edge.
-      for (let k = 0; k < Math.min(3, st?.shield ?? 0); k++) {
-        this.add2(this.add.rectangle(x + 17, SLOT_Y - 4 + k * 6, 4, 4, 0x7fe7ff).setAngle(45));
-      }
+      // Shields at battle start: hollow cyan bars down the right edge.
+      if (st?.shield) shieldPips(this, x + 17, SLOT_Y - 6, st.shield).forEach((o) => this.add2(o));
     }
 
     // Shipyard
+    // Header: price, this round's event (hover/tap it), and the round's ship HP scaling.
     const sale = run.event === 'sale';
-    const vetNote = run.vetSlot !== undefined && run.shop[run.vetSlot] ? `  (LV2: ${VETERAN_COST})` : '';
-    this.add2(txt(this, 24, 114, `SHIPYARD  ${sale ? SALE_COST : SHIP_COST} SCRAP EACH${vetNote}`, { color: sale ? C.gold : C.cyan }));
+    const head = this.add2(txt(this, 24, 114, `SHIPYARD ${sale ? SALE_COST : SHIP_COST} SCRAP`, { color: sale ? C.gold : C.cyan }));
+    if (run.event) {
+      const ev = this.add2(txt(this, head.x + head.width + 8, 114, EVENT_INFO[run.event].name, { color: C.gold }));
+      this.infoTarget(this.add2(tapZone(this, ev.x + ev.width / 2, 118, ev.width + 4, 16)), { note: 'event' });
+    }
+    const scale = hullScale(run.round);
+    if (scale > 1) {
+      const sc = this.add2(txt(this, 356, 114, `SHIP HP x${scale.toFixed(1)}`, { origin: [1, 0], color: C.hp }));
+      this.infoTarget(this.add2(tapZone(this, sc.x - sc.width / 2, 118, sc.width + 4, 16)), { note: 'scale' });
+    }
     const owned: FleetShip[] = [];
     for (let k = 0; k < TOTAL_SLOTS; k++) {
       const f = slotGet(run, k);
@@ -492,9 +526,10 @@ export class ShopScene extends Phaser.Scene {
         // Level 2 ship for hire: gold tag and its price.
         this.add2(this.add.rectangle(x + 9, SHOP_Y - 19, 28, 9, 0x3a2a10).setStrokeStyle(1, C.highlight));
         this.add2(txt(this, x + 9, SHOP_Y - 18, 'LV2', { origin: 0.5, color: C.gold }));
-        this.add2(txt(this, x - 21, SHOP_Y + 12, `$${VETERAN_COST}`, { color: C.gold }).setStroke('#05060f', 2));
+        this.add2(this.add.image(x - 18, SHOP_Y + 16, 'coin'));
+        this.add2(txt(this, x - 12, SHOP_Y + 12, `${VETERAN_COST}`, { color: C.gold }).setStroke('#05060f', 2));
       } else if (mergeable || maxed) {
-        const tag = mergeable ? 'OWN' : 'MAX';
+        const tag = mergeable ? '+XP' : 'MAX';
         this.add2(this.add.rectangle(x + 23 - (tag.length * 7 + 4) / 2, SHOP_Y - 19, tag.length * 7 + 4, 9, mergeable ? 0x1d5a32 : 0x1d2444)
           .setStrokeStyle(1, mergeable ? 0x7dff8a : 0x3a4a7a));
         this.add2(txt(this, x + 23 - (tag.length * 7 + 4) / 2, SHOP_Y - 18, tag, { origin: 0.5, color: mergeable ? '#b8ffc4' : C.dim }));
@@ -512,8 +547,11 @@ export class ShopScene extends Phaser.Scene {
     });
 
     // Buttons
+    const broke = !run.market && !run.freeRolls && run.scrap < REROLL_COST;
     const b1 = button(this, 418, 190, 100, 18, run.market ? `FREE ROLL x${run.market}` : run.freeRolls ? `FREE ROLL x${run.freeRolls}` : `REROLL ${REROLL_COST}`, () => this.clickReroll(),
-      { disabled: !run.market && !run.freeRolls && run.scrap < REROLL_COST, fill: run.market ? 0x2a1a40 : undefined, color: run.market ? "#e0c8ff" : undefined });
+      { disabled: broke, fill: run.market ? 0x2a1a40 : undefined, color: run.market ? "#e0c8ff" : undefined });
+    // Dimmed when you can't afford it, but still answers a tap (with why).
+    if (broke) b1.bg.setInteractive({ useHandCursor: true }).on('pointerup', () => this.clickReroll());
     const selShip = this.sel?.kind === 'fleet' ? slotGet(run, this.sel.i) : null;
     const sellLabel = selShip ? `SELL +${sellValue(run, selShip)}` : 'SELL';
     const b2 = button(this, SELL.x, SELL.y, SELL.w, SELL.h, sellLabel, () => this.clickSell(), { fill: 0x3a1420 });
@@ -541,9 +579,9 @@ export class ShopScene extends Phaser.Scene {
     this.add2(this.add.image(x + 12, y + h / 2, portraitKey(cmd.id)).setAlpha(ready ? 1 : 0.5));
     // Three short lines: power name, cost, state.
     this.add2(txt(this, x + 24, y + 3, cmd.power.name, { color: ready ? cmd.color : C.dim }));
-    this.add2(txt(this, x + 24, y + 14, `${cmd.power.cost} SCRAP`, { color: broke && !used ? C.bad : C.gold }));
+    this.add2(txt(this, x + 24, y + 14, cmd.power.cost ? `${cmd.power.cost} SCRAP` : 'FREE', { color: broke && !used ? C.bad : C.gold }));
     const state = used ? 'USED' : this.armed ? (cmd.power.target ? 'PICK SHIP' : 'TAP AGAIN') : broke ? 'NOT ENOUGH' : blocked ?? 'READY';
-    this.add2(txt(this, x + 24, y + 25, state, { color: used || broke || blocked ? C.dim : this.armed ? C.gold : C.hp }));
+    this.add2(txt(this, x + 24, y + 24, state, { color: used || broke || blocked ? C.dim : this.armed ? C.gold : C.hp }));
     // A slow glow while the power is ready, so it's easy to spot.
     if (ready && !this.armed) this.tweens.add({ targets: card, alpha: 0.7, duration: 900, yoyo: true, repeat: -1 });
     card.setInteractive({ useHandCursor: true });
@@ -633,7 +671,9 @@ export class ShopScene extends Phaser.Scene {
     const info = this.currentInfo();
     // Preview synergy gains for shop ships and benched ships (not ones already fighting).
     const fighting = info && 'def' in info && info.ship && this.run.fleet.includes(info.ship);
-    const preview = info && 'def' in info && !fighting ? info.def : null;
+    let preview = info && 'def' in info && !fighting ? info.def : null;
+    // A shipyard ship bought while the fleet is full goes to the bench: it adds no synergy.
+    if (preview && info && 'def' in info && this.slotOf(info.ship) < 0 && this.fleetFull()) preview = null;
     // Only rebuild the synergy panel when its content changes. Rebuilding it while the
     // pointer is over a row would destroy that row, and its pointerout would never fire.
     const key = preview?.id ?? '';
@@ -647,18 +687,39 @@ export class ShopScene extends Phaser.Scene {
     this.drawMoreButton(info);
   }
 
+  /** Slot (fleet or bench) holding this exact ship, or -1 (shipyard ships aren't in one). */
+  private slotOf(ship: FleetShip | undefined): number {
+    if (!ship) return -1;
+    for (let i = 0; i < TOTAL_SLOTS; i++) if (slotGet(this.run, i) === ship) return i;
+    return -1;
+  }
+
+  private fleetFull() {
+    for (let i = 0; i < FLEET_SIZE; i++) if (!slotGet(this.run, i)) return false;
+    return true;
+  }
+
+  /** A gain as small stacked numbers on a dark backing: ATK orange, HP green, shield cyan. */
+  private gainStack(add: <T extends Phaser.GameObjects.GameObject>(o: T) => T, x: number, y: number, g: Gain) {
+    const parts = gainParts(g);
+    if (!parts.length) return;
+    const lh = 9;
+    const h = parts.length * lh + 3;
+    add(this.add.rectangle(x, y, 28, h, 0x05060f, 0.8));
+    parts.forEach((p, k) => add(txt(this, x + 1, y - h / 2 + 2 + k * lh, p.text, { origin: [0.5, 0], color: p.color })));
+  }
+
   /**
    * Show what's comboing with what. Focus a fleet ship: every ship, relic and the commander
-   * that boosts it lights up, labelled with what it adds. Focus a synergy: the ships counting
-   * toward it light up.
+   * that boosts it lights up, marked with what it adds, plus its active synergy rows. Focus a
+   * synergy: the ships counting toward it light up. Focus a shipyard ship: the copy it would
+   * merge into lights up.
    */
   private drawCombos(info: Info) {
     if (this.dragging || !info) return;
     const add = <T extends Phaser.GameObjects.GameObject>(o: T) => { this.infoLayer.add(o); return o; };
-    const ring = (x: number, y: number, w: number, h: number, col: number) =>
-      add(this.add.rectangle(x, y, w, h).setStrokeStyle(2, col));
-    const label = (x: number, y: number, text: string, col: string) =>
-      add(txt(this, x, y, text, { origin: [0.5, 0], color: col }).setStroke('#05060f', 3));
+    const ring = (x: number, y: number, w: number, h: number, col: number, lw = 2) =>
+      add(this.add.rectangle(x, y, w, h).setStrokeStyle(lw, col));
 
     if ('trait' in info) {
       const col = hexInt(TRAIT_MAP[info.trait].color);
@@ -667,15 +728,29 @@ export class ShopScene extends Phaser.Scene {
       });
       return;
     }
-    if (!('def' in info) || !info.ship) return;
+    if (!('def' in info)) return;
+    if (this.slotOf(info.ship) < 0) {
+      for (let k = 0; k < TOTAL_SLOTS; k++) {
+        if (canMerge(slotGet(this.run, k), info.def.id)) ring(SLOT_X(k), SLOT_Y, BOX + 4, BOX + 4, 0x7dff8a);
+      }
+      return;
+    }
+    if (!info.ship) return;
     const i = this.run.fleet.indexOf(info.ship);
     if (i < 0) return;
     const c = combosFor(this.run, i);
     if (!c) return;
     ring(SLOT_X(i), SLOT_Y, BOX + 4, BOX + 4, C.highlight);
+    // Its synergies that are switched on.
+    const counts = traitCounts(this.run.fleet, this.run.relics, this.run.salute);
+    TRAITS.forEach((tr, k) => {
+      if (info.def.classes.includes(tr.id) && traitLevel(tr.id, counts[tr.id]) > 0) {
+        ring(SYN.x + SYN.w / 2, SYN_ROW_Y(k) + 4, SYN.w - 6, 11, hexInt(tr.color), 1);
+      }
+    });
     for (const p of c.partners) {
       ring(SLOT_X(p.slot), SLOT_Y, BOX + 4, BOX + 4, 0x7fe7ff);
-      label(SLOT_X(p.slot), SLOT_Y - 29, gainLabel(p.gain), C.cyan);
+      this.gainStack(add, SLOT_X(p.slot), SLOT_Y + 1, p.gain);
     }
     for (const r of c.relics) {
       const k = this.run.relics.indexOf(r.id);
@@ -684,8 +759,13 @@ export class ShopScene extends Phaser.Scene {
     if (hasGain(c.commander) && this.run.cmd) {
       ring(POWER.x + POWER.w / 2, POWER.y + POWER.h / 2, POWER.w + 2, POWER.h + 2, 0x7fe7ff);
       // Covers the card's state line while a ship is focused.
-      add(this.add.rectangle(POWER.x + 23, POWER.y + 23, POWER.w - 26, 11, 0x0e1430).setOrigin(0));
-      add(txt(this, POWER.x + 24, POWER.y + 25, gainLabel(c.commander), { color: C.cyan }));
+      add(this.add.rectangle(POWER.x + 23, POWER.y + 22, POWER.w - 26, 11, 0x0e1430).setOrigin(0));
+      let gx = POWER.x + 24;
+      const parts = gainParts(c.commander);
+      for (const p of parts) {
+        const t = add(txt(this, gx, POWER.y + 24, parts.length > 2 ? p.text : p.label, { color: p.color }));
+        gx += t.width + 6;
+      }
     }
   }
 
@@ -693,20 +773,44 @@ export class ShopScene extends Phaser.Scene {
   private drawMoreButton(info: Info) {
     const d = this.toDetail(info);
     if (!d) return;
-    const b = button(this, 332, 192, 40, 12, 'MORE', () => {
+    const open = () => {
       if (this.dragging) return;
-      openDetails(this, d);
-    }, { fill: 0x1d2a50, color: C.cyan });
+      // The boosts list runs several battle setups, so it's only worked out when MORE is tapped.
+      openDetails(this, 'def' in d ? { ...d, boosts: this.boostsOf(d.ship) } : d);
+    };
+    const b = button(this, 332, 192, 40, 12, 'MORE', open, { fill: 0x1d2a50, color: C.cyan });
     b.objects.forEach((o) => this.infoLayer.add(o));
+    // The button is small: a finger-sized hit area over it does the work.
+    const zone = tapZone(this, 332, 192, 46, 20);
+    zone.on('pointerover', () => b.bg.setStrokeStyle(2, C.highlight));
+    zone.on('pointerout', () => b.bg.setStrokeStyle(2, 0x6a7cc0));
+    zone.on('pointerup', () => { audio.play('click'); open(); });
+    this.infoLayer.add(zone);
   }
 
   private toDetail(info: Info): Detail | null {
-    if (!info || 'freeze' in info) return null;
+    if (!info || 'freeze' in info || 'note' in info) return null;
     if ('def' in info) return { def: info.def, ship: info.ship };
     if ('relic' in info) return { relic: info.relic };
     if ('trait' in info) return { trait: info.trait, count: traitCounts(this.run.fleet, this.run.relics, this.run.salute)[info.trait] };
     if (this.armed) return null;
     return { cmd: info.cmd, passive: this.run.passive ?? 'a' };
+  }
+
+  /** What boosts a fleet ship, one short line each, for the MORE card. Undefined off the fleet. */
+  private boostsOf(ship: FleetShip | undefined): string[] | undefined {
+    const i = ship ? this.run.fleet.indexOf(ship) : -1;
+    if (i < 0) return undefined;
+    const c = combosFor(this.run, i);
+    if (!c) return undefined;
+    const out: string[] = [];
+    for (const p of c.partners) {
+      const s = slotGet(this.run, p.slot);
+      if (s) out.push(`${SHIPS[s.def].name} ${gainLabel(p.gain)}`);
+    }
+    for (const r of c.relics) out.push(`${RELIC_MAP[r.id]?.name ?? r.id} ${gainLabel(r.gain)}`);
+    if (hasGain(c.commander) && this.run.cmd) out.push(`${CMD_MAP[this.run.cmd].name} ${gainLabel(c.commander)}`);
+    return out;
   }
 
   /** Right-hand panel: class counts and thresholds; previews what a shop ship would add. */
@@ -717,9 +821,9 @@ export class ShopScene extends Phaser.Scene {
     const counts = traitCounts(this.run.fleet, this.run.relics, this.run.salute);
     const adds = preview && !this.run.fleet.some((s) => s?.def === preview.id) ? preview.classes : [];
 
-    // One line per synergy: name, then "have/next" (gold when maxed). Factions sit under a divider.
+    // One line per synergy: name, then "have/next" (gold MAX when maxed). Factions sit under a divider.
     TRAITS.forEach((tr, i) => {
-      const y = SYN.y + 14 + i * 12 + (tr.faction ? 3 : 0);
+      const y = SYN_ROW_Y(i);
       const n = counts[tr.id];
       const lvl = traitLevel(tr.id, n);
       const next = tr.tiers.find((t) => n < t.n)?.n;
@@ -727,13 +831,32 @@ export class ShopScene extends Phaser.Scene {
       this.infoTarget(row, { trait: tr.id });
       if (lvl > 0) add(this.add.rectangle(SYN.x + 3, y + 4, 2, 10, hexInt(tr.color)));
       const name = add(txt(this, SYN.x + 7, y, tr.short, { color: lvl > 0 ? tr.color : C.dim }));
-      if (adds.includes(tr.id)) add(txt(this, name.x + name.width + 3, y, '+1', { color: C.hp }));
-      add(txt(this, SYN.x + SYN.w - 4, y, next ? `${n}/${next}` : `${n} MAX`, {
+      if (next && adds.includes(tr.id)) add(txt(this, name.x + name.width + 3, y, '+1', { color: C.hp }));
+      add(txt(this, SYN.x + SYN.w - 4, y, next ? `${n}/${next}` : 'MAX', {
         origin: [1, 0], color: !next ? C.gold : lvl > 0 ? C.text : C.faint,
       }));
     });
     const fy = SYN.y + 14 + TRAITS.filter((t) => !t.faction).length * 12 + 1;
     add(this.add.rectangle(SYN.x + SYN.w / 2, fy, SYN.w - 10, 1, 0x262e50));
+  }
+
+  /** What tapping a selected shipyard ship again will do, for the strip's top-right corner. */
+  private buyHint(i: number): { text: string; color: string } {
+    const run = this.run;
+    const def = run.shop[i];
+    if (!def) return { text: '', color: C.dim };
+    const cost = costAt(run, i);
+    if (run.scrap < cost) return { text: `NEED ${cost} SCRAP`, color: C.bad };
+    const vet = run.vetSlot === i;
+    for (let k = 0; k < TOTAL_SLOTS; k++) {
+      const t = slotGet(run, k);
+      if (!t || !canMerge(t, def)) continue;
+      const xp = Math.min(MAX_XP, t.xp + (vet ? 2 : 0) + 1); // same rule as merging in run.ts
+      const lv = levelOf(xp);
+      return { text: lv > levelOf(t.xp) ? `BUY: LV${lv}!` : `BUY: +${xp - t.xp} XP`, color: C.gold };
+    }
+    for (let k = 0; k < TOTAL_SLOTS; k++) if (!slotGet(run, k)) return { text: 'TAP AGAIN: BUY', color: C.gold };
+    return { text: 'NO ROOM', color: C.bad };
   }
 
   private drawStrip(info: Info) {
@@ -742,7 +865,7 @@ export class ShopScene extends Phaser.Scene {
     add(panel(this, x, y, w, h));
     const L = x + 6;
     const R = x + w - 6;
-    const row = (i: number) => y + 6 + i * 12;
+    const W = w - 12;
 
     if (!info) {
       // Kept short and quiet on purpose: one prompt plus one rotating tip.
@@ -752,91 +875,169 @@ export class ShopScene extends Phaser.Scene {
         // This round's shipyard event takes the prompt's place.
         add(txt(this, x + w / 2, cy - 7, `${ev.name}: ${ev.desc}`, { origin: 0.5, color: C.gold }));
       } else add(txt(this, x + w / 2, cy - 7, `${this.touch ? 'Tap' : 'Hover'} anything for details`, { origin: 0.5, color: C.faint }));
-      const hull = hullScale(this.run.round);
-      const tip = hull > 1 ? `Hulls x${hull.toFixed(1)} HP this round` : SHOP_TIPS[(this.run.round - 1) % SHOP_TIPS.length];
-      add(txt(this, x + w / 2, cy + 7, tip, { origin: 0.5, color: hull > 1 ? C.hp : '#4f5a80' }));
+      add(txt(this, x + w / 2, cy + 7, SHOP_TIPS[(this.run.round - 1) % SHOP_TIPS.length], { origin: 0.5, color: '#4f5a80' }));
+      return;
+    }
+
+    // Rows are made first, then laid out from their real (wrapped) heights so nothing
+    // runs past the strip. Rows that still don't fit are dropped (MORE has everything).
+    const rows: Phaser.GameObjects.Text[][] = [];
+    const line = (str: string, o: TextOpts = {}) => {
+      const t = add(txt(this, L, 0, str, { wrap: W, ...o }));
+      rows.push([t]);
+      return t;
+    };
+    /** Same row, right-aligned. */
+    const right = (str: string, o: TextOpts = {}) => {
+      const t = add(txt(this, R, 0, str, { origin: [1, 0], ...o }));
+      rows[rows.length - 1].push(t);
+      return t;
+    };
+    /** Same row, just after `prev`. */
+    const after = (prev: Phaser.GameObjects.Text, str: string, o: TextOpts = {}, gap = 8) => {
+      const t = add(txt(this, prev.x + prev.width + gap, 0, str, o));
+      rows[rows.length - 1].push(t);
+      return t;
+    };
+    this.fillStrip(info, line, right, after);
+
+    const top = y + 5;
+    const bottom = y + h - 2;
+    const hs = rows.map((r) => Math.max(...r.map((t) => t.height)));
+    const total = hs.reduce((a, b) => a + b, 0);
+    const gap = rows.length > 1 ? Phaser.Math.Clamp(Math.floor((bottom - top - total) / (rows.length - 1)), 0, 3) : 0;
+    let cy = top;
+    let full = false;
+    rows.forEach((r, k) => {
+      if (cy + hs[k] > bottom) full = true;
+      r.forEach((t) => (full ? t.destroy() : t.setY(Math.round(cy))));
+      cy += hs[k] + gap;
+    });
+  }
+
+  private fillStrip(
+    info: NonNullable<Info>,
+    line: (str: string, o?: TextOpts) => Phaser.GameObjects.Text,
+    right: (str: string, o?: TextOpts) => Phaser.GameObjects.Text,
+    after: (prev: Phaser.GameObjects.Text, str: string, o?: TextOpts, gap?: number) => Phaser.GameObjects.Text,
+  ) {
+    const run = this.run;
+    if ('note' in info) {
+      if (info.note === 'lives') {
+        line('HULL', { color: C.bad });
+        right(`${run.lives}/${START_LIVES}`, { color: C.bad });
+        line('Each lost battle costs 1 heart (a boss: 2). Lose them all and the run ends.');
+      } else if (info.note === 'history') {
+        line('LAST 10 RESULTS', { color: C.gold });
+        line('Newest on the right. Green square: win. Red outline: loss. Grey dash: draw.');
+      } else if (info.note === 'event' && run.event) {
+        const ev = EVENT_INFO[run.event];
+        line(`SHIPYARD EVENT: ${ev.name}`, { color: C.gold });
+        line(ev.desc.charAt(0).toUpperCase() + ev.desc.slice(1));
+      } else {
+        line(`SHIP HP x${hullScale(run.round).toFixed(1)}`, { color: C.hp });
+        line("From round 5 every ship in battle, yours and the enemy's, gets this much extra HP so fights last longer.");
+        line('Slot numbers show HP before it.', { color: C.dim });
+      }
       return;
     }
     if ('freeze' in info) {
-      const frozen = !!this.run.frozen?.[info.freeze];
-      add(txt(this, L, row(0), frozen ? 'FROZEN' : 'FREEZE', { color: C.cyan }));
-      add(txt(this, L, row(1), 'A frozen ship stays in the shipyard when'));
-      add(txt(this, L, row(2), 'you reroll and into the next round, so'));
-      add(txt(this, L, row(3), 'you can buy it later. Freezing is free.'));
-      add(txt(this, L, row(4), frozen ? 'Tap again to unfreeze.' : 'Tap to freeze.', { color: C.dim }));
+      const frozen = !!run.frozen?.[info.freeze];
+      line(frozen ? 'FROZEN' : 'FREEZE', { color: C.cyan });
+      line('A frozen ship stays in the shipyard when you reroll and into the next round, so you can buy it later. Freezing is free.');
+      line(frozen ? 'Tap again to unfreeze.' : 'Tap to freeze.', { color: C.dim });
       return;
     }
     if ('cmd' in info) {
       const c = CMD_MAP[info.cmd];
-      const ps = c.passives[this.run.passive ?? 'a'];
+      const ps = c.passives[run.passive ?? 'a'];
+      const cost = c.power.cost ? `${c.power.cost} SCRAP` : 'FREE';
       if (this.armed) {
-        add(txt(this, L, row(0), `${c.power.name}: ${c.power.desc}`, { color: c.color, wrap: w - 12 }));
-        add(txt(this, L, row(2), c.power.target
+        line(`${c.power.name}: ${c.power.desc}`, { color: c.color });
+        line(c.power.target
           ? `${this.touch ? 'Tap' : 'Click'} one of your ships to use it.`
-          : `${this.touch ? 'Tap' : 'Click'} the power card again to use it.`, { color: C.gold }));
-        add(txt(this, L, row(3), `Costs ${c.power.cost} scrap. Once per round.`, { color: C.dim }));
-        add(txt(this, L, row(4), c.power.target ? 'Tap the card again to cancel.' : 'Tap anything else to cancel.', { color: C.faint }));
+          : `${this.touch ? 'Tap' : 'Click'} the power card again to use it.`, { color: C.gold });
+        line(c.power.cost ? `Costs ${c.power.cost} scrap. Once per round.` : 'Free. Once per round.', { color: C.dim });
+        line(c.power.target ? 'Tap the card again to cancel.' : 'Tap anything else to cancel.', { color: C.faint });
         return;
       }
-      add(txt(this, L, row(0), `COMMANDER ${c.name.toUpperCase()}`, { color: c.color }));
-      add(txt(this, R, row(0), this.run.powerUsed ? 'POWER USED' : 'POWER READY', { origin: [1, 0], color: this.run.powerUsed ? C.dim : C.hp }));
-      add(txt(this, L, row(1), `PASSIVE: ${ps.name}`, { color: C.gold }));
-      add(txt(this, L, row(2), ps.desc));
-      add(txt(this, L, row(3), `POWER: ${c.power.name} (${c.power.cost} SCRAP, 1/ROUND)`, { color: C.gold }));
-      add(txt(this, L, row(4), c.power.desc, { color: C.text }));
+      line(`COMMANDER ${c.name.toUpperCase()}`, { color: c.color });
+      right(run.powerUsed ? 'POWER USED' : 'POWER READY', { color: run.powerUsed ? C.dim : C.hp });
+      line(`PASSIVE: ${ps.name}`, { color: C.gold });
+      line(ps.desc);
+      line(`POWER: ${c.power.name} (${cost}, 1/ROUND)`, { color: C.gold });
+      line(c.power.desc);
       return;
     }
     if ('relic' in info) {
       const r = RELIC_MAP[info.relic];
-      add(txt(this, L, row(0), `RELIC: ${r.name}`, { color: C.gold }));
-      add(txt(this, L, row(1), r.desc, { wrap: w - 12 }));
-      const n = this.run.relics.filter((x) => x === info.relic).length;
-      if (n > 1) add(txt(this, L, row(3), `You own ${n}. Effects stack.`, { color: C.dim }));
+      line(`RELIC: ${r.name}`, { color: C.gold });
+      line(r.desc);
+      const n = run.relics.filter((x) => x === info.relic).length;
+      if (n > 1) line(`You own ${n}. Effects stack.`, { color: C.dim });
       return;
     }
     if ('trait' in info) {
       const tr = TRAIT_MAP[info.trait];
-      const n = traitCounts(this.run.fleet, this.run.relics, this.run.salute)[info.trait];
-      add(txt(this, L, row(0), `${tr.name} SYNERGY`, { color: tr.color }));
-      add(txt(this, R, row(0), `${n} COUNTED`, { origin: [1, 0], color: C.dim }));
-      tr.tiers.forEach((tier, k) => {
-        add(txt(this, L, row(1 + k), `(${tier.n}) ${tier.desc}`, { color: n >= tier.n ? C.gold : C.dim }));
-      });
+      const n = traitCounts(run.fleet, run.relics, run.salute)[info.trait];
+      const next = tr.tiers.find((t) => n < t.n)?.n;
+      line(`${tr.name} SYNERGY`, { color: tr.color });
+      right(next ? `HAVE ${n} / NEXT ${next}` : 'MAXED', { color: next ? C.dim : C.gold });
+      tr.tiers.forEach((tier) => line(`(${tier.n}) ${tier.desc}`, { color: n >= tier.n ? C.gold : C.dim }));
       // Only the ships you own here (the full list is behind MORE).
-      const mine = [...new Set(this.run.fleet.filter((s) => s && SHIPS[s.def].classes.includes(info.trait)).map((s) => SHIPS[s!.def].name))];
-      add(txt(this, L, row(3), mine.length ? `YOURS: ${mine.join(', ')}` : 'None in your fleet yet. MORE lists them.', { color: C.faint, wrap: w - 12 }));
+      const mine = [...new Set(run.fleet.filter((s) => s && SHIPS[s.def].classes.includes(info.trait)).map((s) => SHIPS[s!.def].name))];
+      line(mine.length ? `YOURS: ${mine.join(', ')}` : 'None in your fleet yet. MORE lists them.', { color: C.faint });
       return;
     }
 
     const { def, ship } = info;
-    add(txt(this, L, row(0), def.name.toUpperCase(), { color: def.accent[1] }));
-    if (ship) {
+    const R = STRIP.x + STRIP.w - 6;
+    const owned = this.slotOf(ship) >= 0;
+    const name = line(def.name.toUpperCase(), { color: def.accent[1] });
+    after(name, tierTag(def.tier), { color: hex(TIER_COLORS[def.tier]) });
+    const selShop = this.sel?.kind === 'shop' && !owned && run.shop[this.sel.i] === def.id;
+    if (selShop) {
+      const hint = this.buyHint(this.sel!.i);
+      right(hint.text, { color: hint.color });
+    } else if (ship) {
+      const lvl = levelOf(ship.xp);
       const next = xpForNext(ship.xp);
-      const benched = !this.run.fleet.includes(ship) ? 'BENCHED  ' : '';
-      const lv = add(txt(this, R, row(0), `LV ${levelOf(ship.xp)}  ${next ? `XP ${ship.xp}/${next}` : 'MAX'}`, { origin: [1, 0], color: C.gold }));
-      add(txt(this, lv.x - lv.width - 12, row(0), `${benched}T${def.tier}`, { origin: [1, 0], color: hex(TIER_COLORS[def.tier]) }));
-    } else {
-      add(txt(this, R, row(0), `TIER ${def.tier}`, { origin: [1, 0], color: hex(TIER_COLORS[def.tier]) }));
+      const n = next ? next - ship.xp : 0;
+      right(next ? `LV${lvl}  ${n} ${n === 1 ? 'COPY' : 'COPIES'} TO LV${lvl + 1}` : `LV${lvl} MAX`, { color: C.gold });
     }
     // Fleet ships: own stats + battle bonus (the lit-up ships, relics and commander add it).
-    const slot = ship ? this.run.fleet.indexOf(ship) : -1;
-    const st = slot >= 0 ? this.battle[slot] : null;
+    const fi = ship ? run.fleet.indexOf(ship) : -1;
+    const st = fi >= 0 ? this.battle[fi] : null;
     const own = { atk: ship?.atk ?? def.atk, hp: ship?.hp ?? def.hp };
     const plus = (n: number) => (n > 0 ? `+${n}` : '');
-    const atk = add(txt(this, L, row(1), `ATK ${own.atk}${plus((st?.atk ?? own.atk) - own.atk)}`, { color: C.atk }));
-    const hp = add(txt(this, atk.x + atk.width + 10, row(1), `HP ${own.hp}${plus((st?.hp ?? own.hp) - own.hp)}`, { color: C.hp }));
-    // Short form when bonuses make the line long, so it doesn't run into the classes.
-    add(txt(this, hp.x + hp.width + 10, row(1), st && (st.atk > own.atk || st.hp > own.hp) ? `${def.cd}T` : `EVERY ${def.cd}T`, { color: C.dim }));
+    const atk = line(`ATK ${own.atk}${plus((st?.atk ?? own.atk) - own.atk)}`, { color: C.atk });
+    let last = after(atk, `HP ${own.hp}${plus((st?.hp ?? own.hp) - own.hp)}`, { color: C.hp }, 10);
+    if (st?.shield) last = after(last, `SH ${st.shield}`, { color: C.cyan }, 10);
+    last = after(last, `EVERY ${def.cd}T`, { color: C.dim }, 10);
+    // Class tags on the right; on a row of their own if the stats leave no room.
+    const tagW = def.classes.reduce((a, c) => a + TRAIT_MAP[c].short.length * 8, 0) + 8 * (def.classes.length - 1);
+    if (last.x + last.width + 10 + tagW > R) line('');
     let cx = R;
     [...def.classes].reverse().forEach((c) => {
-      const t = add(txt(this, cx, row(1), TRAIT_MAP[c].short, { origin: [1, 0], color: TRAIT_MAP[c].color }));
+      const t = right(TRAIT_MAP[c].short, { color: TRAIT_MAP[c].color });
+      t.setX(cx);
       cx -= t.width + 8;
     });
-    add(txt(this, L, row(2), def.desc));
+    line(def.desc);
+    if (fi >= 0 && run.salute === def.id) line('SALUTED: COUNTS x2 FOR SYNERGY', { color: '#e0a060' });
     const lvl = ship ? levelOf(ship.xp) : 1;
     def.perks.forEach((p, k) => {
-      const unlocked = lvl >= k + 2;
-      add(txt(this, L, row(3 + k), `LV${k + 2} ${p}`, { color: unlocked ? C.gold : C.dim }));
+      if (p) line(`LV${k + 2} ${p}`, { color: lvl >= k + 2 ? C.gold : C.dim });
     });
   }
+}
+
+/** A gain split into short coloured parts: ATK orange, HP green, shield cyan. */
+function gainParts(g: Gain): { text: string; label: string; color: string }[] {
+  const out: { text: string; label: string; color: string }[] = [];
+  const n = (v: number) => `+${Math.min(99, v)}`;
+  if (g.atk > 0) out.push({ text: n(g.atk), label: `${n(g.atk)}ATK`, color: C.atk });
+  if (g.hp > 0) out.push({ text: n(g.hp), label: `${n(g.hp)}HP`, color: C.hp });
+  if (g.shield > 0) out.push({ text: n(g.shield), label: `${n(g.shield)}SH`, color: C.cyan });
+  return out;
 }

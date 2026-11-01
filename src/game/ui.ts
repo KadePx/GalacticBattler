@@ -85,10 +85,14 @@ export function toast(scene: Phaser.Scene, msg: string, color = C.bad) {
   scene.tweens.add({ targets: [t, bg], y: 120, alpha: 0, delay: hold, duration: 500, onComplete: () => { t.destroy(); bg.destroy(); } });
 }
 
+/** Display-only glyph overrides, so no two relics share a letter (the data lives in src/sim). */
+const GLYPH_OVERRIDE: Record<string, string> = { thorns: 'Y' };
+export const relicGlyph = (id: string) => GLYPH_OVERRIDE[id] ?? (RELIC_MAP[id] ?? REWARD_MAP[id])?.glyph ?? '?';
+
 export function relicChip(scene: Phaser.Scene, x: number, y: number, id: string, size = 12) {
   const r = RELIC_MAP[id] ?? REWARD_MAP[id];
   const bg = scene.add.rectangle(x, y, size, size, 0x0b0f22).setStrokeStyle(1, r?.color ?? 0xffffff);
-  const t = txt(scene, x + 1, y + 1, r?.glyph ?? '?', {
+  const t = txt(scene, x + 1, y + 1, relicGlyph(id), {
     origin: 0.5, color: `#${(r?.color ?? 0xffffff).toString(16).padStart(6, '0')}`,
   });
   return { bg, t };
@@ -119,7 +123,46 @@ export function bar(scene: Phaser.Scene, x: number, y: number, w: number, h: num
 export function popup(scene: Phaser.Scene, x: number, y: number, str: string, color: string) {
   const t = txt(scene, x, y, str, { origin: 0.5, color }).setDepth(500);
   t.setStroke('#05060f', 3);
-  scene.tweens.add({ targets: t, y: y - 14, alpha: 0, duration: 650, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
+  // Battles can run at up to 8x (tweens.timeScale): keep every popup up for at least
+  // 400ms of real time so it can still be read.
+  const ts = Math.min(4, Math.max(1, scene.tweens.timeScale)); // capped: SKIP runs at 32x
+  scene.tweens.add({ targets: t, y: y - 14, alpha: 0, duration: Math.max(650, 400 * ts), ease: 'Quad.easeOut', onComplete: () => t.destroy() });
+}
+
+// ---------- shared conventions (use these on every screen) ----------
+//
+// - Tier: tierTag() in TIER_COLORS (T1/T2/T3/P). Level: levelStars() on any ship picture,
+//   "LV2" in text. "LV" alone means ship level; commanders say "CMDR LV".
+// - Stats: ATK orange then HP green (C.atk, C.hp); battle bonuses written "4+5".
+//   Shields: shieldPips() (hollow cyan bars), "SH 1" in text. Diamonds mean faction.
+// - Lives are "hull": heart icons. Later rounds' bonus ship HP is "SHIP HP x1.4", never "hull".
+// - Every hover also works as a tap; anything tappable is at least MIN_TAP tall (tapZone()).
+// - Text budget is 8px per character: check 14-char callsigns, 3-digit ranks, "999/999".
+
+/** Smallest tap target height in game pixels (about 29 CSS px on a phone in landscape). */
+export const MIN_TAP = 20;
+
+/**
+ * An invisible hit area centred on (cx, cy), at least MIN_TAP tall and 24 wide, so small
+ * text and icons are easy to hit with a finger. Returns it (already interactive).
+ */
+export function tapZone(scene: Phaser.Scene, cx: number, cy: number, w: number, h: number) {
+  return scene.add.rectangle(cx, cy, Math.max(24, w), Math.max(MIN_TAP, h), 0xffffff, 0.001).setInteractive({ useHandCursor: true });
+}
+
+/** A ship's level as gold stars, right-aligned so the last star sits at `right`. */
+export function levelStars(scene: Phaser.Scene, right: number, y: number, level: number) {
+  const out: Phaser.GameObjects.Image[] = [];
+  for (let s = 0; s < level; s++) out.push(scene.add.image(right - (level - 1 - s) * 7, y, 'star'));
+  return out;
+}
+
+/** Starting shields: small hollow cyan bars stacked down from (x, y); a number past 3. */
+export function shieldPips(scene: Phaser.Scene, x: number, y: number, n: number) {
+  const out: Phaser.GameObjects.GameObject[] = [];
+  for (let k = 0; k < Math.min(3, n); k++) out.push(scene.add.rectangle(x, y + k * 7, 3, 5).setStrokeStyle(1, 0x7fe7ff));
+  if (n > 3) out.push(txt(scene, x, y + 21, `${n}`, { origin: [0.5, 0], color: C.cyan }).setStroke('#05060f', 2));
+  return out;
 }
 
 /** Border/label colour for each ship tier (index = tier; 0 is unused). */

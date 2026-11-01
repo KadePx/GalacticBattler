@@ -152,8 +152,12 @@ export const TERMS: Term[] = [
     desc: 'Spare slots on the left of the shop. Benched ships keep their levels but don\'t fight or count for synergy.',
   },
   {
-    id: 'hull', name: 'HULL SCALING',
-    desc: 'From round 5, every ship gets extra HP in battle (x1.2, then x1.4 and so on) so later fights don\'t end instantly.',
+    id: 'hull', name: 'SHIP HP BOOST',
+    desc: 'All ships get more HP in later rounds (x1.4 means 40% more): x1.2 from round 5, then x1.4 and so on, so late fights don\'t end instantly. Shown as SHIP HP x1.4.',
+  },
+  {
+    id: 'lives', name: 'HULL (LIVES)',
+    desc: 'Your lives, shown as hearts. You start with 5 and lose 1 for each lost battle (2 for a lost Gauntlet boss). The run ends at 0.',
   },
   {
     id: 'overload', name: 'REACTOR OVERLOAD',
@@ -166,6 +170,36 @@ export const TERMS: Term[] = [
   {
     id: 'relic', name: 'RELIC',
     desc: 'A permanent upgrade for the rest of the run. You pick one after every battle. Copies of the same relic stack.',
+  },
+  // Progress between runs.
+  {
+    id: 'xp', name: 'XP (3 KINDS)',
+    desc: 'SHIP XP comes from merging copies during a run (LV2, LV3) and ends with the run. After each run you earn XP: 10 per battle, 15 per win, 50 for a clear. It goes to your PILOT RANK and to that run\'s COMMANDER LEVEL.',
+  },
+  {
+    id: 'rank', name: 'PILOT RANK',
+    desc: 'Your overall level, from the XP of every run. Rank 2 at 150 XP, 3 at 400, 4 at 750, 5 at 1200, then every 500 XP. Ranks 2 to 10 each unlock a new commander.',
+  },
+  {
+    id: 'cmdlv', name: 'COMMANDER LEVEL',
+    desc: 'Each commander levels up from runs played with them (CMDR LV). LV2 at 100 XP: hull colours. LV3 at 250: second passive. LV4 at 450: start with their ship. LV5 at 700: gold title and frame.',
+  },
+  // Modes.
+  {
+    id: 'gauntlet', name: 'GAUNTLET',
+    desc: '3 sectors of 4 battles, each ending in a boss. Pick your route before each battle. Beat a boss for a boss relic; lose and it costs 2 hull and you fight it again. Beat the third boss to win.',
+  },
+  {
+    id: 'daily', name: 'DAILY',
+    desc: 'One challenge a day: the same commander, shops and rivals for everyone. Only your first finished run counts. Ranked by wins, then hull left, then fewest battles. New at midnight UTC.',
+  },
+  {
+    id: 'duel', name: 'DUEL',
+    desc: 'Fight a fleet a friend shared (a link or a code) with your latest fleet, and share yours back. Just for fun: no hull, XP or rewards at stake.',
+  },
+  {
+    id: 'ghost', name: 'GHOST FLEET',
+    desc: 'After each battle your fleet is uploaded as a ghost. Other players fight it as a rival, and you fight theirs. The menu tells you how your ghosts did. Offline, rivals are bots.',
   },
 ];
 

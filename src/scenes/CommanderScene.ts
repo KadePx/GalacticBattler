@@ -5,12 +5,13 @@ import {
 } from '../game/profile';
 import { newRun } from '../game/run';
 import { clearRun, saveRun, useSlot } from '../game/storage';
-import { C, bar, button, panel, txt } from '../game/ui';
+import { C, bar, button, panel, tapZone, txt } from '../game/ui';
 import { COMMANDERS, CMD_MAP, type PassiveSlot } from '../sim/commanders';
 import { SHIPS } from '../sim/ships';
 import { audio } from '../game/audio';
 
-const STYLE_LABEL: Record<string, string> = {
+/** Play style per commander (their bot archetype), shown under the name. */
+export const STYLE_LABEL: Record<string, string> = {
   balanced: 'ALL-ROUNDER', engineer: 'REFITS / BENCH', fortress: 'GUARD / DEFENSE', blitz: 'STRIKE / SPEED',
   swarm: 'FIGHTERS / SWARM', artillery: 'ARTILLERY', control: 'TECH / CONTROL',
   concord: 'SHIELDS / CONCORD', reaver: 'KILLS / REAVERS', void: 'LIFE-STEAL / VOID',
@@ -52,7 +53,7 @@ export class CommanderScene extends Phaser.Scene {
     // Top bar: pilot rank
     this.add2(panel(this, 0, 0, 480, 22, 0x0a0e22, 0x232c52));
     this.add2(txt(this, 8, 8, this.gauntlet ? 'BOSS GAUNTLET: CHOOSE COMMANDER' : 'CHOOSE YOUR COMMANDER', { color: this.gauntlet ? '#ff8a8a' : C.gold }));
-    this.add2(txt(this, 300, 8, `PILOT RANK ${rank}`, { color: C.cyan }));
+    this.add2(txt(this, 404, 8, `PILOT RANK ${rank}`, { origin: [1, 0], color: C.cyan }));
     const lo = rankXp(rank);
     const hi = rankXp(rank + 1);
     this.add2s(bar(this, 410, 8, 62, 6, (p.xp - lo) / (hi - lo), 0x7fe7ff));
@@ -74,14 +75,15 @@ export class CommanderScene extends Phaser.Scene {
     const unlocked = isUnlocked(p, id);
     const lvl = cmdLevel(progress(p, id).xp);
     const isSel = this.sel === id;
-    const w = 82;
+    const w = 84;
     const mid = Math.round(h / 2);
     this.add2(panel(this, x, y, w, h, isSel ? 0x162050 : C.panel, isSel ? C.highlight : C.border));
     if (unlocked && lvl >= CMD_MAX_LEVEL) this.add2(this.add.rectangle(x + 13, y + mid, 23, 23).setStrokeStyle(1, C.highlight));
     this.add2(this.add.image(x + 13, y + mid, portraitKey(id, !unlocked)).setScale(1.25));
-    this.add2(txt(this, x + 25, y + mid - 12, c.name.toUpperCase(), { color: unlocked ? c.color : C.dim }));
+    this.add2(txt(this, x + 25, y + mid - 12, c.name.toUpperCase(), { color: unlocked ? c.color : C.faint }));
+    // Locked: the name is faint, only the requirement is red (same as the archive).
     this.add2(txt(this, x + 25, y + mid + 2, unlocked ? `LV ${lvl}` : `RANK ${c.rank}`, {
-      color: unlocked ? C.gold : '#6a76a0',
+      color: unlocked ? C.gold : C.bad,
     }));
     const hit = this.add2(this.add.rectangle(x + w / 2, y + h / 2, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
     hit.on('pointerup', () => {
@@ -111,15 +113,18 @@ export class CommanderScene extends Phaser.Scene {
     if (unlocked) {
       const next = lvl < CMD_MAX_LEVEL ? CMD_LEVEL_XP[lvl] : null;
       const base = CMD_LEVEL_XP[lvl - 1];
-      this.add2(txt(this, X + 64, 66, `LV ${lvl}`, { color: C.gold }));
-      this.add2s(bar(this, X + 104, 67, 100, 6, next ? (prog.xp - base) / (next - base) : 1, hexInt(c.color)));
-      this.add2(txt(this, X + 212, 66, next ? `${prog.xp}/${next} XP` : 'MAX', { color: C.dim }));
+      // "CMDR LV 5" | bar | "450/700 XP" right-aligned inside the panel.
+      this.add2(txt(this, X + 64, 66, `CMDR LV ${lvl}`, { color: C.gold }));
+      this.add2s(bar(this, X + 140, 67, 58, 6, next ? (prog.xp - base) / (next - base) : 1, hexInt(c.color)));
+      this.add2(txt(this, X + W - 8, 66, next ? `${prog.xp}/${next} XP` : 'MAX', { origin: [1, 0], color: C.dim }));
+      if (next) this.add2(txt(this, X + 64, 78, 'PLAY RUNS TO LEVEL UP', { color: C.faint }));
     } else {
       this.add2(txt(this, X + 64, 66, `UNLOCKS AT PILOT RANK ${c.rank}`, { color: C.bad }));
     }
 
     // Passives
-    this.add2(txt(this, X + 8, 94, 'PASSIVE', { color: C.dim }));
+    this.add2(txt(this, X + 8, 92, 'PASSIVE', { color: C.dim }));
+    if (unlocked && lvl >= 3) this.add2(txt(this, X + 72, 92, '(TAP TO SWITCH)', { color: C.faint }));
     (['a', 'b'] as PassiveSlot[]).forEach((slot, k) => {
       const ps = c.passives[slot];
       const bx = X + 6 + k * 142;
@@ -129,10 +134,16 @@ export class CommanderScene extends Phaser.Scene {
       this.add2(panel(this, bx, by, 138, 54, chosen ? 0x162050 : 0x0b1026, chosen ? C.highlight : 0x262e50));
       this.add2(txt(this, bx + 5, by + 5, ps.name.toUpperCase(), { color: available ? c.color : C.dim, wrap: 128 }));
       this.add2(txt(this, bx + 5, by + 18, ps.desc, { color: available ? C.text : '#6a76a0', wrap: 130 }));
-      if (slot === 'b' && lvl < 3) this.add2(txt(this, bx + 136, by - 12, 'UNLOCKS AT LV3', { origin: [1, 0], color: C.bad }));
+      if (slot === 'b' && lvl < 3) this.add2(txt(this, bx + 136, by - 14, unlocked ? 'UNLOCKS AT CMDR LV3' : 'CMDR LV3', { origin: [1, 0], color: C.bad }));
+      // A tag on the chosen panel's bottom border (the top one has the passive's name).
+      if (chosen) {
+        this.add2(this.add.rectangle(bx + 108, by + 52, 52, 10, 0x3a2a10).setStrokeStyle(1, C.highlight));
+        this.add2(txt(this, bx + 108, by + 53, 'IN USE', { origin: 0.5, color: C.gold }));
+      }
       if (available) {
         const hit = this.add2(this.add.rectangle(bx + 69, by + 27, 138, 54, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
         hit.on('pointerup', () => {
+          if (prog.p !== slot) audio.play('select');
           prog.p = slot;
           saveProfile(p);
           this.refresh();
@@ -147,8 +158,8 @@ export class CommanderScene extends Phaser.Scene {
 
     // Level options
     const starter = SHIPS[c.starter];
-    this.toggle(X + 8, 198, 'COMMANDER COLOURS', 2, lvl, unlocked && prog.skin, () => { prog.skin = !prog.skin; });
-    this.toggle(X + 8, 212, `START WITH ${/^[AEIOU]/i.test(starter.name) ? 'AN' : 'A'} ${starter.name.toUpperCase()}`, 4, lvl, unlocked && prog.starter, () => { prog.starter = !prog.starter; });
+    this.toggle(X + 8, 196, 'COMMANDER COLOURS', 2, lvl, unlocked && prog.skin, () => { prog.skin = !prog.skin; });
+    this.toggle(X + 8, 214, `START WITH ${/^[AEIOU]/i.test(starter.name) ? 'AN' : 'A'} ${starter.name.toUpperCase()}`, 4, lvl, unlocked && prog.starter, () => { prog.starter = !prog.starter; });
     if (unlocked && lvl >= 2) {
       setPlayerSkin(prog.skin ? id : null);
       const { spr, flame } = addShip(this, X + 262, 205, c.starter, 0, 2);
@@ -158,8 +169,10 @@ export class CommanderScene extends Phaser.Scene {
     }
 
     const nextUnlock = UNLOCKS.find((u) => u.level > lvl);
-    if (unlocked && nextUnlock) {
-      this.add2(txt(this, X + 8, 228, `NEXT, LV${nextUnlock.level}: ${nextUnlock.text}`, { color: '#6a76a0' }));
+    if (this.gauntlet) {
+      this.add2(txt(this, X + 8, 230, 'BEAT 3 BOSSES. BOSSES DROP RELICS.', { color: '#ff8a8a' }));
+    } else if (unlocked && nextUnlock) {
+      this.add2(txt(this, X + 8, 230, `NEXT: ${nextUnlock.text.toUpperCase()} AT LV${nextUnlock.level}`, { color: C.faint }));
     }
 
     // Buttons
@@ -178,8 +191,10 @@ export class CommanderScene extends Phaser.Scene {
       this.add2(txt(this, x + 14 + label.length * 8 + 8, y, `LV${need}`, { color: C.bad }));
       return;
     }
-    const hit = this.add2(this.add.rectangle(x + 100, y + 3, 210, 12, 0xffffff, 0.001).setInteractive({ useHandCursor: true }));
+    // A finger-sized row (18 tall, rows 18 apart) rather than just the 8px box.
+    const hit = this.add2(tapZone(this, x + 120, y + 3, 250, 18));
     hit.on('pointerup', () => {
+      audio.play('select');
       flip();
       saveProfile(getProfile());
       this.refresh();

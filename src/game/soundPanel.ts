@@ -12,7 +12,7 @@ const silent = () => audio.settings.muted || (audio.settings.music <= 0 && audio
  */
 export function soundButton(scene: Phaser.Scene, x: number, y: number): Phaser.GameObjects.GameObject[] {
   const icon = scene.add.image(x, y, silent() ? 'spk_off' : 'spk_on');
-  const hit = scene.add.rectangle(x, y, 22, 18, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
+  const hit = scene.add.rectangle(x, y, 28, 24, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
   hit.on('pointerover', () => icon.setTint(0xffd166));
   hit.on('pointerout', () => icon.clearTint());
   hit.on('pointerup', () => {

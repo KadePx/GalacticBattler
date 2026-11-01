@@ -11,13 +11,12 @@ export interface Gain { atk: number; hp: number; shield: number }
 
 const NONE: Gain = { atk: 0, hp: 0, shield: 0 };
 export const hasGain = (g: Gain) => g.atk > 0 || g.hp > 0 || g.shield > 0;
-/** "+2/+3", "+1 SH" and so on, for small labels. */
+/** "+2 ATK +3 HP +1 SH" (only the parts that are there), for short text lines. */
 export function gainLabel(g: Gain): string {
   const parts: string[] = [];
-  if (g.atk > 0 && g.hp > 0) parts.push(`+${g.atk}/+${g.hp}`);
-  else if (g.atk > 0) parts.push(`+${g.atk} ATK`);
-  else if (g.hp > 0) parts.push(`+${g.hp} HP`);
-  if (g.shield > 0) parts.push(`+${g.shield}SH`);
+  if (g.atk > 0) parts.push(`+${g.atk} ATK`);
+  if (g.hp > 0) parts.push(`+${g.hp} HP`);
+  if (g.shield > 0) parts.push(`+${g.shield} SH`);
   return parts.join(' ');
 }
 

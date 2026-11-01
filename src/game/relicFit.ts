@@ -35,6 +35,7 @@ export function relicFit(id: string, run: Run): RelicFit {
   // Slurms' Brood Nest fighters are plain on purpose, so they don't count here.
   const fighterSources = fighterMakers.length + count(run.relics, 'hangar');
 
+  const ofClass = (c: ShipClass) => fleet.map((s, i) => (s && SHIPS[s.def].classes.includes(c) ? i : -1)).filter((i) => i >= 0);
   const targeted = (defs: string[]): RelicFit => {
     const slots = shipsOf(fleet, defs);
     return slots.length
@@ -45,7 +46,8 @@ export function relicFit(id: string, run: Run): RelicFit {
   const special = REWARD_MAP[id];
   if (special) {
     if (id === 'x:drill') {
-      return { kind: 'econ', slots: drillTargets(fleet), note: special.note };
+      // The data's note wraps to three lines on a card, so it gets a shorter one here.
+      return { kind: 'econ', slots: drillTargets(fleet), note: 'Picks ships near a level' };
     }
     return { kind: 'econ', slots: [], note: special.note };
   }
@@ -87,10 +89,11 @@ export function relicFit(id: string, run: Run): RelicFit {
     case 'banner_r':
     case 'banner_v': {
       const f: ShipClass = id === 'banner_c' ? 'concord' : id === 'banner_r' ? 'reaver' : 'void';
-      const have = traitCounts(fleet, run.relics)[f];
-      const slots = fleet.map((s, i) => (s && SHIPS[s.def].classes.includes(f) ? i : -1)).filter((i) => i >= 0);
+      const have = traitCounts(fleet, run.relics)[f]; // the reward pick comes after the SALUTE round
+      const slots = ofClass(f);
       const next = TRAIT_MAP[f].tiers.find((t) => have < t.n)?.n;
-      if (next && have + 1 >= next) return { kind: 'combo', slots, note: `Unlocks ${TRAIT_MAP[f].short} (${next})` };
+      if (!next) return { kind: 'none', slots, note: `${TRAIT_MAP[f].short} is already maxed` };
+      if (have + 1 >= next) return { kind: 'combo', slots, note: `Unlocks ${TRAIT_MAP[f].short} (${next})` };
       return slots.length
         ? { kind: 'all', slots, note: `${TRAIT_MAP[f].short} ${have} -> ${have + 1}` }
         : { kind: 'none', slots: [], note: `No ${TRAIT_MAP[f].short} ships yet` };
@@ -110,10 +113,10 @@ export function relicFit(id: string, run: Run): RelicFit {
     case 'napalm':
     case 'gyro': {
       const slots = id === 'napalm'
-        ? fleet.map((s, i) => (s && SHIPS[s.def].classes.includes('artillery') ? i : -1)).filter((i) => i >= 0)
+        ? ofClass('artillery')
         : fleet.map((s, i) => (s && s.xp >= 5 ? i : -1)).filter((i) => i >= 0);
       if (slots.length) return { kind: 'combo', slots, note: `Boosts your ${names(fleet, slots)}` };
-      return { kind: 'none', slots: [], note: id === 'napalm' ? 'No artillery ships yet' : 'No level 3 ships yet' };
+      return { kind: 'none', slots: [], note: id === 'napalm' ? 'No artillery ships yet' : 'No LV3 ships yet' };
     }
     case 'ablative':
       return { kind: 'all', slots: front, note: front.length ? `Armors your ${names(fleet, front)}` : 'Armors your front ship' };
@@ -122,7 +125,7 @@ export function relicFit(id: string, run: Run): RelicFit {
     case 'reserves': {
       const benched = (run.bench ?? []).find(Boolean);
       return benched
-        ? { kind: 'combo', slots: [], note: `Your ${SHIPS[benched.def].name} waits in reserve` }
+        ? { kind: 'combo', slots: [], note: `${SHIPS[benched.def].name} in reserve` }
         : { kind: 'none', slots: [], note: 'Needs a ship on your bench' };
     }
     case 'bounty':
@@ -135,7 +138,28 @@ export function relicFit(id: string, run: Run): RelicFit {
       return { kind: 'econ', slots: [], note: 'More ships each round' };
     case 'magnet':
       return { kind: 'econ', slots: [], note: 'Better when you sell often' };
+    case 'thorns': {
+      const guards = ofClass('guard');
+      return guards.length
+        ? { kind: 'combo', slots: guards, note: `Boosts your ${names(fleet, guards)}` }
+        : { kind: 'none', slots: [], note: 'No Guard ships yet' };
+    }
+    case 'phase':
+      return { kind: 'all', slots: front, note: front.length ? `${names(fleet, front)} dodges a hit` : 'Front ship dodges a hit' };
+    // Boss relics
+    case 'b_crown':
+    case 'b_maw':
+    case 'b_warp':
+      return { kind: 'all', slots: all, note: all.length ? `Affects all ${all.length} ships` : 'Affects every ship' };
+    case 'b_aegis':
+      return { kind: 'all', slots: all, note: all.length ? `Shields all ${all.length} ships` : 'Shields every ship' };
+    case 'b_hive': {
+      const boosts = count(run.relics, 'squadron') > 0 || (run.cmd === 'ryx' && run.passive === 'b');
+      return boosts
+        ? { kind: 'combo', slots: [], note: 'Combos with your fighter boosts' }
+        : { kind: 'all', slots: [], note: 'Adds 2 ships to every battle' };
+    }
     default:
-      return { kind: 'all', slots: [], note: '' };
+      return { kind: 'all', slots: [], note: 'Lasts for the whole run' };
   }
 }
