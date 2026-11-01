@@ -604,7 +604,8 @@ function showEvent() {
     const def = eventDef(g.event.id);
     if (!def) { g.event = null; box.classList.remove('show'); return; }
     const ch = def.choices(g, g.event.data);
-    html = `<div class="evicon">${def.icon}</div><h2>${def.title}</h2><p>${def.text(g, g.event.data)}</p><div class="choices">${ch.map((c, i) => `<button class="choice" data-choice="${i}" ${c.ok === false ? 'disabled' : ''}><b>${c.label}</b>${c.hint ? `<small>${c.hint}</small>` : ''}</button>`).join('')}</div>`;
+    const ic = EVENT_ICON[g.event.id];
+    html = `<div class="evicon">${ic ? `<img src="${toDataURL(icon(ic), 4)}" alt="">` : def.icon}</div><h2>${def.title}</h2><p>${def.text(g, g.event.data)}</p><div class="choices">${ch.map((c, i) => `<button class="choice" data-choice="${i}" ${c.ok === false ? 'disabled' : ''}><b>${c.label}</b>${c.hint ? `<small>${c.hint}</small>` : ''}</button>`).join('')}</div>`;
   } else html = `<p class="result">${eventResult}</p><button class="big" data-choice="done">Carry on</button>`;
   $('event-body').innerHTML = html;
   box.classList.add('show');
@@ -670,6 +671,13 @@ $('goal').addEventListener('click', (e) => {
   if (el.dataset.act === 'togglegoal') goalOpen = !goalOpen;
   refreshGoal();
 });
+
+const EVENT_ICON: Record<string, string> = {
+  merchant: 'gold', wounded: 'satchel', wolves: 'skull', orchard: 'food', storm: 'banner', defector: 'idol', fever: 'satchel', tax: 'ledger',
+  cart: 'wood', feast: 'food', map: 'scroll', refugees: 'people', smith: 'hammer', shrine: 'spyglass', rats: 'food', drums: 'horn', bard: 'horn',
+  rockslide: 'stone', coldsnap: 'hearth', scouts: 'spyglass', blueprint: 'scroll', drillmaster: 'sword', surveyor: 'spyglass', seer: 'idol',
+  envoy: 'banner', grubnik: 'idol', envoy_back: 'banner',
+};
 
 // ---------- toasts & banner ----------
 function showToast(text: string, kind = '') {
