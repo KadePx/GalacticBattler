@@ -875,7 +875,7 @@ export const SHIPS: Record<string, ShipDef> = {
   },
   voidmaw: {
     id: 'voidmaw', name: 'Void Leviathan', tier: 0, atk: 4, hp: 40, cd: 5, classes: [],
-    desc: 'Hits the front 3. Curses your fleet (no healing). Splits at half HP.', perks: ['', ''], accent: ['#b040ff', '#e8b0ff'],
+    desc: 'Hits the front 3. Curses your fleet (no healing) until it splits at half HP.', perks: ['', ''], accent: ['#b040ff', '#e8b0ff'],
     sprite: ['..oooo..', '.oaAAao.', 'Eobbbbwo', '.oaAAao.', '..oooo..'],
   },
 };

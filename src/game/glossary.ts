@@ -116,7 +116,7 @@ export const TERMS: Term[] = [
   },
   {
     id: 'curse', name: 'CURSE', match: /curse/i,
-    desc: 'A cursed ship cannot be healed (drones, life-steal, buffs that heal) and cannot rebuild. It lasts the whole battle.',
+    desc: 'A cursed ship cannot be healed (drones, life-steal, buffs that heal) and cannot rebuild. It lasts the whole battle, except the Void Leviathan curse, which lifts when it splits.',
   },
   {
     id: 'haste', name: 'HASTE', match: /sooner|haste/i,

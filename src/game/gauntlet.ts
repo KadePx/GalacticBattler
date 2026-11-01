@@ -34,7 +34,7 @@ export const BOSS_INFO: Record<string, { title: string; tip: string }> = {
   mothership: { title: 'HIVE MOTHERSHIP', tip: 'Hits 2 ships and launches a fighter every attack. Burst it down fast.' },
   citadel: { title: 'THE CITADEL', tip: 'Takes 1 damage per hit while a Pylon stands. Hits your whole fleet.' },
   warlord: { title: "ADMIRAL'S DREADNOUGHT", tip: 'Broadsides hit 3. At half HP it enrages: twice as fast, hits all.' },
-  voidmaw: { title: 'VOID LEVIATHAN', tip: 'Hits 3. Curses your fleet: no healing. Splits into Echoes at half HP.' },
+  voidmaw: { title: 'VOID LEVIATHAN', tip: 'Hits 3. Curses your fleet: no healing until it splits into Echoes at half HP.' },
 };
 
 export function newGauntlet(s: RngState): GauntletState {
@@ -83,7 +83,7 @@ export const BOSS_TUNING: Record<string, { atk: number[]; hp: number[]; escorts:
   mothership: { atk: [7, 27, 67], hp: [133, 153, 176], escorts: 0 },
   citadel: { atk: [4, 12, 25], hp: [59, 62, 83], escorts: 0, pAtk: [2, 10, 19], pHp: [18, 19, 27] },
   warlord: { atk: [7, 13, 18], hp: [49, 95, 148], escorts: 2 },
-  voidmaw: { atk: [6, 27, 47], hp: [104, 86, 112], escorts: 1 },
+  voidmaw: { atk: [6, 29, 51], hp: [118, 86, 110], escorts: 1 }, // curse lifts on split (Oct 31)
 };
 export const BOSS_ROUND = (sector: number) => sector * (SECTOR_BATTLES + 1);
 

@@ -336,10 +336,12 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
     c.armor = FORTIFIED;
     events.push({ t: 1, k: 'buff', u: c.uid, atk: c.atk, hp: c.hp, label: 'FORTIFIED' });
   }
+  const leviCursed = new Set<BUnit>(); // lifted when the Leviathan splits
   for (const m of units.filter((u) => u.def === 'voidmaw')) {
     for (const x of units) {
       if (x.side === m.side || x.curse) continue;
       x.curse = true;
+      leviCursed.add(x);
       events.push({ t: 1, k: 'buff', u: x.uid, atk: x.atk, hp: x.hp, label: 'CURSED' });
     }
   }
@@ -772,6 +774,12 @@ export function simulate(a: Snapshot, b: Snapshot): BattleResult {
         phased.add(u);
         events.push({ t, k: 'buff', u: u.uid, atk: u.atk, hp: u.hp, label: 'SPLIT' });
         for (let k = 0; k < 2; k++) spawnEcho(u.side, Math.ceil(u.atk / 2), Math.ceil(u.maxHp / 5), u);
+        // Splitting breaks its hold: its curse lifts (curses from Hexers stay).
+        for (const x of leviCursed) {
+          x.curse = false;
+          if (x.alive && x.hp > 0) events.push({ t, k: 'buff', u: x.uid, atk: x.atk, hp: x.hp, label: 'UNCURSED' });
+        }
+        leviCursed.clear();
       }
     }
 

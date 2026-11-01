@@ -73,6 +73,7 @@ const NOTES: Record<string, [color: string, text: string]> = {
   BOOM: [C.atk, 'EXPLODED ON FRONT FOE'],
   MARKED: [C.gold, 'TAKES EXTRA DAMAGE'],
   CURSED: ['#d090ff', 'NO HEALING OR REBUILD'],
+  UNCURSED: ['#9cff3a', 'CAN HEAL AGAIN'],
   FORTIFIED: [C.gold, 'PYLONS CUT DMG TO 1'],
   EXPOSED: [C.gold, 'FULL DAMAGE AGAIN'],
   HASTE: [C.gold, 'ITS LINE FIRES SOONER'],
@@ -719,6 +720,7 @@ export class BattleScene extends Phaser.Scene {
           if (e.sh !== undefined) this.setShield(v, e.sh);
           if (e.label === 'MARKED') v.u.mark = Math.max(1, v.u.mark);
           if (e.label === 'CURSED') v.u.curse = true;
+          if (e.label === 'UNCURSED') v.u.curse = false;
           audio.play(e.label.startsWith('-') ? 'debuff' : 'buff');
           // Small team-wide buffs (Vengeance) just flash; named buffs get a label.
           if (/^\+\d+$/.test(e.label)) this.flash(v, 0xffd166);
