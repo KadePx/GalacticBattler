@@ -8,7 +8,7 @@
     <title>itskade.space · games</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Press+Start+2P&family=Bungee&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@700&family=Space+Grotesk:wght@400;500;700&family=Press+Start+2P&family=Bungee&display=swap" rel="stylesheet" />
     <style>
       :root {
         --bg: #0b0c12;
@@ -54,6 +54,9 @@
       .extra:hover { color: var(--ink); text-decoration: underline; }
       .gb .shot { image-rendering: pixelated; }
       .gb { --accent: #ffd166; --shotbg: linear-gradient(135deg, #0a0f2a, #1a1146 60%, #05060f); }
+      .gh .title { font-family: "Pixelify Sans", monospace; font-weight: 700; font-size: 24px; line-height: 1.2; color: #ffd166; }
+      .gh .shot { image-rendering: pixelated; }
+      .gh { --accent: #ffd166; --shotbg: linear-gradient(135deg, #3c5a2a, #2a2018 60%, #14100c); }
       .rw { --accent: #8fe07a; --shotbg: linear-gradient(135deg, #3a4a2c, #2b313b 60%, #1a1d22); }
       footer { margin-top: 56px; color: var(--dim); font-size: 14px; }
       @media (prefers-reduced-motion: reduce) { .game { transition: none; } .game:hover { transform: none; } }
@@ -76,6 +79,19 @@
             <div class="row">
               <a class="play" href="/galactic-battler/">Play</a>
               <a class="extra" href="/galactic-battler/patch-notes.html">Patch notes</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="game gh">
+          <a class="shot" href="/goblin-hold/" style="background-image: url(/thumbs/goblin-hold.jpg), var(--shotbg)" aria-label="Play Goblin Hold"><span class="badge">NEW</span></a>
+          <div class="body">
+            <h2 class="title">GOBLIN HOLD</h2>
+            <p class="desc">Cozy pixel-art tower defense meets colony sim. Gather, trade and survive the seasons, make hard choices at dawn, and hold the keep through goblin nights and warchief raids.</p>
+            <div class="tags"><span>Tower defense</span><span>Colony sim</span><span>Pixel art</span></div>
+            <div class="row">
+              <a class="play" href="/goblin-hold/">Play</a>
+              <span class="extra">Phone or desktop</span>
             </div>
           </div>
         </div>

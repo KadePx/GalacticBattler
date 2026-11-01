@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#2a2018" />
+    <meta name="description" content="Goblin Hold: a cozy pixel-art tower defense and colony sim. Keep your settlers fed, warm and brave through the seasons, trade, make hard choices, and hold the keep through the goblin nights." />
+    <title>Goblin Hold</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=Rubik:wght@400;500;600&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --ink: #f3ead6;
+        --dim: #b9aa8c;
+        --panel: rgba(38, 29, 22, 0.92);
+        --panel2: #3d2f23;
+        --line: #6e5439;
+        --line2: #8d6c48;
+        --gold: #ffd166;
+        --green: #93d46c;
+        --red: #ff6d50;
+        --blue: #8fb4ff;
+        --px: 'Pixelify Sans', monospace;
+        --r: 8px;
+      }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { margin: 0; height: 100%; background: #2a2018; color: var(--ink); overflow: hidden; font: 14px/1.4 Rubik, system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
+      #game { position: fixed; inset: 0; touch-action: none; display: block; width: 100%; height: 100%; }
+      button { font: inherit; color: inherit; cursor: pointer; }
+      button:disabled { cursor: default; }
+      .hud { position: fixed; z-index: 2; }
+      .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 230, 180, 0.07); }
+      .ico { width: 16px; height: 16px; image-rendering: pixelated; vertical-align: -3px; }
+      .dim { color: var(--dim); }
+
+      /* ---------- top bar ---------- */
+      #top { top: max(8px, env(safe-area-inset-top)); left: 8px; right: 8px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; pointer-events: none; }
+      #top > * { pointer-events: auto; }
+      #top .panel { padding: 4px 10px; display: flex; align-items: center; gap: 10px; min-height: 36px; }
+      #day { font-family: var(--px); font-size: 19px; font-weight: 700; color: var(--gold); letter-spacing: 1px; }
+      .daybox { flex-direction: row; }
+      .daycol { display: flex; flex-direction: column; line-height: 1.1; }
+      #season { font-family: var(--px); font-size: 12px; }
+      .season.spring { color: #a8e07a; } .season.summer { color: #ffd166; } .season.autumn { color: #ff9a4a; } .season.winter { color: #bfe2ff; }
+      #phase { font-family: var(--px); color: var(--dim); font-size: 13px; }
+      .prog { width: 64px; height: 5px; background: #1a120c; border-radius: 3px; overflow: hidden; }
+      .prog i { display: block; height: 100%; width: 0; background: var(--gold); transition: width 0.2s; }
+      .prog.night i { background: var(--blue); }
+      .res { display: flex; align-items: center; gap: 4px; font-family: var(--px); font-size: 16px; min-width: 38px; }
+      .res.low b { color: var(--red); }
+      #moodv { font-family: var(--px); font-size: 16px; }
+      #moodv.good { color: var(--green); } #moodv.bad { color: var(--red); }
+      .mood small { color: var(--dim); font-size: 11px; }
+      #speed { padding: 3px !important; gap: 3px !important; }
+      #speed button { width: 32px; height: 28px; border-radius: 5px; border: 1px solid var(--line); background: #2a2018; font-family: var(--px); font-size: 13px; }
+      #speed button.on { background: var(--line); color: var(--gold); }
+      .iconbtn { width: 38px; height: 38px; border-radius: var(--r); border: 1px solid var(--line); background: var(--panel); font-size: 18px; display: flex; align-items: center; justify-content: center; }
+      #relics { top: calc(max(8px, env(safe-area-inset-top)) + 46px); right: 8px; padding: 4px 6px; display: flex; gap: 4px; flex-wrap: wrap; max-width: 260px; justify-content: flex-end; }
+      #relics img { width: 24px; height: 24px; image-rendering: pixelated; background: #2a2018; border: 1px solid var(--line); border-radius: 4px; padding: 0; }
+      .buff { font-size: 11px; padding: 3px 7px; border-radius: 4px; background: #4a2a24; border: 1px solid #8a4a3a; }
+
+      /* ---------- forecast ---------- */
+      #forecast { top: calc(max(8px, env(safe-area-inset-top)) + 46px); left: 50%; transform: translateX(-50%); padding: 5px 6px 5px 12px; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 290px); }
+      #fc-text { font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      #fc-text b { font-family: var(--px); font-size: 15px; }
+      #fc-text .assault { color: var(--red); }
+      #fc-text .boss { color: #ff4a3a; animation: pulse 1.2s infinite; }
+      @keyframes pulse { 50% { opacity: 0.6; } }
+      .gob { display: inline-flex; align-items: center; gap: 1px; font-family: var(--px); font-size: 14px; }
+      .gob img { width: 20px; height: 20px; image-rendering: pixelated; }
+      .act { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line2); background: #5a4224; font-family: var(--px); font-size: 14px; white-space: nowrap; }
+      .act:hover:not(:disabled) { background: #6e5230; }
+      .act.horn { background: #6a2a20; border-color: #a8483a; }
+      .act:disabled { opacity: 0.55; }
+
+      /* ---------- build bar ---------- */
+      #bar { bottom: max(8px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); padding: 4px; max-width: calc(100% - 16px); display: flex; flex-direction: column; gap: 4px; }
+      #bar .tabs { display: flex; gap: 4px; }
+      #bar .tabs button { flex: 0 0 auto; padding: 2px 14px; border-radius: 5px; border: 1px solid var(--line); background: #2a2018; color: var(--dim); font-family: var(--px); font-size: 13px; }
+      #bar .tabs button.on { background: var(--line); color: var(--gold); }
+      #bar .tools { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+      #bar .tools::-webkit-scrollbar { display: none; }
+      .tool { position: relative; flex: 0 0 auto; width: 62px; height: 66px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel2); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 3px 2px; gap: 1px; }
+      .tool:hover { background: #4b3a2a; }
+      .tool.on { border-color: var(--gold); background: #5a4628; box-shadow: inset 0 0 0 1px var(--gold); }
+      .tool.poor img, .tool.poor .nm { opacity: 0.5; }
+      .tool.poor .cost { color: var(--red); }
+      .tool.locked img { filter: grayscale(1) brightness(0.55); }
+      .tool.locked .cost { color: var(--dim); font-style: italic; }
+      .tool.glow { border-color: var(--gold); animation: pulse 1.2s infinite; }
+      .tool img { width: 32px; height: 32px; image-rendering: pixelated; object-fit: contain; }
+      .tool .nm { font-family: var(--px); font-size: 12px; line-height: 1; }
+      .tool .cost { font-size: 10px; color: var(--gold); line-height: 1.1; white-space: nowrap; display: flex; align-items: center; gap: 1px; }
+      .tool .cost .ico { width: 10px; height: 10px; vertical-align: -1px; }
+      .tool .key { position: absolute; top: 2px; left: 4px; font-size: 10px; color: var(--dim); }
+      .tool.util { background: #2e241b; }
+      .sep { flex: 0 0 6px; }
+
+      /* ---------- cards & panels ---------- */
+      #card { left: 8px; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 104px); width: 310px; padding: 10px 12px; display: none; max-height: calc(100% - 230px); overflow-y: auto; }
+      #card.show { display: block; }
+      #card h3, .side h3 { margin: 0; font-family: var(--px); font-size: 19px; color: var(--gold); display: flex; justify-content: space-between; align-items: center; }
+      #card h3 > span { display: flex; align-items: center; gap: 6px; }
+      .portrait { width: 22px; height: 22px; image-rendering: pixelated; }
+      .x { background: none; border: none; color: var(--dim); font-size: 20px; padding: 0 4px; line-height: 1; }
+      #card .sub { color: var(--dim); font-size: 12px; margin: 2px 0 6px; }
+      .trait { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #4a3a2a; font-size: 11px; margin: 0 3px 3px 0; }
+      .trait.bad { background: #5a2a24; color: #ffb0a0; }
+      .needs { display: grid; grid-template-columns: 56px 1fr; gap: 3px 8px; align-items: center; font-size: 12px; margin: 6px 0; }
+      .nb { height: 6px; background: #1a120c; border-radius: 3px; overflow: hidden; }
+      .nb i { display: block; height: 100%; }
+      .moodline { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); }
+      .moodline b { color: var(--ink); }
+      .mems { margin-top: 3px; }
+      .pos { color: var(--green); } .neg { color: var(--red); }
+      .jobs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin: 8px 0 4px; }
+      .jobs button { padding: 4px 2px; border-radius: 4px; border: 1px solid var(--line); background: #2a2018; font-size: 11px; line-height: 1.15; }
+      .jobs button.on { border-color: var(--gold); background: #5a4628; color: var(--gold); }
+      .jobs button.warn:not(.on) { color: var(--dim); }
+      .jobs button small { display: block; font-size: 9px; color: var(--gold); }
+      .row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+      .row.center { justify-content: center; }
+      .small { padding: 5px 10px; border-radius: 5px; border: 1px solid var(--line); background: #2a2018; font-size: 12px; display: inline-flex; align-items: center; gap: 3px; }
+      .small:hover:not(:disabled) { background: #3d2f23; }
+      .small:disabled { opacity: 0.45; }
+      .small.danger { border-color: #8a3a2a; color: #ffb0a0; }
+      .desc { font-size: 12px; color: var(--dim); margin: 4px 0; }
+      .upg { margin-top: 6px; }
+      .upg b { color: var(--gold); font-weight: 600; }
+      .promo { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: #2e2a1c; border: 1px solid #6a5a2a; font-size: 12px; }
+      .promo.ready { border-color: var(--gold); background: #3a321c; }
+      .promo b { color: var(--gold); font-family: var(--px); font-weight: 400; font-size: 14px; }
+      .xp { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: center; font-size: 12px; color: var(--dim); margin: 4px 0; }
+
+      .side { top: calc(max(8px, env(safe-area-inset-top)) + 84px); right: 8px; width: 370px; max-height: calc(100% - 200px); overflow-y: auto; padding: 10px 12px; display: none; }
+      .side.show { display: block; }
+      .side h4 { font-family: var(--px); font-size: 15px; color: var(--gold); margin: 12px 0 4px; }
+      .rrow { display: grid; grid-template-columns: 1fr 108px 30px 14px; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid #4a3a2a; font-size: 13px; }
+      .rrow .nm { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rrow .nm small { color: var(--dim); display: block; font-size: 11px; }
+      .rrow select { width: 100%; background: #2a2018; color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 3px; font: inherit; font-size: 12px; }
+      .rrow .md { font-family: var(--px); text-align: right; }
+      .jobsum { font-size: 12px; color: var(--dim); margin: 4px 0 6px; }
+      .trows { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+      .trow { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+      .tres small { display: block; color: var(--dim); font-size: 11px; }
+      .offers { display: flex; flex-direction: column; gap: 6px; }
+      .offer { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: #2e241b; }
+      .offer img { width: 24px; height: 24px; image-rendering: pixelated; }
+      .offer small { display: block; color: var(--dim); font-size: 11px; }
+      .offer.sold { opacity: 0.5; }
+
+      #toasts { top: calc(max(8px, env(safe-area-inset-top)) + 84px); left: 8px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; max-width: 300px; }
+      .toast { padding: 5px 10px; background: var(--panel); border-left: 3px solid var(--line2); border-radius: 4px; font-size: 13px; animation: tin 0.25s; }
+      .toast.bad { border-left-color: var(--red); }
+      .toast.warn { border-left-color: var(--gold); }
+      .toast.good { border-left-color: var(--green); }
+      .toast.out { opacity: 0; transition: opacity 0.5s; }
+      @keyframes tin { from { opacity: 0; transform: translateX(-10px); } }
+
+      #banner { top: 24%; left: 50%; transform: translate(-50%, -8px); text-align: center; opacity: 0; transition: opacity 0.4s, transform 0.4s; pointer-events: none; }
+      #banner.show { opacity: 1; transform: translate(-50%, 0); }
+      #banner-t { font-family: var(--px); font-weight: 700; font-size: clamp(34px, 8vw, 64px); color: var(--gold); text-shadow: 0 4px 0 #2a1a10; }
+      #banner.danger #banner-t { color: var(--red); }
+      #banner-s { font-size: 16px; text-shadow: 0 2px 3px #000; }
+      #postHint { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 104px); left: 50%; transform: translateX(-50%); padding: 6px 12px; display: none; font-size: 13px; }
+      #postHint.show { display: block; }
+
+      /* ---------- overlays ---------- */
+      .overlay { position: fixed; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center; background: rgba(14, 12, 10, 0.6); padding: 16px; }
+      .overlay.show { display: flex; }
+      .sheet { max-width: 480px; width: 100%; padding: 22px 24px; text-align: center; max-height: 100%; overflow-y: auto; }
+      .sheet h1 { font-family: var(--px); font-weight: 700; font-size: clamp(44px, 12vw, 70px); margin: 0; line-height: 1; color: var(--green); text-shadow: 0 5px 0 #26421a; }
+      .sheet h2 { font-family: var(--px); font-size: 30px; margin: 0 0 6px; color: var(--gold); }
+      .sheet p { color: var(--dim); margin: 10px 0; }
+      .sheet ul { text-align: left; color: var(--ink); padding-left: 20px; margin: 10px 0; font-size: 14px; }
+      .sheet li { margin: 3px 0; }
+      .big { font-family: var(--px); font-size: 19px; padding: 9px 24px; background: #4a6a2a; border: 1px solid #7aa04a; border-radius: var(--r); margin: 6px 4px; }
+      .big:hover:not(:disabled) { background: #5a7a34; }
+      .big:disabled { opacity: 0.45; }
+      .big.alt { background: #3a2d22; border-color: var(--line); }
+      a.big { display: inline-block; color: var(--ink); text-decoration: none; }
+      body.intitle .hud { display: none !important; }
+      #title { background: rgba(14, 12, 10, 0.35); }
+      .link.gold { color: var(--gold); font-family: var(--px); font-size: 15px; text-decoration: none; }
+      .renownbig { font-family: var(--px); font-size: 26px; color: var(--gold); margin: 6px 0 12px; }
+      .ustar { color: var(--gold); font-size: 18px; text-align: center; }
+      #meta .offers { text-align: left; margin-bottom: 10px; }
+      .renown { color: var(--gold); list-style: none; margin-top: 8px !important; }
+      .applicant { margin: 14px 0 6px; padding: 10px; border: 1px dashed var(--line); border-radius: 6px; }
+      .applicant b { font-family: var(--px); color: var(--gold); font-size: 18px; }
+      .how { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; text-align: left; font-size: 13px; margin: 14px auto; max-width: 400px; }
+      .how b { font-family: var(--px); color: var(--gold); font-weight: 400; }
+      .how span { color: var(--dim); }
+      #best { color: var(--gold); font-family: var(--px); margin-top: 8px; }
+      .back { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 6; color: var(--dim); text-decoration: none; font-size: 13px; }
+
+      /* event card: parchment */
+      #event .sheet { background: #efe2c2; color: #3a2a1c; border: 2px solid #8a6a40; box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), inset 0 0 0 4px #e2d2ac; max-width: 460px; }
+      #event h2 { color: #6a3a1c; font-size: 28px; }
+      #event p { color: #5a4630; font-size: 15px; }
+      #event .result { color: #3a2a1c; font-size: 16px; margin: 6px 0 14px; }
+      .evicon { width: 52px; height: 52px; margin: 0 auto 6px; border-radius: 50%; background: #6a3a1c; color: #ffe8b0; font-family: var(--px); font-size: 28px; display: flex; align-items: center; justify-content: center; border: 2px solid #3a2010; }
+      .choices { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+      .choice { text-align: left; padding: 8px 12px; border-radius: 6px; border: 1px solid #8a6a40; background: #f8eed6; color: #3a2a1c; }
+      .choice:hover:not(:disabled) { background: #fff6e0; border-color: #6a3a1c; }
+      .choice:disabled { opacity: 0.45; }
+      .choice b { font-weight: 600; }
+      .choice small { display: block; color: #7a6040; font-size: 12px; }
+      #event .big { background: #6a3a1c; border-color: #3a2010; color: #ffe8b0; }
+
+      /* tips, tool chip, goals */
+      #tip { z-index: 8; display: none; max-width: 280px; padding: 7px 10px; background: #15100c; border: 1px solid var(--line2); border-radius: 6px; font-size: 12px; line-height: 1.4; pointer-events: none; color: var(--ink); }
+      #tip.show { display: block; }
+      #tip b { color: var(--gold); }
+      #toolChip { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 104px); left: 50%; transform: translateX(-50%); padding: 4px 4px 4px 12px; display: none; align-items: center; gap: 10px; font-size: 13px; white-space: nowrap; }
+      #toolChip.show { display: flex; }
+      #toolChip b { color: var(--gold); font-family: var(--px); font-weight: 400; font-size: 15px; }
+      #goal { top: calc(max(8px, env(safe-area-inset-top)) + 84px); left: 8px; width: 290px; padding: 8px 10px; display: none; font-size: 13px; }
+      #goal.show { display: block; }
+      .gstep { display: flex; gap: 8px; align-items: flex-start; }
+      .gstep b { color: var(--gold); font-weight: 600; }
+      .gk { color: var(--gold); }
+      .gfoot { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; }
+      .link { background: none; border: none; color: var(--dim); text-decoration: underline; font-size: 11px; padding: 0; }
+      .ghead { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+      .ghead b { font-family: var(--px); color: var(--gold); font-weight: 400; font-size: 15px; }
+      .crow { display: flex; gap: 6px; margin-top: 5px; line-height: 1.3; }
+      .crow small { display: block; color: var(--gold); font-size: 11px; opacity: 0.85; }
+      .ck { color: var(--dim); }
+      .tutglow { outline: 2px solid var(--gold) !important; animation: pulse 1s infinite; }
+      .warnbtn { background: #7a5a1c !important; border-color: var(--gold) !important; }
+      .prog.late i { background: #ff8a3a; }
+      .low b, .low #pop { color: var(--red) !important; }
+      .res.low { animation: pulse 1.2s infinite; }
+      #rosterBtn { position: relative; }
+      #idleBadge { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--gold); color: #2a2018; font: 600 11px/17px Rubik, sans-serif; text-align: center; }
+      .ico.big2 { width: 20px; height: 20px; }
+      .burger { display: flex; flex-direction: column; gap: 3px; }
+      .burger i { display: block; width: 16px; height: 2px; background: var(--ink); border-radius: 1px; }
+      #toasts { top: calc(max(8px, env(safe-area-inset-top)) + 88px); left: 50%; transform: translateX(-50%); align-items: center; max-width: min(420px, calc(100% - 16px)); }
+      @media (pointer: coarse) {
+        #speed button { min-width: 38px; min-height: 34px; }
+        #bar .tabs button { padding: 7px 18px; }
+        .x { min-width: 40px; min-height: 40px; }
+        .jobs button { min-height: 38px; }
+        .small { padding: 9px 12px; }
+        .jobs button small, .tool .cost, .tool .key { font-size: 11px; }
+      }
+
+      @media (max-width: 760px) {
+        #top .panel { padding: 3px 7px; gap: 7px; min-height: 32px; }
+        #day { font-size: 16px; }
+        .prog { width: 40px; }
+        .res { font-size: 14px; min-width: 30px; }
+        #speed button { width: 28px; height: 24px; font-size: 12px; }
+        .iconbtn { width: 32px; height: 32px; font-size: 15px; }
+        #forecast { top: calc(max(8px, env(safe-area-inset-top)) + 80px); left: 8px; right: 8px; transform: none; max-width: none; justify-content: space-between; padding: 4px 6px 4px 8px; gap: 6px; }
+        #fc-text { font-size: 12px; }
+        .act { padding: 5px 8px; font-size: 13px; }
+        #relics { top: auto; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); right: 8px; max-width: 50%; }
+        .tool { width: 54px; height: 58px; }
+        .tool img { width: 26px; height: 26px; }
+        .tool .key { display: none; }
+        #card { left: 8px; right: 8px; width: auto; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); max-height: 46%; }
+        .side { left: 8px; right: 8px; width: auto; top: calc(max(8px, env(safe-area-inset-top)) + 120px); max-height: calc(100% - 240px); }
+        #toasts { top: calc(max(8px, env(safe-area-inset-top)) + 122px); }
+        #goal { top: auto; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); left: 8px; right: 8px; width: auto; font-size: 12px; }
+        #toolChip { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); }
+        body.carded #goal, body.tooling #goal { display: none; }
+        #postHint { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="top" class="hud">
+      <div class="panel daybox">
+        <div class="daycol"><span id="day">DAY 1</span><span id="season" class="season spring">Spring</span></div>
+        <div class="daycol"><span id="phase">Day</span><div class="prog" id="progbox"><i id="prog"></i></div></div>
+      </div>
+      <div class="panel">
+        <span class="res" id="r-food" title="Food: settlers eat at the keep"><img class="ico" id="i-food" alt="" /><b>0</b></span>
+        <span class="res" id="r-wood" title="Wood: for building and braziers"><img class="ico" id="i-wood" alt="" /><b>0</b></span>
+        <span class="res" id="r-stone" title="Stone: for stone buildings and walls"><img class="ico" id="i-stone" alt="" /><b>0</b></span>
+        <span class="res" id="r-gold" title="Gold: from goblins and trade, for towers, gear and merchants"><img class="ico" id="i-gold" alt="" /><b>0</b></span>
+      </div>
+      <div class="panel mood" title="Settlers / beds · average mood"><span class="res"><img class="ico" id="i-pop" alt="" /><b id="pop">0/0</b></span><span title="Average mood"><small>mood</small> <b id="moodv">50</b></span></div>
+      <div class="panel" id="speed">
+        <button data-speed="0" title="Pause (Space)">II</button>
+        <button data-speed="1" title="Normal (1)">1x</button>
+        <button data-speed="2" title="Fast (2)">2x</button>
+        <button data-speed="3" title="Fastest (3)">3x</button>
+      </div>
+      <button class="iconbtn" id="rosterBtn" data-tip="Settlers. Shows how many are idle; tap to jump to them."><img class="ico big2" id="i-roster" alt="" /><span id="idleBadge" style="display: none">0</span></button>
+      <button class="iconbtn" id="menuBtn" data-tip="Menu (Esc)"><span class="burger"><i></i><i></i><i></i></span></button>
+    </div>
+
+    <div id="forecast" class="panel hud"><span id="fc-text"></span><button id="phaseBtn" class="act"></button></div>
+    <div id="relics" class="panel hud" style="display: none"></div>
+    <div id="toasts" class="hud"></div>
+    <div id="goal" class="panel hud"></div>
+    <div id="tip" class="hud"></div>
+    <div id="toolChip" class="panel hud"><span id="chipText"></span><button class="small" id="chipDone">✕ Done</button></div>
+    <div id="banner" class="hud"><div id="banner-t"></div><div id="banner-s"></div></div>
+    <div id="card" class="panel hud"></div>
+    <div id="roster" class="panel hud side"></div>
+    <div id="trade" class="panel hud side"></div>
+    <div id="postHint" class="panel hud">Tap a tower, ballista or guard post to assign. <button class="small" id="postCancel">Cancel</button></div>
+    <div id="bar" class="panel hud"></div>
+
+    <div id="event" class="overlay"><div class="sheet" id="event-body"></div></div>
+
+    <div id="title" class="overlay show">
+      <div class="sheet panel">
+        <h1>GOBLIN HOLD</h1>
+        <p>A little settlement, a lot of goblins. Build by day, keep your settlers fed, warm and in good spirits through the seasons, and hold the keep through the night.</p>
+        <div class="how">
+          <b>Day</b><span>Assign jobs: gather wood, stone and food, build, trade at the market.</span>
+          <b>Dusk</b><span>Guards take their posts. Tonight's goblins and their route are shown on the map.</span>
+          <b>Night</b><span>Towers and guards fight. Everyone else shelters.</span>
+          <b>Dawn</b><span>Count the cost, collect the loot, face whatever the morning brings.</span>
+          <b>Seasons</b><span>Every fifth night a warband attacks. Winter freezes the fields: stock up in autumn.</span>
+        </div>
+        <div id="titleBtns"></div>
+        <div id="best"></div>
+      </div>
+    </div>
+
+    <div id="dawn" class="overlay">
+      <div class="sheet panel">
+        <h2 id="dawn-t">The night is held</h2>
+        <ul id="dawn-list"></ul>
+        <div id="dawn-app"></div>
+        <button id="dawnGo" class="big">Begin day 2</button>
+      </div>
+    </div>
+
+    <div id="over" class="overlay">
+      <div class="sheet panel">
+        <h2 style="color: var(--red)">THE HOLD HAS FALLEN</h2>
+        <ul id="over-list"></ul>
+        <button id="again" class="big">New settlement</button>
+        <a class="big alt" href="/">More games</a>
+      </div>
+    </div>
+
+    <div id="meta" class="overlay"><div class="sheet panel" id="meta-body"></div></div>
+
+    <div id="pause" class="overlay">
+      <div class="sheet panel">
+        <h2>Paused</h2>
+        <p>Your settlement saves automatically and carries on next time you visit.</p>
+        <div class="how">
+          <b>Space · 1 2 3</b><span>Pause and game speed</span>
+          <b>Tab</b><span>Switch Build / Defend</span>
+          <b>H F M T P G…</b><span>Pick a building (letters shown on the bar)</span>
+          <b>Q · U · R</b><span>Demolish · Market · Settlers</span>
+          <b>WASD · wheel</b><span>Pan and zoom (drag and pinch on touch)</span>
+        </div>
+        <button id="resume" class="big">Resume</button>
+        <button id="muteBtn" class="big alt">Sound: on</button><button id="musicBtn" class="big alt">Music: on</button><br />
+        <button id="restart" class="big alt">Abandon settlement</button>
+        <a class="big alt" href="/">Quit to games</a>
+      </div>
+    </div>
+
+    <a class="back" id="backLink" href="/">&larr; itskade.space</a>
+
+    <script type="module" src="/src/goblinhold/main.ts"></script>
+  </body>
+</html>
