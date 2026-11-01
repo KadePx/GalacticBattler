@@ -156,6 +156,7 @@ function scheduleMusic(phase: string) {
   const want = phase === 'night' ? 'night' : phase === 'dusk' ? 'dusk' : 'day';
   if (want !== mode) { mode = want; stepN = 0; nextT = Math.max(nextT, ac.currentTime + 0.1); }
   const eighth = want === 'night' ? 0.34 : 0.33;
+  if (nextT < ac.currentTime) nextT = ac.currentTime + 0.05;
   while (nextT < ac.currentTime + 0.25) {
     const bar = Math.floor(stepN / 8), beat = stepN % 8;
     if (want === 'day') {

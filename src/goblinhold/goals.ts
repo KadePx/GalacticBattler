@@ -73,7 +73,7 @@ export function checkCharters(g: Game): Charter[] {
       const missing = (Object.keys(BUILD) as BuildKind[]).filter((k) => BUILD[k].blueprint && !g.blueprints.includes(k));
       if (missing.length) { const bp = pick(g, missing); g.blueprints.push(bp); got = `${BUILD[bp].name} blueprint`; } else { g.res.gold += 25; got = '25 gold'; }
     } else for (const r of RES_ORDER) g.res[r] += (ch.reward[r] ?? 0) * (hasBuff(g, 'oath') ? 2 : 1);
-    if (hasBuff(g, 'oath')) { g.buffs = g.buffs.filter((b) => b.id !== 'oath'); got += ' (doubled by your oath)'; g.stats.oathKept = true; }
+    if (hasBuff(g, 'oath') && typeof ch.reward === 'object') { g.buffs = g.buffs.filter((b) => b.id !== 'oath'); got += ' (doubled by your oath)'; g.stats.oathKept = true; }
     toast(`Charter fulfilled: ${ch.text}. Reward: ${got}.`, 'good');
     emit('charter');
     done.push(ch);

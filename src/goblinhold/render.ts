@@ -160,7 +160,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, dt: number
   ctx.fillStyle = sea === 'winter' ? '#cfd8df' : '#3f6a2e';
   ctx.fillRect(0, 0, w * dpr, h * dpr);
   const k = z * dpr;
-  shake = Math.max(0, shake - dt * 12);
+  shake = dt <= 0 ? 0 : Math.max(0, shake - dt * 12);
   const sx0 = shake > 0.1 ? (Math.random() - 0.5) * shake * k : 0, sy0 = shake > 0.1 ? (Math.random() - 0.5) * shake * k : 0;
   const ox = Math.round(w * dpr / 2 - v.cam.x * k + sx0), oy = Math.round(h * dpr / 2 - v.cam.y * k + sy0);
   ctx.setTransform(k, 0, 0, k, ox, oy);

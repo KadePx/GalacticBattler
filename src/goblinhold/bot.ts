@@ -73,7 +73,9 @@ export function botDay(g: Game) {
 
 export function botEvent(g: Game) {
   while (g.event) {
-    const ch = eventDef(g.event.id).choices(g, g.event.data);
+    const def = eventDef(g.event.id);
+    if (!def) { g.event = null; break; }
+    const ch = def.choices(g, g.event.data);
     const i = ch.findIndex((c) => c.ok !== false);
     resolveEvent(g, Math.max(0, i));
   }

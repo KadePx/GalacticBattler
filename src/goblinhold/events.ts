@@ -281,7 +281,7 @@ export const EVENTS: EventDef[] = [
 ];
 
 const unpromoted = (g: Game) => fighters(g).filter((s) => !s.promo);
-const peekOmen = (g: Game) => (g.nextOmen ??= pick(g, Object.keys(OMENS)));
+const peekOmen = (g: Game) => (g.wave.day === g.day && g.wave.omen ? g.wave.omen : (g.nextOmen ??= pick(g, Object.keys(OMENS))));
 
 EVENTS.push(
   {
@@ -317,7 +317,7 @@ EVENTS.push(
   },
   {
     id: 'envoy', title: "The crown's envoy", icon: 'K',
-    weight: (g) => ((g.charters?.active.length ?? 0) > 0 && g.day >= 6 && !hasBuff(g, 'oath') ? 1.2 : 0),
+    weight: (g) => ((g.charters?.active.length ?? 0) > 0 && g.day >= 6 && !hasBuff(g, 'oath') && !(g.pending ?? []).some((p) => p.id === 'envoy_back') ? 1.2 : 0),
     text: () => 'A herald reads a proclamation: holds that meet their charters will be remembered. He offers to press yours forward.',
     choices: (g) => [
       { label: 'Swear an oath', hint: 'Next charter pays double; fail within 5 days and pay a fine', act: () => { g.buffs.push({ id: 'oath', days: 5 }); g.stats.oathKept = false; chain(g, 'envoy_back', 5); return 'Your mark goes on the scroll.'; } },
@@ -329,7 +329,7 @@ EVENTS.push(
     id: 'grubnik', chainOnly: true, title: 'Grubnik comes back', icon: 'g', weight: () => 1,
     text: () => 'Grubnik is back with three cousins, all very hungry. "Good goblins. Work hard. Fight warband."',
     choices: (g) => [
-      { label: 'Hire the cousins', hint: '30 food: 3 goblin militia; the settlers will be furious', ok: g.res.food >= 30, act: () => { g.res.food -= 30; for (const n of ['Snik', 'Mog', 'Bilge']) arrive(g, n, ['brave'], 'militia'); addMemAll(g, 'distrust'); addMemAll(g, 'callous'); return 'Three grinning goblins take up spears. Nobody else will eat at their table.'; } },
+      { label: 'Hire the cousins', hint: '30 food: 3 goblin militia; the settlers will be furious', ok: g.res.food >= 30, act: () => { g.res.food -= 30; for (const n of ['Snik', 'Mog', 'Bilge']) arrive(g, g.names.includes(n) ? `${n} the Younger` : n, ['brave'], 'militia'), g.names.push(n); addMemAll(g, 'distrust'); addMemAll(g, 'callous'); return 'Three grinning goblins take up spears. Nobody else will eat at their table.'; } },
       { label: 'Just Grubnik', hint: '10 food: raids stay weaker 3 more nights', ok: g.res.food >= 10, act: () => { g.res.food -= 10; g.buffs.push({ id: 'defector', days: 3 }); return 'The cousins sulk off. Grubnik draws more maps.'; } },
       { label: 'Throw them all out', hint: 'They\'ll be back tonight, angry', act: () => { g.buffs.push({ id: 'ambush', days: 1 }); return 'Grubnik swears revenge, loudly and at length.'; } },
     ],
@@ -349,7 +349,7 @@ EVENTS.push(
   },
 );
 
-export function eventDef(id: string) { return EVENTS.find((e) => e.id === id)!; }
+export function eventDef(id: string) { return EVENTS.find((e) => e.id === id); }
 
 /** Maybe queue an event card for this morning. */
 /** Queue a follow-up event for a later morning. */
@@ -364,7 +364,7 @@ export function rollEvent(g: Game) {
   if (due >= 0) {
     const p = g.pending!.splice(due, 1)[0];
     const def = EVENTS.find((e) => e.id === p.id);
-    if (def) { g.event = { id: p.id, data: { ...(def.setup ? def.setup(g) : {}), ...(p.data ?? {}) } }; return; }
+    if (def && (def.chainOnly || def.weight(g) > 0)) { g.event = { id: p.id, data: { ...(def.setup ? def.setup(g) : {}), ...(p.data ?? {}) } }; return; }
   }
   const chance = g.day === 2 ? 1 : 0.65;
   if (rand(g) > chance) return;
@@ -387,6 +387,7 @@ export function rollEvent(g: Game) {
 export function resolveEvent(g: Game, choice: number): string {
   if (!g.event) return '';
   const def = eventDef(g.event.id);
+  if (!def) { g.event = null; return ''; }
   const ch = def.choices(g, g.event.data)[choice];
   if (!ch || ch.ok === false) return '';
   const out = ch.act();

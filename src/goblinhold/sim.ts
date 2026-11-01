@@ -18,7 +18,8 @@ import {
 // ---------- events for audio / effects ----------
 export interface FxEvent { k: string; x?: number; y?: number; n?: number; }
 export const events: FxEvent[] = [];
-export const emit = (k: string, x?: number, y?: number, n?: number) => { if (events.length < 200) events.push({ k, x, y, n }); };
+const CRITICAL = new Set(['dawn', 'over', 'dusk', 'horn', 'relic', 'charter', 'boss', 'season']);
+export const emit = (k: string, x?: number, y?: number, n?: number) => { if (events.length < 200 || CRITICAL.has(k)) events.push({ k, x, y, n }); };
 
 export const toasts: { text: string; kind: string }[] = [];
 export const toast = (text: string, kind = '') => { toasts.push({ text, kind }); };
@@ -73,7 +74,7 @@ function baseHp(job: Job, traits: string[], promo?: string) {
 }
 /** Promotion path if it applies to the settler's current job. */
 export const promoOf = (s: Settler) => (s.promo && PROMOS[s.promo]?.job === s.job ? s.promo : '');
-export function canPromote(g: Game, s: Settler) { return JOBS[s.job].combat && !promoOf(s) && s.xp >= PROMO_XP && Object.values(PROMOS).some((p) => p.job === s.job); }
+export function canPromote(g: Game, s: Settler) { return JOBS[s.job].combat && !s.promo && s.xp >= PROMO_XP && Object.values(PROMOS).some((p) => p.job === s.job); }
 export function promote(g: Game, s: Settler, id: string): string | null {
   const p = PROMOS[id];
   if (!p || p.job !== s.job) return 'Not a path for this job.';
@@ -133,7 +134,7 @@ export function newGame(seed: number): Game {
 }
 
 // ---------- homes ----------
-const bedsOf = (b: Building) => b.kind === 'hut' ? HUT_BEDS + ((b.level ?? 0) > 0 ? 1 : 0) : b.kind === 'barracks' ? BARRACKS_BEDS : 0;
+export const bedsOf = (b: Building) => b.kind === 'hut' ? HUT_BEDS + ((b.level ?? 0) > 0 ? 1 : 0) : b.kind === 'barracks' ? BARRACKS_BEDS : 0;
 export function bedCount(g: Game) { return g.blds.filter((b) => b.done).reduce((a, b) => a + bedsOf(b), 0); }
 
 export function assignHomes(g: Game) {
@@ -167,8 +168,8 @@ export function makeWave(g: Game, day: number): Wave {
   let omen: string | undefined;
   if (day > SEASON_DAYS * 4 && kind !== 'raid' && !hasBuff(g, 'noomen')) {
     // keep tonight's omen if the wave is only being re-made after a morning event
-    omen = g.wave?.day === day && g.wave.omen ? g.wave.omen : g.nextOmen ?? pick(g, Object.keys(OMENS));
-    g.nextOmen = undefined;
+    if (g.wave?.day === day && g.wave.omen) omen = g.wave.omen;
+    else { omen = g.nextOmen ?? pick(g, Object.keys(OMENS)); g.nextOmen = undefined; }
     if (omen === 'swarm') mult *= 1.3;
   }
   if (hasBuff(g, 'leak')) mult *= 1.2;
@@ -1387,7 +1388,7 @@ export function grantRelic(g: Game): string | null {
 export function addRelic(g: Game, r: string) {
   if (g.relics.includes(r)) return;
   g.relics.push(r);
-  if (r === 'stakes') for (const b of g.blds) if (b.kind === 'wall') { const m = maxHp(g, 'wall'); b.hp = b.hp * (m / b.maxHp); b.maxHp = m; }
+  if (r === 'stakes') for (const b of g.blds) if (b.kind === 'wall') { const m = Math.round(maxHp(g, 'wall') * (1 + upStat(b, 'hp'))); b.hp = b.hp * (m / b.maxHp); b.maxHp = m; }
   emit('relic');
 }
 

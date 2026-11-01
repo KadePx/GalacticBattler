@@ -11,7 +11,7 @@ import { bld, bldAtTile, rebuild } from './map';
 import { buildingIcon, clampCam, draw, invalidateTerrain, screenToTile, Sel, spawnFx, Tool, View } from './render';
 import {
   activity, applicantText, dayLen, assignPost, avgMood, bedCount, beginDay, buildCost, buyOffer, callDusk, canAfford, canTrade, costText, demolish, efficiency,
-  canPromote, events, fortify, upgrade, GOODS, promoOf, promote, hasMarket, mood, moodParts, newGame, place, placeWalls, price, season, seasonDay, setJob, soundHorn, step, toasts, trade, unlocked,
+  bedsOf, canPromote, events, fortify, upgrade, GOODS, promoOf, promote, hasMarket, mood, moodParts, newGame, place, placeWalls, price, season, seasonDay, setJob, soundHorn, step, toasts, trade, unlocked,
   wallLine, year,
 } from './sim';
 import { icon, iconOf, settlerSprites, toDataURL, goblinSprites } from './sprites';
@@ -90,6 +90,8 @@ function buildBar() {
   bar.innerHTML = tabs + `<div class="tools">${items}${extra}</div>`;
   refreshBar();
 }
+
+function clearTool() { view.tool = null; view.drag = null; pendingPlace = null; refreshChip(); refreshBar(); }
 
 function setTool(t: Tool) {
   if (t && t !== 'demolish' && g && !unlocked(g, t)) { showToast(`${BUILD[t].name}: you need the blueprint first. Look for it in goblin loot, merchant caravans and events.`, 'warn'); return; }
@@ -203,7 +205,7 @@ function cycleIdle() {
   const list = idleSettlers();
   if (!list.length) { toggleRoster(); return; }
   const s = list[idleIdx++ % list.length];
-  view.sel = { t: 's', id: s.id }; view.tool = null;
+  view.sel = { t: 's', id: s.id }; clearTool();
   view.cam.x = s.x * TILE; view.cam.y = s.y * TILE; clampCam(view);
   if (coarse()) { $('roster').classList.remove('show'); $('trade').classList.remove('show'); }
   renderCard(true);
@@ -369,7 +371,7 @@ function buildingCard(id: number): string {
       <div class="row"><button class="small" data-act="garrison">Post an archer</button></div>`;
   } else if (b.kind === 'hut' || b.kind === 'barracks') {
     const res = who((s) => s.home === b.id);
-    extra = `<div class="desc">Beds: ${res.length}/${b.kind === 'hut' ? 3 : 4}${res.length ? ' · ' + res.join(', ') : ''}</div>`;
+    extra = `<div class="desc">Beds: ${res.length}/${bedsOf(b)}${res.length ? ' · ' + res.join(', ') : ''}</div>`;
   } else if (b.kind === 'healer') {
     const pts = who((s) => s.inside === b.id);
     const healers = who((s) => s.job === 'healer');
@@ -392,7 +394,7 @@ function buildingCard(id: number): string {
       <div class="desc">${L.name}: arrow slits hit for ${L.dmg} at range ${L.range}.</div>
       ${N ? `<div class="row"><button class="small" data-act="fortify">Fortify into ${N.name.toLowerCase()} · ${costHTML(N.cost)}</button></div><div class="desc">${N.hp} health, slits hit for ${N.dmg} at range ${N.range}.</div>` : ''}`;
   }
-  const status = b.done ? (b.kind === 'flag' ? '' : b.kind === 'trap' ? 'Armed' : `Health ${Math.ceil(b.hp)}/${b.maxHp}`) : `Under construction ${Math.floor((b.progress / d.work) * 100)}% · needs a builder`;
+  const status = b.done ? (b.kind === 'flag' ? '' : b.kind === 'trap' ? (b.sprung ? 'Sprung: re-dug at dawn for 2 wood' : 'Armed') : `Health ${Math.ceil(b.hp)}/${b.maxHp}`) : `Under construction ${Math.floor((b.progress / d.work) * 100)}% · needs a builder`;
   return `<h3><span><img class="portrait" src="${IMG[b.kind] ?? ''}" alt="">${b.kind === 'keep' ? KEEP_LEVELS[b.level ?? 0].name : d.name}</span><button class="x" data-act="close">&times;</button></h3>
     <div class="sub">${status}</div>
     <div class="desc">${d.desc}</div>
@@ -407,7 +409,7 @@ function upgradeHTML(b: NonNullable<ReturnType<typeof bld>>) {
   const lv = b.level ?? 0;
   const have = ups.slice(0, lv).map((u) => `<span class="trait">${u.name}</span>`).join('');
   const next = ups[lv];
-  return `<div class="upg">${have}${next ? `<div class="row"><button class="small" data-act="upgrade"><b>Upgrade:</b>&nbsp;${next.name} · ${costHTML(next.cost)}</button></div><div class="desc">${next.desc}</div>` : '<div class="desc">Fully upgraded.</div>'}</div>`;
+  return `<div class="upg">${have}${next ? `<div class="row"><button class="small" data-act="upgrade"><b>Upgrade:</b>&nbsp;${next.name} · ${costHTML(g!.buffs.some((x) => x.id === 'survey') ? Object.fromEntries(Object.entries(next.cost).map(([k, v]) => [k, Math.ceil((v ?? 0) / 2)])) : next.cost)}</button></div><div class="desc">${next.desc}</div>` : '<div class="desc">Fully upgraded.</div>'}</div>`;
 }
 
 function renderCard(force = false) {
@@ -443,7 +445,7 @@ $('card').addEventListener('click', (e) => {
   if (el.dataset.promo && s) { const err = promote(g, s, el.dataset.promo); if (err) showToast(err, 'warn'); }
   const act = el.dataset.act;
   if (act === 'close') view.sel = null;
-  if (act === 'post' && s) { postMode = s.id; view.tool = null; $('postHint').classList.add('show'); }
+  if (act === 'post' && s) { clearTool(); postMode = s.id; $('postHint').classList.add('show'); }
   if (act === 'autopost' && s) s.post = 0;
   if (act === 'trade') toggleTrade(true);
   if (act === 'fortify') { const err = fortify(g); if (err) showToast(err, 'warn'); }
@@ -502,7 +504,7 @@ $('roster').addEventListener('click', (e) => {
     const s = g.settlers.find((q) => q.id === Number(nm.dataset.sid));
     if (s) {
       view.sel = { t: 's', id: s.id };
-      view.tool = null;
+      clearTool();
       const b = s.inside ? bld(g, s.inside) : undefined;
       if (s.away <= 0) { view.cam.x = (b ? b.x + 1 : s.x) * TILE; view.cam.y = (b ? b.y + 1 : s.y) * TILE; clampCam(view); }
       renderCard(true);
@@ -591,6 +593,7 @@ function showEvent() {
   let html = '';
   if (g.event) {
     const def = eventDef(g.event.id);
+    if (!def) { g.event = null; box.classList.remove('show'); return; }
     const ch = def.choices(g, g.event.data);
     html = `<div class="evicon">${def.icon}</div><h2>${def.title}</h2><p>${def.text(g, g.event.data)}</p><div class="choices">${ch.map((c, i) => `<button class="choice" data-choice="${i}" ${c.ok === false ? 'disabled' : ''}><b>${c.label}</b>${c.hint ? `<small>${c.hint}</small>` : ''}</button>`).join('')}</div>`;
   } else html = `<p class="result">${eventResult}</p><button class="big" data-choice="done">Carry on</button>`;
@@ -624,6 +627,7 @@ const STEPS: Step[] = [
   { text: () => 'Charters below pay out rewards. Every 3rd night is an assault and every 5th a boss night. The hold is yours!', done: () => performance.now() - tutShownAt > 14000 },
 ];
 let goalHTML = '';
+let tabSetFor = -1;
 let goalOpen = true;
 function refreshGoal() {
   const el = $('goal');
@@ -637,7 +641,7 @@ function refreshGoal() {
     for (const t of Array.from(document.querySelectorAll('.tutglow'))) t.classList.remove('tutglow');
     if (st.glow === 'phaseBtn') $('phaseBtn').classList.add('tutglow');
     else if (st.glow) document.querySelector(`.tool[data-tool="${st.glow}"]`)?.classList.add('tutglow');
-    if (st.glow && st.glow !== 'phaseBtn' && BUILD[st.glow as BuildKind] && BUILD[st.glow as BuildKind].cat !== barTab) { barTab = BUILD[st.glow as BuildKind].cat; buildBar(); }
+    if (tabSetFor !== tut && st.glow && st.glow !== 'phaseBtn' && BUILD[st.glow as BuildKind]) { tabSetFor = tut; if (BUILD[st.glow as BuildKind].cat !== barTab) { barTab = BUILD[st.glow as BuildKind].cat; buildBar(); } }
   } else {
     for (const t of Array.from(document.querySelectorAll('.tutglow'))) t.classList.remove('tutglow');
     refillCharters(g);
@@ -784,7 +788,8 @@ function start(game: Game) {
   g = game;
   rebuild(g);
   invalidateTerrain();
-  view.sel = null; view.tool = null; postMode = 0; eventResult = '';
+  view.sel = null; postMode = 0; eventResult = '';
+  view.tool = null; pendingPlace = null; document.body.classList.remove('tooling'); $('toolChip').classList.remove('show');
   barTab = 'build';
   centerOnKeep();
   for (const id of ['title', 'dawn', 'over', 'pause', 'trade', 'roster']) $(id).classList.remove('show');
@@ -997,14 +1002,13 @@ function handleEvents() {
     if (e.k === 'horn') {
       const total = totalWave(g);
       banner(g.wave.kind === 'boss' ? 'BOSS NIGHT' : g.wave.kind === 'assault' ? 'ASSAULT!' : 'NIGHTFALL', `${total} goblins are coming.`, true);
-      if (view.tool && !['wall', 'stonewall', 'trap', 'flag'].includes(view.tool)) view.tool = null;
+      if (view.tool && !['wall', 'stonewall', 'trap', 'flag'].includes(view.tool)) clearTool();
       refreshBar();
       $('trade').classList.remove('show');
     }
     if (e.k === 'dawn') { saveGame(g); showDawn(); }
     if (e.k === 'over') showOver();
     if (e.k === 'relic') buildBar();
-    if (e.k === 'charter') sfx('built');
   }
   for (const t of toasts.splice(0)) showToast(t.text, t.kind);
 }
