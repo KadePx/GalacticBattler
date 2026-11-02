@@ -5,6 +5,7 @@ import { eventDef, resolveEvent } from './events';
 import { canPlace, keepCenter, rebuild } from './map';
 import { arrive, assignPost, beginDay, fortify, newName, upgrade, buyOffer, canAfford, newGame, place, price, season, setJob, step, trade, unlocked } from './sim';
 import { Game } from './state';
+import { applyMod } from './meta';
 
 function tryPlaceNear(g: Game, kind: BuildKind, cx: number, cy: number, r = 5): boolean {
   if (!unlocked(g, kind) || !canAfford(g, kind)) return false;
@@ -81,8 +82,9 @@ export function botEvent(g: Game) {
   }
 }
 
-export function run(smart: boolean, maxDay = 40) {
+export function run(smart: boolean, maxDay = 40, mod?: string) {
   const g = newGame((Math.random() * 2 ** 31) | 0);
+  if (mod) { g.mod = mod; applyMod(g); }
   const log: string[] = [];
   let guard = 0;
   while (!g.over && g.day <= maxDay && guard++ < 600000) {

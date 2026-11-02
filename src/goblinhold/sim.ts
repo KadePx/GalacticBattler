@@ -181,6 +181,7 @@ function makeWaveInner(g: Game, day: number): Wave {
     if (omen === 'swarm') mult *= 1.3;
   }
   if (hasBuff(g, 'leak')) mult *= 1.2;
+  if (g.mod === 'horde') mult *= 1.25;
   const budget = (WAVE.base + WAVE.perDay * (day - 1) + WAVE.perDay2 * (day - 1) ** 2 + WAVE.perSettler * Math.max(0, pop - 8)) * mult;
   let ne = day <= 2 ? 1 : day <= 5 ? (kind !== 'raid' ? 2 : 1) : day <= 9 ? (kind !== 'raid' ? 3 : 2) : kind !== 'raid' ? 3 : 2 + randInt(g, 2);
   ne = Math.min(3, ne);
@@ -191,7 +192,7 @@ function makeWaveInner(g: Game, day: number): Wave {
   // shares of the budget per goblin type, unlocked by day
   const shares: [GobKind, number][] = [
     ['slinger', day < GOBS.slinger.from ? 0 : Math.min(0.3, 0.15 + day * 0.02)],
-    ['wolfrider', day < GOBS.wolfrider.from ? 0 : Math.min(0.15, 0.05 + (day - GOBS.wolfrider.from) * 0.01)],
+    g.mod === 'wolves' ? ['wolfrider', day < 2 ? 0 : Math.min(0.3, 0.15 + day * 0.01)] : ['wolfrider', day < GOBS.wolfrider.from ? 0 : Math.min(0.15, 0.05 + (day - GOBS.wolfrider.from) * 0.01)],
     ['shieldgob', day < GOBS.shieldgob.from ? 0 : Math.min(0.15, 0.05 + (day - GOBS.shieldgob.from) * 0.01)],
     ['brute', day < GOBS.brute.from ? 0 : Math.min(0.25, 0.08 + day * 0.012)],
     ['sapper', day < GOBS.sapper.from ? 0 : Math.min(0.15, 0.06 + day * 0.006)],
@@ -907,6 +908,7 @@ function hitGoblin(g: Game, gb: Goblin, dmg: number, by?: Settler) {
     let gold = Math.max(1, Math.round(GOBS[gb.kind].gold * Math.max(0.6, 1 - 0.01 * (g.day - 15)))) + (hasRelic(g, 'horseshoe') ? 1 : 0);
     if (hasRelic(g, 'idol') && rand(g) < 0.25) gold *= 2;
     if (hasBuff(g, 'drums')) gold *= 2;
+    if (g.mod === 'bounty') gold *= 2;
     g.res.gold += gold;
     g.night.kills++;
     g.night.gold += gold;
@@ -1450,6 +1452,7 @@ function endNight(g: Game) {
     g.applicant = { name: newName(g), traits: rollTraits(g) };
   }
   setBest(g.day);
+  g.peak = Math.max(g.peak ?? 0, g.settlers.length);
   emit('dawn');
   if (!g.settlers.length) gameOver(g, 'Nobody is left to hold the keep.');
 }

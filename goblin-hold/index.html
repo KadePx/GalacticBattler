@@ -6,6 +6,13 @@
     <meta name="theme-color" content="#2a2018" />
     <meta name="description" content="Goblin Hold: a cozy pixel-art tower defense and colony sim. Keep your settlers fed, warm and brave through the seasons, trade, make hard choices, and hold the keep through the goblin nights." />
     <title>Goblin Hold</title>
+    <link rel="manifest" href="/goblin-hold/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/goblin-hold/icon-192.png" />
+    <link rel="apple-touch-icon" href="/goblin-hold/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Goblin Hold" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=Rubik:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -199,6 +206,64 @@
       .how b { font-family: var(--px); color: var(--gold); font-weight: 400; }
       .how span { color: var(--dim); }
       #best { color: var(--gold); font-family: var(--px); margin-top: 8px; }
+      #best { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 14px; }
+      #best .streak { color: #ffa860; }
+      #title.returning .how, #title.returning .sheet > p { display: none; }
+      #title.returning h1 { margin-bottom: 10px; }
+      .dtag { color: var(--gold); font-size: 0.85em; cursor: help; }
+      button.link { background: none; border: 0; padding: 0; cursor: pointer; }
+      #daily:empty { display: none; }
+      #install { margin-top: 8px; font-size: 12px; color: var(--dim); }
+      #install:empty { display: none; }
+      #install button { font-size: 13px; }
+      #daily { margin: 10px auto 2px; max-width: 400px; padding: 10px 12px 4px; border: 1px solid var(--line2); border-radius: var(--r); background: linear-gradient(180deg, rgba(255, 209, 102, 0.08), rgba(255, 209, 102, 0.02)); text-align: left; }
+      #daily .dl { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+      #daily .dh { font-family: var(--px); color: var(--gold); font-size: 18px; }
+      #daily .dh small { font-family: Rubik, system-ui, sans-serif; color: var(--dim); font-size: 12px; margin-left: 4px; }
+      #daily .db { font-size: 12px; color: var(--green); }
+      #daily .dm { margin: 4px 0 2px; font-size: 14px; }
+      #daily .dm small { display: block; color: var(--dim); font-size: 12px; }
+      #daily .big { font-size: 16px; padding: 6px 16px; }
+      .gold { color: var(--gold); }
+      .dailytag { color: var(--gold) !important; font-size: 13px; }
+      .dailytag:empty { display: none; }
+      .big.gold { background: #6a5420; border-color: var(--gold); color: #fff3cf; }
+      .row.wrap { flex-wrap: wrap; }
+      #over .why { color: var(--ink); margin: 4px 0 10px; }
+      #over .why small { color: var(--dim); }
+      #over .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; }
+      #over .st { background: #2e241b; border: 1px solid var(--line); border-radius: 6px; padding: 6px 2px 5px; position: relative; }
+      #over .st b { display: block; font-family: var(--px); font-size: 24px; color: var(--ink); line-height: 1.1; }
+      #over .st small { display: block; color: var(--dim); font-size: 10.5px; line-height: 1.2; }
+      #over .st i { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: var(--gold); color: #3a2a10; font-style: normal; font-weight: 700; font-size: 10px; padding: 1px 6px; border-radius: 8px; white-space: nowrap; animation: pop 0.5s 0.4s both; }
+      @keyframes pop { 0% { transform: translateX(-50%) scale(0); } 70% { transform: translateX(-50%) scale(1.25); } 100% { transform: translateX(-50%) scale(1); } }
+      #over .renownbox { text-align: left; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); padding: 6px 2px; margin: 8px 0; font-size: 13px; }
+      #over .rp { display: flex; justify-content: space-between; color: var(--dim); }
+      #over .rp b { color: var(--ink); font-weight: 500; }
+      #over .rp.tot { color: var(--gold); font-family: var(--px); font-size: 17px; margin-top: 3px; }
+      #over .rp.tot b { color: var(--gold); font-weight: 400; }
+      .deeds { list-style: none; padding: 0 !important; margin: 6px 0 !important; text-align: left; }
+      li.deed { background: #3a321c; border: 1px solid #8a7030; border-radius: 6px; padding: 5px 8px; font-size: 13px; color: var(--ink); list-style: none; margin: 4px 0; animation: tin 0.4s; }
+      li.deed b { color: var(--gold); }
+      li.deed .renown { margin: 0 !important; }
+      #over .next { text-align: left; margin: 10px 0 6px; font-size: 13px; }
+      #over .next .nl { display: flex; justify-content: space-between; gap: 8px; }
+      #over .next b { color: var(--gold); font-weight: 500; }
+      #over .next small { color: var(--dim); }
+      .bar { height: 8px; background: #1e1712; border: 1px solid var(--line); border-radius: 4px; margin: 4px 0 2px; overflow: hidden; }
+      .bar i { display: block; height: 100%; background: linear-gradient(90deg, #c8962a, var(--gold)); transition: width 0.8s; }
+      .link.dim { color: var(--dim); font-size: 13px; display: inline-block; margin-top: 6px; }
+      .tabs { display: flex; justify-content: center; gap: 6px; margin: 0 0 10px; }
+      .tabs .on { background: #6a5420; border-color: var(--gold); color: #fff3cf; }
+      .offer.ready { border-color: var(--green); box-shadow: 0 0 0 1px rgba(147, 212, 108, 0.3); }
+      .offer.hist { grid-template-columns: 40px 1fr auto; }
+      .offer .hd { font-family: var(--px); font-size: 22px; color: var(--ink); text-align: center; line-height: 1; }
+      .offer .hd small { display: block; font-family: Rubik, system-ui, sans-serif; font-size: 9px; color: var(--dim); }
+      .offer.hist .dr { color: var(--gold); font-size: 12px; white-space: nowrap; }
+      .offer.deedrow .dr { color: var(--gold); font-size: 12px; white-space: nowrap; }
+      .offer.deedrow:not(.owned) { opacity: 0.85; }
+      .offer.deedrow:not(.owned) .ustar { color: var(--dim); }
+      body:has(.overlay.show) #toasts { display: none; }
       .back { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 6; color: var(--dim); text-decoration: none; font-size: 13px; }
 
       /* event card: parchment */
@@ -385,7 +450,9 @@
           <b>Seasons</b><span>Every fifth night a warband attacks. Winter freezes the fields: stock up in autumn.</span>
         </div>
         <div id="titleBtns"></div>
+        <div id="daily"></div>
         <div id="best"></div>
+        <div id="install"></div>
       </div>
     </div>
 
@@ -401,9 +468,7 @@
     <div id="over" class="overlay">
       <div class="sheet panel">
         <h2 style="color: var(--red)">THE HOLD HAS FALLEN</h2>
-        <ul id="over-list"></ul>
-        <button id="again" class="big">New settlement</button>
-        <a class="big alt" href="/">More games</a>
+        <div id="over-body"></div>
       </div>
     </div>
 
@@ -421,7 +486,8 @@
           <b>WASD · wheel</b><span>Pan and zoom (drag and pinch on touch)</span>
         </div>
         <button id="resume" class="big">Resume</button>
-        <button id="muteBtn" class="big alt">Sound: on</button><button id="musicBtn" class="big alt">Music: on</button><br />
+        <p id="pauseDaily" class="dailytag"></p>
+        <button id="muteBtn" class="big alt">Sound: on</button><button id="musicBtn" class="big alt">Music: on</button><button id="buzzBtn" class="big alt">Vibration: on</button><br />
         <button id="restart" class="big alt">Abandon settlement</button>
         <a class="big alt" href="/">Quit to games</a>
       </div>

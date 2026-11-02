@@ -161,6 +161,11 @@ export interface Game {
   fallen?: string[]; // everyone lost this run, for the memorial
   tut?: number; // onboarding step, -1 when finished or skipped
   pending?: { id: string; day: number; data?: Record<string, number | string> }[]; // event chain follow-ups
+  daily?: string; // date key when this is a daily hold
+  mod?: string; // daily twist id
+  peak?: number; // most settlers at once
+  deeds?: string[]; // deeds earned during this run
+  bestAtStart?: number; // longest hold before this run, for the "new best" badge
 }
 
 export function idx(x: number, y: number) { return y * MAP_W + x; }
@@ -222,18 +227,21 @@ export const hasRelic = (g: Game, id: string) => g.relics.includes(id);
 export const hasBuff = (g: Game, id: string) => g.buffs.some((b) => b.id === id);
 
 const SAVE_KEY = 'goblinhold.save';
+const DAILY_KEY = 'goblinhold.daily';
 const BEST_KEY = 'goblinhold.best';
+const keyOf = (daily: boolean) => (daily ? DAILY_KEY : SAVE_KEY);
 
+/** Daily holds get their own save slot, so they never overwrite a long run. */
 export function saveGame(g: Game) {
   try {
-    if (g.over) localStorage.removeItem(SAVE_KEY);
-    else localStorage.setItem(SAVE_KEY, JSON.stringify(g));
+    if (g.over) localStorage.removeItem(keyOf(!!g.daily));
+    else localStorage.setItem(keyOf(!!g.daily), JSON.stringify(g));
   } catch { /* storage full or blocked: the run just won't persist */ }
 }
 
-export function loadGame(): Game | null {
+export function loadGame(daily = false): Game | null {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(keyOf(daily));
     if (!raw) return null;
     const g = JSON.parse(raw) as Game;
     return g && g.v === SAVE_VERSION && !g.over ? g : null;
@@ -242,7 +250,7 @@ export function loadGame(): Game | null {
   }
 }
 
-export function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch { /* ignore */ } }
+export function clearSave(daily = false) { try { localStorage.removeItem(keyOf(daily)); } catch { /* ignore */ } }
 
 export function getBest(): number {
   try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; }

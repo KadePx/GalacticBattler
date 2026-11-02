@@ -6,7 +6,7 @@ import {
 } from './defs';
 import { eventDef, resolveEvent } from './events';
 import { CHARTERS, checkCharters, refillCharters, rewardText } from './goals';
-import { applyUnlocks, bankRun, buyUnlock, loadMeta, UNLOCKS } from './meta';
+import { applyMod, applyUnlocks, bankRun, buyUnlock, checkDeeds, dailyMod, dailySeed, dailyWatch, dateKey, Deed, DEEDS, liveStreak, loadMeta, modOf, MODS, nextUnlock, prettyDate, renownParts, UNLOCKS } from './meta';
 import { bld, bldAtTile, rebuild } from './map';
 import { buildingIcon, clampCam, draw, invalidateTerrain, screenToTile, Sel, spawnFx, Tool, View } from './render';
 import {
@@ -223,7 +223,7 @@ function refreshTop() {
   const fcB = $('forecast').getBoundingClientRect().bottom; // measured after the forecast moves under the new top bar
   document.documentElement.style.setProperty('--fcB', `${Math.round(Math.max(topB, fcB))}px`);
   const sea = season(g);
-  $('day').textContent = `DAY ${g.day}`;
+  $('day').innerHTML = `DAY ${g.day}${g.daily ? ' <span class="dtag" data-tip="Daily hold: ' + (modOf(g)?.name ?? '') + '. ' + (modOf(g)?.desc ?? '') + '">★</span>' : ''}`;
   $('season').textContent = `${SEASONS[sea].name} ${seasonDay(g)}/${SEASON_DAYS}${year(g) > 1 ? ` · Y${year(g)}` : ''}`;
   $('season').className = 'season ' + sea;
   const ph = g.phase;
@@ -693,7 +693,7 @@ const entryName = (g: Game) => g.entries[g.wave.groups[0]?.entry ?? 0]?.name.toL
 const nb = (g: Game, k: BuildKind) => g.blds.filter((b) => b.kind === k).length;
 let tutShownAt = 0;
 const STEPS: Step[] = [
-  { text: () => 'Tap a settler to see what they need and change their job.', done: () => view.sel?.t === 's' },
+  { text: () => 'Tap a settler to see what they need and change their job.', done: () => view.sel?.t === 's' || performance.now() - tutShownAt > 20000 },
   { text: () => 'Two settlers have no bed. Pick <b>Build ▸ Hut</b> and place it near the keep.', done: (g) => nb(g, 'hut') >= 2, glow: 'hut' },
   { text: (g) => `Goblins come from the ${entryName(g)} tonight along the red dashed trail. Pick <b>Defend ▸ Palisade</b> and drag a line across it near the keep (${Math.min(3, nb(g, 'wall') + nb(g, 'stonewall'))}/3). Goblins walk around short walls, so close the gap to the trees.`, done: (g) => nb(g, 'wall') + nb(g, 'stonewall') >= 3, glow: 'wall' },
   { text: () => 'When you’re ready, tap <b>End day</b> (or wait for sunset). Your archer mans the tower and militia hold the blue flag.', done: (g) => g.phase !== 'day', glow: 'phaseBtn' },
@@ -712,7 +712,12 @@ function refreshGoal() {
   const tut = g.tut ?? -1;
   if (tut >= 0 && tut < STEPS.length) {
     const st = STEPS[tut];
-    if (st.done(g)) { g.tut = tut + 1 >= STEPS.length ? -1 : tut + 1; tutShownAt = performance.now(); sfx('built'); return refreshGoal(); }
+    if (st.done(g) || g.day >= 6) {
+      g.tut = tut + 1 >= STEPS.length || g.day >= 6 ? -1 : tut + 1;
+      tutShownAt = performance.now();
+      if (g.tut === -1) { try { localStorage.setItem('goblinhold.tips', '0'); } catch { /* ignore */ } } else sfx('built');
+      return refreshGoal();
+    }
     html += `<div class="gstep"><span class="gk">◆</span><span>${st.text(g)}</span></div><div class="gfoot"><span class="dim">Tip ${tut + 1}/${STEPS.length}</span><button class="link" data-act="skiptips">skip tips</button></div>`;
     for (const t of Array.from(document.querySelectorAll('.tutglow'))) t.classList.remove('tutglow');
     if (st.glow === 'phaseBtn') $('phaseBtn').classList.add('tutglow');
@@ -766,10 +771,22 @@ function banner(t: string, s: string, danger = false) {
 
 // ---------- overlays ----------
 let appChoice: boolean | null = null;
+let dawnExtra: string[] = [];
+const deedLine = (d: Deed) => `<li class="deed">★ Deed done: <b>${d.name}</b> · ${d.desc} <span class="renown">+${d.renown} ✦</span></li>`;
+
+// ---------- haptics (phones that support it) ----------
+let haptics = true;
+try { haptics = localStorage.getItem('goblinhold.haptics') !== '0'; } catch { /* ignore */ }
+function buzz(p: number | number[]) {
+  if (!haptics || !navigator.vibrate || (navigator as unknown as { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive === false) return;
+  try { navigator.vibrate(p); } catch { /* not allowed yet */ }
+}
+const BUZZ: Record<string, number | number[]> = { death: [50, 40, 50], collapse: 60, boss: [80, 60, 120], horn: 35, bossdie: [40, 30, 40, 30, 80] };
 function showDawn() {
   if (!g) return;
   $('dawn-t').textContent = g.wave.kind === 'boss' ? 'The warband is broken' : g.night.lost.length ? `Night ${g.day}: the hold stands` : `Night ${g.day} is held`;
-  $('dawn-list').innerHTML = g.report.map((r) => `<li>${r}</li>`).join('');
+  $('dawn-list').innerHTML = g.report.map((r) => `<li>${r}</li>`).join('') + dawnExtra.join('');
+  if (dawnExtra.some((l) => l.includes('deed'))) buzz([30, 40, 30]);
   const a = g.applicant;
   $('dawn-app').innerHTML = a
     ? `<div class="applicant"><b>${a.name}</b> (${applicantText(a)}) wanders up and asks to join the hold.${g.settlers.length >= bedCount(g) ? '<br><span class="desc">There is no free bed: they would sleep on the keep floor.</span>' : ''}<div class="row center"><button class="small" id="appYes">Welcome them</button><button class="small" id="appNo">Turn them away</button></div></div>`
@@ -810,42 +827,110 @@ $('dawnGo').addEventListener('click', () => {
 
 function showOver() {
   if (!g) return;
-  const earned = bankRun(g);
-  $('over-list').innerHTML = g.report.map((r) => `<li>${r}</li>`).join('') + `<li>Best: day ${getBest()}</li><li class="renown">+${earned} renown (you have ${loadMeta().renown}). Spend it on head starts from the title screen.</li>`;
+  const res = bankRun(g, g.bestAtStart ?? getBest());
+  const runDeeds = [...DEEDS.filter((d) => g!.deeds?.includes(d.id)), ...res.deeds];
+  const m = loadMeta();
+  const mod = modOf(g);
+  const tile = (n: number | string, label: string, badge = '') => `<div class="st"><b>${n}</b><small>${label}</small>${badge ? `<i>${badge}</i>` : ''}</div>`;
+  const parts = renownParts(g).map((p) => `<div class="rp"><span>${p.label}</span><b>+${p.n}</b></div>`).join('');
+  const nu = nextUnlock(m);
+  const affordable = UNLOCKS.filter((u) => !m.unlocks.includes(u.id) && u.cost <= m.renown).length;
+  $('over-body').innerHTML = `
+    <p class="why">${g.report[0] ?? ''}${g.fallen?.length ? `<br><small>Remembered: ${g.fallen.join(', ')}</small>` : ''}</p>
+    ${g.daily ? `<p class="dailytag">Daily hold · ${prettyDate(g.daily)} · ${mod?.name ?? ''}${res.dailyBest ? ' · <b>best today!</b>' : ` · best today: day ${m.daily[g.daily] ?? g.day}`}</p>` : ''}
+    <div class="stats">
+      ${tile(g.day, `days · ${SEASONS[season(g)].name} y${year(g)}`, res.best && res.prevBest > 0 ? 'New best!' : '')}
+      ${tile(g.stats.kills, 'goblins slain')}
+      ${tile(g.stats.bosses, 'warchiefs')}
+      ${tile(Math.max(g.peak ?? 0, g.settlers.length), 'most settlers')}
+    </div>
+    <div class="renownbox">${parts}${mod && mod.renown !== 1 ? `<div class="rp"><span>${mod.name} bonus</span><b>×${mod.renown}</b></div>` : ''}<div class="rp tot"><span>Renown earned</span><b class="count" data-to="${res.earned}">+0 ✦</b></div></div>
+    ${runDeeds.length ? `<ul class="deeds">${runDeeds.map(deedLine).join('')}</ul>` : ''}
+    ${nu ? `<div class="next"><div class="nl"><span>Next head start: <b>${nu.name}</b></span><span>${Math.min(m.renown, nu.cost)}/${nu.cost} ✦</span></div><div class="bar"><i style="width:${Math.min(100, (m.renown / nu.cost) * 100)}%"></i></div><small>${nu.desc}</small></div>` : ''}
+    <div class="row center wrap">
+      <button id="again" class="big">${g.daily ? (g.daily === dateKey() ? "Retry today's hold" : 'Play today\'s hold') : 'Found another hold'}</button>
+      ${affordable ? `<button id="overMeta" class="big gold">Spend renown (${affordable} ready)</button>` : ''}
+    </div>
+    <button class="link dim" id="overTitle">Main menu</button> · <a class="link dim" href="/">More games</a>`;
   $('over').classList.add('show');
-  clearSave();
+  // count the renown up
+  const el = $('over-body').querySelector<HTMLElement>('.count');
+  if (el) { const to = res.earned; const t0 = performance.now(); const tick = () => { const k = Math.min(1, (performance.now() - t0) / 900); el.textContent = `+${Math.round(to * (1 - (1 - k) ** 3))} ✦`; if (k < 1) requestAnimationFrame(tick); }; setTimeout(tick, 250); }
+  const daily = !!g.daily;
+  document.getElementById('again')!.addEventListener('click', () => { $('over').classList.remove('show'); startNew(daily); });
+  document.getElementById('overTitle')!.addEventListener('click', () => { $('over').classList.remove('show'); g = null; showTitle(); });
+  document.getElementById('overMeta')?.addEventListener('click', () => { $('over').classList.remove('show'); g = null; document.body.classList.add('intitle'); showMeta(); });
+  clearSave(!!g.daily);
 }
-$('again').addEventListener('click', () => { $('over').classList.remove('show'); startNew(); });
 
 function showTitle() {
   const saved = loadGame();
+  const dsaved = loadGame(true);
   const btns = $('titleBtns');
   btns.innerHTML = saved
     ? `<button class="big" id="cont">Continue · Day ${saved.day}</button><button class="big alt" id="fresh">New settlement</button>`
     : '<button class="big" id="fresh">Found a settlement</button>';
   const best = getBest();
   const meta = loadMeta();
-  $('best').innerHTML = (best ? `Longest hold: day ${best}` : '') + (meta.total ? `${best ? ' · ' : ''}<button class="link gold" id="openMeta">Renown ${meta.renown} ✦ head starts</button>` : '');
-  document.getElementById('openMeta')?.addEventListener('click', showMeta);
-  document.getElementById('cont')?.addEventListener('click', () => { unlock(); start(saved!); });
+  const today = dateKey();
+  const mod = dailyMod(today);
+  const dBest = meta.daily[today] ?? 0;
+  const dCont = dsaved && dsaved.daily === today;
+  // the daily hold: same map and twist for everyone today
+  $('daily').innerHTML = meta.runs + (saved ? 1 : 0) + (dsaved ? 1 : 0) === 0 ? '' : `
+    <div class="dl"><span class="dh">Daily hold <small>${prettyDate(today)}</small></span>${dBest ? `<span class="db">best today: day ${dBest}</span>` : ''}</div>
+    <div class="dm"><b>${mod.name}</b>${mod.renown !== 1 ? ` <span class="gold">×${mod.renown} renown</span>` : ''}<small>${mod.desc}</small></div>
+    <div class="row center">${dCont ? `<button class="big" id="dcont">Continue · Day ${dsaved!.day}</button>` : `<button class="big" id="dnew">${dBest ? 'Try again' : 'Play today'}</button>`}${dsaved && !dCont ? `<button class="big alt" id="dold">Finish ${prettyDate(dsaved.daily!)} · Day ${dsaved.day}</button>` : ''}</div>`;
+  const streak = liveStreak(meta);
+  const bits = [
+    best ? `Longest hold: day ${best}` : '',
+    streak > 1 ? `<span class="streak" data-tip="Hold at least one night each day to keep it going. Longer streaks pay more renown.">${streak}-day streak</span>` : '',
+    meta.total ? `<button class="link gold" id="openMeta">✦ ${meta.renown} renown · ${meta.deeds.length}/${DEEDS.length} deeds</button>` : '',
+  ].filter(Boolean);
+  $('best').innerHTML = bits.map((b) => `<span>${b}</span>`).join('');
+  document.getElementById('openMeta')?.addEventListener('click', () => showMeta());
+  document.getElementById('cont')?.addEventListener('click', () => { unlock(); start(saved!); welcomeBack(); });
+  document.getElementById('dcont')?.addEventListener('click', () => { unlock(); start(dsaved!); welcomeBack(); });
+  document.getElementById('dold')?.addEventListener('click', () => { unlock(); start(dsaved!); welcomeBack(); });
+  document.getElementById('dnew')?.addEventListener('click', () => {
+    unlock();
+    if (dsaved && !confirm(`Give up the ${prettyDate(dsaved.daily!)} daily hold (day ${dsaved.day})?`)) return;
+    startNew(true);
+  });
   document.getElementById('fresh')!.addEventListener('click', () => {
     unlock();
     if (saved && !confirm('Start over? Your current settlement will be lost.')) return;
     startNew();
   });
+  $('title').classList.toggle('returning', meta.runs > 0 || !!saved || !!dsaved);
   $('title').classList.add('show');
+  refreshInstall();
   document.body.classList.add('intitle');
   $('backLink').style.display = '';
 }
 
-function showMeta() {
+let metaTab: 'starts' | 'deeds' | 'holds' = 'starts';
+function showMeta(tab = metaTab) {
+  metaTab = tab;
   const m = loadMeta();
-  $('meta-body').innerHTML = `<h2>Head starts</h2><p>Renown is earned each time a hold falls: days survived, warchiefs slain, goblins killed and charters fulfilled. Head starts are permanent and apply to every new settlement.</p>
-    <div class="renownbig">✦ ${m.renown} renown</div>
-    <div class="offers">${UNLOCKS.map((u) => {
-      const own = m.unlocks.includes(u.id);
-      return `<div class="offer${own ? ' owned' : ''}"><span class="ustar">✦</span><span><b>${u.name}</b><small>${u.desc}</small></span><button class="small" data-unlock="${u.id}" ${own || m.renown < u.cost ? 'disabled' : ''}>${own ? 'Owned' : `${u.cost} ✦`}</button></div>`;
-    }).join('')}</div>
+  const list = tab === 'starts'
+    ? `<p>Renown comes from every hold that falls (days, warchiefs, goblins, charters), from deeds, and from holding a night each day. Head starts are permanent.</p>
+      <div class="offers">${UNLOCKS.map((u) => {
+        const own = m.unlocks.includes(u.id);
+        return `<div class="offer${own ? ' owned' : ''}${!own && m.renown >= u.cost ? ' ready' : ''}"><span class="ustar">✦</span><span><b>${u.name}</b><small>${u.desc}</small></span><button class="small" data-unlock="${u.id}" ${own || m.renown < u.cost ? 'disabled' : ''}>${own ? 'Owned' : `${u.cost} ✦`}</button></div>`;
+      }).join('')}</div>`
+    : tab === 'holds'
+    ? (m.history.length ? `<div class="offers">${m.history.map((h) => `<div class="offer hist"><span class="hd">${h.day}<small>days</small></span><span><b>${prettyDate(h.date)}${h.mod ? ` · Daily: ${MODS.find((x) => x.id === h.mod)?.name ?? ''}` : ''}</b><small>${h.kills} goblins · ${h.bosses} warchief${h.bosses === 1 ? '' : 's'} · ${h.why}</small></span><span class="dr">+${h.renown} ✦</span></div>`).join('')}</div>` : '<p>Your fallen holds will be remembered here.</p>')
+    : `<p>Deeds carry over between holds. Each one pays renown once.</p>
+      <div class="offers">${DEEDS.map((d) => {
+        const own = m.deeds.includes(d.id);
+        const pr = !own && d.prog ? d.prog(null, m) : '';
+        return `<div class="offer deedrow${own ? ' owned' : ''}"><span class="ustar">${own ? '★' : '☆'}</span><span><b>${d.name}</b><small>${d.desc}${pr ? ` · ${pr}` : ''}</small></span><span class="dr">+${d.renown} ✦</span></div>`;
+      }).join('')}</div>`;
+  $('meta-body').innerHTML = `<h2>Renown</h2>
+    <div class="renownbig">✦ ${m.renown}</div>
+    <div class="tabs"><button class="small${tab === 'starts' ? ' on' : ''}" data-mtab="starts">Head starts</button><button class="small${tab === 'deeds' ? ' on' : ''}" data-mtab="deeds">Deeds ${m.deeds.length}/${DEEDS.length}</button><button class="small${tab === 'holds' ? ' on' : ''}" data-mtab="holds">Past holds</button></div>
+    ${list}
     <button class="big alt" id="metaClose">Back</button>`;
   $('meta').classList.add('show');
   $('backLink').style.display = 'none';
@@ -853,6 +938,8 @@ function showMeta() {
   $('metaClose').addEventListener('click', () => { $('meta').classList.remove('show'); showTitle(); });
 }
 $('meta').addEventListener('click', (e) => {
+  const tb = (e.target as HTMLElement).closest('[data-mtab]') as HTMLElement | null;
+  if (tb) { showMeta(tb.dataset.mtab as typeof metaTab); sfx('click'); return; }
   const el = (e.target as HTMLElement).closest('[data-unlock]') as HTMLElement | null;
   if (!el) return;
   const err = buyUnlock(el.dataset.unlock!);
@@ -860,15 +947,27 @@ $('meta').addEventListener('click', (e) => {
   showMeta();
 });
 
-function startNew() {
-  clearSave();
-  const game = newGame((Math.random() * 2 ** 31) | 0);
+function startNew(daily = false) {
+  const today = dateKey();
+  clearSave(daily);
+  const game = newGame(daily ? dailySeed(today) : (Math.random() * 2 ** 31) | 0);
   let tips = true;
   try { tips = localStorage.getItem('goblinhold.tips') !== '0'; } catch { /* ignore */ }
   game.tut = tips ? 0 : -1;
+  game.bestAtStart = getBest();
+  if (daily) { game.daily = today; game.mod = dailyMod(today).id; }
   applyUnlocks(game);
+  applyMod(game);
+  // the map and twist are fixed for the day; the head starts are yours
   start(game);
-  banner('SPRING', 'Gather wood and get ready for the first raid.');
+  const mod = modOf(game);
+  banner(daily ? 'DAILY HOLD' : 'SPRING', daily && mod ? `${mod.name}: ${mod.desc}` : 'Gather wood and get ready for the first raid.');
+}
+function welcomeBack() {
+  if (!g) return;
+  const w = g.wave;
+  const tonight = w.kind === 'boss' ? 'a warband' : w.kind === 'assault' ? 'an assault' : 'a raid';
+  banner(`DAY ${g.day}`, `Welcome back. ${g.phase === 'night' ? 'The goblins are here!' : `Tonight brings ${tonight}.`}`, w.kind !== 'raid');
 }
 
 function start(game: Game) {
@@ -893,16 +992,17 @@ function start(game: Game) {
   saveGame(g);
 }
 
-function openPause() { if (!g) return; $('pause').classList.add('show'); $('muteBtn').textContent = `Sound: ${isMuted() ? 'off' : 'on'}`; $('musicBtn').textContent = `Music: ${isMusicOn() ? 'on' : 'off'}`; }
+function openPause() { if (!g) return; const mod = modOf(g); $('pauseDaily').innerHTML = g.daily && mod ? `<b>Daily hold · ${prettyDate(g.daily)}</b><br>${mod.name}: ${mod.desc}` : ''; $('buzzBtn').textContent = `Vibration: ${haptics ? 'on' : 'off'}`; $('pause').classList.add('show'); $('muteBtn').textContent = `Sound: ${isMuted() ? 'off' : 'on'}`; $('musicBtn').textContent = `Music: ${isMusicOn() ? 'on' : 'off'}`; }
 $('musicBtn').addEventListener('click', () => { toggleMusic(); $('musicBtn').textContent = `Music: ${isMusicOn() ? 'on' : 'off'}`; });
 $('menuBtn').addEventListener('click', openPause);
+$('buzzBtn').addEventListener('click', () => { haptics = !haptics; try { localStorage.setItem('goblinhold.haptics', haptics ? '1' : '0'); } catch { /* ignore */ } $('buzzBtn').textContent = `Vibration: ${haptics ? 'on' : 'off'}`; buzz(30); });
 $('resume').addEventListener('click', () => $('pause').classList.remove('show'));
 $('muteBtn').addEventListener('click', () => { toggleMute(); $('muteBtn').textContent = `Sound: ${isMuted() ? 'off' : 'on'}`; });
 $('restart').addEventListener('click', () => {
   if (!confirm('Abandon this settlement for good?')) return;
   for (const id of ['pause', 'dawn', 'event', 'over', 'trade', 'roster', 'card']) $(id).classList.remove('show');
   eventResult = '';
-  clearSave();
+  clearSave(!!g?.daily);
   g = null;
   showTitle();
 });
@@ -1088,6 +1188,7 @@ function handleEvents() {
   for (const e of events.splice(0)) {
     sfx(e.k);
     spawnFx(e);
+    if (BUZZ[e.k]) buzz(BUZZ[e.k]);
     if (e.k === 'dusk' || e.k === 'dawn') hideTip();
     if (e.k === 'dusk') banner('DUSK', 'Guards to their posts.');
     if (e.k === 'horn') {
@@ -1099,7 +1200,15 @@ function handleEvents() {
       refreshBar();
       $('trade').classList.remove('show');
     }
-    if (e.k === 'dawn') { saveGame(g); showDawn(); }
+    if (e.k === 'dawn') {
+      dawnExtra = [];
+      if (!g.over) {
+        const w = dailyWatch();
+        if (w.bonus) dawnExtra.push(`<li class="renown">✦ First night held today: +${w.bonus} renown${w.streak > 1 ? ` (${w.streak}-day streak)` : ''}</li>`);
+        for (const d of checkDeeds(g)) { dawnExtra.push(deedLine(d)); (g.deeds ??= []).push(d.id); }
+      }
+      saveGame(g); showDawn();
+    }
     if (e.k === 'over') showOver();
     if (e.k === 'relic') buildBar();
   }
@@ -1112,6 +1221,7 @@ let acc = 0;
 let last = performance.now();
 let uiT = 0;
 let demo: Game | null = null;
+let lastDraw = 0;
 const demoView: View = { cam: { x: 0, y: 0, z: 2.5 }, sel: null, tool: null, hover: null, drag: null, w: 0, h: 0, dpr: 1 };
 let saveT = 0;
 function frame(now: number) {
@@ -1131,7 +1241,8 @@ function frame(now: number) {
     step(demo, real);
     if (demo.phase !== 'day') { demo = null; }
     events.length = 0; toasts.length = 0;
-    if (demo) draw(ctx, demo, demoView, real, now / 1000);
+    // the title backdrop only needs ~30 fps
+    if (demo && now - lastDraw >= 30) { draw(ctx, demo, demoView, Math.min(0.1, (now - lastDraw) / 1000), now / 1000); lastDraw = now; }
   }
   if (g) {
     const paused = speed === 0 || $('pause').classList.contains('show') || g.phase === 'dawn' || g.over || !!g.event || !!eventResult;
@@ -1149,7 +1260,9 @@ function frame(now: number) {
     clampCam(view);
     handleEvents();
     ambience(g.phase, real * (paused ? 0 : 1), paused ? 0 : speed);
-    draw(ctx, g, view, paused ? 0 : real * speed, now / 1000);
+    // behind a full-screen card the map barely changes: redraw it a few times a second to save battery
+    const covered = $('pause').classList.contains('show') || g.over || $('dawn').classList.contains('show');
+    if (!covered || now - lastDraw >= 120) { draw(ctx, g, view, paused ? 0 : real * speed, now / 1000); lastDraw = now; }
     uiT -= real;
     if (uiT <= 0) {
       uiT = 0.2; refreshTop(); refreshBar(); renderCard(); refreshRoster(); refreshTrade(); refreshGoal(); refreshCrew();
@@ -1168,6 +1281,32 @@ function frame(now: number) {
 
 document.addEventListener('visibilitychange', () => { if (document.hidden && g) saveGame(g); });
 window.addEventListener('pagehide', () => { if (g) saveGame(g); });
+
+// ---------- install as an app ----------
+type InstallEvt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
+let installEvt: InstallEvt | null = null;
+const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
+function refreshInstall() {
+  const el = $('install');
+  if (standalone()) { el.innerHTML = ''; return; }
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (installEvt) el.innerHTML = '<button class="small" id="installBtn">Install Goblin Hold</button> plays full-screen, even offline';
+  else if (ios) el.innerHTML = 'Tip: Share → <b>Add to Home Screen</b> to play full-screen, even offline.';
+  else el.innerHTML = '';
+  document.getElementById('installBtn')?.addEventListener('click', async () => {
+    if (!installEvt) return;
+    await installEvt.prompt();
+    await installEvt.userChoice.catch(() => null);
+    installEvt = null;
+    refreshInstall();
+  });
+}
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e as InstallEvt; refreshInstall(); });
+window.addEventListener('appinstalled', () => { installEvt = null; refreshInstall(); });
+// skip the dev server (its modules change constantly); ?sw tests a local build
+if ('serviceWorker' in navigator && (!/^(localhost|127.0.0.1)$/.test(location.hostname) || location.search.includes('sw'))) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/goblin-hold/sw.js', { scope: '/goblin-hold/' }).catch(() => { /* offline play is a bonus */ }); });
+}
 
 setupIcons();
 showTitle();

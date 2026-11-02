@@ -1,0 +1,16 @@
+{
+  "name": "Goblin Hold",
+  "short_name": "Goblin Hold",
+  "description": "A cozy pixel-art colony sim and tower defense. Build by day, hold the keep by night.",
+  "start_url": "/goblin-hold/",
+  "scope": "/goblin-hold/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#2a2018",
+  "theme_color": "#2a2018",
+  "icons": [
+    { "src": "/goblin-hold/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/goblin-hold/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/goblin-hold/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
