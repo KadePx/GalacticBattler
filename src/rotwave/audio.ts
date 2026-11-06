@@ -211,6 +211,25 @@ export const sfx = {
     if (!gate('whistle', 180)) return;
     tone('sine', 1500 + Math.random() * 300, 500, 1.1, 0.04);
   },
+  spit() {
+    if (!gate('spit', 160)) return;
+    noise(0.12, 1400, 'bandpass', 0.07, 3);
+    tone('sine', 600, 200, 0.12, 0.03);
+  },
+  splat() {
+    if (!gate('splat', 90)) return;
+    noise(0.22, 700, 'lowpass', 0.12);
+  },
+  bloat() {
+    if (!gate('bloat', 120)) return;
+    noise(0.5, 400, 'lowpass', 0.3);
+    tone('sine', 120, 40, 0.4, 0.2);
+    noise(0.3, 1800, 'bandpass', 0.06, 2);
+  },
+  ping() {
+    if (!gate('ping', 70)) return;
+    tone('square', 2400 + Math.random() * 800, 1800, 0.04, 0.02);
+  },
   error() {
     if (!gate('err', 150)) return;
     tone('square', 180, 150, 0.12, 0.05);

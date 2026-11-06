@@ -66,6 +66,11 @@ export interface ZombieLook {
   width: number; // torso width multiplier
   hunch: number; // forward lean of the torso (radians)
   armLen: number;
+  head?: number; // head size multiplier (spitters have swollen heads)
+  throat?: number; // glowing acid sac under the jaw
+  helmet?: number; // riot helmet with a visor
+  vest?: number; // riot armor plates
+  belly?: number; // bloater's swollen gut
 }
 
 /** A zombie standing at the origin, facing +Z, feet on y=0, about 1.9 tall. */
@@ -86,6 +91,25 @@ export function zombieGeometry(look: ZombieLook): THREE.BufferGeometry {
     place(paint(box(0.08, 0.06, 0.04), 0xff3a2a), [-0.08, 1.8, 0.35], [0.2, 0.1, 0.18]),
     place(paint(box(0.08, 0.06, 0.04), 0xff3a2a), [0.1, 1.83, 0.35], [0.2, 0.1, 0.18]),
   ];
+  const hs = look.head ?? 1;
+  if (hs !== 1) parts.push(place(paint(box(0.4, 0.4, 0.4), look.skin, 0.2), [0.02, 1.8, 0.12], [0.2, 0.1, 0.18], [hs, hs, hs]));
+  if (look.throat) parts.push(place(paint(new THREE.IcosahedronGeometry(0.2, 0), look.throat, 0.3), [0, 1.55, 0.32], [0, 0, 0], [1.2, 0.9, 1]));
+  if (look.helmet) {
+    parts.push(
+      place(paint(box(0.5, 0.26, 0.5), look.helmet, 0.15), [0.02, 2.0, 0.12], [0.2, 0.1, 0.18]),
+      place(paint(box(0.46, 0.2, 0.05), 0x7fa0b8, 0.1), [0.04, 1.82, 0.38], [0.2, 0.1, 0.18]),
+    );
+  }
+  if (look.vest) {
+    const w2 = look.width;
+    parts.push(
+      place(paint(box(0.66 * w2, 0.6, 0.12), look.vest, 0.2), [0, 1.2, 0.24], [look.hunch, 0, 0]),
+      place(paint(box(0.66 * w2, 0.6, 0.12), look.vest, 0.2), [0, 1.2, -0.16], [look.hunch, 0, 0]),
+      place(paint(box(0.2, 0.14, 0.4), look.vest, 0.2), [-0.38 * w2, 1.55, 0.04]),
+      place(paint(box(0.2, 0.14, 0.4), look.vest, 0.2), [0.38 * w2, 1.55, 0.04]),
+    );
+  }
+  if (look.belly) parts.push(place(paint(new THREE.IcosahedronGeometry(0.5, 1), look.belly, 0.3), [0, 1.08, 0.18], [0, 0, 0], [1.15, 1, 1]));
   return merge(parts);
 }
 

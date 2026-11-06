@@ -164,6 +164,33 @@ export class Fx {
     });
   }
 
+  /** Acid splash (spitter glob) or a bloater's toxic burst when big. */
+  acid(x: number, z: number, r: number) {
+    const k = r / 1.5;
+    for (let i = 0; i < 6 + r * 4; i++) {
+      const a = Math.random() * Math.PI * 2, s = Math.random() * 3 * k;
+      this.puff({
+        x, y: 0.3, z, vx: Math.cos(a) * s, vy: 0.8 + Math.random() * 2, vz: Math.sin(a) * s,
+        life: 0.5 + Math.random() * 0.6 * k, max: 0.6 + 0.6 * k, s0: 0.25 * k + 0.15, s1: 0.8 * k + 0.3,
+        color: [0x9be05a, 0x7ac040, 0xc8f070, 0x5a8a30][Math.floor(Math.random() * 4)], grav: -0.5,
+      });
+    }
+    this.decal(x, z, r * 0.9, 0x3d5a1c);
+    this.flash(x, 1, z, 6 * k, 0x9be05a);
+    if (r > 2) this.shake = Math.min(1.2, this.shake + 0.2);
+  }
+
+  /** Sparks when bullets glance off armor. */
+  ping(x: number, y: number, z: number) {
+    for (let i = 0; i < 2; i++) {
+      const a = Math.random() * Math.PI * 2;
+      this.puff({
+        x, y, z, vx: Math.cos(a) * 3, vy: 1 + Math.random() * 2, vz: Math.sin(a) * 3,
+        life: 0.15, max: 0.15, s0: 0.12, s1: 0.02, color: 0xfff0c0, grav: 8,
+      });
+    }
+  }
+
   /** Rising green sparkles for heals and repairs. */
   sparkle(x: number, y: number, z: number, color = 0x8af07a) {
     this.puff({

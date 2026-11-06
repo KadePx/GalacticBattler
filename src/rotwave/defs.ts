@@ -36,15 +36,15 @@ export interface UnitDef extends GunDef {
 }
 
 export const UNITS: Record<UnitKind, UnitDef> = {
-  rifle: { name: 'Rifleman', cost: 75, hp: 70, r: 0.42, speed: 4.2, pop: 1, range: 9, dmg: 13, rate: 1.6, weapon: 'bullet', gun: 'rifle', tracer: 0xffd27a, nades: true, desc: 'Steady all-rounder. Throws a grenade into tight crowds.' },
-  gunner: { name: 'Gunner', cost: 150, hp: 120, r: 0.45, speed: 3.3, pop: 1, range: 7.5, dmg: 6, rate: 7, weapon: 'bullet', gun: 'mg', tracer: 0xffc060, desc: 'Tough machine gunner. Shreds crowds up close.' },
-  sniper: { name: 'Sniper', cost: 200, hp: 45, r: 0.4, speed: 3.8, pop: 1, range: 17, dmg: 75, rate: 0.55, weapon: 'bullet', gun: 'sniper', tracer: 0xffffff, desc: 'Fragile, huge range. Deletes brutes.' },
-  grenadier: { name: 'Grenadier', cost: 175, hp: 65, r: 0.42, speed: 3.9, pop: 1, range: 11, minRange: 2.5, dmg: 45, rate: 0.55, weapon: 'lob', splash: 2.4, gun: 'launcher', tracer: 0, desc: 'Lobs grenades that blow up whole groups.' },
-  flamer: { name: 'Flamer', cost: 175, hp: 110, r: 0.45, speed: 3.6, pop: 1, range: 4.8, dmg: 5, rate: 10, weapon: 'flame', splash: 4.8, gun: 'flame', tracer: 0, desc: 'Short-range fire cone. Sets zombies burning.' },
+  rifle: { name: 'Rifleman', cost: 75, hp: 70, r: 0.42, speed: 4.2, pop: 1, range: 9, dmg: 14, rate: 1.6, weapon: 'bullet', gun: 'rifle', tracer: 0xffd27a, nades: true, desc: 'Steady all-rounder. Hits hard enough to hurt riot armor, and tosses grenades into crowds.' },
+  gunner: { name: 'Gunner', cost: 150, hp: 120, r: 0.45, speed: 3.3, pop: 1, range: 7.5, dmg: 6, rate: 7, weapon: 'bullet', gun: 'mg', tracer: 0xffc060, desc: 'Tough machine gunner. Shreds crowds and runners, but bullets bounce off riot armor.' },
+  sniper: { name: 'Sniper', cost: 200, hp: 45, r: 0.4, speed: 3.8, pop: 1, range: 17, dmg: 75, rate: 0.55, weapon: 'bullet', gun: 'sniper', tracer: 0xffffff, desc: 'Fragile, huge range, pierces armor. Deletes brutes, spitters and riot zombies. Must stop to shoot.' },
+  grenadier: { name: 'Grenadier', cost: 175, hp: 65, r: 0.42, speed: 3.9, pop: 1, range: 11, minRange: 2.5, dmg: 45, rate: 0.55, weapon: 'lob', splash: 2.4, gun: 'launcher', tracer: 0, desc: 'Lobs grenades that blow up whole groups. Explosives ignore armor. Must stop to shoot.' },
+  flamer: { name: 'Flamer', cost: 200, hp: 110, r: 0.45, speed: 3.2, pop: 1, range: 4.2, dmg: 2.7, rate: 10, weapon: 'flame', splash: 4.2, gun: 'flame', tracer: 0, desc: 'Short-range fire cone that sets zombies burning. Must stop to shoot. Useless against riot armor.' },
   medic: { name: 'Medic', cost: 125, hp: 60, r: 0.4, speed: 4.4, pop: 1, range: 7, dmg: 6, rate: 1.2, weapon: 'bullet', gun: 'pistol', tracer: 0xffe6a0, heal: 9, desc: 'Heals nearby soldiers and vehicles.' },
   engineer: { name: 'Engineer', cost: 125, hp: 70, r: 0.42, speed: 4, pop: 1, range: 7, dmg: 6, rate: 1.2, weapon: 'bullet', gun: 'pistol', tracer: 0xffe6a0, repair: 30, desc: 'Repairs nearby walls, turrets and the HQ.' },
-  jeep: { name: 'Gun Jeep', cost: 275, hp: 320, r: 0.95, speed: 7.5, pop: 2, range: 9.5, dmg: 7, rate: 8, weapon: 'bullet', gun: 'mg', tracer: 0xffc060, vehicle: true, desc: 'Fast truck with a mounted machine gun. 2 squad slots.' },
-  tank: { name: 'Tank', cost: 650, hp: 1100, r: 1.35, speed: 3, pop: 4, range: 13, dmg: 110, rate: 0.45, weapon: 'shell', splash: 2.6, gun: 'cannon', tracer: 0xffa040, vehicle: true, crush: true, desc: 'Armored cannon that runs zombies over. 4 squad slots.' },
+  jeep: { name: 'Gun Jeep', cost: 275, hp: 320, r: 0.95, speed: 7.5, pop: 2, range: 9.5, dmg: 7, rate: 8, weapon: 'bullet', gun: 'mg', tracer: 0xffc060, vehicle: true, desc: 'Fast truck with a mounted machine gun. Weak against armor. 2 squad slots.' },
+  tank: { name: 'Tank', cost: 650, hp: 1100, r: 1.35, speed: 3, pop: 4, range: 13, dmg: 110, rate: 0.45, weapon: 'shell', splash: 2.6, gun: 'cannon', tracer: 0xffa040, vehicle: true, crush: true, desc: 'Armored cannon that runs zombies over. Shells ignore armor. 4 squad slots.' },
 };
 export const SQUAD_ORDER: UnitKind[] = ['rifle', 'gunner', 'sniper', 'grenadier', 'flamer', 'medic', 'engineer', 'jeep', 'tank'];
 
@@ -58,9 +58,9 @@ export interface BuildDef extends Partial<GunDef> {
 }
 export const BUILDS: Record<BuildKind, BuildDef> = {
   wall: { name: 'Barricade', cost: 25, hp: 320, r: 1, desc: 'Blocks zombies. R rotates, drag to lay a line.' },
-  turret: { name: 'MG Turret', cost: 175, hp: 260, r: 0.95, range: 11, dmg: 8, rate: 4.5, weapon: 'bullet', gun: 'mg', tracer: 0xffb85a, gunY: 1.4, desc: 'Automatic machine-gun nest.' },
+  turret: { name: 'MG Turret', cost: 175, hp: 260, r: 0.95, range: 11, dmg: 8, rate: 4.5, weapon: 'bullet', gun: 'mg', tracer: 0xffb85a, gunY: 1.4, desc: 'Automatic machine-gun nest. Weak against riot armor.' },
   cannon: { name: 'Cannon', cost: 300, hp: 450, r: 1.1, range: 13, dmg: 80, rate: 0.6, weapon: 'shell', splash: 2.2, gun: 'cannon', tracer: 0xffa040, gunY: 1.4, desc: 'Heavy shells with splash damage.' },
-  flame: { name: 'Flame Turret', cost: 225, hp: 320, r: 0.95, range: 5.5, dmg: 6, rate: 10, weapon: 'flame', splash: 5.5, gun: 'flame', tracer: 0, gunY: 1.3, desc: 'Hoses down anything that gets close.' },
+  flame: { name: 'Flame Turret', cost: 225, hp: 320, r: 0.95, range: 5.5, dmg: 3.5, rate: 10, weapon: 'flame', splash: 5.5, gun: 'flame', tracer: 0, gunY: 1.3, desc: 'Hoses down anything that gets close. Spitters outrange it; riot armor ignores it.' },
   mortar: { name: 'Mortar Pit', cost: 350, hp: 250, r: 1.3, range: 26, minRange: 7, dmg: 70, rate: 0.3, weapon: 'lob', splash: 3, gun: 'launcher', tracer: 0, gunY: 0.8, desc: 'Very long range shells. Can’t hit things too close.' },
   tower: { name: 'Watchtower', cost: 275, hp: 380, r: 1.2, range: 18, dmg: 45, rate: 1.1, weapon: 'bullet', gun: 'sniper', tracer: 0xffffff, gunY: 4.3, desc: 'Tall sniper post with long sight lines.' },
   spikes: { name: 'Spike Trap', cost: 60, hp: 240, r: 0, desc: 'Zombies walking over it are slowed and shredded. Wears out.' },
@@ -91,13 +91,26 @@ export interface ZType {
   scale: number;
   dps: number;
   bounty: number;
+  /** flat damage removed from every hit (explosives, snipers and crushing ignore it) */
+  armor?: number;
+  /** spits acid from range instead of clawing */
+  spit?: { range: number; dmg: number; cd: number; splash: number };
+  /** bursts in a toxic cloud when it dies */
+  burst?: { r: number; dmg: number };
+  /** shown in the wave banner the first time this type appears */
+  intro?: string;
 }
+// Index matters: 0 walker, 1 runner, 2 brute, 3 spitter, 4 riot, 5 bloater.
 export const ZTYPES: ZType[] = [
   { name: 'walker', hp: 34, speed: 2.0, r: 0.42, scale: 1, dps: 10, bounty: 3 },
-  { name: 'runner', hp: 22, speed: 3.7, r: 0.36, scale: 0.88, dps: 7, bounty: 4 },
-  { name: 'brute', hp: 320, speed: 1.15, r: 0.85, scale: 1.75, dps: 45, bounty: 25 },
+  { name: 'runner', hp: 22, speed: 3.9, r: 0.36, scale: 0.88, dps: 7, bounty: 4, intro: 'Runners are fast. Machine guns and turrets cut them down.' },
+  { name: 'brute', hp: 320, speed: 1.15, r: 0.85, scale: 1.75, dps: 45, bounty: 25, intro: 'Brutes soak up damage. Bring snipers, cannons and tanks.' },
+  { name: 'spitter', hp: 42, speed: 1.8, r: 0.4, scale: 1, dps: 0, bounty: 6, spit: { range: 8, dmg: 13, cd: 2.8, splash: 1.5 }, intro: 'Spitters lob acid from range and melt clumps and defenses. Snipers, grenadiers and mortars outrange them.' },
+  { name: 'riot', hp: 80, speed: 1.9, r: 0.45, scale: 1.05, dps: 12, bounty: 8, armor: 6, intro: 'Riot zombies wear armor that shrugs off light guns and fire. Use rifles, snipers and explosives.' },
+  { name: 'bloater', hp: 80, speed: 1.5, r: 0.55, scale: 1.12, dps: 0, bounty: 6, burst: { r: 2.8, dmg: 50 }, intro: 'Bloaters burst in a toxic cloud when they die. Kill them before they reach your lines.' },
 ];
+export const Z_WALKER = 0, Z_RUNNER = 1, Z_BRUTE = 2, Z_SPITTER = 3, Z_RIOT = 4, Z_BLOATER = 5;
 
-export const HQ = { hp: 1500, range: 9, dmg: 9, rate: 2, weapon: 'bullet' as Weapon, gun: 'rifle' as Gun, tracer: 0xffb85a };
+export const HQ = { hp: 1500, range: 10.5, dmg: 9, rate: 2, weapon: 'bullet' as Weapon, gun: 'rifle' as Gun, tracer: 0xffb85a };
 export const UNIT_CAP = 40;
 export const AGGRO = 9;

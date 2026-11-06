@@ -10,7 +10,7 @@ import { N as NAV_N, Nav, Pt } from './nav';
 import { Fx } from './fx';
 import {
   AGGRO, BASE_ORDER, BUILDS, BuildKind, CALLS, CALL_ORDER, CallKind, GunDef, HQ, SQUAD_ORDER, UNITS, UNIT_CAP,
-  UnitDef, UnitKind, ZTYPES,
+  UnitDef, UnitKind, ZTYPES, Z_BLOATER, Z_BRUTE, Z_RIOT, Z_RUNNER, Z_SPITTER,
 } from './defs';
 
 // =====================================================================
@@ -133,6 +133,7 @@ interface Zombie {
   pz: number;
   stuck: number;
   shove: number; // >0: pushing through scenery after being wedged
+  spit: number; // spitter reload
 }
 
 let nextId = 1;
@@ -181,6 +182,9 @@ const ZLOOKS = [
   { skin: 0x8aa66a, shirt: 0x6b6f86, pants: 0x3e3a35, width: 1, hunch: 0.25, armLen: 0.7 },
   { skin: 0x9bb07a, shirt: 0x8a3b30, pants: 0x2f3440, width: 0.85, hunch: 0.5, armLen: 0.65 },
   { skin: 0x7a9460, shirt: 0x4b4239, pants: 0x2e2a26, width: 1.35, hunch: 0.2, armLen: 0.85 },
+  { skin: 0x9ab85a, shirt: 0x5a6a3a, pants: 0x3a3a30, width: 0.9, hunch: 0.45, armLen: 0.55, head: 1.2, throat: 0xc8f070 },
+  { skin: 0x7f9a62, shirt: 0x2c3440, pants: 0x22262c, width: 1.15, hunch: 0.15, armLen: 0.7, helmet: 0x1c2026, vest: 0x3a4250 },
+  { skin: 0x9aa86a, shirt: 0x6e6a58, pants: 0x3a3630, width: 1.2, hunch: 0.1, armLen: 0.6, belly: 0xb6c46a },
 ];
 const ZCAP = 700;
 const zMeshes = ZLOOKS.map((look) => {
@@ -211,6 +215,12 @@ interface Lob {
   dmg: number; r: number; big: boolean;
 }
 let lobs: Lob[] = [];
+const acidMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.22, 0), new THREE.MeshBasicMaterial({ color: 0xa8f060 }), LOB_CAP);
+acidMesh.frustumCulled = false;
+acidMesh.count = 0;
+scene.add(acidMesh);
+interface Glob { sx: number; sy: number; sz: number; tx: number; tz: number; t: number; dur: number; dmg: number; r: number }
+let globs: Glob[] = [];
 
 // ------------------------------------------------------------ zombie spatial grid
 
@@ -280,6 +290,7 @@ const S = {
   cd: { airstrike: 0, artillery: 0, supply: 0, para: 0 } as Record<CallKind, number>,
   timers: [] as { at: number; fn: () => void }[],
   groan: 2,
+  seen: new Set<number>(),
   best: 0,
 };
 try {
@@ -499,8 +510,18 @@ function nearestCollider(b: Building, x: number, z: number): Pt {
 
 // ------------------------------------------------------------ combat
 
-function damageZombie(z: Zombie, dmg: number) {
+/** pierce: 0..1 share of armor ignored (explosives, snipers and treads ignore all of it) */
+function damageZombie(z: Zombie, dmg: number, pierce = 0) {
   if (z.dead) return;
+  const armor = (ZTYPES[z.t].armor ?? 0) * (1 - pierce);
+  if (armor > 0) {
+    const through = Math.max(dmg * 0.15, dmg - armor);
+    if (through < dmg * 0.6 && Math.random() < 0.35) {
+      fx.ping(z.x, 1.4, z.z);
+      sfx.ping();
+    }
+    dmg = through;
+  }
   z.hp -= dmg;
   z.flash = 0.09;
   if (z.hp <= 0) killZombie(z);
@@ -511,17 +532,37 @@ function killZombie(z: Zombie) {
   const t = ZTYPES[z.t];
   S.kills++;
   S.scrap += t.bounty;
+  if (t.burst) toxicBurst(z.x, z.z, t.burst.r, t.burst.dmg);
   fx.gore(z.x, z.z, 1.1 * t.scale, ZLOOKS[z.t].skin, z.t === 2 ? 16 : 7, z.t === 2 ? 1.3 : 1);
   fx.decal(z.x, z.z, t.scale * 1.1);
   sfx.kill();
 }
 
+/** Hurts the player's side: a bloater bursting or an acid glob landing. */
+function hostileSplash(x: number, z: number, r: number, dmg: number, bldMult: number) {
+  for (const u of units) {
+    if (u.dead || u.drop > 0) continue;
+    const d = edgeDist(u, x, z);
+    if (d < r) damageEnt(u, dmg * (1 - 0.4 * Math.max(0, d) / r));
+  }
+  for (const b of buildings) {
+    if (b.dead || b.kind === 'spikes') continue;
+    const d = edgeDist(b, x, z);
+    if (d < r) damageEnt(b, dmg * bldMult);
+  }
+}
+function toxicBurst(x: number, z: number, r: number, dmg: number) {
+  hostileSplash(x, z, r, dmg, 0.6);
+  fx.acid(x, z, r);
+  sfx.bloat();
+}
+
 function explode(x: number, z: number, r: number, dmg: number) {
   forZombiesNear(x, z, r, (zz, d2) => {
     const d = Math.sqrt(d2);
-    damageZombie(zz, dmg * (1 - 0.5 * Math.min(1, d / r)));
+    damageZombie(zz, dmg * (1 - 0.5 * Math.min(1, d / r)), 1);
     if (!zz.dead && d > 0.01) {
-      const k = (0.8 * Math.max(0, 1 - d / (r + zz.r))) / (zz.t === 2 ? 3 : 1);
+      const k = (0.8 * Math.max(0, 1 - d / (r + zz.r))) / (zz.t === Z_BRUTE ? 3 : 1);
       zz.x += ((zz.x - x) / d) * k;
       zz.z += ((zz.z - z) / d) * k;
     }
@@ -543,7 +584,7 @@ function fireGun(gun: GunDef, x: number, y: number, z: number, yaw: number, muzz
   switch (gun.weapon) {
     case 'bullet':
       fx.tracer(mx, y, mz, target.x + (Math.random() - 0.5) * 0.3, 1.1 * s, target.z + (Math.random() - 0.5) * 0.3, gun.tracer);
-      damageZombie(target, gun.dmg);
+      damageZombie(target, gun.dmg, gun.gun === 'sniper' ? 1 : 0);
       break;
     case 'shell':
       fx.tracer(mx, y, mz, target.x, 0.8 * s, target.z, gun.tracer);
@@ -561,7 +602,7 @@ function fireGun(gun: GunDef, x: number, y: number, z: number, yaw: number, muzz
         const d = Math.sqrt(d2) || 0.01;
         if (((zz.x - x) * dx + (zz.z - z) * dz) / d < 0.8) return;
         damageZombie(zz, gun.dmg);
-        zz.burn = 2.5;
+        if (!ZTYPES[zz.t].armor) zz.burn = 2;
       });
       fx.flame(mx, y, mz, dx, dz, reach / 4.8);
       break;
@@ -606,14 +647,34 @@ const SIDES = [
   (c: number) => ({ x: -HALF + 1, z: c }),
 ];
 
+const THEMES: Record<number, string> = {
+  [Z_RUNNER]: 'Runners in force',
+  [Z_SPITTER]: 'A pack of spitters',
+  [Z_RIOT]: 'Heavy riot presence',
+  [Z_BLOATER]: 'Bloaters everywhere',
+};
+
 function startWave() {
   S.wave++;
   S.phase = 'wave';
   const n = S.wave;
   const total = Math.round(10 + n * 5 + Math.pow(n, 1.55));
-  const runnerShare = n >= 3 ? Math.min(0.35, (n - 2) * 0.06) : 0;
-  let brutes = n >= 4 ? Math.floor((n - 2) / 2) : 0;
+  // each special type unlocks on its wave and grows to a cap
+  const share: Record<number, number> = {
+    [Z_RUNNER]: n >= 2 ? Math.min(0.25, (n - 1) * 0.04) : 0,
+    [Z_SPITTER]: n >= 3 ? Math.min(0.1, 0.04 + (n - 3) * 0.012) : 0,
+    [Z_RIOT]: n >= 4 ? Math.min(0.16, 0.05 + (n - 4) * 0.02) : 0,
+    [Z_BLOATER]: n >= 6 ? Math.min(0.08, 0.04 + (n - 6) * 0.01) : 0,
+  };
+  // from wave 6, some waves lean hard on one type
+  let theme = -1;
   const bruteWave = n % 5 === 0;
+  if (n >= 6 && !bruteWave && Math.random() < 0.5) {
+    const opts = Object.keys(share).map(Number).filter((k) => share[k] > 0);
+    theme = opts[Math.floor(Math.random() * opts.length)];
+    share[theme] = Math.min(0.45, share[theme] * 2.5);
+  }
+  let brutes = n >= 4 ? Math.floor((n - 2) / 2) : 0;
   if (bruteWave) brutes += (n / 5) * 3;
   S.hpMult = 1 + (n - 1) * 0.1;
   S.speedMult = 1 + Math.min(0.3, (n - 1) * 0.015);
@@ -622,19 +683,35 @@ function startWave() {
   const sides = [0, 1, 2, 3].sort(() => Math.random() - 0.5).slice(0, sideCount);
   const centers = sides.map(() => (Math.random() * 2 - 1) * (HALF - 18));
   const q: { t: number; side: number; center: number }[] = [];
+  const pick = () => {
+    let r = Math.random();
+    for (const k of [Z_RUNNER, Z_SPITTER, Z_RIOT, Z_BLOATER]) {
+      if (r < share[k]) return k;
+      r -= share[k];
+    }
+    return 0;
+  };
   for (let i = 0; i < total; i++) {
     const k = i % sides.length;
-    q.push({ t: Math.random() < runnerShare ? 1 : 0, side: sides[k], center: centers[k] });
+    q.push({ t: pick(), side: sides[k], center: centers[k] });
   }
   for (let i = 0; i < brutes; i++) {
     const k = i % sides.length;
-    q.splice(Math.floor(Math.random() * q.length), 0, { t: 2, side: sides[k], center: centers[k] });
+    q.splice(Math.floor(Math.random() * q.length), 0, { t: Z_BRUTE, side: sides[k], center: centers[k] });
   }
   S.spawnQueue = q;
   S.spawnInterval = Math.max(0.05, (10 + n * 1.2) / q.length);
   S.spawnTimer = 0;
   const where = sides.map((s) => ['NORTH', 'EAST', 'SOUTH', 'WEST'][s]).join(' + ');
-  banner(`WAVE ${n}`, bruteWave ? `Brutes incoming from the ${where}` : `${q.length} zombies from the ${where}`, bruteWave);
+  // first sighting of a type gets a heads-up on how to beat it
+  const fresh = [...new Set(q.map((e) => e.t))].filter((t) => !S.seen.has(t) && ZTYPES[t].intro);
+  for (const t of q) S.seen.add(t.t);
+  if (fresh.length) {
+    banner(`WAVE ${n}`, `New: ${ZTYPES[fresh[0]].intro}`, true, 6);
+  } else {
+    const what = bruteWave ? 'Brutes incoming' : theme >= 0 ? THEMES[theme] : `${q.length} zombies`;
+    banner(`WAVE ${n}`, `${what} from the ${where}`, bruteWave || theme >= 0);
+  }
   sfx.horde();
 }
 
@@ -649,7 +726,7 @@ function spawnZombie(t: number, side: number, center: number) {
     speed: def.speed * S.speedMult * (0.85 + Math.random() * 0.3), r: def.r, dps: def.dps,
     yaw: 0, phase: Math.random() * 10, flash: 0, burn: 0, slow: 1, target: null, think: 0, attacking: false,
     tint: new THREE.Color(tint.r * 1.25, tint.g * 1.25, tint.b * 1.25), dead: false,
-    px: p.x, pz: p.z, stuck: 0, shove: 0,
+    px: p.x, pz: p.z, stuck: 0, shove: 0, spit: 1 + Math.random(),
   });
 }
 
@@ -796,6 +873,26 @@ function updateLobs(dt: number) {
   lobs = lobs.filter((l) => l.t < 1);
   lobMesh.count = n;
   lobMesh.instanceMatrix.needsUpdate = true;
+
+  let a = 0;
+  for (const g of globs) {
+    g.t += dt / g.dur;
+    if (g.t >= 1) {
+      hostileSplash(g.tx, g.tz, g.r, g.dmg, 1);
+      fx.acid(g.tx, g.tz, g.r);
+      sfx.splat();
+      continue;
+    }
+    const t = g.t;
+    dummy.position.set(g.sx + (g.tx - g.sx) * t, g.sy + (0.3 - g.sy) * t + 3 * 4 * t * (1 - t), g.sz + (g.tz - g.sz) * t);
+    dummy.rotation.set(t * 8, t * 5, 0);
+    dummy.scale.setScalar(1);
+    dummy.updateMatrix();
+    acidMesh.setMatrixAt(a++, dummy.matrix);
+  }
+  globs = globs.filter((g) => g.t < 1);
+  acidMesh.count = a;
+  acidMesh.instanceMatrix.needsUpdate = true;
 }
 
 // ------------------------------------------------------------ input state + camera
@@ -1254,7 +1351,7 @@ function updateUnits(dt: number) {
     // tanks run zombies over
     if (def.crush && moveYaw !== null) {
       forZombiesNear(u.x, u.z, u.r, (zz, d2) => {
-        damageZombie(zz, (zz.t === 2 ? 40 : 260) * dt);
+        damageZombie(zz, (zz.t === Z_BRUTE ? 40 : 260) * dt, 1);
         const d = Math.sqrt(d2) || 0.01;
         const rr = u.r + zz.r;
         if (!zz.dead && d < rr) {
@@ -1264,8 +1361,11 @@ function updateUnits(dt: number) {
       });
     }
 
-    // combat
-    u.cd -= dt;
+    // combat. Heavy weapons have to stop to fire; other infantry fire slower on the move.
+    const movingNow = moveYaw !== null;
+    const heavy = def.weapon === 'flame' || def.weapon === 'lob' || def.gun === 'sniper';
+    const fireMul = def.vehicle || !movingNow ? 1 : heavy ? 0 : 0.4;
+    u.cd -= dt * fireMul;
     u.retarget -= dt;
     if (u.aim && (u.aim.dead || Math.hypot(u.aim.x - u.x, u.aim.z - u.z) > def.range + u.aim.r + 0.5)) u.aim = null;
     if (!u.aim && u.retarget <= 0) {
@@ -1275,7 +1375,7 @@ function updateUnits(dt: number) {
     if (u.aim) {
       const want = Math.atan2(u.aim.x - u.x, u.aim.z - u.z);
       u.aimYaw = turnToward(u.aimYaw, want, dt * (u.kind === 'tank' ? 3 : 12));
-      if (u.cd <= 0 && angleDiff(u.aimYaw, want) < 0.25) {
+      if (fireMul > 0 && u.cd <= 0 && angleDiff(u.aimYaw, want) < 0.25) {
         u.cd = 1 / def.rate;
         const y = u.kind === 'tank' ? 1.3 : u.kind === 'jeep' ? 1.55 : 1.3;
         const muzzle = u.kind === 'tank' ? 3.0 : u.kind === 'jeep' ? 1.0 : 1.1;
@@ -1283,7 +1383,7 @@ function updateUnits(dt: number) {
       }
       // riflemen lob a grenade into a tight crowd now and then
       u.nadeCd -= dt;
-      if (def.nades && u.nadeCd <= 0 && u.aim && !u.aim.dead) {
+      if (def.nades && !movingNow && u.nadeCd <= 0 && u.aim && !u.aim.dead) {
         const t = u.aim;
         const d = Math.hypot(t.x - u.x, t.z - u.z);
         let crowd = 0;
@@ -1405,7 +1505,7 @@ function updateZombies(dt: number) {
     // fire
     if (z.burn > 0) {
       z.burn -= dt;
-      damageZombie(z, 14 * dt);
+      damageZombie(z, 7 * dt);
       if (Math.random() < dt * 10) fx.burn(z.x, 1.2 * ZTYPES[z.t].scale, z.z);
       if (z.dead) continue;
     }
@@ -1414,8 +1514,8 @@ function updateZombies(dt: number) {
     for (const tr of traps) {
       if (tr.dead || Math.hypot(z.x - tr.x, z.z - tr.z) >= 1.1 + z.r * 0.5) continue;
       z.slow = 0.45;
-      damageZombie(z, 30 * dt);
-      damageEnt(tr, (z.t === 2 ? 8 : 2.5) * dt);
+      damageZombie(z, 30 * dt, 1);
+      damageEnt(tr, (z.t === Z_BRUTE ? 8 : 2.5) * dt);
       if (Math.random() < dt * 3) fx.gore(z.x, z.z, 0.3, 0x7a1612, 1, 0.4);
     }
     if (z.dead) continue;
@@ -1443,12 +1543,31 @@ function updateZombies(dt: number) {
         }
       }
       z.yaw = turnToward(z.yaw, Math.atan2(dx, dz), dt * 6);
-      if (reach < 0.3) {
+      const spit = ZTYPES[z.t].spit;
+      z.spit -= dt;
+      if (spit && reach < spit.range - 0.5) {
+        // spitters hang back and lob acid at whatever they're after
         z.attacking = true;
-        const mult = z.t === 2 && tgt.type === 'building' ? 2 : 1;
+        z.yaw = turnToward(z.yaw, Math.atan2(tp.x - z.x, tp.z - z.z), dt * 6);
+        if (z.spit <= 0) {
+          z.spit = spit.cd * (0.85 + Math.random() * 0.3);
+          const dist = Math.hypot(tp.x - z.x, tp.z - z.z);
+          globs.push({ sx: z.x, sy: 1.6, sz: z.z, tx: tp.x, tz: tp.z, t: 0, dur: 0.7 + dist * 0.05, dmg: spit.dmg, r: spit.splash });
+          sfx.spit();
+        }
+      } else if (reach < 0.3) {
+        if (z.t === Z_BLOATER) {
+          // bloaters don't claw: they pop on contact
+          killZombie(z);
+          continue;
+        }
+        z.attacking = true;
+        const mult = z.t === Z_BRUTE && tgt.type === 'building' ? 2 : 1;
         damageEnt(tgt, z.dps * mult * dt);
       } else {
-        const sp = z.speed * z.slow;
+        let sp = z.speed * z.slow;
+        // the last few steps to a soldier are a lunge: you can't kite them for free
+        if (tgt.type === 'unit' && reach < 3.2 && z.t !== Z_BLOATER) sp *= z.t === Z_BRUTE ? 1.25 : 1.6;
         z.x += dx * sp * dt;
         z.z += dz * sp * dt;
         z.phase += dt * sp * 2.2;
@@ -1515,7 +1634,7 @@ function updateZombies(dt: number) {
 }
 
 function drawZombies(time: number) {
-  const counts = [0, 0, 0];
+  const counts = ZTYPES.map(() => 0);
   for (const z of zombies) {
     if (z.dead) continue;
     const def = ZTYPES[z.t];
@@ -1561,12 +1680,12 @@ const hud = {
 };
 
 let bannerTimer = 0;
-function banner(title: string, sub: string, danger = false) {
+function banner(title: string, sub: string, danger = false, secs = 3.2) {
   hud.bannerTitle.textContent = title;
   hud.bannerSub.textContent = sub;
   hud.banner.classList.toggle('danger', danger);
   hud.banner.classList.add('show');
-  bannerTimer = 3.2;
+  bannerTimer = secs;
 }
 function flashScrap() {
   const el = hud.scrap.parentElement!;
@@ -1723,13 +1842,15 @@ miniBg.width = miniBg.height = MINI;
       g.fill();
     }
 }
+const MINI_Z = ['#ff4b3a', '#ff7a3a', '#ff2a2a', '#a8f060', '#7ab0ff', '#e0e070'];
 function drawMinimap() {
   mctx.drawImage(miniBg, 0, 0);
   mctx.fillStyle = '#ff4b3a';
   for (const z of zombies) {
     if (z.dead) continue;
     const p = toMini(z.x, z.z);
-    const s = z.t === 2 ? 4 : 2;
+    const s = z.t === Z_BRUTE ? 4 : 2;
+    mctx.fillStyle = MINI_Z[z.t];
     mctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
   }
   for (const b of buildings) {
@@ -2044,6 +2165,7 @@ function clearWorld() {
   buildings = [];
   zombies = [];
   lobs = [];
+  globs = [];
   jets = [];
   crates = [];
   fx.clear();
@@ -2059,7 +2181,7 @@ function startGame() {
   unlockAudio();
   clearWorld();
   Object.assign(S, {
-    phase: 'build', paused: false, wave: 0, buildTimer: 35, scrap: 300, kills: 0, time: 0, spawnQueue: [], timers: [],
+    phase: 'build', paused: false, wave: 0, buildTimer: 35, scrap: 300, kills: 0, time: 0, spawnQueue: [], timers: [], seen: new Set<number>(),
     cd: { airstrike: 0, artillery: 0, supply: 0, para: 0 },
   });
   setupBase();
