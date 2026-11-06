@@ -317,7 +317,7 @@
       .badc { color: #ff8a70; }
       .warnc { color: var(--gold); }
       #crew.mini { width: auto; }
-      #crew.mini .ch > span:first-child, #crew.mini .t, #crew.mini .r .tag { display: none; }
+      #crew.mini .ch .cl, #crew.mini .t, #crew.mini .r .tag { display: none; }
       #crew.mini .cr { grid-template-columns: 26px auto; padding-right: 3px; }
       #crew.mini .hp { left: 3px; }
       #crew.mini .ch { justify-content: center; }
@@ -358,6 +358,7 @@
       }
 
       #speedCycle { display: none; }
+      #crew .pm { display: none; }
       @media (max-width: 480px) {
         #speed button[data-speed='1'], #speed button[data-speed='2'], #speed button[data-speed='3'] { display: none; }
         #speedCycle { display: inline-block; }
@@ -374,24 +375,54 @@
         #forecast { top: calc(var(--topB, 80px) + 6px); left: 8px; right: 8px; transform: none; max-width: none; justify-content: space-between; padding: 4px 6px 4px 8px; gap: 6px; }
         #fc-text { font-size: 12px; }
         .act { padding: 5px 8px; font-size: 13px; }
-        #relics { top: auto; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); right: 8px; max-width: 50%; }
+        #relics { top: auto; bottom: calc(var(--barH, 104px) + 6px); right: 8px; max-width: 50%; }
         .tool { width: 54px; height: 58px; }
         .tool img { width: 26px; height: 26px; }
         .tool .key { display: none; }
-        #card { left: 8px; right: 8px; width: auto; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); max-height: 46%; }
+        #card { left: 8px; right: 8px; width: auto; bottom: calc(var(--barH, 104px) + 6px); max-height: 46%; }
         .side { left: 8px; right: 8px; width: auto; top: calc(var(--fcB, 120px) + 8px); max-height: calc(100% - 240px); }
         #toasts { top: calc(var(--fcB, 120px) + 8px); }
         #bar .tools { -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); padding-right: 24px; }
-        #goal { top: auto; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); left: 8px; right: 8px; width: auto; font-size: 12px; }
+        #goal { top: auto; bottom: calc(var(--barH, 104px) + 6px); left: 8px; right: 8px; width: auto; font-size: 12px; }
         #crew, #crew.mini { width: auto; padding: 4px 3px; }
-        #crew .ch > span:first-child, #crew .t, #crew .r .tag { display: none; }
+        #crew .ch .cl, #crew .t, #crew .r .tag { display: none; }
         #crew .cr { grid-template-columns: 26px auto; padding-right: 3px; }
         #crew .hp { left: 3px; }
         #crew .ch button[data-act="mini"] { display: none; }
         body.carded #crew { display: none; }
-        #toolChip { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); }
+        #toolChip { bottom: calc(var(--barH, 104px) + 6px); }
         body.tooling #goal { display: none; }
-        #postHint { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px); }
+        #postHint { bottom: calc(var(--barH, 104px) + 6px); }
+      }
+
+      /* phones: two HUD rows, a one-row build bar, and as much map as possible */
+      @media (max-width: 520px) {
+        #top { left: 6px; right: 6px; gap: 4px; justify-content: flex-start; }
+        #top .mood, #rosterBtn { display: none; }
+        #top > .panel:nth-child(2) { flex: 1 1 auto; justify-content: space-around; gap: 4px; padding: 3px 5px; }
+        #top .daybox { gap: 6px; padding: 3px 6px; }
+        #phase { font-size: 11px; }
+        .res { font-size: 13px; min-width: 0; gap: 3px; }
+        #speed { margin-left: auto; }
+        #forecast { left: 6px; padding: 2px 3px 2px 7px; gap: 4px; overflow: hidden; }
+        #fc-text { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; gap: 4px; min-width: 0; }
+        #fc-text .fl { display: none; }
+        #fc-text .gob img { width: 14px; height: 14px; }
+        #forecast .act { padding: 2px 7px; font-size: 12px; white-space: nowrap; }
+        #crew .pm { display: flex; flex-direction: column; align-items: center; line-height: 1.1; font-size: 11px; }
+        #crew .pm i { font-style: normal; }
+        #crew .ch { flex-direction: column; gap: 3px; }
+        #crew .ch button { margin: 0; padding: 3px 4px; font-size: 11px; }
+        #crew .cr img { width: 22px; height: 22px; }
+        #crew .cr { grid-template-columns: 22px auto; gap: 3px; padding: 1px 2px 3px 1px; }
+        #bar { left: 6px; right: 6px; transform: none; max-width: none; flex-direction: row; align-items: stretch; padding: 3px; gap: 3px; bottom: max(6px, env(safe-area-inset-bottom)); }
+        #bar .tabs { flex-direction: column; gap: 3px; }
+        #bar .tabs button { flex: 1 1 0; padding: 0 6px; font-size: 12px; min-height: 0; }
+        #bar .tools { flex: 1 1 auto; min-width: 0; gap: 3px; }
+        .tool { width: 50px; height: 54px; }
+        .tool img { width: 24px; height: 24px; }
+        #goal { padding: 5px 8px; }
+        #goal .ghead b { font-size: 14px; }
       }
     </style>
   </head>

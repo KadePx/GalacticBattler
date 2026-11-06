@@ -42,12 +42,26 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+const phone = () => window.innerWidth <= 520;
+
 function centerOnKeep() {
   if (!g) return;
   const k = bld(g, g.keepId)!;
-  view.cam.x = (k.x + 1.5) * TILE;
-  view.cam.y = (k.y + 2) * TILE;
   view.cam.z = view.w < 760 ? 2 : 3;
+  lookAt(k.x + 1.5, k.y + 2);
+}
+
+/** Point the camera at a tile spot, centred in the part of the screen the HUD leaves open. */
+function lookAt(tx: number, ty: number) {
+  const fcB = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fcB')) || 0;
+  const top = Math.min(view.h * 0.4, fcB);
+  const br = $('bar').getBoundingClientRect(), cd = $('card').getBoundingClientRect();
+  const bot = Math.min(br.height ? br.top : view.h, cd.height && cd.top > view.h * 0.3 ? cd.top : view.h);
+  const cr = $('crew').getBoundingClientRect();
+  const right = cr.width && cr.left > view.w / 2 ? view.w - cr.left : 0;
+  const midY = (top + Math.max(top + 60, bot)) / 2, midX = (view.w - right) / 2;
+  view.cam.x = tx * TILE - (midX - view.w / 2) / view.cam.z;
+  view.cam.y = ty * TILE - (midY - view.h / 2) / view.cam.z;
   clampCam(view);
 }
 
@@ -147,10 +161,15 @@ $('bar').addEventListener('click', (e) => {
   if (tab) { barTab = tab.dataset.tab as 'build' | 'defend'; buildBar(); sfx('click'); return; }
   const b = el.closest('button') as HTMLElement | null;
   if (!b) return;
-  if (coarse() && b.dataset.tip) showTip(b, b.dataset.tip, 3500);
-  if (b.dataset.act === 'roster') { toggleRoster(); return; }
-  if (b.dataset.act === 'trade') { toggleTrade(); return; }
+  if (b.dataset.act === 'roster' || b.dataset.act === 'trade') {
+    if (coarse() && b.dataset.tip) showTip(b, b.dataset.tip, 3500);
+    if (b.dataset.act === 'roster') toggleRoster(); else toggleTrade();
+    return;
+  }
   setTool(b.dataset.tool as Tool);
+  // on touch the description pops up too, above the placing chip so it never hides Cancel
+  const chip = $('toolChip');
+  if (coarse() && b.dataset.tip) showTip(chip.classList.contains('show') ? chip : b, b.dataset.tip, 3500);
 });
 $('chipDone').addEventListener('click', () => { setTool(null); pendingPlace = null; refreshChip(); });
 
@@ -210,7 +229,7 @@ function cycleIdle() {
   if (!list.length) { toggleRoster(); return; }
   const s = list[idleIdx++ % list.length];
   view.sel = { t: 's', id: s.id }; clearTool();
-  view.cam.x = s.x * TILE; view.cam.y = s.y * TILE; clampCam(view);
+  lookAt(s.x, s.y);
   if (coarse()) { $('roster').classList.remove('show'); $('trade').classList.remove('show'); }
   renderCard(true);
 }
@@ -220,7 +239,14 @@ function refreshTop() {
   if (!g) return;
   const topB = $('top').getBoundingClientRect().bottom;
   document.documentElement.style.setProperty('--topB', `${Math.round(topB)}px`);
-  const fcB = $('forecast').getBoundingClientRect().bottom; // measured after the forecast moves under the new top bar
+  const fcEl = $('forecast');
+  if (phone()) {
+    const sp = $('speed').getBoundingClientRect();
+    fcEl.style.top = `${sp.top}px`; fcEl.style.height = `${sp.height}px`; fcEl.style.right = `${window.innerWidth - sp.left + 4}px`;
+  } else fcEl.style.top = fcEl.style.height = fcEl.style.right = '';
+  const barR = $('bar').getBoundingClientRect();
+  if (barR.height) document.documentElement.style.setProperty('--barH', `${Math.round(window.innerHeight - barR.top)}px`);
+  const fcB = fcEl.getBoundingClientRect().bottom; // measured after the forecast moves under the new top bar
   document.documentElement.style.setProperty('--fcB', `${Math.round(Math.max(topB, fcB))}px`);
   const sea = season(g);
   $('day').innerHTML = `DAY ${g.day}${g.daily ? ' <span class="dtag" data-tip="Daily hold: ' + (modOf(g)?.name ?? '') + '. ' + (modOf(g)?.desc ?? '') + '">★</span>' : ''}`;
@@ -269,7 +295,7 @@ function refreshTop() {
   const btn = $<HTMLButtonElement>('phaseBtn');
   const fc = $('fc-text');
   let html = '';
-  if (ph === 'day' || ph === 'dusk') html = `${ph === 'day' ? '<span class="dim">Tonight</span> ' : ''}${label} ${comp} <span class="dim">from the ${from}</span>`;
+  if (ph === 'day' || ph === 'dusk') html = `${ph === 'day' ? '<span class="dim fl">Tonight</span> ' : ''}${label} ${comp} <span class="dim fl">from the ${from}</span>`;
   else if (ph === 'night') { const left = g.spawn.length + g.goblins.length; html = `${label} <span class="dim">${left} goblin${left === 1 ? '' : 's'} left</span>`; }
   else html = 'Dawn breaks.';
   if (fc.dataset.html !== html) { fc.dataset.html = html; fc.innerHTML = html; }
@@ -504,8 +530,8 @@ function focusSettler(s: Settler) {
   if (!g) return;
   view.sel = { t: 's', id: s.id };
   clearTool();
-  if (s.away <= 0) { const f = focusOf(g, s); view.cam.x = f.x * TILE; view.cam.y = f.y * TILE; clampCam(view); }
   renderCard(true);
+  if (s.away <= 0) { const f = focusOf(g, s); lookAt(f.x, f.y); }
   refreshCrew(true);
 }
 $('crew').addEventListener('click', (e) => {
@@ -581,7 +607,7 @@ $('roster').addEventListener('click', (e) => {
       view.sel = { t: 's', id: s.id };
       clearTool();
       const b = s.inside ? bld(g, s.inside) : undefined;
-      if (s.away <= 0) { view.cam.x = (b ? b.x + 1 : s.x) * TILE; view.cam.y = (b ? b.y + 1 : s.y) * TILE; clampCam(view); }
+      if (s.away <= 0) lookAt(b ? b.x + 1 : s.x, b ? b.y + 1 : s.y);
       renderCard(true);
     }
   }
@@ -704,7 +730,7 @@ const STEPS: Step[] = [
 ];
 let goalHTML = '';
 let tabSetFor = -1;
-let goalOpen = true;
+let goalOpen = window.innerWidth > 520;
 function refreshGoal() {
   const el = $('goal');
   if (!g) return;
@@ -812,7 +838,7 @@ function showDawn() {
 $('dawnGo').addEventListener('click', () => {
   if (!g || g.phase !== 'dawn') return;
   beginDay(g, !!appChoice);
-  { const k = bld(g, g.keepId); if (k) { view.cam.x = (k.x + 1.5) * TILE; view.cam.y = (k.y + 2) * TILE; clampCam(view); } }
+  { const k = bld(g, g.keepId); if (k) lookAt(k.x + 1.5, k.y + 2); }
   $('dawn').classList.remove('show');
   saveGame(g);
   const sd = seasonDay(g);
@@ -1193,7 +1219,7 @@ function handleEvents() {
     if (e.k === 'dusk') banner('DUSK', 'Guards to their posts.');
     if (e.k === 'horn') {
       hideTip();
-      if (g.day <= 2 && g.wave.groups.length) { const en = g.entries[g.wave.groups[0].entry]; const kp = bld(g, g.keepId)!; view.cam.x = ((en.x + kp.x + 1.5) / 2) * TILE; view.cam.y = ((en.y + kp.y + 1.5) / 2) * TILE; clampCam(view); }
+      if (g.day <= 2 && g.wave.groups.length) { const en = g.entries[g.wave.groups[0].entry]; const kp = bld(g, g.keepId)!; lookAt((en.x + kp.x + 1.5) / 2, (en.y + kp.y + 1.5) / 2); }
       const total = totalWave(g);
       banner(g.wave.kind === 'boss' ? 'BOSS NIGHT' : g.wave.kind === 'assault' ? 'ASSAULT!' : 'NIGHTFALL', `${total} goblins are coming.`, true);
       if (view.tool && !['wall', 'stonewall', 'trap', 'flag'].includes(view.tool)) clearTool();

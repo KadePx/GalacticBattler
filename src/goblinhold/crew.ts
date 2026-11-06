@@ -1,7 +1,7 @@
 // Crew sidebar (every colonist at a glance) and map hover tooltips.
 import { BUILD, GOBS, JOB_ORDER, JOBS, KEEP_LEVELS, T_BUSH, T_ROCK, T_SAPLING, T_TREE, T_WATER } from './defs';
 import { bld, bldAtTile } from './map';
-import { bedsOf, activity, canPromote, mood, season } from './sim';
+import { bedCount, bedsOf, activity, canPromote, mood, season } from './sim';
 import { CH, settlerSprites } from './chars';
 import { Game, idx, inMap, Settler } from './state';
 
@@ -69,7 +69,9 @@ export function crewHTML(g: Game, sel: number): string {
     </div>`;
   }).join('');
   const sum = `${g.settlers.length}${idle ? ` · <span class="warnc">${idle} idle</span>` : ''}${alerts ? ` · <span class="badc">${alerts} need help</span>` : ''}`;
-  return `<div class="ch"><span>Crew <small>${sum}</small></span><span><button class="small" data-act="jobs" data-tip="Assign jobs to everyone (R)">Jobs</button><button class="small" data-act="mini" data-tip="${mini ? 'Show names' : 'Compact view'}">${mini ? '«' : '»'}</button></span></div><div class="list">${rows}</div>`;
+  const beds = bedCount(g), avg = Math.round(g.settlers.reduce((a, s) => a + mood(g, s), 0) / Math.max(1, g.settlers.length));
+  const pm = `<span class="pm" data-tip="Settlers / beds · average mood"><b class="${g.settlers.length > beds ? 'badc' : ''}">${g.settlers.length}/${beds}</b><i style="color:${avg >= 65 ? 'var(--green)' : avg >= 40 ? 'var(--gold)' : 'var(--red)'}">● ${avg}</i></span>`;
+  return `<div class="ch">${pm}<span class="cl">Crew <small>${sum}</small></span><span><button class="small" data-act="jobs" data-tip="Assign jobs to everyone (R)">Jobs</button><button class="small" data-act="mini" data-tip="${mini ? 'Show names' : 'Compact view'}">${mini ? '«' : '»'}</button></span></div><div class="list">${rows}</div>`;
 }
 export const crewMini = () => mini;
 

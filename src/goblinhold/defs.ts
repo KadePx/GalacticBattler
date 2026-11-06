@@ -59,7 +59,7 @@ export interface BuildDef {
 }
 
 export const BUILD: Record<BuildKind, BuildDef> = {
-  keep: { name: 'Keep', w: 3, h: 3, hp: 600, cost: {}, work: 0, solid: true, goblinCost: 0, cat: 'build', key: '', desc: 'The heart of the hold. Stores your goods, warms settlers at its hearth and shoots from its arrow slits. If it falls, the run ends.' },
+  keep: { name: 'Keep', w: 3, h: 3, hp: 350, cost: {}, work: 0, solid: true, goblinCost: 0, cat: 'build', key: '', desc: 'The heart of the hold. Stores your goods, warms settlers at its hearth and shoots from its arrow slits. If it falls, the run ends.' },
   hut: { name: 'Hut', w: 2, h: 2, hp: 90, cost: { wood: 25 }, work: 180, solid: true, goblinCost: 14, cat: 'build', key: 'h', desc: 'Three beds. Settlers sleep warm and safe here. Without a bed they sleep on the keep floor and grumble.' },
   farm: { name: 'Farm', w: 3, h: 2, hp: 40, cost: { wood: 15 }, work: 120, solid: false, goblinCost: 1, cat: 'build', key: 'f', desc: 'One farmer works it by day. Yield follows the seasons: best in autumn, nothing in winter.' },
   market: { name: 'Market', w: 2, h: 2, hp: 80, cost: { wood: 30, stone: 10 }, work: 200, solid: true, goblinCost: 14, cat: 'build', key: 'm', desc: 'Trade food, wood and stone for gold every day. A trader working the stall gets better prices.' },
@@ -139,7 +139,7 @@ export const TRAP_REARM: Cost = { wood: 2 };
 export const KEEP_BOW = { range: 7, dmg: 4, rate: 1.3 };
 // Fortifying the keep: each level adds health and sharpens its arrow slits.
 export const KEEP_LEVELS = [
-  { name: 'Keep', hp: 600, dmg: 4, range: 7, rate: 1.3, cost: {} as Cost },
+  { name: 'Keep', hp: 350, dmg: 4, range: 7, rate: 1.3, cost: {} as Cost },
   { name: 'Fortified keep', hp: 900, dmg: 7, range: 8, rate: 1.1, cost: { stone: 40, gold: 60 } as Cost },
   { name: 'Fortress', hp: 1300, dmg: 10, range: 9, rate: 0.8, cost: { stone: 90, gold: 160 } as Cost },
   { name: 'Citadel', hp: 1800, dmg: 13, range: 9.5, rate: 0.7, cost: { stone: 200, gold: 400 } as Cost },
@@ -251,8 +251,8 @@ export const GOBS: Record<GobKind, GobDef> = {
 };
 
 export const WAVE = {
-  base: 4,
-  perDay: 1.5,
+  base: 5,
+  perDay: 1.8,
   perSettler: 0.5, // over 8 settlers
   assaultMult: 1.5,
   bossMult: 1.2,
