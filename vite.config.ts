@@ -19,6 +19,7 @@ const simHex = simHash.digest('hex').slice(0, 12);
 const SIM_COMPAT: Record<string, string> = {
   '1852316f7602': 'a100157dab34', // Juul: new commander only
   '912f6ffe8600': 'a100157dab34', // Leviathan curse lifts on split: boss-only, ghost fights unchanged
+  '392196a8a50a': 'a100157dab34', // fleets carry run modifiers for display; battles unchanged
 };
 
 // itskade.space hosts several games: each is its own page in the build.

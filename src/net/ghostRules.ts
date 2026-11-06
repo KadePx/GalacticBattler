@@ -1,7 +1,9 @@
 // Rules for ghost snapshots shared by the game and the server (functions/api/ghosts.ts).
-// Pure data checks only: no Phaser, no browser APIs, so the server can import it.
+// Pure data checks only: no Phaser, no browser APIs, so the server can
+// import it.
 
 import { SHIPS, MAX_XP } from '../sim/ships';
+import { cleanMods } from '../game/modifiers';
 import { RELIC_MAP } from '../sim/relics';
 import { CMD_MAP } from '../sim/commanders';
 import type { FleetShip, Snapshot } from '../sim/types';
@@ -99,5 +101,6 @@ export function cleanSnapshot(raw: unknown, name: string): Snapshot | string {
   return {
     v: 1, id: s.id, runId: s.runId, name, round, wins: s.wins, lives: s.lives,
     fleet, relics, createdAt: Date.now(), cmd, bench, reserve, salute,
+    mods: cleanMods(s.mods).length ? cleanMods(s.mods) : undefined,
   };
 }

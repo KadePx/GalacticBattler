@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { addShip, addStarfield, setPlayerSkin } from '../game/art';
 import { relicFit, type RelicFit } from '../game/relicFit';
-import { START_LIVES, chooseRelic, winsLabel, type Run } from '../game/run';
+import { maxLives, chooseRelic, winsLabel, type Run } from '../game/run';
 import { getRun, saveRun } from '../game/storage';
 import { C, TIER_COLORS, tierTag, button, historyPips, levelStars, panel, relicChip, shieldPips, tapZone, txt } from '../game/ui';
 import { fleetBattleStats } from '../game/combos';
@@ -14,7 +14,7 @@ import { TRAITS, traitCounts, traitLevel } from '../sim/traits';
 import { sceneFor } from './MenuScene';
 
 const CARD = { w: 140, h: 122, y: 59 };
-const CARD_X = (i: number) => 86 + i * 154; // centres
+const CARD_X = (i: number, n = 3) => 240 + (i - (n - 1) / 2) * 154; // centres (SCARCE REWARDS offers 2)
 const FLEET_Y = 222;
 const SHIP_X = (i: number) => 296 - i * 46; // front (slot 0) on the right, like the shop
 
@@ -128,7 +128,7 @@ export class RelicScene extends Phaser.Scene {
 
     // Top bar: same facts as the shop, so you know where the run stands.
     this.add2(panel(this, 0, 0, 480, 20, 0x0a0e22, 0x232c52));
-    for (let i = 0; i < START_LIVES; i++) this.add2(this.add.image(12 + i * 10, 10, i < run.lives ? 'heart' : 'heart_empty'));
+    for (let i = 0; i < maxLives(run); i++) this.add2(this.add.image(12 + i * 10, 10, i < run.lives ? 'heart' : 'heart_empty'));
     this.add2(txt(this, 70, 7, winsLabel(run), { color: run.endless ? '#c58cff' : C.gold }));
     this.add2(txt(this, 190, 7, `ROUND ${run.round}`));
     historyPips(this, 470, 10, run.history).forEach((o) => this.add2(o));
@@ -140,7 +140,7 @@ export class RelicScene extends Phaser.Scene {
     const anySpecial = run.relicOffer.some(isReward);
     this.add2(txt(this, 240, 45, bossReward ? 'Pick a BOSS RELIC. Only bosses drop these.' : anySpecial ? 'Pick a relic (lasts all run) or a one-time BONUS.' : 'Pick a relic. It lasts for the rest of the run.', { origin: 0.5, color: bossReward ? '#ffb0b0' : C.dim }));
 
-    run.relicOffer.forEach((id, i) => this.card(id, CARD_X(i)));
+    run.relicOffer.forEach((id, i) => this.card(id, CARD_X(i, run.relicOffer.length)));
     this.fleetStrip();
 
     const pickedName = this.picked ? (RELIC_MAP[this.picked] ?? REWARD_MAP[this.picked]).name.toUpperCase() : '';

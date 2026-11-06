@@ -58,6 +58,12 @@ export async function ensureSchema(db: D1) {
     // Claim attempts per network address, so codes can't be guessed by trying them all.
     db.prepare('CREATE TABLE IF NOT EXISTS link_tries (ip TEXT NOT NULL, created INTEGER NOT NULL)'),
     db.prepare('CREATE INDEX IF NOT EXISTS link_tries_ip ON link_tries (ip, created)'),
+    // Bug reports and ideas from the menu's FEEDBACK button. Read with `npm run feedback`.
+    db.prepare(`CREATE TABLE IF NOT EXISTS feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, text TEXT NOT NULL, player TEXT, name TEXT,
+      context TEXT, ip TEXT, created INTEGER NOT NULL
+    )`),
+    db.prepare('CREATE INDEX IF NOT EXISTS feedback_ip ON feedback (ip, created)'),
   ]);
   // Columns added after launch (fails harmlessly once they exist).
   try { await db.prepare('ALTER TABLE daily ADD COLUMN relics TEXT').run(); } catch { /* already there */ }

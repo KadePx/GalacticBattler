@@ -65,7 +65,8 @@ export class ChallengeScene extends Phaser.Scene {
 
   private describe(s: Snapshot) {
     const cmd = s.cmd ? CMD_MAP[s.cmd.id]?.name.toUpperCase() : null;
-    return [`ROUND ${s.round}`, `${s.wins} WINS`, cmd].filter(Boolean).join('  ');
+    const mods = s.mods?.length ? `${s.mods.length} MOD${s.mods.length > 1 ? 'S' : ''}` : null;
+    return [`ROUND ${s.round}`, `${s.wins} WINS`, cmd, mods].filter(Boolean).join('  ');
   }
 
   private paste() {

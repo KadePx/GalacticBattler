@@ -5,7 +5,7 @@ import { addStarfield, setPlayerSkin } from '../game/art';
 import { audio } from '../game/audio';
 import { BOSS_HULL_LOSS, BOSS_INFO, NODE_INFO, SECTOR_BATTLES, SECTORS, currentBoss } from '../game/gauntlet';
 import { fleetRow } from '../game/fleetRow';
-import { START_LIVES, chooseRoute, type Run } from '../game/run';
+import { maxLives, chooseRoute, type Run } from '../game/run';
 import { getRun, saveRun } from '../game/storage';
 import { C, panel, txt } from '../game/ui';
 
@@ -27,7 +27,7 @@ export class RouteScene extends Phaser.Scene {
 
     // Top bar
     panel(this, 0, 0, 480, 20, 0x0a0e22, 0x232c52);
-    for (let i = 0; i < START_LIVES; i++) this.add.image(12 + i * 10, 10, i < run.lives ? 'heart' : 'heart_empty');
+    for (let i = 0; i < maxLives(run); i++) this.add.image(12 + i * 10, 10, i < run.lives ? 'heart' : 'heart_empty');
     txt(this, 70, 7, `SECTOR ${g.sector}/${SECTORS}`, { color: C.gold });
     txt(this, 190, 7, `ROUND ${run.round}`);
     txt(this, 472, 7, `BOSSES ${g.beaten}/${SECTORS}`, { origin: [1, 0], color: C.bad });

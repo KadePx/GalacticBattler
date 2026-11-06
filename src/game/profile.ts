@@ -4,6 +4,7 @@
 import { COMMANDERS, CMD_MAP, type PassiveSlot } from '../sim/commanders';
 import { WIN_TARGET, endlessWins, type Run } from './run';
 import { read, write } from './storage';
+import { MODS, cleanMods, modXpBonus } from './modifiers';
 
 const KEY = 'starbrawl.profile';
 
@@ -21,6 +22,8 @@ export interface Profile {
   last: string; // last commander used
   bestEndless?: number; // most total wins in an endless run
   cmd: Record<string, CmdProgress>;
+  mods?: string[]; // run modifiers picked last time (kept for the next run)
+  badges?: Record<string, string[]>; // commander id -> modifiers a run was cleared with
 }
 
 // ---------- levels ----------
@@ -97,6 +100,13 @@ export function cleanProfile(raw: unknown): Profile | null {
     const c = v as Record<string, unknown>;
     out.cmd[id] = { xp: num(c.xp), p: c.p === 'b' ? 'b' : 'a', starter: c.starter === true, skin: c.skin === true };
   }
+  const mods = cleanMods(r.mods);
+  if (mods.length) out.mods = mods;
+  const badges = r.badges && typeof r.badges === 'object' ? (r.badges as Record<string, unknown>) : {};
+  for (const [id, v] of Object.entries(badges)) {
+    const got = cleanMods(v);
+    if (CMD_MAP[id] && got.length) (out.badges ??= {})[id] = got;
+  }
   return out;
 }
 
@@ -107,6 +117,15 @@ export function progress(p: Profile, id: string): CmdProgress {
 
 export const isUnlocked = (p: Profile, id: string) => pilotRank(p.xp) >= (CMD_MAP[id]?.rank ?? 99);
 
+/** Badges earned with a commander (modifier ids). */
+export const badgesFor = (p: Profile, cmd: string) => p.badges?.[cmd] ?? [];
+/** Every badge there is to earn: one per modifier per commander. */
+export const totalBadges = () => COMMANDERS.length * MODS.length;
+export const badgeCount = (p: Profile) => Object.values(p.badges ?? {}).reduce((n, b) => n + b.length, 0);
+
+/** A run counts as cleared at 10 wins, or with all 3 Gauntlet bosses beaten. */
+export const runCleared = (run: Run) => (run.gauntlet ? run.gauntlet.beaten >= 3 : run.wins >= WIN_TARGET);
+
 // ---------- rewards ----------
 
 export interface RunXp {
@@ -114,6 +133,7 @@ export interface RunXp {
   wins: number;
   clear: number;
   endless: number;
+  mods: number; // bonus from run modifiers
   total: number;
 }
 
@@ -125,10 +145,11 @@ export const XP_ENDLESS_WIN = 5; // extra per endless win, on top of the normal 
 export function runXp(run: Run): RunXp {
   const battles = run.history.length * XP_PER_BATTLE;
   const wins = run.wins * XP_PER_WIN;
-  const cleared = run.gauntlet ? run.gauntlet.beaten >= 3 : run.wins >= WIN_TARGET;
-  const clear = (cleared ? XP_CLEAR : 0) + 20 * (run.gauntlet?.beaten ?? 0); // +20 per boss beaten
+  const clear = (runCleared(run) ? XP_CLEAR : 0) + 20 * (run.gauntlet?.beaten ?? 0); // +20 per boss beaten
   const endless = endlessWins(run) * XP_ENDLESS_WIN;
-  return { battles, wins, clear, endless, total: battles + wins + clear + endless };
+  const base = battles + wins + clear + endless;
+  const mods = Math.round(base * modXpBonus(run.mods));
+  return { battles, wins, clear, endless, mods, total: base + mods };
 }
 
 export interface Award {
@@ -142,6 +163,7 @@ export interface Award {
   gained: number; // XP paid out this time (less than xp.total if part was paid at an earlier finish)
   bestEndless?: number;
   newBest?: boolean;
+  newBadges: string[]; // modifier badges earned with this run's commander
 }
 
 /** Grant XP for a finished run, once. Safe to call again on refresh. */
@@ -162,7 +184,7 @@ export function awardRun(run: Run): Award | null {
     return {
       xp, cmd, cmdBefore, cmdAfter: cmdBefore + last, pilotBefore, pilotAfter: pilotBefore + last,
       newCommanders: unlockedBetween(pilotBefore, pilotBefore + last), gained: last,
-      bestEndless: best, newBest: false,
+      bestEndless: best, newBest: false, newBadges: run.xpAwarded.badges ?? [],
     };
   }
   const gained = xp.total - paid;
@@ -174,12 +196,19 @@ export function awardRun(run: Run): Award | null {
     p.bestEndless = run.wins;
     newBest = true;
   }
+  // Clearing a run with modifiers earns their badges for this commander (once each).
+  const newBadges: string[] = [];
+  if (cmd && run.mods?.length && runCleared(run)) {
+    const have = (p.badges ??= {})[cmd] ?? [];
+    for (const m of run.mods) if (!have.includes(m)) newBadges.push(m);
+    if (newBadges.length) p.badges[cmd] = cleanMods([...have, ...newBadges]);
+  }
   saveProfile(p);
-  run.xpAwarded = { pilotBefore: before.pilot, cmdBefore: before.cmd, paid: xp.total, last: gained };
+  run.xpAwarded = { pilotBefore: before.pilot, cmdBefore: before.cmd, paid: xp.total, last: gained, badges: newBadges };
   return {
     xp, cmd, cmdBefore: before.cmd, cmdAfter: before.cmd + gained,
     pilotBefore: before.pilot, pilotAfter: p.xp, newCommanders: unlockedBetween(before.pilot, p.xp),
-    gained, bestEndless: p.bestEndless ?? 0, newBest,
+    gained, bestEndless: p.bestEndless ?? 0, newBest, newBadges,
   };
 }
 

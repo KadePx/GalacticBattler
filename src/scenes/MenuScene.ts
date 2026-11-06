@@ -7,6 +7,7 @@ import { getRun, useSlot } from '../game/storage';
 import { dailyState } from '../game/daily';
 import { WIN_TARGET } from '../game/run';
 import { decodeFleet, setChallenge } from '../game/share';
+import { openFeedback } from '../game/feedback';
 import { C, bar, button, panel, tapZone, toast, txt, type Button } from '../game/ui';
 import { adoptPilot, claimLinkCode, createLinkCode, fetchGhostNews, getPilot, setCallsign } from '../game/net';
 import { cleanCallsign, isPlayerId } from '../net/ghostRules';
@@ -111,8 +112,10 @@ export class MenuScene extends Phaser.Scene {
     hint(button(this, 302, y, 76, 20, 'DUEL', () => this.scene.start('challenge'), { fill: 0x2a1a4a, color: '#c58cff' }),
       "Fight a fleet a friend sent you with your latest fleet. Nothing at stake.");
     y += 26;
-    hint(button(this, 240, y, 200, 20, 'FLEET ARCHIVE', () => this.scene.start('archive'), { fill: 0x14304a, color: C.cyan }),
+    hint(button(this, 200, y, 120, 20, 'ARCHIVE', () => this.scene.start('archive'), { fill: 0x14304a, color: C.cyan }),
       'Look up every ship, synergy, relic, commander and game term.');
+    hint(button(this, 302, y, 76, 20, 'FEEDBACK', () => openFeedback(), { fill: 0x14304a, color: C.cyan }),
+      'Report a bug or suggest an idea. It goes straight to the developer.');
 
     // Callsign: the name other players see on your ghost fleet. Tapping it opens the pilot
     // panel (rename, link another device). The tap area fits the longest callsign + " [EDIT]".

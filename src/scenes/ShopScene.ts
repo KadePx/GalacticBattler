@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { SHIP_RES, addShip, addStarfield, portraitKey, setPlayerSkin, syncFlame } from '../game/art';
 import {
-  EVENT_INFO, FLEET_SIZE, REROLL_COST, SALE_COST, SHIP_COST, START_LIVES, VETERAN_COST, TOTAL_SLOTS, isBench, slotGet, winsLabel,
+  EVENT_INFO, FLEET_SIZE, rerollCost, maxLives, SALE_COST, SHIP_COST, VETERAN_COST, TOTAL_SLOTS, isBench, slotGet, winsLabel,
   buy, canMerge, costAt, move, powerProblem, quickBuy, reroll, sell, sellValue, toggleFreeze, usePower, type Run,
 } from '../game/run';
 import { CMD_MAP } from '../sim/commanders';
@@ -292,8 +292,8 @@ export class ShopScene extends Phaser.Scene {
   private clickReroll() {
     if (this.dragging) return;
     this.armed = false;
-    if (!this.run.market && !this.run.freeRolls && this.run.scrap < REROLL_COST) {
-      toast(this, `NEED ${REROLL_COST} SCRAP`);
+    if (!this.run.market && !this.run.freeRolls && this.run.scrap < rerollCost(this.run)) {
+      toast(this, `NEED ${rerollCost(this.run)} SCRAP`);
       return;
     }
     const err = reroll(this.run);
@@ -380,7 +380,7 @@ export class ShopScene extends Phaser.Scene {
     }
     // Scrap doesn't carry over: warn once, a second tap within 3s fights anyway.
     const now = this.time.now;
-    if (this.run.scrap >= REROLL_COST && now - this.battleNagAt > 3000) {
+    if (this.run.scrap >= rerollCost(this.run) && now - this.battleNagAt > 3000) {
       this.battleNagAt = now;
       toast(this, `${this.run.scrap} SCRAP UNSPENT. TAP AGAIN TO FIGHT`, C.gold);
       return;
@@ -408,10 +408,10 @@ export class ShopScene extends Phaser.Scene {
 
     // Top bar
     this.add2(panel(this, 0, 0, 480, 20, 0x0a0e22, 0x232c52));
-    for (let i = 0; i < START_LIVES; i++) {
+    for (let i = 0; i < maxLives(run); i++) {
       this.add2(this.add.image(12 + i * 10, 10, i < run.lives ? 'heart' : 'heart_empty'));
     }
-    this.infoTarget(this.add2(tapZone(this, 12 + (START_LIVES - 1) * 5, 10, START_LIVES * 10 + 2, 20)), { note: 'lives' });
+    this.infoTarget(this.add2(tapZone(this, 12 + (maxLives(run) - 1) * 5, 10, maxLives(run) * 10 + 2, 20)), { note: 'lives' });
     this.add2(txt(this, 70, 7, winsLabel(run), { color: run.endless ? '#c58cff' : C.gold }));
     const g = run.gauntlet;
     if (g) this.add2(txt(this, 190, 7, bossNext(g) ? 'VS BOSS!' : `VS ${NODE_INFO[g.node].name.split(' ').pop()}`, { color: bossNext(g) ? C.bad : NODE_INFO[g.node].color }));
@@ -547,8 +547,8 @@ export class ShopScene extends Phaser.Scene {
     });
 
     // Buttons
-    const broke = !run.market && !run.freeRolls && run.scrap < REROLL_COST;
-    const b1 = button(this, 418, 190, 100, 18, run.market ? `FREE ROLL x${run.market}` : run.freeRolls ? `FREE ROLL x${run.freeRolls}` : `REROLL ${REROLL_COST}`, () => this.clickReroll(),
+    const broke = !run.market && !run.freeRolls && run.scrap < rerollCost(run);
+    const b1 = button(this, 418, 190, 100, 18, run.market ? `FREE ROLL x${run.market}` : run.freeRolls ? `FREE ROLL x${run.freeRolls}` : `REROLL ${rerollCost(run)}`, () => this.clickReroll(),
       { disabled: broke, fill: run.market ? 0x2a1a40 : undefined, color: run.market ? "#e0c8ff" : undefined });
     // Dimmed when you can't afford it, but still answers a tap (with why).
     if (broke) b1.bg.setInteractive({ useHandCursor: true }).on('pointerup', () => this.clickReroll());
@@ -925,7 +925,7 @@ export class ShopScene extends Phaser.Scene {
     if ('note' in info) {
       if (info.note === 'lives') {
         line('HULL', { color: C.bad });
-        right(`${run.lives}/${START_LIVES}`, { color: C.bad });
+        right(`${run.lives}/${maxLives(run)}`, { color: C.bad });
         line('Each lost battle costs 1 heart (a boss: 2). Lose them all and the run ends.');
       } else if (info.note === 'history') {
         line('LAST 10 RESULTS', { color: C.gold });

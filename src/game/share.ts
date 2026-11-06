@@ -8,7 +8,7 @@ import { read, write } from './storage';
 
 const LAST_KEY = 'starbrawl.lastFleet';
 
-type Packed = { n: string; r: number; w: number; c?: [string, string]; f: ([string, number, number, number] | 0)[]; x: string[]; b?: number };
+type Packed = { n: string; r: number; w: number; c?: [string, string]; f: ([string, number, number, number] | 0)[]; x: string[]; b?: number; m?: string[] };
 
 const toB64 = (s: string) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const fromB64 = (s: string) => atob(s.replace(/-/g, '+').replace(/_/g, '/'));
@@ -20,6 +20,7 @@ export function encodeFleet(snap: Snapshot): string {
     f: snap.fleet.map((s) => (s ? [s.def, s.atk, s.hp, s.xp] : 0)),
     x: snap.relics,
     b: snap.bench || undefined,
+    m: snap.mods?.length ? snap.mods : undefined,
   };
   return toB64(JSON.stringify(p));
 }
@@ -34,7 +35,7 @@ export function decodeFleet(input: string): Snapshot | null {
     const snap = cleanSnapshot({
       v: 1, id: `share-${hashStr(code).toString(36)}`, runId: 'shared', round: p.r, wins: p.w, lives: 1,
       fleet: p.f.map((s) => (s ? { def: s[0], atk: s[1], hp: s[2], xp: s[3] } : null)),
-      relics: p.x, cmd: p.c ? { id: p.c[0], p: p.c[1] } : undefined, bench: p.b,
+      relics: p.x, cmd: p.c ? { id: p.c[0], p: p.c[1] } : undefined, bench: p.b, mods: p.m,
     }, name);
     return typeof snap === 'string' ? null : snap;
   } catch {

@@ -6,6 +6,7 @@ import { hashStr, pick, rand, type RngState } from '../sim/rng';
 import type { FleetShip, Snapshot } from '../sim/types';
 import { CMD_MAP, type PassiveSlot } from '../sim/commanders';
 import { isReward, rollRewardOffer } from './rewards';
+import { cleanMods, hasMod } from './modifiers';
 import { BOSS_HULL_LOSS, SECTORS, bossNext, bossRelicOffer, gauntletLabel, newGauntlet, rollRoute, type GauntletState } from './gauntlet';
 
 export const START_LIVES = 5;
@@ -29,6 +30,11 @@ export function shipCost(def: string, round: number): number {
   return SHIP_COST;
 }
 export const REROLL_COST = 1;
+/** Hull you start with and can repair up to (FRAGILE HULL lowers it). */
+export const maxLives = (run: { mods?: string[] }) => (hasMod(run, 'fragile') ? 3 : START_LIVES);
+export const rerollCost = (run: { mods?: string[] }) => (hasMod(run, 'rerolls') ? 2 : REROLL_COST);
+/** The round the shipyard's tiers follow (SLOW TECH holds them back 2 rounds). */
+export const shopRound = (run: { round: number; mods?: string[] }) => (hasMod(run, 'slowtech') ? Math.max(1, run.round - 2) : run.round);
 export const FLEET_SIZE = 5;
 export const BENCH_SIZE = 3;
 /** Hull points repaired when a won run continues into endless mode. */
@@ -72,7 +78,7 @@ export interface Run extends RngState {
   powerUsed?: boolean; // shop power, once per round
   salute?: string; // ship id saluted this round (Juul): counts twice for synergies
   // XP already paid for this run (an endless run can pay out a second time).
-  xpAwarded?: { pilotBefore: number; cmdBefore: number; paid?: number; last?: number };
+  xpAwarded?: { pilotBefore: number; cmdBefore: number; paid?: number; last?: number; badges?: string[] };
   // Endless: keep playing after a win; the run only ends when the hull runs out.
   endless?: boolean;
   endlessFrom?: number; // history length when endless started
@@ -89,6 +95,7 @@ export interface Run extends RngState {
   loggedAt?: number; // battles played when this run was last logged online
   dailyRank?: number; // rank on the daily board once the score was accepted
   gauntlet?: GauntletState; // Boss Gauntlet runs
+  mods?: string[]; // run modifiers (src/game/modifiers.ts)
 }
 
 export interface RunOptions {
@@ -98,6 +105,7 @@ export interface RunOptions {
   skin: boolean;
   daily?: string; // a daily challenge run: everyone that day gets the same shops and opponents
   gauntlet?: boolean; // a Boss Gauntlet run
+  mods?: string[]; // run modifiers (never on daily runs)
 }
 
 export function newRun(opts?: RunOptions): Run {
@@ -113,6 +121,11 @@ export function newRun(opts?: RunOptions): Run {
     run.skin = opts.skin;
   }
   if (opts?.daily) run.daily = opts.daily;
+  const mods = opts?.daily ? [] : cleanMods(opts?.mods);
+  if (mods.length) {
+    run.mods = mods;
+    run.lives = maxLives(run);
+  }
   if (opts?.gauntlet) run.gauntlet = newGauntlet(run);
   startRound(run);
   // Starting ship: paid for out of the first round's scrap, so it's a head start in direction, not power.
@@ -134,17 +147,17 @@ export const runPassive = (run: Run) => (run.cmd ? `${run.cmd}.${run.passive ?? 
  * A fresh shipyard. 'deep' (Black Market): no tier 1, and one tier above the normal cap.
  * 'scan' (Juno's Deep Scan): no tier 1 ships, but never above the normal cap.
  */
-export function rollShopFor(s: RngState, round: number, deep: boolean | 'scan' = false): string[] {
-  const cap = tierCap(round);
+export function rollShopFor(s: RngState, round: number, deep: boolean | 'scan' = false, opts?: { capRound?: number; fewer?: boolean }): string[] {
+  const cap = tierCap(opts?.capRound ?? round);
   const maxT = deep === true ? Math.min(3, cap + 1) : cap;
   const minT = deep && maxT >= 2 ? 2 : 1;
   const pool = SHOP_SHIPS.filter((d) => d.tier >= minT && d.tier <= maxT);
-  return Array.from({ length: shopSize(round) }, () => pick(s, pool).id);
+  return Array.from({ length: shopSize(round) - (opts?.fewer ? 1 : 0) }, () => pick(s, pool).id);
 }
 
 /** New shop offers, keeping any frozen ships in their slots. */
 function restock(run: Run, deep: boolean | 'scan' = false) {
-  const fresh = rollShopFor(run, run.round, deep);
+  const fresh = rollShopFor(run, run.round, deep, { capRound: shopRound(run), fewer: hasMod(run, 'yard') });
   const frozen = run.frozen ?? [];
   run.shop = fresh.map((def, i) => (frozen[i] && run.shop[i] ? run.shop[i] : def));
   run.frozen = run.shop.map((_, i) => !!frozen[i] && !!run.shop[i]);
@@ -152,7 +165,7 @@ function restock(run: Run, deep: boolean | 'scan' = false) {
 }
 
 export function startRound(run: Run) {
-  run.scrap = ROUND_SCRAP + 2 * count(run.relics, 'salvage') + (runPassive(run) === 'vance.b' ? 1 : 0) + (run.boost?.scrap ?? 0) + prospectorScrap(run.fleet);
+  run.scrap = ROUND_SCRAP - (hasMod(run, 'budget') ? 1 : 0) + 2 * count(run.relics, 'salvage') + (runPassive(run) === 'vance.b' ? 1 : 0) + (run.boost?.scrap ?? 0) + prospectorScrap(run.fleet);
   run.powerUsed = false;
   run.salute = undefined;
   restock(run, !!run.boost?.market);
@@ -221,7 +234,7 @@ export function usePower(run: Run, slot: number | null): string | null {
       const faction = c.id === 'sera' ? 'concord' : 'void';
       const slots = run.shop.map((_, i) => i).filter((i) => !run.frozen?.[i]);
       if (!slots.length) return 'Everything is frozen';
-      const pool = SHOP_SHIPS.filter((d) => d.classes.includes(faction) && d.tier <= tierCap(run.round));
+      const pool = SHOP_SHIPS.filter((d) => d.classes.includes(faction) && d.tier <= tierCap(shopRound(run)));
       const k = slots[Math.floor(rand(run) * slots.length)];
       run.shop[k] = pick(run, pool).id;
       if (run.vetSlot === k) run.vetSlot = undefined;
@@ -265,10 +278,10 @@ export function reroll(run: Run): string | null {
     restock(run, true);
     return null;
   }
-  if (run.scrap < REROLL_COST && !run.freeRolls) return 'Not enough scrap';
+  if (run.scrap < rerollCost(run) && !run.freeRolls) return 'Not enough scrap';
   if (run.shop.length && run.shop.every((_, i) => run.frozen?.[i])) return 'Everything is frozen';
   if (run.freeRolls) run.freeRolls--;
-  else run.scrap -= REROLL_COST;
+  else run.scrap -= rerollCost(run);
   restock(run);
   return null;
 }
@@ -384,6 +397,7 @@ export function makeSnapshot(run: Run, name = 'You'): Snapshot {
     bench: (run.bench ?? []).filter(Boolean).length,
     reserve: firstBenched(run),
     salute: run.salute,
+    mods: run.mods?.length ? [...run.mods] : undefined,
   };
 }
 
@@ -445,7 +459,7 @@ function gauntletResult(run: Run, g: GauntletState, o: Outcome) {
       run.boost = { ...run.boost, scrap: (run.boost?.scrap ?? 0) + 6 };
       addNotice(run, '+6 SCRAP SALVAGED');
     }
-    if (o === 'W' && g.node === 'dock' && run.lives < START_LIVES) {
+    if (o === 'W' && g.node === 'dock' && run.lives < maxLives(run)) {
       run.lives++;
       addNotice(run, 'HULL REPAIRED: +1');
     }
@@ -464,7 +478,7 @@ function gauntletResult(run: Run, g: GauntletState, o: Outcome) {
 function routeIfNeeded(run: Run) {
   const g = run.gauntlet;
   if (!g || bossNext(g) || run.phase !== 'shop') return;
-  g.choices = rollRoute(run, run.lives < START_LIVES);
+  g.choices = rollRoute(run, run.lives < maxLives(run));
   run.phase = 'route';
 }
 
@@ -484,15 +498,15 @@ function rewardOffer(run: Run): string[] {
     lostLast: run.history[run.history.length - 1] === 'L',
     canRecruit: ships.length < TOTAL_SLOTS,
     canDrill: drillTargets(run.fleet).length > 0,
-    canRepair: run.lives < START_LIVES,
-  });
+    canRepair: run.lives < maxLives(run),
+  }, hasMod(run, 'scarce') ? 2 : 3);
 }
 
 /** After a won run: keep the same fleet going in endless mode (starts with a relic pick). */
 export function goEndless(run: Run) {
   run.endless = true;
   run.endlessFrom = run.history.length;
-  run.lives = Math.min(START_LIVES, run.lives + ENDLESS_REPAIR); // a fresh start for the long haul
+  run.lives = Math.min(maxLives(run), run.lives + ENDLESS_REPAIR); // a fresh start for the long haul
   run.phase = 'relic';
   run.relicOffer = rewardOffer(run);
 }
@@ -575,7 +589,7 @@ export function applyReward(run: Run, id: string) {
       addNotice(run, 'BLACK MARKET: 2 FREE REROLLS');
       break;
     case 'x:repair':
-      run.lives = Math.min(START_LIVES, run.lives + 1);
+      run.lives = Math.min(maxLives(run), run.lives + 1);
       addNotice(run, 'HULL REPAIRED');
       break;
   }
@@ -621,7 +635,7 @@ function rollEvent(run: Run) {
   run.event = undefined;
   if (run.round < 2 || rand(run) >= 0.3) return;
   const open = run.shop.map((d, i) => (d && !run.frozen?.[i] ? i : -1)).filter((i) => i >= 0);
-  const cap = tierCap(run.round);
+  const cap = tierCap(shopRound(run));
   const options: ShopEvent[] = ['sale', 'supply'];
   if (open.length && run.vetSlot === undefined) options.push('veteran');
   options.push('rolls');

@@ -28,4 +28,5 @@ export interface Snapshot {
   bench?: number; // ships waiting on the bench (Tess's Spare Parts)
   reserve?: FleetShip; // first benched ship (Reserve Wing)
   salute?: string; // ship id that counts twice for synergies this battle (Juul's SALUTE)
+  mods?: string[]; // run modifiers this fleet was built under (display only; the battle ignores them)
 }

@@ -90,8 +90,12 @@ const FRONT_PRIORITY: Record<string, number> = {
 export const botBonusScrap = (round: number) =>
   round >= 14 ? 3 : round >= 11 ? 2 : round >= 8 ? 1 : round === 2 || round === 3 ? -1 : 0;
 
-export function botSnapshot(seed: number, round: number, archetypeId?: string, bonus = true): Snapshot {
+export function botSnapshot(seed: number, round: number, archetypeId?: string, bonus = true, mods: string[] = []): Snapshot {
   const s: RngState = { rng: seed };
+  // Run modifiers (only the balance tool passes these, to play a run the way a player with them would).
+  const mod = (id: string) => mods.includes(id);
+  const shopOpts = (r: number) => ({ capRound: mod('slowtech') ? Math.max(1, r - 2) : r, fewer: mod('yard') });
+  const rerollCost = mod('rerolls') ? 2 : REROLL_COST;
   const arch = ARCHETYPES.find((a) => a.id === archetypeId) ?? pick(s, ARCHETYPES);
   const fleet: FleetShip[] = [];
   const relics: string[] = [];
@@ -114,7 +118,7 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
     }
   };
   for (let r = 1; r <= round; r++) {
-    let scrap = ROUND_SCRAP + 2 * count(relics, 'salvage') + (bonus ? botBonusScrap(r) : 0) + carry -
+    let scrap = ROUND_SCRAP - (mod('budget') ? 1 : 0) + 2 * count(relics, 'salvage') + (bonus ? botBonusScrap(r) : 0) + carry -
       // Half of opponent bots open with one ship fewer, so round 1 is kinder to new players.
       (bonus && r === 1 && rand(s) < 0.5 ? 2 : 0) + prospectorScrap(fleet) +
       // Scrap relics, roughly: Bounty ~2 kills, Insurance pays on ~40% of rounds, Dice saves a reroll.
@@ -122,7 +126,7 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
       // Shipyard events (sales, supply drops, veterans) are worth about 2 scrap when they happen.
       (r >= 2 && rand(s) < 0.3 ? 2 : 0) + (rand(s) < 0.4 ? 4 * count(relics, 'insurance') : 0) +
       (cmdId === 'vance' && p === 'b' ? 1 : 0); // Supply Lines
-    let shop: (string | null)[] = rollShopFor(s, r, market);
+    let shop: (string | null)[] = rollShopFor(s, r, market, shopOpts(r));
     carry = 0;
     market = false;
     // Commander shop power, once a round. Shop-shaping powers go first; stat powers are
@@ -175,10 +179,10 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
           }
           fleet.push({ def, atk: d.atk, hp: d.hp, xp: 0 });
         }
-      } else if (scrap >= SHIP_COST + REROLL_COST && rerolls < 3) {
-        scrap -= REROLL_COST;
+      } else if (scrap >= SHIP_COST + rerollCost && rerolls < 3) {
+        scrap -= rerollCost;
         rerolls++;
-        shop = rollShopFor(s, r);
+        shop = rollShopFor(s, r, false, shopOpts(r));
       } else break;
     }
     if (statPower && fleet.length) {
@@ -202,7 +206,7 @@ export function botSnapshot(seed: number, round: number, archetypeId?: string, b
       // Same reward cards as players (minus Hull Repair, which a snapshot can't use).
       const offer = rollRewardOffer(s, relics, {
         round: r, lostLast: rand(s) < 0.4, canRecruit: true, canDrill: fleet.some((f) => f.xp < MAX_XP), canRepair: false,
-      });
+      }, mod('scarce') ? 2 : 3);
       const special = offer.find(isReward);
       // Bots have no bench, so Reserve Wing would do nothing for them.
       const plain = offer.filter((id) => !isReward(id) && id !== 'reserves');

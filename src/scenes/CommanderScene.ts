@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import { addStarfield, addShip, portraitKey, setPlayerSkin } from '../game/art';
 import {
-  CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, cmdLevel, getProfile, isUnlocked, pilotRank, progress, rankXp, saveProfile,
+  CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, badgeCount, badgesFor, cmdLevel, getProfile, isUnlocked, pilotRank, progress, rankXp,
+  saveProfile, totalBadges,
 } from '../game/profile';
+import { MODS, cleanMods, modXpBonus } from '../game/modifiers';
 import { newRun } from '../game/run';
 import { clearRun, saveRun, useSlot } from '../game/storage';
 import { C, bar, button, panel, tapZone, txt } from '../game/ui';
@@ -117,7 +119,10 @@ export class CommanderScene extends Phaser.Scene {
       this.add2(txt(this, X + 64, 66, `CMDR LV ${lvl}`, { color: C.gold }));
       this.add2s(bar(this, X + 140, 67, 58, 6, next ? (prog.xp - base) / (next - base) : 1, hexInt(c.color)));
       this.add2(txt(this, X + W - 8, 66, next ? `${prog.xp}/${next} XP` : 'MAX', { origin: [1, 0], color: C.dim }));
-      if (next) this.add2(txt(this, X + 64, 78, 'PLAY RUNS TO LEVEL UP', { color: C.faint }));
+      // Modifier badges earned with this commander (see MODIFIERS); before any, a level-up hint.
+      const got = badgesFor(p, id).length;
+      if (got) this.add2(txt(this, X + 64, 78, `MODIFIER BADGES ${got}/${MODS.length}`, { color: '#ff8ad8' }));
+      else if (next) this.add2(txt(this, X + 64, 78, 'PLAY RUNS TO LEVEL UP', { color: C.faint }));
     } else {
       this.add2(txt(this, X + 64, 66, `UNLOCKS AT PILOT RANK ${c.rank}`, { color: C.bad }));
     }
@@ -177,9 +182,70 @@ export class CommanderScene extends Phaser.Scene {
 
     // Buttons
     this.add2s(button(this, X + 46, 250, 76, 18, 'BACK', () => this.scene.start('menu')).objects);
+    const pct = Math.round(modXpBonus(this.activeMods()) * 100);
+    this.add2s(button(this, X + 129, 250, 84, 18, pct ? `MODS +${pct}%` : 'MODIFIERS', () => this.openMods(), {
+      fill: 0x2a1030, color: '#ff8ad8',
+    }).objects);
     this.add2s(button(this, X + W - 62, 250, 112, 18, unlocked ? 'LAUNCH' : 'LOCKED', () => this.launch(id), {
       fill: 0x3a2a10, color: C.gold, disabled: !unlocked,
     }).objects);
+  }
+
+  /** Modifiers picked last time that this pilot's rank allows. */
+  private activeMods() {
+    const p = getProfile();
+    const rank = pilotRank(p.xp);
+    return cleanMods(p.mods).filter((id) => MODS.find((m) => m.id === id)!.rank <= rank);
+  }
+
+  /**
+   * The modifier picker: every modifier with its bonus XP, the rank it needs, and whether
+   * the selected commander already has its badge (clear a run with it on to earn one).
+   */
+  private openMods() {
+    const root = this.add.container().setDepth(900);
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T) => { root.add(o); return o; };
+    const p = getProfile();
+    const rank = pilotRank(p.xp);
+    const c = CMD_MAP[this.sel];
+    const draw = () => {
+      root.removeAll(true);
+      add(this.add.rectangle(240, 135, 480, 270, 0x05060f, 0.8).setInteractive());
+      add(panel(this, 14, 10, 452, 252));
+      const on = this.activeMods();
+      const pct = Math.round(modXpBonus(on) * 100);
+      add(txt(this, 24, 18, 'RUN MODIFIERS', { color: '#ff8ad8' }));
+      add(txt(this, 456, 18, pct ? `BONUS XP +${pct}%` : 'NO BONUS', { origin: [1, 0], color: pct ? C.gold : C.dim }));
+      add(txt(this, 24, 30, `Harder runs, more XP. Clear a run (10 wins or 3 bosses) to earn each one's badge for ${c.name}.`,
+        { color: C.dim, wrap: 432 }));
+      const have = badgesFor(p, this.sel);
+      MODS.forEach((m, i) => {
+        const y = 56 + i * 22;
+        const open = rank >= m.rank;
+        const chosen = open && on.includes(m.id);
+        add(this.add.rectangle(28, y + 4, 8, 8, chosen ? 0xffd166 : 0x0b1026).setStrokeStyle(1, open ? 0x6a7cc0 : 0x262e50));
+        add(txt(this, 40, y, m.name, { color: open ? m.color : C.faint }));
+        add(txt(this, 40, y + 10, m.desc, { color: open ? C.text : '#6a76a0' }));
+        add(txt(this, 456, y, open ? `+${m.xp}% XP` : `PILOT RANK ${m.rank}`, { origin: [1, 0], color: open ? C.gold : C.bad }));
+        if (have.includes(m.id)) {
+          add(this.add.rectangle(372, y + 4, 52, 10, 0x2a1030).setStrokeStyle(1, 0xff8ad8));
+          add(txt(this, 372, y + 1, 'BADGE', { origin: [0.5, 0], color: '#ff8ad8' }));
+        }
+        if (!open) return;
+        add(tapZone(this, 240, y + 8, 440, 22)).on('pointerup', () => {
+          audio.play('select');
+          p.mods = chosen ? on.filter((id) => id !== m.id) : cleanMods([...on, m.id]);
+          saveProfile(p);
+          draw();
+        });
+      });
+      add(txt(this, 24, 236, `ALL BADGES ${badgeCount(p)}/${totalBadges()}`, { color: '#ff8ad8' }));
+      add(txt(this, 24, 246, 'Not used in the daily.', { color: C.faint }));
+      button(this, 300, 244, 84, 18, 'CLEAR', () => { p.mods = []; saveProfile(p); draw(); }).objects.forEach((o) => add(o));
+      button(this, 404, 244, 84, 18, 'DONE', () => { root.destroy(true); this.refresh(); }, { fill: 0x3a2a10, color: C.gold })
+        .objects.forEach((o) => add(o));
+    };
+    draw();
   }
 
   /** A checkbox row that only works once the commander reaches `need`. */
@@ -217,6 +283,7 @@ export class CommanderScene extends Phaser.Scene {
       starter: lvl >= 4 && prog.starter,
       skin: lvl >= 2 && prog.skin,
       gauntlet: this.gauntlet,
+      mods: this.activeMods(),
     }));
     audio.play('launch');
     this.scene.start('shop');

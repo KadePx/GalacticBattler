@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { modNames } from '../game/modifiers';
 import { SHIP_RES, addStarfield, portraitKey, setPlayerSkin, shipKey } from '../game/art';
 import { CMD_LEVEL_XP, CMD_MAX_LEVEL, UNLOCKS, awardRun, cmdLevel, pilotRank, rankXp, stepProgress } from '../game/profile';
 import { WIN_TARGET, endlessWins, goEndless, makeSnapshot, type Run } from '../game/run';
@@ -38,7 +39,8 @@ export class GameOverScene extends Phaser.Scene {
       : run.endless
       ? `${run.wins} WINS (${WIN_TARGET} + ${endlessWins(run)} ENDLESS) IN ${run.history.length} BATTLES`
       : `${run.wins} WINS IN ${run.history.length} BATTLES`;
-    txt(this, 240, 42, sub, { origin: 0.5 });
+    const mods = run.mods?.length ? `  +${run.mods.length} MOD${run.mods.length > 1 ? 'S' : ''}` : '';
+    txt(this, 240, 42, sub + mods, { origin: 0.5 });
     const hist = run.history.slice(-24);
     historyPips(this, 240 + ((hist.length - 1) * 9) / 2, 56, hist, 24);
 
@@ -138,6 +140,7 @@ export class GameOverScene extends Phaser.Scene {
     const line2: string[] = [];
     if (a.xp.clear) line2.push(`CLEAR +${a.xp.clear}`);
     if (a.xp.endless) line2.push(`ENDLESS +${a.xp.endless}`);
+    if (a.xp.mods) line2.push(`MODS +${a.xp.mods}`);
     if (a.gained < a.xp.total) {
       // Second payout of an endless run: say what was already paid instead of the full breakdown.
       txt(this, 430, 124, `${a.xp.total} TOTAL, ${a.xp.total - a.gained} PAID AT WIN`, { origin: [1, 0], color: C.dim });
@@ -193,6 +196,13 @@ export class GameOverScene extends Phaser.Scene {
       const names = a.newCommanders.map((id) => CMD_MAP[id].name.toUpperCase());
       const unlock = names.length === 1 ? `: NEW COMMANDER ${names[0]}` : names.length > 1 ? `: ${names.length} NEW COMMANDERS` : '';
       txt(this, 50, 206, `RANK UP! ${rBefore} > ${rAfter}${unlock}`, { color: C.gold });
+    }
+    // New modifier badges for this commander (the collection is on the commander screen).
+    if (a.newBadges.length && c) {
+      const names = modNames(a.newBadges);
+      const long = `BADGE${names.length > 1 ? 'S' : ''}: ${names.join(', ')} (${c.name.toUpperCase()})`;
+      const t = txt(this, 50, 215, long, { color: '#ff8ad8', wrap: 380 });
+      if (t.height > 12) t.setText(`${names.length} NEW BADGES FOR ${c.name.toUpperCase()}!`);
     }
   }
 

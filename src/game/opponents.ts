@@ -7,6 +7,7 @@ import { botFor, botSnapshot } from './bot';
 import { NODE_INFO, bossNext, bossSnapshot, currentBoss, type GauntletState } from './gauntlet';
 import type { Run } from './run';
 import { loadGhosts } from './storage';
+import { toughenShip } from './modifiers';
 
 const GHOST_CHANCE = 0.6;
 
@@ -22,7 +23,18 @@ export function gauntletOpponent(runId: string, round: number, g: GauntletState)
   return { ...foe, round, name: g.node === 'elite' ? `Elite ${foe.name}` : foe.name, style: `${NODE_INFO[g.node].name} FLEET` };
 }
 
+/** Who you fight this round, with HARDENED / DEADLY FOES applied to (a copy of) their fleet. */
 export function getOpponent(run: Run): Snapshot {
+  const opp = pickOpponent(run);
+  if (!run.mods?.some((m) => m === 'tough' || m === 'deadly')) return opp;
+  return {
+    ...opp,
+    fleet: opp.fleet.map((s) => (s ? toughenShip(s, run.mods) : null)),
+    reserve: opp.reserve && toughenShip(opp.reserve, run.mods),
+  };
+}
+
+function pickOpponent(run: Run): Snapshot {
   if (run.gauntlet) return gauntletOpponent(run.runId, run.round, run.gauntlet);
   // An online player's fleet, fetched while you shopped (see net.ts).
   // Daily challenge: everyone meets the same fleets that day.

@@ -205,7 +205,8 @@ export async function submitDaily(run: Run): Promise<number | null> {
 
 /** Log a finished run. Fire and forget; endless runs log again when they end. */
 export function logRun(run: Run) {
-  if (!run.history.length) return;
+  // Runs with modifiers are harder on purpose, so they'd skew the balance numbers.
+  if (!run.history.length || run.mods?.length) return;
   const log: RunLog = {
     runId: run.runId,
     mode: run.daily ? 'daily' : run.gauntlet ? 'gauntlet' : 'normal',
