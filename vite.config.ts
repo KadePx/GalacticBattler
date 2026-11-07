@@ -34,6 +34,7 @@ export default defineConfig({
         galactic: resolve(__dirname, 'galactic-battler/index.html'),
         rotwave: resolve(__dirname, 'rotwave/index.html'),
         goblinhold: resolve(__dirname, 'goblin-hold/index.html'),
+        mobsurge: resolve(__dirname, 'mob-surge/index.html'),
       },
     },
   },
