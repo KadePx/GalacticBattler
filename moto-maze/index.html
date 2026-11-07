@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#20142a" />
+    <meta name="description" content="Moto Maze: a new motorcycle maze every day. Race it, then watch every rider's run at once." />
+    <title>Moto Maze</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --ink: #fff4e8;
+        --dim: #c8b6a8;
+        --panel: rgba(28, 18, 34, 0.82);
+        --line: rgba(255, 255, 255, 0.12);
+        --hot: #ff7a3d;
+        --gold: #ffd166;
+        --teal: #3ee6d0;
+        --red: #ff5470;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #20142a; color: var(--ink); overflow: hidden; font: 14px/1.4 Rubik, system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
+      #game { position: fixed; inset: 0; touch-action: none; }
+      #game canvas { width: 100%; height: 100%; display: block; }
+      button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+      .hidden { display: none !important; }
+      .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); }
+      .big { font-family: Bungee, sans-serif; letter-spacing: 1px; }
+      .btn { font-family: Bungee, sans-serif; font-size: 18px; padding: 12px 22px; border-radius: 10px; background: var(--hot); color: #2a1206; box-shadow: 0 4px 0 #b54716; transition: transform 0.08s; }
+      .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #b54716; }
+      .btn.alt { background: var(--teal); color: #052a26; box-shadow: 0 4px 0 #1d9686; }
+      .btn.ghost { background: rgba(255, 255, 255, 0.1); color: var(--ink); box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3); }
+      .btn.small { font-size: 13px; padding: 8px 12px; }
+
+      /* ride HUD */
+      #hud { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+      #timer { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); text-align: center; }
+      #timer b { display: block; font-family: Bungee, sans-serif; font-size: 34px; line-height: 1; text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35); }
+      #timer small { color: var(--dim); font-size: 12px; letter-spacing: 1px; }
+      #speedo { position: absolute; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); text-align: right; }
+      #speedo b { font-family: Bungee, sans-serif; font-size: 40px; line-height: 1; }
+      #speedo small { color: var(--dim); margin-left: 4px; }
+      #boostbar { width: 150px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.15); margin-top: 6px; overflow: hidden; margin-left: auto; }
+      #boostbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--teal), #a9fff3); }
+      #mini { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; width: 170px; height: 170px; border-radius: 12px; background: rgba(20, 12, 26, 0.7); border: 1px solid var(--line); }
+      #toast { position: absolute; top: 28%; left: 50%; transform: translateX(-50%); font-family: Bungee, sans-serif; font-size: 30px; color: var(--gold); text-shadow: 0 3px 0 rgba(0, 0, 0, 0.4); white-space: nowrap; opacity: 0; transition: opacity 0.2s; text-align: center; }
+      #toast.on { opacity: 1; }
+      #toast small { display: block; font-size: 15px; color: var(--ink); }
+      #count { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); font-family: Bungee, sans-serif; font-size: 96px; color: var(--ink); text-shadow: 0 6px 0 rgba(0, 0, 0, 0.35); }
+      #keys { position: absolute; left: 16px; bottom: max(16px, env(safe-area-inset-bottom)); color: var(--dim); font-size: 12px; line-height: 1.7; }
+      #keys kbd { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 4px; background: rgba(255, 255, 255, 0.14); color: var(--ink); font: 600 11px Rubik, sans-serif; text-align: center; }
+      #hudbtns { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; display: flex; gap: 6px; pointer-events: auto; }
+      #hudbtns button { width: 38px; height: 38px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); font-size: 16px; }
+
+      /* touch controls */
+      #touch { position: fixed; inset: auto 0 0 0; height: 46%; z-index: 3; pointer-events: none; }
+      #touch button { position: absolute; pointer-events: auto; width: 84px; height: 84px; border-radius: 50%; background: rgba(255, 255, 255, 0.13); border: 2px solid rgba(255, 255, 255, 0.25); font-family: Bungee, sans-serif; font-size: 13px; color: var(--ink); touch-action: none; }
+      #touch button.on { background: rgba(255, 122, 61, 0.45); }
+      #tl { left: 14px; bottom: calc(30px + env(safe-area-inset-bottom)); }
+      #tr { left: 112px; bottom: calc(30px + env(safe-area-inset-bottom)); }
+      #tdrift { right: 14px; bottom: calc(126px + env(safe-area-inset-bottom)); }
+      #tbrake { right: 14px; bottom: calc(30px + env(safe-area-inset-bottom)); }
+      body.touch #speedo { bottom: auto; top: 196px; }
+      body.touch #keys { display: none; }
+
+      /* menus */
+      .overlay { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; }
+      .card { width: min(460px, 100%); padding: 22px; margin: auto; }
+      h1 { margin: 0; font-family: Bungee, sans-serif; font-size: 44px; line-height: 1; color: var(--hot); text-shadow: 0 4px 0 #6b2a10; }
+      h1 span { color: var(--gold); }
+      .sub { color: var(--dim); margin: 6px 0 16px; }
+      .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .row.btns { margin-top: 14px; }
+      .row.btns .btn { flex: 1; }
+      label.field { display: block; color: var(--dim); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; margin: 12px 0 6px; }
+      input[type='text'] { width: 100%; font: 600 16px Rubik, sans-serif; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.3); color: var(--ink); text-transform: uppercase; }
+      .swatches { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+      .swatches button { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; }
+      .swatches button.on { border-color: #fff; transform: scale(1.12); }
+      .board { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+      .board h3 { gap: 8px; margin: 0 0 6px; font-size: 12px; letter-spacing: 1px; color: var(--dim); text-transform: uppercase; display: flex; justify-content: space-between; }
+      .board ol { list-style: none; margin: 0; padding: 0; max-height: 210px; overflow-y: auto; }
+      .board li { display: flex; gap: 8px; align-items: center; padding: 3px 4px; border-radius: 6px; }
+      .board li.me { background: rgba(255, 209, 102, 0.14); }
+      .board li .rk { width: 26px; color: var(--dim); text-align: right; font-weight: 700; }
+      .board li .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+      .board li .nm { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .board li .tm { font-variant-numeric: tabular-nums; }
+      .board .empty { color: var(--dim); padding: 6px 4px; }
+      .note { color: var(--dim); font-size: 12px; margin-top: 10px; }
+      .note a { color: var(--dim); }
+      .toggle { color: var(--dim); font-size: 13px; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+      #doneTime { font-family: Bungee, sans-serif; font-size: 54px; color: var(--gold); line-height: 1.1; }
+      #doneMsg { font-size: 16px; margin: 4px 0 2px; }
+      #doneSub { color: var(--dim); }
+      .more { color: var(--dim); text-decoration: none; font-size: 13px; }
+
+      /* watch mode */
+      #watch { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+      #watch > * { pointer-events: auto; }
+      #wtop { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: 8px 14px; display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+      #wtop button { font-size: 18px; width: 30px; height: 30px; border-radius: 8px; background: rgba(255, 255, 255, 0.08); }
+      #wtop button:disabled { opacity: 0.3; cursor: default; }
+      #wday { font-family: Bungee, sans-serif; }
+      #wstand { position: absolute; left: 12px; top: 64px; width: 210px; padding: 8px; max-height: calc(100% - 170px); overflow-y: auto; }
+      #wstand li { cursor: pointer; }
+      #wstand li.follow { outline: 1px solid var(--gold); }
+      #wbar { position: absolute; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); padding: 10px 12px; display: flex; gap: 8px; align-items: center; }
+      #wbar input[type='range'] { flex: 1; accent-color: var(--hot); min-width: 60px; }
+      #wclock { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 64px; text-align: center; }
+      #wmsg { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); padding: 18px 22px; text-align: center; }
+      @media (max-width: 640px) {
+        h1 { font-size: 36px; }
+        #mini { width: 120px; height: 120px; }
+        #wstand { width: 160px; font-size: 12px; top: 60px; max-height: 40%; }
+        #wbar { flex-wrap: wrap; }
+        #wbar input[type='range'] { order: -1; flex-basis: 100%; }
+        #timer b { font-size: 28px; }
+        body.touch #speedo { top: 140px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+
+    <div id="hud" class="hidden">
+      <div id="timer"><b id="time">0:00.00</b><small id="timeSub"></small></div>
+      <canvas id="mini"></canvas>
+      <div id="speedo"><b id="speed">0</b><small>KM/H</small><div id="boostbar"><i id="boostfill"></i></div></div>
+      <div id="toast"></div>
+      <div id="count"></div>
+      <div id="keys">
+        <kbd>W</kbd> gas &nbsp;<kbd>S</kbd> brake &nbsp;<kbd>A</kbd><kbd>D</kbd> steer<br />
+        <kbd>Space</kbd> drift (in the air: backflip)<br />
+        <kbd>R</kbd> restart &nbsp;<kbd>Esc</kbd> menu
+      </div>
+      <div id="hudbtns"><button id="hMenu" title="Menu">☰</button><button id="hRestart" title="Restart">↺</button></div>
+    </div>
+
+    <div id="touch" class="hidden">
+      <button id="tl">◀</button><button id="tr">▶</button>
+      <button id="tdrift">DRIFT<br />FLIP</button><button id="tbrake">BRAKE</button>
+    </div>
+
+    <div id="menu" class="overlay">
+      <div class="card panel">
+        <h1>MOTO <span>MAZE</span></h1>
+        <div class="sub" id="menuSub">A new maze every day.</div>
+        <div class="row btns">
+          <button class="btn" id="mRide">RIDE</button>
+          <button class="btn alt" id="mWatch">WATCH ALL</button>
+        </div>
+        <label class="field" for="mName">Rider name (for the leaderboard)</label>
+        <input type="text" id="mName" maxlength="14" placeholder="YOUR NAME" autocomplete="off" spellcheck="false" />
+        <div class="swatches" id="mColors"></div>
+        <div class="board">
+          <h3><span id="boardTitle">Today's fastest</span><span id="boardCount"></span></h3>
+          <ol id="board"><li class="empty">Loading…</li></ol>
+        </div>
+        <div class="row" style="justify-content: space-between; margin-top: 12px">
+          <label class="toggle"><input type="checkbox" id="mGhosts" checked /> Race ghosts</label>
+          <a class="more" href="/">← More games</a>
+        </div>
+        <div class="note">Find the way through the maze to the gold beam. Hit ramps for air, hold drift through turns for a boost, and backflip off jumps. Your best time each day goes on the board.</div>
+      </div>
+    </div>
+
+    <div id="done" class="overlay hidden">
+      <div class="card panel" style="text-align: center">
+        <div class="sub" style="margin: 0">FINISHED</div>
+        <div id="doneTime">0:00.00</div>
+        <div id="doneMsg"></div>
+        <div id="doneSub"></div>
+        <div id="doneName" class="hidden" style="text-align: left">
+          <label class="field" for="dName">Your name, to save this time</label>
+          <div class="row"><input type="text" id="dName" maxlength="14" placeholder="YOUR NAME" autocomplete="off" spellcheck="false" style="flex: 1; width: auto" /><button class="btn small" id="dSave">SAVE</button></div>
+        </div>
+        <div class="row btns">
+          <button class="btn" id="dAgain">RIDE AGAIN</button>
+          <button class="btn alt" id="dWatch">WATCH ALL</button>
+        </div>
+        <div class="row btns" style="margin-top: 8px"><button class="btn ghost small" id="dMenu">MENU</button></div>
+      </div>
+    </div>
+
+    <div id="watch" class="hidden">
+      <div id="wtop" class="panel"><button id="wPrev" title="Day before">‹</button><span id="wday"></span><button id="wNext" title="Next day">›</button></div>
+      <div id="wstand" class="panel board" style="margin: 0; border-top: 1px solid var(--line)"><h3><span>Standings</span><span id="wcount"></span></h3><ol id="wlist"></ol></div>
+      <div id="wbar" class="panel">
+        <button class="btn small" id="wPlay">❚❚</button>
+        <button class="btn ghost small" id="wSpeed">1×</button>
+        <input type="range" id="wScrub" min="0" max="1000" value="0" />
+        <span id="wclock">0:00.0</span>
+        <button class="btn ghost small" id="wCam">CAM: SKY</button>
+        <button class="btn ghost small" id="wExit">✕</button>
+      </div>
+      <div id="wmsg" class="panel hidden"></div>
+    </div>
+
+    <script type="module" src="/src/motomaze/main.ts"></script>
+  </body>
+</html>
