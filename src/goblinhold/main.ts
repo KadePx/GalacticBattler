@@ -240,10 +240,22 @@ function refreshTop() {
   const topB = $('top').getBoundingClientRect().bottom;
   document.documentElement.style.setProperty('--topB', `${Math.round(topB)}px`);
   const fcEl = $('forecast');
+  fcEl.style.top = fcEl.style.height = fcEl.style.left = fcEl.style.right = '';
   if (phone()) {
-    const sp = $('speed').getBoundingClientRect();
-    fcEl.style.top = `${sp.top}px`; fcEl.style.height = `${sp.height}px`; fcEl.style.right = `${window.innerWidth - sp.left + 4}px`;
-  } else fcEl.style.top = fcEl.style.height = fcEl.style.right = '';
+    // if only buttons wrapped onto the HUD's last row, the forecast fills the empty part of that row
+    const kids = Array.from($('top').children).map(el => el.getBoundingClientRect()).filter(r => r.width);
+    const lastTop = Math.max(...kids.map(r => r.top));
+    const row = kids.filter(r => r.top >= lastTop - 2);
+    if (kids.some(r => r.bottom <= lastTop + 2) && row.every(r => r.width < 140)) {
+      const W = window.innerWidth, used = row.map(r => [r.left, r.right]).sort((a, b) => a[0] - b[0]);
+      let best = [0, 0], x = 6;
+      for (const [l, r] of [...used.map(([l, r]) => [l - 4, r]), [W - 6, W]]) { if (l - x > best[1] - best[0]) best = [x, l]; x = Math.max(x, r + 4); }
+      if (best[1] - best[0] > 150) {
+        fcEl.style.top = `${lastTop}px`; fcEl.style.height = `${Math.max(...row.map(r => r.height))}px`;
+        fcEl.style.left = `${best[0]}px`; fcEl.style.right = `${W - best[1]}px`;
+      }
+    }
+  }
   const barR = $('bar').getBoundingClientRect();
   if (barR.height) document.documentElement.style.setProperty('--barH', `${Math.round(window.innerHeight - barR.top)}px`);
   const fcB = fcEl.getBoundingClientRect().bottom; // measured after the forecast moves under the new top bar
