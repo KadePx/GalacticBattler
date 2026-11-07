@@ -388,6 +388,8 @@ function clearLine(g: Game, x0: number, y0: number, x1: number, y1: number) {
 
 // combat routes are short-lived, so they live outside the save
 const chaseRoute = new Map<number, { path: number[]; t: number; goal: number }>();
+/** settler id -> goblin id that militia or shieldbearer is fighting */
+const engaged = new Map<number, number>();
 
 /** Move toward a (possibly moving) point: straight if the way is clear, otherwise along a fresh A* route. */
 function chase(g: Game, s: Settler, tx: number, ty: number, dt: number): boolean {
@@ -851,13 +853,25 @@ function guard(g: Game, s: Settler, dt: number, b: Building | undefined) {
   }
   // militia & shieldbearers: engage anything near the post, and answer the alarm when goblins reach the hold
   const kc = keepCenter(g);
-  const tgt = nearestGoblin(g, hx, hy, MILITIA.leash + 0.5) ?? nearestGoblin(g, kc.x, kc.y, 9.5);
+  // stick with a goblin once engaged (a slinger backing off shouldn't send them home mid-chase),
+  // and go after any slinger close enough to be shooting at them
+  const prev = g.goblins.find((q) => q.id === engaged.get(s.id));
+  const keepHold = prev && (Math.hypot(prev.x - hx, prev.y - hy) < MILITIA.leash + 3.5 || Math.hypot(prev.x - kc.x, prev.y - kc.y) < 11);
+  const tgt = nearestGoblin(g, s.x, s.y, 0.95) ?? (keepHold ? prev : undefined) ?? nearestGoblin(g, hx, hy, MILITIA.leash + 0.5) ?? nearestGoblin(g, kc.x, kc.y, 9.5)
+    ?? g.goblins.find((q) => q.kind === 'slinger' && Math.hypot(q.x - s.x, q.y - s.y) < GOBS.slinger.range + 0.6);
+  if (tgt) engaged.set(s.id, tgt.id); else engaged.delete(s.id);
   const st = s.job === 'shieldbearer' ? SHIELD : MILITIA;
   s.cool -= dt;
   if (tgt) {
     const d = Math.hypot(tgt.x - s.x, tgt.y - s.y);
-    if (d > st.range) chase(g, s, tgt.x, tgt.y, dt);
-    else {
+    let reach = d <= st.range;
+    if (!reach) {
+      const ox = s.x, oy = s.y;
+      chase(g, s, tgt.x, tgt.y, dt);
+      // pinned against an obstacle a hair out of reach: swing anyway rather than stand there taking hits
+      reach = d < 1.4 && Math.hypot(s.x - ox, s.y - oy) < speedOf(g, s) * dt * 0.3;
+    }
+    if (reach) {
       chaseRoute.delete(s.id);
       s.face = tgt.x > s.x ? 1 : -1;
       if (s.cool <= 0) {
