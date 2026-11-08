@@ -19,7 +19,8 @@ const RADIUS = 0.65;
 const CRASH_V = 21;
 const LAUNCH_MAX = 8;
 const FLIP_TIME = 0.55;
-const CRASH_TIME = 1.3;
+const CRASH_TIME = 0.7;
+const RESPAWN_SPEED = 15; // back on the bike already rolling, not from a standstill
 
 export interface Input { thr: number; brk: number; steer: number; drift: boolean }
 export const noInput = (): Input => ({ thr: 0, brk: 0, steer: 0, drift: false });
@@ -77,7 +78,7 @@ function crash(b: Bike, emit: Emit, v: number) {
   emit('crash', v);
 }
 
-/** Back on the bike in the middle of the cell, facing the open way closest to where we were going. */
+/** Back on the bike in the middle of the cell, rolling toward the open way closest to where we were going. */
 function respawn(m: Maze, b: Bike, emit: Emit) {
   const c = Math.max(0, cellAt(m, b.x, b.z));
   const [x, z] = cellCenter(m, c);
@@ -87,7 +88,7 @@ function respawn(m: Maze, b: Bike, emit: Emit) {
     const hd = dirHeading(d), e = Math.abs(wrap(hd - b.h));
     if (e < err) { err = e; best = b.h + wrap(hd - b.h); }
   }
-  Object.assign(b, { x, z, y: heightAt(m, x, z), vx: 0, vy: 0, vz: 0, h: best, pitch: 0, lean: 0, grounded: true, crashT: 0, tumble: 0 });
+  Object.assign(b, { x, z, y: heightAt(m, x, z), vx: Math.sin(best) * RESPAWN_SPEED, vy: 0, vz: Math.cos(best) * RESPAWN_SPEED, h: best, pitch: 0, lean: 0, grounded: true, crashT: 0, tumble: 0 });
   emit('respawn', 0);
 }
 

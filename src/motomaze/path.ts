@@ -76,7 +76,9 @@ export function checkRun(m: Maze, samples: Sample[], ms: number): string | null 
   const limit = MAX_SAMPLE_MOVE + 0.5;
   for (let k = 1; k < samples.length; k++) {
     const a = samples[k - 1], b = samples[k];
-    if (Math.hypot(b.x - a.x, b.z - a.z) > limit) return 'too fast';
+    // After a wipeout the rider is put back in the middle of their cell, which can be a short jump.
+    const respawned = a.state === 2 && b.state !== 2;
+    if (Math.hypot(b.x - a.x, b.z - a.z) > limit + (respawned ? CS * 0.75 : 0)) return 'too fast';
     const ca = cellAt(m, a.x, a.z), cb = cellAt(m, b.x, b.z);
     if (cb < 0) return 'left maze';
     if (ca === cb) continue;
