@@ -9,3 +9,10 @@ compatibility_date = "2026-09-01"
 binding = "DB"
 database_name = "galactic-ghosts"
 database_id = "b442a793-c782-49ca-a339-99fc2750f230"
+
+# Commonworld: /api/cw/* talks to the live world Durable Object in worker "commonworld-world"
+# (workers/commonworld). Deploy that worker before changing this binding.
+[[durable_objects.bindings]]
+name = "WORLD"
+class_name = "WorldDO"
+script_name = "commonworld-world"

@@ -4,3 +4,5 @@ dist/
 .DS_Store
 Thumbs.db
 .vite/
+.cw-admin-key
+.dev.vars

@@ -1,0 +1,25 @@
+# Commonworld's live world: one Durable Object that ticks the world in real time.
+# Deploy with: npx --yes wrangler@4.154.0 deploy -c workers/commonworld/wrangler.toml
+# The site (Pages project "galactic-battler") reaches it through functions/api/cw/[[path]].ts.
+name = "commonworld-world"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+
+[vars]
+CW_MS_PER_TICK = "300000" # one game month every 5 real minutes = one game year per hour
+
+[[durable_objects.bindings]]
+name = "WORLD"
+class_name = "WorldDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WorldDO"]
+
+# History (events, yearly records, inputs, backups) goes in the site's existing D1 database.
+[[d1_databases]]
+binding = "DB"
+database_name = "galactic-ghosts"
+database_id = "b442a793-c782-49ca-a339-99fc2750f230"
+
+# Set the admin key once with: npx --yes wrangler@4.154.0 secret put CW_ADMIN_KEY -c workers/commonworld/wrangler.toml

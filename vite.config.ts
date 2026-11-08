@@ -36,6 +36,7 @@ export default defineConfig({
         goblinhold: resolve(__dirname, 'goblin-hold/index.html'),
         mobsurge: resolve(__dirname, 'mob-surge/index.html'),
         motomaze: resolve(__dirname, 'moto-maze/index.html'),
+        commonworld: resolve(__dirname, 'commonworld/index.html'),
       },
     },
   },
