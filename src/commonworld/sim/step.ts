@@ -10,7 +10,7 @@ import { forWithin, hexDist, neighbors } from './hex';
 import { monumentName, plagueName } from './names';
 import { greatCount, succession, yearlyGreats } from './people';
 import { Rand, S } from './rng';
-import { TECHS, civAge, pickResearch, techCost } from './techs';
+import { AGES, TECHS, civAge, pickResearch, techCost } from './techs';
 import {
   GOALS, TICKS_PER_YEAR, VALUES, type BKey, type Civ, type Goal, type Input, type Sett, type ValueId,
   type World,
@@ -545,12 +545,11 @@ function contacts(w: World): void {
 function worldAge(w: World): void {
   const alive = w.civs.filter((c) => c.died < 0);
   const need = Math.max(2, Math.ceil(alive.length / 3));
-  for (let a = 5; a > w.age; a--) {
-    if (alive.filter((c) => civAge(c) >= a).length >= need) {
-      w.age = a;
-      ev(w, { k: 'age', n: a });
-      break;
-    }
+  // One Age at a time, so every Age gets its moment in the chronicle.
+  const a = w.age + 1;
+  if (a < AGES.length && alive.filter((c) => civAge(c) >= a).length >= need) {
+    w.age = a;
+    ev(w, { k: 'age', n: a });
   }
 }
 

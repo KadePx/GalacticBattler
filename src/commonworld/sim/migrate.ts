@@ -20,6 +20,8 @@ const STEPS: Record<number, (o: Raw) => void> = {
     }
     o.reserves = [];
   },
+  // v4 -> v5: four more Ages (Enlightenment to Modern). New techs only; saves are unchanged.
+  4: () => {},
 };
 
 export function migrate(o: Raw): Raw {

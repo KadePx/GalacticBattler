@@ -1,12 +1,12 @@
-// The tech tree: six Ages, techs with prerequisites, and what each one does. Research is
+// The tech tree: ten Ages, techs with prerequisites, and what each one does. Research is
 // chosen by each civ's values and situation, and gets cheaper when neighbours already know it.
 
 import { Rand } from './rng';
 import type { Civ, ValueId } from './types';
 import { R } from './worldgen';
 
-export const AGES = ['Dawn', 'Bronze', 'Iron', 'Classical', 'Medieval', 'Renaissance'];
-const AGE_COST = [80, 400, 1400, 3500, 7000, 12000];
+export const AGES = ['Dawn', 'Bronze', 'Iron', 'Classical', 'Medieval', 'Renaissance', 'Enlightenment', 'Industrial', 'Electric', 'Modern'];
+const AGE_COST = [80, 400, 1400, 3500, 7000, 12000, 18000, 26000, 38000, 55000];
 
 export interface Effects {
   food?: number; mat?: number; stab?: number; grow?: number; lore?: number; wealth?: number;
@@ -71,6 +71,38 @@ export const TECHS: Tech[] = [
   T(39, 'double-entry books', 5, [32], { wealth: 0.4 }),
   T(40, 'sanitation', 5, [28, 33], { grow: 0.15, plagueRes: 0.3 }),
   T(41, 'cartography', 5, [38], { range: 2 }),
+  // Enlightenment
+  T(42, 'the scientific method', 6, [36], { lore: 0.3 }),
+  T(43, 'optics', 6, [36, 26], { lore: 0.1, sail: 1 }),
+  T(44, 'joint-stock companies', 6, [39, 38], { wealth: 0.3, trade: 1 }),
+  T(45, 'the social contract', 6, [17, 36], { stab: 4, sizePen: 0.1 }),
+  T(46, 'inoculation', 6, [40], { grow: 0.1, plagueRes: 0.2 }),
+  T(47, 'the seed drill', 6, [35, 42], { food: 0.12 }),
+  T(48, 'flintlocks', 6, [37], { mil: 0.3 }),
+  // Industrial
+  T(49, 'steam power', 7, [42, 22], { mat: 0.2 }),
+  T(50, 'railways', 7, [49, 18], { range: 2, trade: 2, sizePen: 0.1 }, R.IRON),
+  T(51, 'factories', 7, [49, 32], { mat: 0.25, wealth: 0.2 }),
+  T(52, 'rifling', 7, [48, 15], { mil: 0.3 }),
+  T(53, 'steamships', 7, [49, 38], { sail: 3, trade: 2 }),
+  T(54, 'fertiliser', 7, [47, 42], { food: 0.15 }),
+  T(55, 'public schooling', 7, [45, 42], { lore: 0.25, stab: 2 }),
+  // Electric
+  T(56, 'electricity', 8, [42, 51], { lore: 0.15, mat: 0.15 }),
+  T(57, 'the telegraph', 8, [56, 50], { range: 2, stab: 3, sizePen: 0.1 }),
+  T(58, 'germ theory', 8, [46, 43], { grow: 0.15, plagueRes: 0.3 }),
+  T(59, 'refrigeration', 8, [56, 54], { food: 0.12, grow: 0.05 }),
+  T(60, 'steel', 8, [51, 15], { def: 0.4, mat: 0.15 }, R.IRON),
+  T(61, 'combustion engines', 8, [56, 49], { mil: 0.25, range: 1 }),
+  T(62, 'stock exchanges', 8, [44, 57], { wealth: 0.3 }),
+  // Modern
+  T(63, 'flight', 9, [61, 43], { range: 2, mil: 0.2 }),
+  T(64, 'radio', 9, [57], { stab: 3, lore: 0.15 }),
+  T(65, 'antibiotics', 9, [58], { grow: 0.15, plagueRes: 0.2 }),
+  T(66, 'mechanised farming', 9, [59, 61], { food: 0.15 }),
+  T(67, 'computing', 9, [64, 42], { lore: 0.4 }),
+  T(68, 'mass production', 9, [51, 61], { mat: 0.25, wealth: 0.2 }),
+  T(69, 'armoured warfare', 9, [61, 60], { mil: 0.4, def: 0.2 }),
 ];
 
 export function techCost(t: Tech): number {

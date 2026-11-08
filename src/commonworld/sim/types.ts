@@ -2,7 +2,7 @@
 // Rule for all of src/commonworld/sim: no Math.random, Date, DOM, or Math.sin/exp/pow
 // (those can differ between JS engines); only + - * / sqrt floor on numbers.
 
-export const SIM_V = 4;
+export const SIM_V = 5;
 export const TICKS_PER_YEAR = 12; // one tick = one game month
 
 export const VALUES = [
