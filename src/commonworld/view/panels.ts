@@ -1,9 +1,9 @@
-// Side panels: the peoples list, a civ's page, the chronicle reader and the tile inspector.
+// Side panels: the peoples list, a civ's page, the chronicle reader, the tech tree and the tile inspector.
 // Each returns HTML for the year being shown (live or a past year on the timeline).
 
 import { line, yearOf, type Line } from '../chronicle';
 import { TIER_R } from '../sim/civ';
-import { AGES, TECHS, civAge } from '../sim/techs';
+import { AGES, TECHS, civAge, techCost } from '../sim/techs';
 import { relOf } from '../sim/diplo';
 import { strength } from '../sim/war';
 import { TICKS_PER_YEAR, TIER_NAMES, type Civ, type World } from '../sim/types';
@@ -187,7 +187,7 @@ export function civHtml(ctx: Ctx, id: number): string {
     ${ruins.length ? `<p class="legend">Ruins: ${ruins.map((s) => `<a href="#" data-tile="${s.tile}">${esc(s.name)}</a>`).join(', ')}</p>` : ''}
     <h3>Rulers</h3><table>${rulerRows}</table>
     <h3>Known peoples</h3><div>${[...contacts].map((k) => `<a href="#" class="chip" data-civ="${k}" style="border-color:${civColor(w.civs[k].hue, 50)}">${esc(w.civs[k].name)}</a>`).join('') || '<span class="legend">They believe they are alone.</span>'}</div>
-    <h3>Knowledge</h3>${AGES.map((a, age) => {
+    <h3>Knowledge <a href="#" data-techs="${id}" style="font-size:12px;font-weight:500;margin-left:6px">See their tech tree</a></h3>${AGES.map((a, age) => {
       const ts = innos.filter((k) => TECHS[k].age === age);
       return ts.length ? `<div class="legend" style="margin-top:4px">${a}</div><div>${ts.map((k) => `<span class="chip">${TECHS[k].name}</span>`).join('')}</div>` : '';
     }).join('') || '<span class="legend">Nothing learned yet.</span>'}`;
@@ -321,4 +321,88 @@ export function inspectHtml(ctx: Ctx, tile: number): string {
     ${o >= 0 && !s ? `<div>Held by</div><div>the ${esc(w.civs[o].name)}</div>` : ''}</div>`;
   if (o >= 0) html += `<div style="margin-top:8px"><button class="btn" data-civ="${o}">${banner(w.civs[o], 14)} The ${esc(w.civs[o].name)}</button></div>`;
   return html;
+}
+
+// ---- Tech tree ----
+
+const FX_WORD: Record<string, [string, boolean]> = {
+  food: ['food', true], mat: ['materials', true], stab: ['stability', false], grow: ['growth', true], lore: ['research', true],
+  wealth: ['wealth', true], mil: ['military', true], def: ['defence', true], trade: ['trade', false], range: ['reach', false],
+  sail: ['seafaring', false], sizePen: ['less strain from size', true], plagueRes: ['plague resistance', true],
+};
+
+const cap1 = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function fxText(fx: Record<string, number | undefined>): string {
+  return cap1(Object.entries(fx).map(([k, v]) => {
+    const [word, pct] = FX_WORD[k] ?? [k, false];
+    return k === 'sizePen' ? `${word} (${Math.round((v ?? 0) * 100)}%)` : `${word} +${pct ? Math.round((v ?? 0) * 100) + '%' : v}`;
+  }).join(', '));
+}
+
+/** Everything a tech needs, directly or through earlier techs. */
+function techUp(id: number): Set<number> {
+  const s = new Set<number>();
+  const q = [...TECHS[id].req];
+  while (q.length) { const x = q.pop()!; if (!s.has(x)) { s.add(x); q.push(...TECHS[x].req); } }
+  return s;
+}
+/** Everything that becomes reachable because of a tech. */
+function techDown(id: number): Set<number> {
+  const s = new Set<number>();
+  const q = [id];
+  while (q.length) { const x = q.pop()!; for (const t of TECHS) if (t.req.includes(x) && !s.has(t.id)) { s.add(t.id); q.push(t.id); } }
+  return s;
+}
+
+/**
+ * The whole tree, one Age per section. With a people chosen it shows what they know, what
+ * they could study next and what they are studying; otherwise how many peoples know each tech.
+ */
+export function techHtml(ctx: Ctx, sel: number, scope: 'world' | 'civ'): string {
+  const w = ctx.w;
+  const alive = w.civs.filter((c) => c.died < 0);
+  const knownBy = new Int32Array(TECHS.length);
+  for (const c of alive) for (const k of c.techs) knownBy[k]++;
+  const civ = scope === 'civ' && ctx.selCiv >= 0 ? w.civs[ctx.selCiv] : null;
+  const has = civ ? new Set(civ.techs) : null;
+  const up = sel >= 0 ? techUp(sel) : null;
+  const down = sel >= 0 ? techDown(sel) : null;
+
+  const scopeBtns = ctx.selCiv >= 0
+    ? `<div class="filters"><button class="btn ${civ ? '' : 'on'}" data-tscope="world">Whole world</button><button class="btn ${civ ? 'on' : ''}" data-tscope="civ">The ${esc(w.civs[ctx.selCiv].name)}</button></div>`
+    : '';
+
+  let detail = '<p class="legend" style="margin:0">Tap a tech to see what it does, what it needs and what it leads to.</p>';
+  if (sel >= 0) {
+    const t = TECHS[sel];
+    const reqs = t.req.map((r) => `<a href="#" data-tech="${r}">${TECHS[r].name}</a>`).join(', ') || 'nothing';
+    const next = TECHS.filter((x) => x.req.includes(sel)).map((x) => `<a href="#" data-tech="${x.id}">${x.name}</a>`).join(', ') || 'nothing yet';
+    const status = civ ? (has!.has(sel) ? 'Known to them.' : civ.research === sel ? 'They are studying this now.' : t.req.every((r) => has!.has(r)) ? 'They could study this next.' : 'Out of their reach for now.') : '';
+    detail = `<div class="tdetail"><b>${cap1(t.name)}</b> <span class="legend">${AGES[t.age]} Age · ${fmt(techCost(t))} research</span>
+      <div>${fxText(t.fx as Record<string, number>)}${t.needs !== undefined ? `. Only works with ${RES_NAMES[t.needs]} in reach` : ''}.</div>
+      <div class="legend">Needs ${reqs}. Opens ${next}. Leads to ${down!.size} later ${down!.size === 1 ? 'tech' : 'techs'}.</div>
+      <div class="legend">Known to ${knownBy[sel]} of ${alive.length} living peoples. ${status}</div></div>`;
+  }
+
+  const sections = AGES.map((a, age) => {
+    const chips = TECHS.filter((t) => t.age === age).map((t) => {
+      const cls = ['tchip'];
+      if (sel >= 0) cls.push(t.id === sel ? 'sel' : up!.has(t.id) ? 'req' : down!.has(t.id) ? 'unl' : 'dim');
+      if (has) {
+        if (has.has(t.id)) cls.push('known');
+        else if (civ!.research === t.id) cls.push('study');
+        else if (t.req.every((r) => has.has(r))) cls.push('next');
+      }
+      const tag = has ? (civ!.research === t.id ? '<small>studying</small>' : '') : `<small>${knownBy[t.id] || ''}</small>`;
+      return `<button class="${cls.join(' ')}" data-tech="${t.id}">${cap1(t.name)}${t.needs !== undefined ? ' <span class="res" title="Needs ' + RES_NAMES[t.needs] + '">◆</span>' : ''}${tag}</button>`;
+    }).join('');
+    const now = age === w.age;
+    return `<div class="tage${now ? ' now' : ''}"><div class="tah"><span>${a} Age</span><span class="legend">${now ? 'the world is here · ' : ''}${fmt(techCost(TECHS.find((t) => t.age === age)!))} each</span></div><div class="tgrid">${chips}</div></div>`;
+  }).join('');
+
+  const key = civ
+    ? '<div class="tkey legend"><span class="k known"></span>known <span class="k study"></span>studying <span class="k next"></span>could study next</div>'
+    : '<div class="tkey legend">Numbers show how many living peoples know each tech. ◆ needs a resource.</div>';
+  return `${scopeBtns}${key}${detail}${sections}`;
 }

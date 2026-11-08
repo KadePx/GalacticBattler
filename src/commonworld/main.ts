@@ -11,7 +11,7 @@ import { myHash } from './identity';
 import { Founding, type Pending } from './view/founding';
 import { SIM_V } from './sim/types';
 import { MapView, civColor, type MapState, type Mode, type Stance } from './view/map';
-import { banner, chronHtml, civHtml, esc, fmt, inspectHtml, peoplesHtml, type Ctx } from './view/panels';
+import { banner, chronHtml, civHtml, esc, fmt, inspectHtml, peoplesHtml, techHtml, type Ctx } from './view/panels';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const q = new URLSearchParams(location.search);
@@ -37,7 +37,9 @@ let speed = 5; // years per second
 let mode: Mode = 'political';
 let selCiv = -1;
 let selTile = -1;
-type DrawerKind = { k: 'peoples' } | { k: 'civ'; civ: number } | { k: 'chron' };
+type DrawerKind = { k: 'peoples' } | { k: 'civ'; civ: number } | { k: 'chron' } | { k: 'tech' };
+let techSel = -1;
+let techScope: 'world' | 'civ' = 'world';
 let drawer: DrawerKind[] = [];
 const chron: Ctx['chron'] = { major: true, scope: 'world', q: '', limit: 200 };
 let peoplesQ = '';
@@ -287,6 +289,9 @@ function renderDrawer(): void {
   } else if (top.k === 'civ') {
     $('dtitle').innerHTML = `<span style="color:${civColor(w.civs[top.civ].hue, 70)}">The ${esc(w.civs[top.civ].name)}</span>`;
     body.innerHTML = civHtml(c, top.civ);
+  } else if (top.k === 'tech') {
+    $('dtitle').textContent = 'Tech tree';
+    body.innerHTML = techHtml(c, techSel, techScope);
   } else {
     $('dtitle').textContent = 'Chronicle';
     body.innerHTML = chronHtml(c);
@@ -302,21 +307,25 @@ $('dclose').onclick = () => { drawer = []; selCiv = -1; refreshAll(); };
 $('dback').onclick = () => { drawer.pop(); const t = drawer[drawer.length - 1]; if (t?.k === 'civ') selCiv = t.civ; refreshAll(); };
 for (const b of Array.from(document.querySelectorAll<HTMLElement>('[data-open]'))) {
   b.onclick = () => {
-    const k = b.dataset.open as 'peoples' | 'chron';
+    const k = b.dataset.open as 'peoples' | 'chron' | 'tech';
     if (k === 'chron') chron.scope = selCiv >= 0 ? 'civ' : 'world';
+    if (k === 'tech') techScope = selCiv >= 0 ? 'civ' : 'world';
     openDrawer({ k }, false);
   };
 }
 
 function handlePanelClick(e: MouseEvent): void {
   const t = e.target as HTMLElement;
-  const el = t.closest<HTMLElement>('[data-civ],[data-tile],[data-chron],[data-scope],#cmajor,#cmore,#ix');
+  const el = t.closest<HTMLElement>('[data-civ],[data-tile],[data-chron],[data-scope],[data-tech],[data-tscope],[data-techs],#cmajor,#cmore,#ix');
   if (!el) return;
   e.preventDefault();
   if (el.id === 'ix') { selTile = -1; map.selTile = -1; refreshAll(); return; }
   if (el.id === 'cmajor') { chron.major = !chron.major; renderDrawer(); return; }
   if (el.id === 'cmore') { chron.limit += 200; renderDrawer(); return; }
   if (el.dataset.scope) { chron.scope = el.dataset.scope as 'world' | 'civ'; renderDrawer(); return; }
+  if (el.dataset.tech !== undefined) { const id = Number(el.dataset.tech); techSel = techSel === id ? -1 : id; renderDrawer(); return; }
+  if (el.dataset.tscope) { techScope = el.dataset.tscope as 'world' | 'civ'; renderDrawer(); return; }
+  if (el.dataset.techs) { selCiv = Number(el.dataset.techs); techScope = 'civ'; techSel = -1; openDrawer({ k: 'tech' }); return; }
   if (el.dataset.chron) { selCiv = Number(el.dataset.chron); chron.scope = 'civ'; openDrawer({ k: 'chron' }); return; }
   if (el.dataset.civ) { openDrawer({ k: 'civ', civ: Number(el.dataset.civ) }); return; }
   if (el.dataset.tile) {
@@ -679,7 +688,7 @@ boot();
   play(s?: number) { playing = true; if (s) speed = s; updateTimeline(); },
   goYear,
   select(civ: number) { selCiv = civ; refreshAll(); },
-  open(k: 'peoples' | 'chron' | number) { openDrawer(typeof k === 'number' ? { k: 'civ', civ: k } : { k }, false); },
+  open(k: 'peoples' | 'chron' | 'tech' | number) { openDrawer(typeof k === 'number' ? { k: 'civ', civ: k } : { k }, false); },
   mode(m: Mode) { mode = m; renderModes(); updateMap(); },
   hash: () => worldHash(w),
   dump: () => serialize(w),

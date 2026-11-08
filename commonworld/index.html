@@ -127,6 +127,27 @@
       .ln.major .t { color: var(--ink); font-weight: 500; }
       .ln.now { background: var(--accentSoft); }
       .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+      .tkey { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+      .tkey .k { width: 10px; height: 10px; border-radius: 3px; border: 1px solid var(--line2); margin-left: 6px; }
+      .tdetail { background: var(--raise); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; display: grid; gap: 4px; }
+      .tdetail b { font-size: 14px; }
+      .tage { margin-top: 14px; }
+      .tah { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+      .tage.now .tah > span:first-child { color: var(--accent2); }
+      .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 5px; }
+      .tchip { display: flex; align-items: center; gap: 6px; text-align: left; padding: 6px 9px; border-radius: 9px; background: var(--raise); border: 1px solid var(--line); font-size: 12.5px; line-height: 1.3; transition: background 0.15s, border-color 0.15s, opacity 0.15s; }
+      .tchip:hover { border-color: var(--line2); background: var(--raise2); }
+      .tchip small { margin-left: auto; color: var(--faint); font-size: 11px; text-transform: none; }
+      .tchip .res { color: var(--faint); font-size: 9px; }
+      .tchip.known, .tkey .k.known { background: var(--accentSoft); border-color: rgba(124, 140, 255, 0.45); }
+      .tchip.next, .tkey .k.next { border-style: dashed; border-color: rgba(124, 140, 255, 0.6); }
+      .tchip.study, .tkey .k.study { background: rgba(56, 189, 248, 0.16); border-color: #38bdf8; }
+      .tchip.study small { color: #7dd3fc; }
+      .tchip.sel { background: var(--accent); border-color: var(--accent); color: var(--accentInk); }
+      .tchip.sel small, .tchip.sel .res { color: var(--accentInk); }
+      .tchip.req { border-color: #fbbf24; box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.5); }
+      .tchip.unl { border-color: #4ade80; box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.5); }
+      .tchip.dim { opacity: 0.35; }
       .more { display: flex; margin: 14px auto; }
 
       #inspect { position: fixed; left: 12px; bottom: calc(var(--tl) + 24px); width: 300px; padding: 14px 16px; }
@@ -249,6 +270,7 @@
       <button class="btn gold hidden" id="mine">Found your people</button>
       <button class="btn" data-open="peoples">Peoples</button>
       <button class="btn" data-open="chron">Chronicle</button>
+      <button class="btn" data-open="tech">Tech tree</button>
     </div>
     <aside id="drawer" class="panel hidden">
       <div class="dh"><button class="icon" id="dback" title="Back" aria-label="Back">‹</button><span class="t" id="dtitle"></span><button class="icon" id="dclose" title="Close" aria-label="Close">✕</button></div>
