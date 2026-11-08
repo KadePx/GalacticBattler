@@ -18,6 +18,12 @@ function fmt(n: number): string {
   return n >= 10000 ? `${Math.round(n / 1000)},000` : n.toLocaleString('en-US');
 }
 
+const years = (n: number) => (n < 1 ? 'less than a year' : `${n} ${n === 1 ? 'year' : 'years'}`);
+const cap1 = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+// "the Shaking Wasting" reads badly; two -ing words in a row become "Sickness".
+const plague = (x?: string) => (x ?? 'a plague').replace(/(\w+ing) Wasting\b/, '$1 Sickness');
+const DEED: Record<string, [string, string]> = { general: ['victory', 'victories'], scholar: ['discovery', 'discoveries'], builder: ['great work', 'great works'] };
+
 export function yearOf(t: number): number {
   return Math.floor(t / TICKS_PER_YEAR);
 }
@@ -36,13 +42,13 @@ export function line(w: World, e: Ev, idx: number): Line {
     case 'found_civ':
       if (e.a !== undefined && w.civs[e.a]?.founder) {
         const by = w.civs[e.a].byName;
-        text = `${Pc(e.a)} arrived from beyond the known lands and lit their first hearth at ${T(e.s)}, led by ${e.x}${by ? `. They were founded by ${by}` : ''}.`;
+        text = `${Pc(e.a)} arrived from beyond the known lands and lit their first hearth at ${T(e.s)}, led by ${e.x}.${by ? ` Their founder was ${by}.` : ''}`;
         break;
       }
       text = pick(
         `${Pc(e.a)} came to ${T(e.s)} and lit the first hearth, led by ${e.x}.`,
         `Under ${e.x}, ${P(e.a)} settled at ${T(e.s)}. Here their story begins.`,
-        `${Pc(e.a)} raised their first roofs at ${T(e.s)}, and ${e.x} named it home.`,
+        `${Pc(e.a)} raised their first roofs at ${T(e.s)}, and ${e.x} called it home.`,
       );
       break;
     case 'found_sett':
@@ -75,23 +81,26 @@ export function line(w: World, e: Ev, idx: number): Line {
       text = `${Pc(e.a)} made ${T(e.s)} their new seat of power.`;
       break;
     case 'civ_fall':
-      text = e.b !== undefined
-        ? `${Pc(e.a)} were conquered by ${P(e.b)}. They endured ${e.n} years and once numbered ${fmt(Number(e.y) || 0)}.`
-        : `${Pc(e.a)} are no more. They endured ${e.n} years and once numbered ${fmt(Number(e.y) || 0)}.`;
+    {
+      const peak = Number(e.y) || 0;
+      const n = e.n ?? 0;
+      const life = n < 1 ? 'They lasted less than a year' : `They endured ${years(n)}`;
+      text = `${e.b !== undefined ? `${Pc(e.a)} were conquered by ${P(e.b)}.` : `${Pc(e.a)} are no more.`} ${life}${peak > 0 ? ` and at their height numbered ${fmt(peak)}` : ''}.`;
       break;
+    }
     case 'tech':
       text = e.y
-        ? `${Pc(e.a)} learned ${e.x} from the scholars of captured ${e.y}.`
+        ? `Scholars taken at ${e.y} brought ${e.x} to ${P(e.a)}.`
         : e.z
-          ? `${e.z} taught ${P(e.a)} ${e.x}.`
-          : pick(`${Pc(e.a)} learned ${e.x}.`, `In the land of ${P(e.a)}, someone worked out ${e.x}.`, `${Pc(e.a)} took up ${e.x}.`);
+          ? `Thanks to ${e.z}, ${e.x} came to ${P(e.a)}.`
+          : pick(`${cap1(e.x ?? '')} came to ${P(e.a)}.`, `${Pc(e.a)} adopted ${e.x}.`, `${Pc(e.a)} now had ${e.x}.`);
       break;
     case 'age':
       text = `The world entered the ${AGES[e.n ?? 0]} Age.`;
       break;
     case 'trade_open':
       text = pick(
-        `${e.n ? 'Ships' : 'Caravans'} began to run between ${T(e.s)} and ${e.x}. ${Pc(e.a)} and ${P(e.b)} were trading partners.`,
+        `${e.n ? 'Ships' : 'Caravans'} began to run between ${T(e.s)} and ${e.x}. ${Pc(e.a)} and ${P(e.b)} were now trading partners.`,
         `Merchants of ${P(e.a)} opened a ${e.n ? 'sea lane' : 'road'} from ${T(e.s)} to ${e.x}, in the land of ${P(e.b)}.`,
       );
       break;
@@ -108,7 +117,7 @@ export function line(w: World, e: Ev, idx: number): Line {
       text = `The alliance between ${P(e.a)} and ${P(e.b)} fell apart.`;
       break;
     case 'war': {
-      const why = e.y === 'land' ? 'hungry for land' : e.y === 'grudge' ? 'nursing old wrongs' : e.y === 'succession' ? 'over the throne' : 'eager for plunder';
+      const why = e.y === 'land' ? 'hungry for land' : e.y === 'grudge' ? 'nursing old wrongs' : e.y === 'succession' ? 'pressing a claim to the throne' : 'eager for plunder';
       text = pick(`${Pc(e.a)}, ${why}, declared war on ${P(e.b)}: ${e.x} had begun.`, `${e.x} began. ${Pc(e.a)} marched against ${P(e.b)}, ${why}.`);
       break;
     }
@@ -116,26 +125,39 @@ export function line(w: World, e: Ev, idx: number): Line {
       text = `${Pc(e.a)} joined ${e.x} against ${P(e.b)}.`;
       break;
     case 'battle':
+    {
+      const at = /^the Siege/.test(e.x ?? '') ? 'in' : 'at';
+      const dead = e.n ? ` ${fmt(e.n)} fell.` : '';
       text = e.y
-        ? `${Pc(e.a)} under the general ${e.y} defeated ${P(e.b)} at ${e.x}. ${fmt(e.n ?? 0)} fell.`
-        : pick(`${Pc(e.a)} beat ${P(e.b)} at ${e.x}. ${fmt(e.n ?? 0)} fell.`, `${e.x}: ${P(e.a)} carried the day against ${P(e.b)}; ${fmt(e.n ?? 0)} died.`);
+        ? `Led by the general ${e.y}, ${P(e.a)} defeated ${P(e.b)} ${at} ${e.x}.${dead}`
+        : pick(`${Pc(e.a)} defeated ${P(e.b)} ${at} ${e.x}.${dead}`, `${Pc(e.a)} won ${e.x} against ${P(e.b)}.${dead}`);
       break;
+    }
     case 'conquest':
       text = pick(`${T(e.s)} fell to ${P(e.a)}.`, `${Pc(e.a)} took ${T(e.s)} from ${P(e.b)}.`, `After a long siege, ${T(e.s)} opened its gates to ${P(e.a)}.`);
       break;
     case 'peace': {
       const res = e.z === 'victory' ? `${P(e.a)} won` : e.z === 'defeat' ? `${P(e.b)} held them off` : 'neither side won';
-      text = `${e.x} ended after ${e.n} ${e.n === 1 ? 'year' : 'years'}: ${res}.`;
+      text = `${e.x} ended after ${years(e.n ?? 0)}: ${res}.`;
       break;
     }
     case 'great_born':
       text = pick(`A great ${GREAT_WORD[e.y ?? ''] ?? e.y}, ${e.x}, rose among ${P(e.a)}.`, `${Pc(e.a)} began to speak of ${e.x}, a ${GREAT_WORD[e.y ?? ''] ?? e.y} without equal.`);
       break;
     case 'great_died':
-      text = e.n ? `${e.x}, the ${GREAT_WORD[e.y ?? ''] ?? e.y} of ${P(e.a)}, died, remembered for ${e.n} great deeds.` : `${e.x}, the ${GREAT_WORD[e.y ?? ''] ?? e.y} of ${P(e.a)}, died.`;
+    {
+      const d = DEED[e.y ?? ''];
+      const n = e.n ?? 0;
+      const fame = n && d ? `, remembered for ${n === 1 ? `one ${d[0]}` : `${n} ${d[1]}`}` : '';
+      text = `${e.x}, the ${GREAT_WORD[e.y ?? ''] ?? e.y} of ${P(e.a)}, died${fame}.`;
+    }
       break;
     case 'crisis':
-      text = `${e.x} died and the throne was contested. ${T(e.s)} and ${(e.n ?? 1) - 1} other towns backed ${e.y} of House ${e.z}, and broke away as ${P(e.a)}.`;
+    {
+      const others = (e.n ?? 1) - 1;
+      const who = others < 1 ? T(e.s) : `${T(e.s)} and ${others === 1 ? 'one other town' : `${others} other towns`}`;
+      text = `${e.x} died and the throne was contested. ${who} backed ${e.y} of House ${e.z} and broke away as ${P(e.a)}.`;
+    }
       break;
     case 'new_dynasty':
       text = `${e.x} died without a clear heir. ${e.y} of House ${e.z} seized the throne of ${P(e.a)}.`;
@@ -143,27 +165,30 @@ export function line(w: World, e: Ev, idx: number): Line {
     case 'succession':
       if (e.z) {
         text = pick(
-          `${e.x} died after ${e.n} years of rule. ${e.y} of House ${e.z} took the seat.`,
-          `The reign of ${e.x} ended after ${e.n} years; ${e.y} of House ${e.z} rose in their place.`,
-          `${Pc(e.a)} mourned ${e.x} (${e.n} years). ${e.y} of House ${e.z} now leads them.`,
+          `${e.x} died after a reign of ${years(e.n ?? 0)}. ${e.y} of House ${e.z} took the seat.`,
+          `The reign of ${e.x} ended after ${years(e.n ?? 0)}; ${e.y} of House ${e.z} rose in their place.`,
+          `${Pc(e.a)} mourned ${e.x}, who had ruled for ${years(e.n ?? 0)}. ${e.y} of House ${e.z} now led them.`,
         );
         break;
       }
       text = pick(
-        `${e.x} died after ${e.n} years of rule. ${e.y} took the seat.`,
-        `The reign of ${e.x} ended after ${e.n} years; ${e.y} rose in their place.`,
-        `${Pc(e.a)} mourned ${e.x} (${e.n} years). ${e.y} now leads them.`,
+        `${e.x} died after a reign of ${years(e.n ?? 0)}. ${e.y} took the seat.`,
+        `The reign of ${e.x} ended after ${years(e.n ?? 0)}; ${e.y} rose in their place.`,
+        `${Pc(e.a)} mourned ${e.x}, who had ruled for ${years(e.n ?? 0)}. ${e.y} now led them.`,
       );
       break;
     case 'innovation':
-      text = pick(`${Pc(e.a)} learned ${e.x}.`, `In the land of ${P(e.a)}, someone worked out ${e.x}.`, `${Pc(e.a)} took up ${e.x}.`);
+      text = pick(`${cap1(e.x ?? '')} came to ${P(e.a)}.`, `${Pc(e.a)} adopted ${e.x}.`, `${Pc(e.a)} now had ${e.x}.`);
       break;
     case 'monument':
-      text = pick(
-        `${Pc(e.a)} finished ${e.x} at ${T(e.s)}.`,
-        `Under ${e.y}, ${P(e.a)} raised ${e.x}. It will stand for ages.`,
-      );
+    {
+      const x = e.x ?? 'a monument';
+      const place = x.endsWith(` of ${T(e.s)}`) ? '' : ` at ${T(e.s)}`;
+      text = e.y && x.endsWith(` of ${e.y}`)
+        ? pick(`${Pc(e.a)} raised ${x}${place} in honour of their ruler.`, `${Pc(e.a)} finished ${x}${place}. It will stand for ages.`)
+        : pick(`${Pc(e.a)} finished ${x}${place}, the work of ${e.y}.`, `${Pc(e.a)} raised ${x}${place}. It will stand for ages.`);
       break;
+    }
     case 'temple':
       text = `${T(e.s)} raised its first temple.`;
       break;
@@ -198,13 +223,13 @@ export function line(w: World, e: Ev, idx: number): Line {
       );
       break;
     case 'plague_start':
-      text = `${e.x} broke out in ${T(e.s)}.`;
+      text = `${plague(e.x)} broke out in ${T(e.s)}.`;
       break;
     case 'plague_reach':
-      text = `${e.x} reached ${T(e.s)}.`;
+      text = `${plague(e.x)} reached ${T(e.s)}.`;
       break;
     case 'plague_end':
-      text = `${e.x} finally passed, after taking ${fmt(e.n ?? 0)} lives.`;
+      text = `${plague(e.x)} finally passed, after taking ${fmt(e.n ?? 0)} lives.`;
       break;
     default:
       text = e.k;
