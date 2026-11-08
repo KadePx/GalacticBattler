@@ -527,7 +527,7 @@ export class MapView {
     el.style.touchAction = 'none';
     const pts = new Map<number, { x: number; y: number }>();
     let start: { x: number; y: number; cx: number; cy: number; moved: boolean } | null = null;
-    let pinch: { d: number } | null = null;
+    let pinch: { d: number; mx: number; my: number } | null = null;
     const pos = (e: PointerEvent) => {
       const r = el.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -540,7 +540,7 @@ export class MapView {
       if (pts.size === 1) start = { x: p.x, y: p.y, cx: this.cam.x, cy: this.cam.y, moved: false };
       if (pts.size === 2) {
         const [a, b] = [...pts.values()];
-        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) };
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
         if (start) start.moved = true;
       }
     });
@@ -550,8 +550,13 @@ export class MapView {
       if (pinch && pts.size === 2) {
         const [a, b] = [...pts.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
-        this.zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, d / pinch.d);
-        pinch.d = d;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        // Two fingers pan and zoom at once: follow the midpoint, then scale around it.
+        this.cam.x += mx - pinch.mx;
+        this.cam.y += my - pinch.my;
+        this.zoomAt(mx, my, pinch.d > 0 ? d / pinch.d : 1);
+        pinch = { d, mx, my };
         return;
       }
       if (start && pts.size === 1) {
@@ -582,6 +587,11 @@ export class MapView {
       pts.delete(e.pointerId);
       if (pts.size < 2) pinch = null;
       if (pts.size === 0) start = null;
+      // Lifting one finger of a pinch: keep panning from here instead of jumping back.
+      if (pts.size === 1) {
+        const [q] = [...pts.values()];
+        start = { x: q.x, y: q.y, cx: this.cam.x, cy: this.cam.y, moved: true };
+      }
     };
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
