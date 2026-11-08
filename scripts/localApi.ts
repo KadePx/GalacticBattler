@@ -51,7 +51,7 @@ export function localApi(): Plugin {
     mkdirSync(dir, { recursive: true });
     db ??= await fakeD1(resolve(dir, 'local-api.sqlite'));
     const mod = (await server.ssrLoadModule('/src/commonworld/server/host.ts')) as { WorldHost: new (...a: unknown[]) => DevWorld };
-    const msPerTick = Number(process.env.CW_MS_PER_TICK) || 300_000;
+    const msPerTick = Number(process.env.CW_MS_PER_TICK) || 60_000;
     // Cloudflare's always-pass Turnstile test keys, so the founding screen's human check runs locally.
     const verifyHuman = async (token: string) => {
       const body = new FormData();

@@ -18,7 +18,7 @@ export interface KV {
 }
 
 export interface HostOpts {
-  msPerTick: number; // real milliseconds per game month (300000 = 1 game year per real hour)
+  msPerTick: number; // real milliseconds per game month (60000 = 5 game years per real hour)
   maxStep: number; // most ticks to simulate in one call (catching up after downtime)
   civs: number; // ancient civs in a brand-new world
   adminKey?: string;
@@ -29,7 +29,7 @@ export interface HostOpts {
 
 const FOUNDINGS_PER_IP_PER_DAY = 3;
 
-interface Meta { id: string; seed: number; epoch: number; created: number }
+interface Meta { id: string; seed: number; epoch: number; created: number; msPerTick?: number }
 
 const KEEP_EVENTS = 300; // recent events kept in the live world; older ones live in D1
 const FRAME_EVERY = 2; // years between map frames
@@ -109,14 +109,30 @@ export class WorldHost {
     this.pending = JSON.parse(pending ?? '[]');
     this.seq = Number(seq ?? 0);
     this.flushed = w.logBase + w.log.length;
+    await this.retime(w);
     return w;
+  }
+
+  /**
+   * The speed of time changed (msPerTick). Keep the world where it is: months already owed at
+   * the old speed stay owed, and from now on time runs at the new speed. Without this, the
+   * world would think all of history ran at the new speed and leap forward.
+   */
+  private async retime(w: World): Promise<void> {
+    const old = this.meta.msPerTick ?? 300_000;
+    if (old === this.o.msPerTick) return;
+    const now = this.o.now();
+    const owed = Math.max(0, Math.floor((now - this.meta.epoch) / old) - w.tick);
+    this.meta.epoch = now - (w.tick + owed) * this.o.msPerTick;
+    this.meta.msPerTick = this.o.msPerTick;
+    await this.kv.put('meta', JSON.stringify(this.meta));
   }
 
   private async create(seed: number, civs: number): Promise<World> {
     const now = this.o.now();
     const w = createWorld({ seed, civs });
     this.w = w;
-    this.meta = { id: `w${seed.toString(36)}${now.toString(36)}`, seed, epoch: now, created: now };
+    this.meta = { id: `w${seed.toString(36)}${now.toString(36)}`, seed, epoch: now, created: now, msPerTick: this.o.msPerTick };
     this.pending = [];
     this.seq = 0;
     this.flushed = 0;

@@ -124,11 +124,22 @@ async function main(): Promise<void> {
   check(st4.tick === 190 * 12, `caught up 100 years of downtime in ${calls} steps`);
   console.log(`     live storage ${(kv.size() / 1024).toFixed(0)} KB`);
 
+  // Speed change: a host with a faster clock keeps the month, then runs faster.
+  const fast = new WorldHost(kv, db, { ...opts, msPerTick: MS / 5 });
+  const before = (await (await get(host2, 'state')).json()) as { tick: number };
+  const after = (await (await get(fast, 'state')).json()) as { tick: number; next: number; now: number };
+  check(after.tick === before.tick, `changing speed keeps the month (${before.tick} -> ${after.tick})`);
+  check(after.next - after.now <= MS / 5, 'the next month comes at the new speed');
+  clock += 10 * (MS / 5);
+  await fast.advance();
+  const later = (await (await get(fast, 'state')).json()) as { tick: number };
+  check(later.tick === before.tick + 10, `ten fast months later: +${later.tick - before.tick}`);
+
   // Admin.
-  const denied = await get(host2, 'admin/wipe', { method: 'POST' });
+  const denied = await get(fast, 'admin/wipe', { method: 'POST' });
   check(denied.status === 403, 'wipe without key is refused');
-  const wipe = await (await get(host2, 'admin/wipe', { method: 'POST', headers: { 'x-admin-key': 'secret' }, body: JSON.stringify({ seed: 77 }) })).json() as { ok: boolean; world: string };
-  const st5 = await (await get(host2, 'state')).json() as { world: string; tick: number };
+  const wipe = await (await get(fast, 'admin/wipe', { method: 'POST', headers: { 'x-admin-key': 'secret' }, body: JSON.stringify({ seed: 77 }) })).json() as { ok: boolean; world: string };
+  const st5 = await (await get(fast, 'state')).json() as { world: string; tick: number };
   check(wipe.ok && st5.world !== st.world && st5.tick === 0, `wipe started a new world (${st5.world})`);
   const arch = await db.prepare("SELECT COUNT(*) AS n FROM cw_snaps WHERE kind = 'archive'").first<{ n: number }>();
   check((arch?.n ?? 0) === 1, 'old world archived before the wipe');

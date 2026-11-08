@@ -6,7 +6,7 @@ main = "index.ts"
 compatibility_date = "2026-09-01"
 
 [vars]
-CW_MS_PER_TICK = "300000" # one game month every 5 real minutes = one game year per hour
+CW_MS_PER_TICK = "60000" # one game month every real minute = five game years per hour
 
 [[durable_objects.bindings]]
 name = "WORLD"

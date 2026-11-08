@@ -37,7 +37,7 @@ export class WorldDO extends DurableObject<Env> {
       { get: (k) => storage.get<string>(k), put: (k, v) => storage.put(k, v) },
       env.DB,
       {
-        msPerTick: Number(env.CW_MS_PER_TICK) || 300_000, maxStep: 240, civs: 20, adminKey: env.CW_ADMIN_KEY, now: Date.now,
+        msPerTick: Number(env.CW_MS_PER_TICK) || 60_000, maxStep: 240, civs: 20, adminKey: env.CW_ADMIN_KEY, now: Date.now,
         // The human check switches on once both Turnstile keys are set.
         turnstileSiteKey: env.TURNSTILE_SECRET ? env.TURNSTILE_SITEKEY : undefined,
         verifyHuman: env.TURNSTILE_SECRET ? (t, ip) => turnstile(env.TURNSTILE_SECRET!, t, ip) : undefined,
