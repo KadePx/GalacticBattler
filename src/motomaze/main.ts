@@ -58,7 +58,9 @@ persist();
 
 const host = $('game');
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Phones: fewer pixels and a smaller shadow map keep the frame rate (and steering) smooth.
+const PHONE = matchMedia('(pointer: coarse)').matches;
+renderer.setPixelRatio(Math.min(devicePixelRatio, PHONE ? 1.5 : 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
@@ -90,7 +92,7 @@ const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1500);
 scene.add(new THREE.HemisphereLight(0xffe4cc, 0x5a3a4e, 1.25));
 const sun = new THREE.DirectionalLight(0xffdcb0, 2.3);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(PHONE ? 1024 : 2048, PHONE ? 1024 : 2048);
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
@@ -656,7 +658,7 @@ const sfx = new Sfx();
 // ---------------------------------------------------------------- input
 
 const keys = new Set<string>();
-const touchState = { left: false, right: false, drift: false, brake: false };
+const touchState = { drift: false, brake: false };
 let touchMode = false;
 let botOn = false;
 
@@ -677,28 +679,125 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
-addEventListener('touchstart', () => {
-  sfx.init();
-  if (!touchMode) { touchMode = true; document.body.classList.add('touch'); if (mode === 'ride' || mode === 'count') $('touch').classList.remove('hidden'); }
-}, { passive: true });
-addEventListener('pointerdown', () => sfx.init());
-
-for (const [id, k] of [['tl', 'left'], ['tr', 'right'], ['tdrift', 'drift'], ['tbrake', 'brake']] as const) {
-  const el = $(id);
-  const set = (v: boolean) => { touchState[k] = v; el.classList.toggle('on', v); };
-  el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.setPointerCapture(e.pointerId); set(true); });
-  el.addEventListener('pointerup', () => set(false));
-  el.addEventListener('pointercancel', () => set(false));
-  el.addEventListener('lostpointercapture', () => set(false));
+function enterTouchMode() {
+  if (touchMode) return;
+  touchMode = true;
+  document.body.classList.add('touch');
+  if (mode === 'ride' || mode === 'count') $('touch').classList.remove('hidden');
 }
+// Phones start in touch mode (the menu shows first, so nothing else to update yet).
+if (matchMedia('(pointer: coarse)').matches) { touchMode = true; document.body.classList.add('touch'); }
+addEventListener('touchstart', () => { sfx.init(); enterTouchMode(); }, { passive: true });
+addEventListener('pointerdown', () => sfx.init());
+// No pinch or double-tap zoom, and no long-press menus, while playing.
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('dblclick', (e) => e.preventDefault());
+addEventListener('contextmenu', (e) => { if (mode === 'ride' || mode === 'count') e.preventDefault(); });
+
+// Touch: one finger anywhere on the left half is a floating stick (analog steering).
+// Fingers on the right half press whichever of DRIFT / BRAKE is nearer, and can slide between them.
+const STICK_R = 52;
+const stickEl = $('stick'), knobEl = stickEl.firstElementChild as HTMLElement;
+const padEls = { drift: $('pdrift'), brake: $('pbrake') };
+let steerId: number | null = null, stickX = 0, stickY = 0, touchSteer = 0;
+const padTouches = new Map<number, 'drift' | 'brake'>();
+
+function stickHome() {
+  const r = $('tsteer').getBoundingClientRect();
+  stickEl.style.left = `${r.width * 0.42}px`;
+  stickEl.style.top = `${r.height - 120}px`;
+  knobEl.style.transform = '';
+  stickEl.classList.add('idle');
+}
+function nearestPad(x: number, y: number): 'drift' | 'brake' {
+  const c = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y); };
+  return c(padEls.drift) < c(padEls.brake) ? 'drift' : 'brake';
+}
+function syncPads() {
+  const on = new Set(padTouches.values());
+  padEls.drift.classList.toggle('on', on.has('drift'));
+  padEls.brake.classList.toggle('on', on.has('brake'));
+  touchState.drift = on.has('drift');
+  touchState.brake = on.has('brake');
+}
+function resetTouch() {
+  steerId = null;
+  touchSteer = 0;
+  padTouches.clear();
+  syncPads();
+  stickHome();
+}
+function moveStick(x: number, y: number) {
+  let dx = x - stickX;
+  // The stick follows a finger dragged past its edge, so reversing the steer is instant.
+  if (Math.abs(dx) > STICK_R) { stickX = x - Math.sign(dx) * STICK_R; dx = Math.sign(dx) * STICK_R; }
+  const dy = clamp(y - stickY, -STICK_R * 0.5, STICK_R * 0.5);
+  const s = dx / STICK_R;
+  const mag = Math.max(0, (Math.abs(s) - 0.08) / 0.92);
+  touchSteer = Math.sign(s) * Math.pow(mag, 1.35); // gentle near the middle, full lock at the edge
+  stickEl.style.left = `${stickX}px`;
+  stickEl.style.top = `${stickY}px`;
+  knobEl.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+const touchLayer = $('touch');
+const steerZone = $('tsteer');
+touchLayer.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const half = innerWidth / 2;
+  for (const t of Array.from(e.changedTouches)) {
+    if (t.clientX < half) {
+      if (steerId !== null) continue;
+      steerId = t.identifier;
+      const r = steerZone.getBoundingClientRect();
+      stickX = t.clientX - r.left;
+      stickY = t.clientY - r.top;
+      stickEl.classList.remove('idle');
+      moveStick(stickX, stickY);
+      $('thint').style.opacity = '0';
+    } else {
+      padTouches.set(t.identifier, nearestPad(t.clientX, t.clientY));
+    }
+  }
+  syncPads();
+}, { passive: false });
+touchLayer.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  for (const t of Array.from(e.changedTouches)) {
+    if (t.identifier === steerId) {
+      const r = steerZone.getBoundingClientRect();
+      moveStick(t.clientX - r.left, t.clientY - r.top);
+    } else if (padTouches.has(t.identifier)) {
+      padTouches.set(t.identifier, nearestPad(t.clientX, t.clientY));
+    }
+  }
+  syncPads();
+}, { passive: false });
+const endTouch = (e: TouchEvent) => {
+  e.preventDefault();
+  for (const t of Array.from(e.changedTouches)) {
+    if (t.identifier === steerId) { steerId = null; touchSteer = 0; stickHome(); }
+    padTouches.delete(t.identifier);
+  }
+  // Safety net: if the browser lost track of a finger, drop anything not on screen any more.
+  const live = new Set(Array.from(e.touches).map((t) => t.identifier));
+  if (steerId !== null && !live.has(steerId)) { steerId = null; touchSteer = 0; stickHome(); }
+  for (const id of [...padTouches.keys()]) if (!live.has(id)) padTouches.delete(id);
+  syncPads();
+};
+touchLayer.addEventListener('touchend', endTouch, { passive: false });
+touchLayer.addEventListener('touchcancel', endTouch, { passive: false });
+addEventListener('blur', resetTouch);
+document.addEventListener('visibilitychange', () => { if (document.hidden) resetTouch(); });
+addEventListener('resize', () => { if (steerId === null) stickHome(); });
 
 function readInput(): Input {
   if (botOn) return botInput();
   const k = (...c: string[]) => c.some((x) => keys.has(x));
-  const left = k('KeyA', 'ArrowLeft') || touchState.left, right = k('KeyD', 'ArrowRight') || touchState.right;
+  const left = k('KeyA', 'ArrowLeft'), right = k('KeyD', 'ArrowRight');
   const brk = k('KeyS', 'ArrowDown') || touchState.brake;
   const thr = k('KeyW', 'ArrowUp') || (touchMode && !brk && !keys.size);
-  return { thr: thr ? 1 : 0, brk: brk ? 1 : 0, steer: (right ? 1 : 0) - (left ? 1 : 0), drift: k('Space', 'ShiftLeft', 'ShiftRight') || touchState.drift };
+  const keySteer = (right ? 1 : 0) - (left ? 1 : 0);
+  return { thr: thr ? 1 : 0, brk: brk ? 1 : 0, steer: keySteer || touchSteer, drift: k('Space', 'ShiftLeft', 'ShiftRight') || touchState.drift };
 }
 
 /** Test rider: follows the shortest route using the maze's distance field. */
@@ -838,6 +937,7 @@ function setScreens(s: { menu?: boolean; done?: boolean; hud?: boolean; watch?: 
   show('hud', !!s.hud);
   show('watch', !!s.watch);
   show('touch', !!s.hud && touchMode);
+  resetTouch();
 }
 
 const prettyDay = (day: string) => new Date(day + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
