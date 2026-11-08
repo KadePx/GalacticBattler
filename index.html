@@ -62,6 +62,8 @@
       .gh { --accent: #ffd166; --shotbg: linear-gradient(135deg, #3c5a2a, #2a2018 60%, #14100c); }
       .ms .title { font-family: Bungee, sans-serif; font-size: 24px; color: #8fb0ff; }
       .mm .title { font-family: Bungee, sans-serif; font-size: 24px; color: #ffb27a; }
+      .cw .title { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 24px; letter-spacing: 0.5px; color: #a5b0ff; }
+      .cw { --accent: #7c8cff; --shotbg: linear-gradient(135deg, #1c3553, #121a2c 60%, #0a0d14); }
       .mm { --accent: #ff7a3d; --shotbg: linear-gradient(135deg, #ff7a3d, #40357f 60%, #20142a); }
       .ms { --accent: #6c9bff; --shotbg: linear-gradient(135deg, #2a5cf0, #1b2236 60%, #3a0d0a); }
       .rw { --accent: #8fe07a; --shotbg: linear-gradient(135deg, #3a4a2c, #2b313b 60%, #1a1d22); }
@@ -77,8 +79,21 @@
       </header>
 
       <section class="games">
+        <div class="game cw">
+          <a class="shot" href="/commonworld/" style="background-image: url(/thumbs/commonworld.jpg), var(--shotbg)" aria-label="Visit Commonworld"><span class="badge">NEW · LIVE WORLD</span></a>
+          <div class="body">
+            <h2 class="title">Commonworld</h2>
+            <p class="desc">One shared world that lives on its own, a year every hour. Found your own people once, then come back to see how their history unfolds.</p>
+            <div class="tags"><span>Idle</span><span>Civilization</span><span>Shared world</span></div>
+            <div class="row">
+              <a class="play" href="/commonworld/">Visit</a>
+              <span class="extra">Phone or desktop</span>
+            </div>
+          </div>
+        </div>
+
         <div class="game mm">
-          <a class="shot" href="/moto-maze/" style="background-image: url(/thumbs/moto-maze.jpg), var(--shotbg)" aria-label="Play Moto Maze"><span class="badge">NEW · DAILY</span></a>
+          <a class="shot" href="/moto-maze/" style="background-image: url(/thumbs/moto-maze.jpg), var(--shotbg)" aria-label="Play Moto Maze"><span class="badge">DAILY</span></a>
           <div class="body">
             <h2 class="title">MOTO MAZE</h2>
             <p class="desc">A new maze every day. Find the fastest way through on a motorbike: drift, jump and backflip, then watch every rider's run race at once.</p>

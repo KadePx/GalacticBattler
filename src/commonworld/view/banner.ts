@@ -6,11 +6,24 @@ import type { Civ } from '../sim/types';
 
 export interface BannerSpec { field: string; second: string; metal: string; division: number; charge: number }
 
-const METALS = ['#f2d27a', '#e9e4d8', '#1d1a17'];
+export const METALS = ['#f2d27a', '#e9e4d8', '#1d1a17'];
 export const DIVISIONS = ['plain', 'pale', 'fess', 'bend', 'chevron', 'quarterly', 'chief', 'saltire'];
 export const CHARGES = ['sun', 'star', 'crescent', 'tower', 'tree', 'waves', 'mountain', 'eye', 'none'];
 
+/** A banner from its five numbers: [hue, second, metal, division, charge]. */
+export function specFromNums(n: number[]): BannerSpec {
+  const [hue, second, metal, division, charge] = n;
+  return {
+    field: `hsl(${hue}, 60%, 42%)`,
+    second: second === 0 ? `hsl(${(hue + 180) % 360}, 45%, 30%)` : `hsl(${hue}, 55%, 22%)`,
+    metal: METALS[metal] ?? METALS[0],
+    division,
+    charge,
+  };
+}
+
 export function bannerSpec(c: Civ): BannerSpec {
+  if (c.banner) return specFromNums(c.banner);
   const r = new Rand(c.lex, 0xba22e2);
   const field = `hsl(${c.hue}, 60%, 42%)`;
   const second = r.chance(0.5) ? `hsl(${(c.hue + 180) % 360}, 45%, 30%)` : `hsl(${c.hue}, 55%, 22%)`;
@@ -31,7 +44,7 @@ function division(d: string, col: string): string {
 }
 
 function charge(c: string, col: string, cy: number): string {
-  const s = `fill="${col}" stroke="#120c07" stroke-width="1.5" stroke-linejoin="round"`;
+  const s = `fill="${col}" stroke="rgba(10,13,20,0.7)" stroke-width="1.5" stroke-linejoin="round"`;
   switch (c) {
     case 'sun': {
       let rays = '';
@@ -64,7 +77,7 @@ function charge(c: string, col: string, cy: number): string {
       return `<path d="${d}" fill="none" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`;
     }
     case 'mountain': return `<path d="M24 ${cy + 16} L42 ${cy - 16} L52 ${cy} L60 ${cy - 8} L76 ${cy + 16} Z" ${s}/>`;
-    case 'eye': return `<path d="M24 ${cy} Q50 ${cy - 22} 76 ${cy} Q50 ${cy + 22} 24 ${cy} Z" ${s}/><circle cx="50" cy="${cy}" r="7" fill="#120c07"/>`;
+    case 'eye': return `<path d="M24 ${cy} Q50 ${cy - 22} 76 ${cy} Q50 ${cy + 22} 24 ${cy} Z" ${s}/><circle cx="50" cy="${cy}" r="7" fill="#0a0d14"/>`;
     default: return '';
   }
 }
@@ -80,7 +93,7 @@ export function bannerSvg(spec: BannerSpec, px = 40): string {
       ${division(DIVISIONS[spec.division], spec.second)}
       ${charge(CHARGES[spec.charge], spec.metal, 50)}
     </g>
-    <path d="${outline}" fill="none" stroke="#120c07" stroke-width="3" stroke-linejoin="round"/>
-    <rect x="-3" y="-3" width="106" height="6" fill="#6b4f2a"/>
+    <path d="${outline}" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2" stroke-linejoin="round"/>
+    <rect x="-3" y="-3" width="106" height="5" rx="2" fill="#cfd5e3"/>
   </svg>`;
 }

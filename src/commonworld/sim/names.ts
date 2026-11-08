@@ -3,6 +3,7 @@
 // sound but gets new words.
 
 import { Rand } from './rng';
+import { isClean } from '../shared/text';
 
 const CONS = ['b', 'd', 'f', 'g', 'h', 'k', 'l', 'm', 'n', 'p', 'r', 's', 't', 'v', 'z', 'th', 'sh', 'kh', 'ch', 'q', 'y', 'w', 'j', 'dr', 'tr', 'gr'];
 const VOWS = ['a', 'e', 'i', 'o', 'u'];
@@ -57,7 +58,7 @@ function rawWord(p: Phon, r: Rand, minSyl: number, maxSyl: number): string {
         else w += r.pick(p.v);
       }
     }
-    if (w.length >= 3 && w.length <= 10 && !/(.)\1\1/.test(w)) return w;
+    if (w.length >= 3 && w.length <= 10 && !/(.)\1\1/.test(w) && isClean(w)) return w;
   }
   return 'ama';
 }
@@ -72,7 +73,8 @@ export function peopleName(phon: number, lex: number): string {
   const p = phonology(phon);
   let root = rawWord(p, new Rand(lex, 0x0c1f), 1, 2);
   if (/[aeiouy]$/.test(root) && /^[aeiou]/.test(p.end)) root = root.slice(0, -1);
-  return cap(root + p.end);
+  const name = cap(root + p.end);
+  return isClean(name) ? name : cap(root + 'ar');
 }
 
 export const NAME_KEY = { SETT: 1, RULER: 2, RIVER: 3, HOUSE: 4, GREAT: 5 } as const;

@@ -11,6 +11,17 @@ interface Env {
   DB: D1;
   CW_MS_PER_TICK?: string;
   CW_ADMIN_KEY?: string;
+  TURNSTILE_SITEKEY?: string;
+  TURNSTILE_SECRET?: string;
+}
+
+async function turnstile(secret: string, token: string, ip: string): Promise<boolean> {
+  const body = new FormData();
+  body.append('secret', secret);
+  body.append('response', token);
+  if (ip !== 'local') body.append('remoteip', ip);
+  const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body });
+  return ((await r.json()) as { success?: boolean }).success === true;
 }
 // Minimal shapes of the runtime types we use (avoids a types dependency).
 interface DurableObjectNamespace { idFromName(name: string): unknown; get(id: unknown): { fetch(r: Request): Promise<Response> } }
@@ -25,7 +36,12 @@ export class WorldDO extends DurableObject<Env> {
     this.host = new WorldHost(
       { get: (k) => storage.get<string>(k), put: (k, v) => storage.put(k, v) },
       env.DB,
-      { msPerTick: Number(env.CW_MS_PER_TICK) || 300_000, maxStep: 240, civs: 20, adminKey: env.CW_ADMIN_KEY, now: Date.now },
+      {
+        msPerTick: Number(env.CW_MS_PER_TICK) || 300_000, maxStep: 240, civs: 20, adminKey: env.CW_ADMIN_KEY, now: Date.now,
+        // The human check switches on once both Turnstile keys are set.
+        turnstileSiteKey: env.TURNSTILE_SECRET ? env.TURNSTILE_SITEKEY : undefined,
+        verifyHuman: env.TURNSTILE_SECRET ? (t, ip) => turnstile(env.TURNSTILE_SECRET!, t, ip) : undefined,
+      },
     );
   }
 

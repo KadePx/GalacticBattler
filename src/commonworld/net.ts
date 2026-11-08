@@ -19,14 +19,15 @@ export async function getJson<T>(path: string): Promise<T> {
 }
 
 async function getGz(path: string): Promise<string> {
-  const r = await fetch(API + path, { cache: path === 'static' ? 'default' : 'no-store' });
+  // Terrain never changes within a world, so it may be cached, but only under that world's id.
+  const r = await fetch(API + path, { cache: path.startsWith('static') ? 'default' : 'no-store' });
   if (!r.ok || !r.body) throw new Error(`${path}: ${r.status}`);
   return new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text();
 }
 
 export async function loadWorld(): Promise<{ w: World; st: ServerState }> {
   const st = await getJson<ServerState>('state');
-  const [stat, dyn] = await Promise.all([getGz('static'), getGz('snapshot')]);
+  const [stat, dyn] = await Promise.all([getGz(`static?world=${st.world}`), getGz('snapshot')]);
   return { w: assemble(stat, dyn), st };
 }
 

@@ -11,7 +11,7 @@ import { CORNERS, EDGE, HEX, hexPath, mapSize, neighborInDir, paintTerrain } fro
 
 export type Mode = 'political' | 'diplomacy' | 'trade' | 'population' | 'stability' | 'fertility' | 'terrain';
 export type Stance = 'self' | 'ally' | 'pact' | 'peace' | 'war';
-const STANCE_COLOR: Record<Stance, string> = { self: 'rgba(240,196,90,0.55)', ally: 'rgba(110,200,110,0.5)', pact: 'rgba(90,190,200,0.45)', peace: 'rgba(170,170,190,0.28)', war: 'rgba(225,70,55,0.55)' };
+const STANCE_COLOR: Record<Stance, string> = { self: 'rgba(124,140,255,0.6)', ally: 'rgba(110,200,110,0.5)', pact: 'rgba(90,190,200,0.45)', peace: 'rgba(170,170,190,0.28)', war: 'rgba(225,70,55,0.55)' };
 
 export interface MapState {
   owner: Int16Array;
@@ -52,6 +52,10 @@ export class MapView {
   private overlay!: Sprite;
   private icons = new Graphics();
   private routesG = new Graphics();
+  private markG = new Graphics();
+  private markText: Text[] = [];
+  private markers: number[] = [];
+  private markSel = -1;
   private hover = new Graphics();
   private selG = new Graphics();
   private labelLayer = new Container();
@@ -65,6 +69,8 @@ export class MapView {
   private mh = 0;
   private anim: { x: number; y: number; s: number; fx: number; fy: number; fs: number; t: number } | null = null;
   selTile = -1;
+  /** Screen space covered by panels, so focus() centres in the part of the map you can see. */
+  inset = { left: 0, bottom: 0 };
   onClick: (tile: number) => void = () => {};
   onHover: (tile: number, x: number, y: number) => void = () => {};
 
@@ -93,11 +99,13 @@ export class MapView {
     this.overlayCv.height = this.mh;
     this.overlayTex = Texture.from(this.overlayCv);
     this.overlay = new Sprite(this.overlayTex);
-    this.cam.addChild(this.terrain, this.overlay, this.routesG, this.icons, this.selG, this.hover);
+    this.cam.addChild(this.terrain, this.overlay, this.routesG, this.icons, this.selG, this.hover, this.markG);
     for (const t of this.civLabels.values()) t.destroy();
     for (const t of this.settLabels.values()) t.destroy();
     this.civLabels.clear();
     this.settLabels.clear();
+    this.labels = [];
+    this.state = null;
     this.lastKey = '';
     this.fit();
   }
@@ -119,7 +127,9 @@ export class MapView {
     const s = Math.max(this.cam.scale.x, this.fitScale * zoomRel);
     const sw = this.app.screen.width;
     const sh = this.app.screen.height;
-    this.anim = { x: this.cam.x, y: this.cam.y, s: this.cam.scale.x, fx: sw / 2 - x * s, fy: sh / 2 - y * s, fs: s, t: 0 };
+    const cx = this.inset.left + (sw - this.inset.left) / 2;
+    const cy = (sh - this.inset.bottom) / 2 + 20;
+    this.anim = { x: this.cam.x, y: this.cam.y, s: this.cam.scale.x, fx: cx - x * s, fy: cy - y * s, fs: s, t: 0 };
   }
 
   update(st: MapState): void {
@@ -231,19 +241,58 @@ export class MapView {
         g.moveTo(x1, y1);
         g.lineTo(x2, y2);
         if (st.mode === 'terrain') {
-          g.strokeStyle = 'rgba(20,15,10,0.35)';
+          g.strokeStyle = 'rgba(6,8,14,0.35)';
           g.lineWidth = 1;
           g.stroke();
           continue;
         }
         const hue = w.civs[o].hue;
-        g.strokeStyle = 'rgba(15,10,8,0.55)';
+        g.strokeStyle = 'rgba(6,8,14,0.55)';
         g.lineWidth = sel === o ? 5 : 3.5;
         g.stroke();
         g.strokeStyle = civColor(hue, sel === o ? 70 : 60, sel < 0 || sel === o ? 1 : 0.6);
         g.lineWidth = sel === o ? 3 : 2;
         g.stroke();
       }
+    }
+  }
+
+  // ---- Homeland markers (founding) ----
+
+  /** Numbered rings on the map; the selected one is gold. Empty list hides them. */
+  setMarkers(tiles: number[], sel: number): void {
+    this.markers = tiles;
+    this.markSel = sel;
+    while (this.markText.length < tiles.length) {
+      const t = this.makeText('', 13, '#0a0d14', 0);
+      t.anchor.set(0.5);
+      t.style.stroke = { color: '#ffffff', width: 3, join: 'round' };
+      this.cam.addChild(t);
+      this.markText.push(t);
+    }
+    this.drawMarkers();
+  }
+
+  private drawMarkers(): void {
+    const g = this.markG;
+    g.clear();
+    const k = this.iconScale();
+    this.markText.forEach((t, i) => {
+      const tile = this.markers[i];
+      t.visible = tile !== undefined && this.markers.length > 1;
+      if (!t.visible) return;
+      const [cx, cy] = tileCenter(this.w.W, tile, HEX);
+      t.text = String(i + 1);
+      t.scale.set(k * 0.9);
+      t.position.set(cx, cy - 26 * k);
+    });
+    for (const tile of this.markers) {
+      const [cx, cy] = tileCenter(this.w.W, tile, HEX);
+      const on = tile === this.markSel;
+      g.circle(cx, cy, (on ? 22 : 17) * k).stroke({ width: (on ? 3.5 : 2.2) * k, color: on ? 0x7c8cff : 0xffffff, alpha: on ? 1 : 0.8 });
+      if (on) g.circle(cx, cy, 30 * k).stroke({ width: 1.5 * k, color: 0x7c8cff, alpha: 0.5 });
+      // Radius of the land they would first work.
+      g.circle(cx, cy, HEX * 3.2).fill({ color: on ? 0x7c8cff : 0xffffff, alpha: on ? 0.14 : 0.06 });
     }
   }
 
@@ -286,7 +335,7 @@ export class MapView {
       const [cx, cy] = tileCenter(w.W, tile, HEX);
       const r = 2.6 * k;
       g.moveTo(cx - r, cy - r).lineTo(cx + r, cy + r).moveTo(cx + r, cy - r).lineTo(cx - r, cy + r)
-        .stroke({ width: 1.4 * k, color: 0x3a2f28, alpha: 0.85 });
+        .stroke({ width: 1.4 * k, color: 0x1c2130, alpha: 0.85 });
     }
     for (const tile of st.sieges) {
       const [cx, cy] = tileCenter(w.W, tile, HEX);
@@ -299,7 +348,7 @@ export class MapView {
       const y = cy - 8 * k;
       const r = 3.6 * k;
       g.moveTo(x - r, y - r).lineTo(x + r, y + r).moveTo(x + r, y - r).lineTo(x - r, y + r)
-        .stroke({ width: 3.4 * k, color: 0x1a0d08 })
+        .stroke({ width: 3.4 * k, color: 0x0a0d14 })
         .moveTo(x - r, y - r).lineTo(x + r, y + r).moveTo(x + r, y - r).lineTo(x - r, y + r)
         .stroke({ width: 1.8 * k, color: 0xff6a4d });
     }
@@ -307,7 +356,7 @@ export class MapView {
       const [cx, cy] = tileCenter(w.W, tile, HEX);
       const r = 3 * k;
       g.poly([cx + 6 * k, cy - 7 * k - r, cx + 6 * k + r, cy - 7 * k + r, cx + 6 * k - r, cy - 7 * k + r])
-        .fill({ color: 0xf0c45a }).stroke({ width: 1, color: 0x3a2a10 });
+        .fill({ color: 0xf5c451 }).stroke({ width: 1, color: 0x0a0d14 });
     }
     for (const s of st.setts) {
       const [cx, cy] = tileCenter(w.W, s.tile, HEX);
@@ -315,9 +364,9 @@ export class MapView {
       const col = civHex(w.civs[s.civ].hue, 45);
       const dim = st.selCiv >= 0 && st.selCiv !== s.civ ? 0.45 : 1;
       if (st.capitals.has(s.id)) {
-        g.star(cx, cy, 5, r + 3.2 * k, (r + 3.2 * k) * 0.5).fill({ color: 0xf3cf6b, alpha: dim }).stroke({ width: 1.2, color: 0x2a1d0e, alpha: dim });
+        g.star(cx, cy, 5, r + 3.2 * k, (r + 3.2 * k) * 0.5).fill({ color: 0xffffff, alpha: dim }).stroke({ width: 1.2, color: 0x0a0d14, alpha: dim });
       }
-      g.circle(cx, cy, r).fill({ color: 0xfff4dc, alpha: dim }).stroke({ width: 1.6 * Math.min(1.4, k), color: col, alpha: dim });
+      g.circle(cx, cy, r).fill({ color: 0xf6f8fc, alpha: dim }).stroke({ width: 1.6 * Math.min(1.4, k), color: col, alpha: dim });
       if (s.tier >= 3) g.circle(cx, cy, r * 0.45).fill({ color: col, alpha: dim });
     }
   }
@@ -329,7 +378,7 @@ export class MapView {
     const [cx, cy] = tileCenter(this.w.W, this.selTile, HEX);
     const pts: number[] = [];
     for (const [x, y] of CORNERS) pts.push(cx + x * HEX, cy + y * HEX);
-    g.poly(pts).stroke({ width: 2.5, color: 0xffe28a });
+    g.poly(pts).stroke({ width: 2.5, color: 0x7c8cff });
   }
 
   // ---- Labels ----
@@ -339,13 +388,13 @@ export class MapView {
       text: s,
       resolution: 2,
       style: {
-        fontFamily: 'Cormorant Garamond, Georgia, serif',
+        fontFamily: 'Inter, system-ui, sans-serif',
         fontSize: size,
-        fontWeight: '700',
+        fontWeight: '600',
         fontStyle: italic ? 'italic' : 'normal',
         fill: color,
         letterSpacing: spacing,
-        stroke: { color: '#120c07', width: Math.max(3, size / 5), join: 'round' },
+        stroke: { color: '#0a0d14', width: Math.max(3, size / 5), join: 'round' },
       },
     });
   }
@@ -367,9 +416,9 @@ export class MapView {
     const labels: Label[] = [];
     for (const [civ, [ax, ay, n]] of sx) {
       let t = this.civLabels.get(civ);
-      const name = w.civs[civ].name.toUpperCase();
+      const name = (w.civs[civ].founder ? '★ ' : '') + w.civs[civ].name.toUpperCase();
       if (!t) {
-        t = this.makeText(name, 22, civColor(w.civs[civ].hue, 78), 4);
+        t = this.makeText(name, 20, civColor(w.civs[civ].hue, 80), 5);
         t.anchor.set(0.5);
         this.civLabels.set(civ, t);
         this.labelLayer.addChild(t);
@@ -385,7 +434,7 @@ export class MapView {
       alive.add(s.id);
       let t = this.settLabels.get(s.id);
       if (!t) {
-        t = this.makeText(w.setts[s.id].name, 13, '#fff1d2', 0.5);
+        t = this.makeText(w.setts[s.id].name, 12, '#f1f4fa', 0.3);
         t.anchor.set(0.5, 1);
         this.settLabels.set(s.id, t);
         this.labelLayer.addChild(t);
@@ -443,6 +492,7 @@ export class MapView {
   private afterCamera(): void {
     this.drawIcons();
     this.drawRoutes();
+    if (this.markers.length) this.drawMarkers();
     this.placeLabels();
   }
 

@@ -2,7 +2,7 @@
 // Rule for all of src/commonworld/sim: no Math.random, Date, DOM, or Math.sin/exp/pow
 // (those can differ between JS engines); only + - * / sqrt floor on numbers.
 
-export const SIM_V = 3;
+export const SIM_V = 4;
 export const TICKS_PER_YEAR = 12; // one tick = one game month
 
 export const VALUES = [
@@ -79,7 +79,10 @@ export interface Civ {
   born: number;
   died: number; // -1 while alive
   capital: number; // settlement id
-  founder: string | null; // player id, null for an ancient AI civ
+  founder: string | null; // hash of the founding player's id, null for AI civs
+  byName: string; // the founder's chosen display name ('' if none)
+  banner: number[] | null; // [hue, second, metal, division, charge] chosen at founding
+  protectedUntil: number; // tick; a young player civ can't be attacked before this
   parent: number; // civ it broke away from, -1
   motto: string;
   goal: Goal;
@@ -217,8 +220,21 @@ export interface World {
   age: number; // world age, 0 = Dawn
   log: Ev[];
   logBase: number; // global id of log[0]; the server moves old events out to storage
+  reserves: number[]; // frontier tiles held open for players to found on; AI settlers keep clear
 }
 
 /** Intents from players, applied at the start of the next tick. */
-export type Input =
-  | { k: 'found'; founder: string; tile: number; name?: string; values: ValueId[]; motto?: string };
+export interface FoundInput {
+  k: 'found';
+  founder: string; // hash of the player's id (the raw id never enters the world)
+  tile: number;
+  values: ValueId[];
+  name?: string; // people name
+  capital?: string; // capital name
+  motto?: string;
+  byName?: string;
+  banner?: number[];
+  phon?: number; // language chosen from suggestions
+  lex?: number;
+}
+export type Input = FoundInput;

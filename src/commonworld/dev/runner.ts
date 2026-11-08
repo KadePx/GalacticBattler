@@ -7,7 +7,8 @@
 //   npm run world -- golden --update     accept the current result as the new golden hash
 
 import { recent } from '../chronicle';
-import { suggestSpots } from '../sim/civ';
+import { foundingSpots } from '../sim/civ';
+import { lateBoon } from '../sim/step';
 import { createWorld, deserialize, serialize, step, worldHash, AGES, VALUES, type World } from '../sim/index';
 import { civAge } from '../sim/techs';
 
@@ -121,6 +122,9 @@ Wars: ${w.wars.length} (${w.wars.filter((x) => x.end < 0).length} ongoing), avg 
   const ages = AGES.map((_, i) => alive.filter((c) => civAge(c) === i).length);
   console.log(`World age: ${AGES[w.age]}. Civs by age: ${AGES.map((a, i) => `${a} ${ages[i]}`).join(', ')}`);
   console.log(`Great people alive: ${alive.reduce((a, c) => a + c.greats.length, 0)}`);
+  const spots = foundingSpots(w, 5);
+  const boon = lateBoon(w);
+  console.log(`Founding now: ${spots.length} homelands open (${w.reserves.length} reserves); a newcomer gets ${boon.pop} people, ${boon.techs.length} techs`);
   const dead = w.civs.filter((c) => c.died >= 0).length;
   console.log(`Fallen civs: ${dead}. Ruins: ${w.setts.filter((s) => s.died >= 0).length}. Log size: ${w.log.length} events, save size ${k(serialize(w).length)}B`);
 
@@ -138,7 +142,7 @@ function goldenRun(splitAt: number): World {
   let w = createWorld({ seed: 12345, civs: 20 });
   for (let t = 0; t < YEARS * 12; t++) {
     if (t === splitAt) w = deserialize(serialize(w));
-    const inputs = t === 100 * 12 ? [{ k: 'found' as const, founder: 'golden-test', tile: suggestSpots(w, 1, 1)[0] ?? 0, values: ['curious', 'seafaring', 'devout'] as never }] : [];
+    const inputs = t === 100 * 12 ? [{ k: 'found' as const, founder: 'golden-test', tile: foundingSpots(w, 1)[0] ?? 0, values: ['curious', 'seafaring', 'devout'] as never }] : [];
     step(w, inputs);
   }
   return w;

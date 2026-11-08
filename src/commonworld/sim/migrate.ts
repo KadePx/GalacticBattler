@@ -11,6 +11,15 @@ const STEPS: Record<number, (o: Raw) => void> = {
   2: (o) => {
     o.logBase = 0;
   },
+  // v3 -> v4: founding. Civs gain banner/byName/protection; the world keeps frontier reserves.
+  3: (o) => {
+    for (const c of o.civs as Record<string, unknown>[]) {
+      c.byName = '';
+      c.banner = null;
+      c.protectedUntil = -1;
+    }
+    o.reserves = [];
+  },
 };
 
 export function migrate(o: Raw): Raw {

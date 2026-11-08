@@ -4,9 +4,11 @@
 // answers the /api/cw/* requests. It has no Cloudflare-specific code, so it can be tested anywhere.
 
 import {
-  createWorld, serializeDynamic, serializeStatic, assemble, stateHash, step, SIM_V, TICKS_PER_YEAR,
-  type Input, type World,
+  createWorld, serializeDynamic, serializeStatic, assemble, stateHash, step, SIM_V, TICKS_PER_YEAR, VALUES,
+  type FoundInput, type Input, type ValueId, type World,
 } from '../sim/index';
+import { canFoundAt } from '../sim/civ';
+import { cleanBanner, cleanByName, cleanMotto, founderHash, isFounderId, properName } from '../shared/text';
 import { frameToWire, yearRecord, type YearRecord } from '../history';
 import type { D1, D1Stmt } from '../../net/db';
 
@@ -21,7 +23,11 @@ export interface HostOpts {
   civs: number; // ancient civs in a brand-new world
   adminKey?: string;
   now: () => number;
+  turnstileSiteKey?: string; // shown to the founding screen; undefined = no human check
+  verifyHuman?: (token: string, ip: string) => Promise<boolean>;
 }
+
+const FOUNDINGS_PER_IP_PER_DAY = 3;
 
 interface Meta { id: string; seed: number; epoch: number; created: number }
 
@@ -46,6 +52,11 @@ async function schema(db: D1): Promise<void> {
       world TEXT NOT NULL, seq INTEGER NOT NULL, tick INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY (world, seq)
     )`),
     db.prepare('CREATE INDEX IF NOT EXISTS cw_inputs_tick ON cw_inputs (world, tick)'),
+    db.prepare(`CREATE TABLE IF NOT EXISTS cw_foundings (
+      world TEXT NOT NULL, founder TEXT NOT NULL, ip TEXT NOT NULL, tile INTEGER NOT NULL, status TEXT NOT NULL,
+      civ INTEGER, created INTEGER NOT NULL, PRIMARY KEY (world, founder)
+    )`),
+    db.prepare('CREATE INDEX IF NOT EXISTS cw_foundings_ip ON cw_foundings (world, ip, created)'),
     db.prepare(`CREATE TABLE IF NOT EXISTS cw_snaps (
       world TEXT NOT NULL, tick INTEGER NOT NULL, kind TEXT NOT NULL, v INTEGER NOT NULL,
       data TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY (world, tick, kind)
@@ -155,6 +166,13 @@ export class WorldHost {
         if (w.tick % TICKS_PER_YEAR === 0) years.push(yearRecord(w, FRAME_EVERY));
       }
       if (!n) return 0;
+      // Tell founders whether their people arrived (the land may have been taken meanwhile).
+      for (const inp of inputs) {
+        const f = (JSON.parse(inp.body) as FoundInput).founder;
+        const c = w.civs.find((x) => x.founder === f);
+        await this.db.prepare('UPDATE cw_foundings SET status = ?1, civ = ?2 WHERE world = ?3 AND founder = ?4')
+          .bind(c ? 'founded' : 'failed', c ? c.id : null, this.meta.id, f).run();
+      }
       await this.flush(years, inputs);
       await this.persist();
       const yearAfter = Math.floor(w.tick / TICKS_PER_YEAR);
@@ -217,6 +235,7 @@ export class WorldHost {
     const path = url.pathname.replace(/^\/api\/cw\/?/, '');
     try {
       if (path.startsWith('admin/')) return await this.admin(path.slice(6), req);
+      if (path === 'found' && req.method === 'POST') return await this.found(req);
       const w = await this.serial(() => this.load());
       const q = url.searchParams;
       switch (path) {
@@ -224,10 +243,22 @@ export class WorldHost {
           return json({
             world: this.meta.id, simV: SIM_V, tick: w.tick, epoch: this.meta.epoch, msPerTick: this.o.msPerTick,
             now: this.o.now(), next: this.nextTickAt(), hash: stateHash(w), logBase: w.logBase,
+            turnstile: this.o.turnstileSiteKey ?? null, pendingFoundings: this.pending.length,
           });
+        case 'me': {
+          // Where a founder's people stand: founded, on the road, failed to settle, or not yet.
+          const f = q.get('f') ?? '';
+          const civ = w.civs.find((c) => c.founder === f);
+          if (civ) return json({ status: 'founded', civ: civ.id });
+          if (this.pending.some((p) => p.founder === f)) return json({ status: 'pending', eta: this.nextTickAt(), now: this.o.now() });
+          const row = await this.db.prepare('SELECT status FROM cw_foundings WHERE world = ?1 AND founder = ?2').bind(this.meta.id, f).first<{ status: string }>();
+          return json({ status: row?.status === 'failed' ? 'failed' : 'none' });
+        }
         case 'static': {
+          // Cacheable only when asked for by world id, so a new world never gets old terrain.
           this.staticGz ??= await gzip(serializeStatic(w));
-          return new Response(this.staticGz, { headers: { 'content-type': 'application/octet-stream', 'cache-control': 'public, max-age=86400', 'x-world': this.meta.id } });
+          const cache = q.get('world') === this.meta.id ? 'public, max-age=86400, immutable' : 'no-store';
+          return new Response(this.staticGz, { headers: { 'content-type': 'application/octet-stream', 'cache-control': cache, 'x-world': this.meta.id } });
         }
         case 'snapshot': {
           const key = `${this.meta.id}:${w.tick}`;
@@ -274,6 +305,56 @@ export class WorldHost {
     }
   }
 
+  /** POST /found: a player founds their one people. Applied at the next tick. */
+  private async found(req: Request): Promise<Response> {
+    const text = await req.text();
+    if (text.length > 4000) return json({ error: 'too large' }, 413);
+    let b: Record<string, unknown>;
+    try { b = JSON.parse(text); } catch { return json({ error: 'bad json' }, 400); }
+    if (!isFounderId(b.id)) return json({ error: 'bad id' }, 400);
+    const f = await founderHash(b.id);
+    const values = Array.isArray(b.values) ? [...new Set(b.values)] : [];
+    if (values.length !== 3 || !values.every((v) => (VALUES as readonly unknown[]).includes(v))) return json({ error: 'choose three values' }, 400);
+    const name = b.name === undefined || b.name === '' ? undefined : properName(b.name);
+    const capital = b.capital === undefined || b.capital === '' ? undefined : properName(b.capital);
+    const motto = cleanMotto(b.motto ?? '');
+    const byName = cleanByName(b.byName ?? '');
+    const banner = cleanBanner(b.banner);
+    if (name === null) return json({ error: 'that people name is not allowed' }, 400);
+    if (capital === null) return json({ error: 'that capital name is not allowed' }, 400);
+    if (motto === null) return json({ error: 'that motto is not allowed' }, 400);
+    if (byName === null) return json({ error: 'that name is not allowed' }, 400);
+    if (!banner) return json({ error: 'bad banner' }, 400);
+    const u32 = (x: unknown) => (Number.isInteger(x) && (x as number) >= 0 && (x as number) <= 0xffffffff ? (x as number) : undefined);
+    const ip = req.headers.get('cf-connecting-ip') ?? 'local';
+    const ipKey = (await founderHash(`ip:${ip}`)).slice(1);
+
+    // Check the human first, outside the world lock (it is a network call).
+    if (this.o.verifyHuman && !(await this.o.verifyHuman(String(b.token ?? ''), ip))) return json({ error: 'the human check failed; please try again' }, 403);
+
+    return this.serial(async () => {
+      const w = await this.load();
+      if (w.civs.some((c) => c.founder === f) || this.pending.some((p) => p.founder === f)) return json({ error: 'you have already founded a people' }, 409);
+      const prev = await this.db.prepare('SELECT status FROM cw_foundings WHERE world = ?1 AND founder = ?2').bind(this.meta.id, f).first<{ status: string }>();
+      if (prev && prev.status !== 'failed') return json({ error: 'you have already founded a people' }, 409);
+      const recent = await this.db.prepare('SELECT COUNT(*) AS n FROM cw_foundings WHERE world = ?1 AND ip = ?2 AND created > ?3')
+        .bind(this.meta.id, ipKey, this.o.now() - 86_400_000).first<{ n: number }>();
+      if ((recent?.n ?? 0) >= FOUNDINGS_PER_IP_PER_DAY) return json({ error: 'too many foundings from this network today' }, 429);
+      const tile = Number(b.tile);
+      if (!Number.isInteger(tile) || !canFoundAt(w, tile)) return json({ error: 'that land is no longer free; choose another' }, 409);
+      if (this.pending.some((p) => p.tile === tile)) return json({ error: 'another people is already heading there; choose another' }, 409);
+      const inp: FoundInput = {
+        k: 'found', founder: f, tile, values: values as ValueId[], name, capital, motto: motto || undefined,
+        byName: byName || undefined, banner, phon: u32(b.phon), lex: u32(b.lex),
+      };
+      this.pending.push(inp);
+      await this.kv.put('pending', JSON.stringify(this.pending));
+      await this.db.prepare('INSERT OR REPLACE INTO cw_foundings (world, founder, ip, tile, status, civ, created) VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6)')
+        .bind(this.meta.id, f, ipKey, tile, 'pending', this.o.now()).run();
+      return json({ ok: true, founder: f, eta: this.nextTickAt(), now: this.o.now() });
+    });
+  }
+
   private async admin(cmd: string, req: Request): Promise<Response> {
     if (!this.o.adminKey || req.headers.get('x-admin-key') !== this.o.adminKey) return json({ error: 'forbidden' }, 403);
     const body = req.method === 'POST' ? ((await req.json().catch(() => ({}))) as { seed?: number; civs?: number }) : {};
@@ -290,6 +371,7 @@ export class WorldHost {
           this.db.prepare('DELETE FROM cw_events WHERE world = ?1').bind(old),
           this.db.prepare('DELETE FROM cw_years WHERE world = ?1').bind(old),
           this.db.prepare('DELETE FROM cw_inputs WHERE world = ?1').bind(old),
+          this.db.prepare('DELETE FROM cw_foundings WHERE world = ?1').bind(old),
         ]);
         const seed = Number.isFinite(body.seed) ? Number(body.seed) : this.o.now() % 1_000_000_007;
         await this.create(seed, Number(body.civs) || this.o.civs);

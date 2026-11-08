@@ -1,8 +1,8 @@
 // One tick = one game month. step() is the only thing that moves the world forward.
 
 import {
-  TIER_POP, claimTiles, ev, foundCiv, foundSettlement, has, killSett, mods, recount, scoreSite,
-  spawnCiv, tally, tierFor, type Mods,
+  TIER_POP, canFoundAt, claimTiles, ev, foundCiv, foundSettlement, has, killSett, mods, recount, scoreSite,
+  spawnCiv, tally, tendReserves, tierFor, type Mods,
 } from './civ';
 import { rel, relOf, yearlyDiplo } from './diplo';
 import { invest, isCoastal, luxuryCount, settIncome, yearlyEcon } from './econ';
@@ -94,11 +94,32 @@ function markWars(w: World): void {
 function applyInput(w: World, inp: Input): void {
   if (inp.k === 'found') {
     if (w.civs.some((c) => c.founder === inp.founder)) return; // one founding per person
-    if (scoreSite(w, null, inp.tile) === -Infinity) return;
+    if (!canFoundAt(w, inp.tile)) return;
     const values = [...new Set(inp.values)].filter((v) => (VALUES as readonly string[]).includes(v));
     if (values.length !== 3) return;
-    foundCiv(w, { tile: inp.tile, values, founder: inp.founder, name: inp.name, motto: inp.motto, pop: 120 });
+    // Late arrivals get a head start scaled to the age of the world, but still start small.
+    const boon = lateBoon(w);
+    const c = foundCiv(w, {
+      tile: inp.tile, values, founder: inp.founder, name: inp.name, capital: inp.capital, motto: inp.motto,
+      byName: inp.byName, banner: inp.banner, phon: inp.phon, lex: inp.lex, pop: boon.pop,
+    });
+    c.techs = boon.techs;
+    c.protectedUntil = w.tick + 30 * TICKS_PER_YEAR;
+    c.army = Math.floor(boon.pop * 0.02);
+    w.setts[c.capital].mat += boon.mat;
+    w.reserves = w.reserves.filter((t) => hexDist(w.W, t, inp.tile) > 4);
   }
+}
+
+/** What a newcomer starts with: the knowledge most peoples share, and more settlers in later ages. */
+export function lateBoon(w: World): { pop: number; mat: number; techs: number[] } {
+  const alive = w.civs.filter((c) => c.died < 0);
+  const known = new Set<number>();
+  for (const t of TECHS) {
+    const n = alive.filter((c) => c.techs.includes(t.id)).length;
+    if (alive.length && n * 2 >= alive.length && t.req.every((r) => known.has(r))) known.add(t.id);
+  }
+  return { pop: 120 + 60 * w.age, mat: 40 + 40 * w.age, techs: [...known] };
 }
 
 // ---- Monthly ----
@@ -571,4 +592,5 @@ function yearly(w: World): void {
   considerWar(w, border, canGrow);
   contacts(w);
   worldAge(w);
+  tendReserves(w);
 }

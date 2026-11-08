@@ -52,7 +52,18 @@ export function localApi(): Plugin {
     db ??= await fakeD1(resolve(dir, 'local-api.sqlite'));
     const mod = (await server.ssrLoadModule('/src/commonworld/server/host.ts')) as { WorldHost: new (...a: unknown[]) => DevWorld };
     const msPerTick = Number(process.env.CW_MS_PER_TICK) || 300_000;
-    world = new mod.WorldHost(fileKV(resolve(dir, 'cw')), db, { msPerTick, maxStep: 2400, civs: 20, adminKey: process.env.CW_ADMIN_KEY ?? 'dev', now: Date.now });
+    // Cloudflare's always-pass Turnstile test keys, so the founding screen's human check runs locally.
+    const verifyHuman = async (token: string) => {
+      const body = new FormData();
+      body.append('secret', '1x0000000000000000000000000000000AA');
+      body.append('response', token);
+      const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body }).catch(() => null);
+      return r ? ((await r.json()) as { success?: boolean }).success === true : true;
+    };
+    world = new mod.WorldHost(fileKV(resolve(dir, 'cw')), db, {
+      msPerTick, maxStep: 2400, civs: 20, adminKey: process.env.CW_ADMIN_KEY ?? 'dev', now: Date.now,
+      turnstileSiteKey: '1x00000000000000000000AA', verifyHuman,
+    });
     setInterval(() => { world?.advance().catch((e) => console.error('[cw]', e)); }, Math.min(msPerTick, 30_000));
     return world;
   }

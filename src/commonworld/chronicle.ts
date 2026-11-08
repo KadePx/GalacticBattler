@@ -34,6 +34,11 @@ export function line(w: World, e: Ev, idx: number): Line {
   let text: string;
   switch (e.k) {
     case 'found_civ':
+      if (e.a !== undefined && w.civs[e.a]?.founder) {
+        const by = w.civs[e.a].byName;
+        text = `${Pc(e.a)} arrived from beyond the known lands and lit their first hearth at ${T(e.s)}, led by ${e.x}${by ? `. They were founded by ${by}` : ''}.`;
+        break;
+      }
       text = pick(
         `${Pc(e.a)} came to ${T(e.s)} and lit the first hearth, led by ${e.x}.`,
         `Under ${e.x}, ${P(e.a)} settled at ${T(e.s)}. Here their story begins.`,

@@ -106,12 +106,12 @@ function chart(ctx: Ctx, civ: number): string {
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     <path d="${area}" fill="${civColor(hue, 50, 0.18)}"/>
     <path d="${path(ser.pop, yP)}" fill="none" stroke="${civColor(hue, 62)}" stroke-width="2"/>
-    <path d="${path(ser.tiles, (v) => H - 14 - (v / maxT) * (H - 26))}" fill="none" stroke="#b0a084" stroke-width="1.2" stroke-dasharray="4 3"/>
-    <line x1="${x(vi)}" x2="${x(vi)}" y1="4" y2="${H - 14}" stroke="#e3b65c" stroke-width="1.2"/>
-    <text x="4" y="${H - 2}" fill="#7d6f59" font-size="11">${ser.from} AW</text>
-    <text x="${W - 4}" y="${H - 2}" fill="#7d6f59" font-size="11" text-anchor="end">${ser.from + n - 1} AW</text>
-    <text x="4" y="12" fill="#7d6f59" font-size="11">peak ${fmt(maxP)}</text>
-  </svg><div class="legend"><i style="background:${civColor(hue, 62)}"></i>people<i style="background:#b0a084"></i>land held</div>`;
+    <path d="${path(ser.tiles, (v) => H - 14 - (v / maxT) * (H - 26))}" fill="none" stroke="#9aa4b8" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <line x1="${x(vi)}" x2="${x(vi)}" y1="4" y2="${H - 14}" stroke="#7c8cff" stroke-width="1.2"/>
+    <text x="4" y="${H - 2}" fill="#636c80" font-size="11">${ser.from} AW</text>
+    <text x="${W - 4}" y="${H - 2}" fill="#636c80" font-size="11" text-anchor="end">${ser.from + n - 1} AW</text>
+    <text x="4" y="12" fill="#636c80" font-size="11">peak ${fmt(maxP)}</text>
+  </svg><div class="legend"><i style="background:${civColor(hue, 62)}"></i>people<i style="background:#9aa4b8"></i>land held</div>`;
 }
 
 export function civHtml(ctx: Ctx, id: number): string {
@@ -124,15 +124,16 @@ export function civHtml(ctx: Ctx, id: number): string {
   const alive = aliveAt(c, year);
   const sub = c.parent >= 0
     ? `Broke away from the <a href="#" data-civ="${c.parent}">${esc(w.civs[c.parent].name)}</a> in ${yearOf(c.born)} AW`
-    : c.founder ? `Founded ${yearOf(c.born)} AW by ${esc(c.founder)}` : `An ancient people, settled ${yearOf(c.born)} AW`;
+    : c.founder ? `Founded ${yearOf(c.born)} AW${c.byName ? ` by ${esc(c.byName)}` : ' by a visitor'}` : `An ancient people, settled ${yearOf(c.born)} AW`;
   const capital = w.setts[c.capital];
-  // Innovations learned by the shown year, in order.
-  let learned = 0;
-  for (const e of w.log) {
-    if (e.t > until) break;
-    if (e.a === id && e.k === 'tech') learned++;
+  // Techs known by the shown year: everything, minus what was learned later (starting
+  // knowledge has no event, so count back from the end).
+  let later = 0;
+  for (let i = w.log.length - 1; i >= 0 && w.log[i].t > until; i--) {
+    const e = w.log[i];
+    if (e.a === id && e.k === 'tech') later++;
   }
-  const innos = c.techs.slice(0, learned);
+  const innos = c.techs.slice(0, Math.max(0, c.techs.length - later));
 
   const rs = rulers(w, id, until);
   const rulerRows = rs.slice().reverse().map((r) => `<tr><td>${esc(r.name)}</td><td class="r">${r.from}–${r.to ?? (alive ? 'now' : '')}</td><td class="r">${(r.to ?? year) - r.from} yrs</td></tr>`).join('');

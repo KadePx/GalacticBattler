@@ -6,10 +6,12 @@ import { decodeOwner, frameRoutes, frameSetts, History, liveSetts, type SettView
 import { line } from './chronicle';
 import { createWorld, serialize, step, worldHash, AGES, TICKS_PER_YEAR, TIER_NAMES, type World } from './sim/index';
 import { BIOMES } from './sim/worldgen';
-import { loadOlderEvents, loadWorld, loadYears, sync } from './net';
+import { getJson, loadOlderEvents, loadWorld, loadYears, sync } from './net';
+import { myHash } from './identity';
+import { Founding, type Pending } from './view/founding';
 import { SIM_V } from './sim/types';
 import { MapView, civColor, type MapState, type Mode, type Stance } from './view/map';
-import { chronHtml, civHtml, esc, fmt, inspectHtml, peoplesHtml, type Ctx } from './view/panels';
+import { banner, chronHtml, civHtml, esc, fmt, inspectHtml, peoplesHtml, type Ctx } from './view/panels';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const q = new URLSearchParams(location.search);
@@ -25,6 +27,12 @@ let playing = true;
 let worldId = '';
 let clockSkew = 0; // server time minus local time
 let nextAt = 0; // server time of the next month
+let turnstileKey: string | null = null;
+let me = ''; // public hash of this visitor
+let myCiv = -1; // the people this visitor founded
+let pending: Pending | null = null; // settlers on the road
+let founding: Founding | null = null;
+try { pending = JSON.parse(localStorage.getItem('cw.pending') ?? 'null'); } catch { pending = null; }
 let speed = 5; // years per second
 let mode: Mode = 'political';
 let selCiv = -1;
@@ -155,7 +163,7 @@ const SEASONS = ['deep winter', 'late winter', 'early spring', 'spring', 'late s
 function updateTop(): void {
   const y = shownYear();
   const yearEl = $('year');
-  yearEl.textContent = `Year ${y} AW`;
+  yearEl.innerHTML = `${online || viewYear !== null ? '<span class="live"></span> ' : ''}Year ${y} AW`;
   yearEl.classList.toggle('past', viewYear !== null);
   const v = view();
   const civs = new Set(v.setts.map((s) => s.civ));
@@ -177,7 +185,7 @@ function updateTop(): void {
 // ---- Timeline ----
 
 const track = $('track');
-const MARK_KINDS: Record<string, string> = { found_civ: '#e3b65c', secede: '#d68fd0', crisis: '#d68fd0', civ_fall: '#ff4a3a', war: '#e8873a', conquest: '#c0392b', plague_start: '#9fcf6a', monument: '#7fb6e8', age: '#ffffff' };
+const MARK_KINDS: Record<string, string> = { found_civ: '#7c8cff', secede: '#d68fd0', crisis: '#d68fd0', civ_fall: '#ff4a3a', war: '#e8873a', conquest: '#c0392b', plague_start: '#9fcf6a', monument: '#7fb6e8', age: '#ffffff' };
 let marksFor = '';
 
 function updateTimeline(): void {
@@ -197,11 +205,15 @@ function updateTimeline(): void {
   for (const e of w.log) {
     const col = MARK_KINDS[e.k];
     if (!col || (e.k === 'found_civ' && e.t === 0)) continue;
-    if (selCiv >= 0 ? e.a !== selCiv && e.b !== selCiv && e.k !== 'age' : e.k === 'monument' || e.k === 'conquest') continue;
-    marks.push(`<div class="mk" style="left:${(100 * e.t) / TICKS_PER_YEAR / max}%;background:${col}"></div>`);
+    const player = e.k === 'found_civ' && e.a !== undefined && !!w.civs[e.a]?.founder;
+    // With no one selected, only the turning points of the world: new ages, falls, newcomers.
+    if (selCiv >= 0 ? e.a !== selCiv && e.b !== selCiv && e.k !== 'age' : !(e.k === 'age' || e.k === 'civ_fall' || player)) continue;
+    const big = e.k === 'age' || player || e.k === 'civ_fall';
+    marks.push(`<div class="mk ${big ? 'big' : ''}" style="left:${(100 * e.t) / TICKS_PER_YEAR / max}%;background:${col};color:${col}"></div>`);
   }
   $('marks').innerHTML = marks.slice(-400).join('');
-  const stepY = [10, 25, 50, 100, 200, 250, 500, 1000].find((s) => max / s <= 8) ?? 1000;
+  const room = Math.max(3, Math.floor(track.clientWidth / 56)); // labels need ~56px each
+  const stepY = [10, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000].find((s) => max / s <= room) ?? 10000;
   const ticks: string[] = [];
   for (let t = 0; t <= max; t += stepY) ticks.push(`<span style="left:${(100 * t) / max}%">${t}</span>`);
   (track.querySelector('.ticks') as HTMLElement).innerHTML = ticks.join('');
@@ -337,6 +349,7 @@ function renderInspect(): void {
 }
 
 map.onClick = (tile) => {
+  if (founding?.pickTile(tile)) return;
   selTile = tile;
   const o = tile >= 0 ? view().owner[tile] : -1;
   if (o >= 0 && o !== selCiv) {
@@ -360,6 +373,116 @@ map.onHover = (tile, x, y) => {
   tip.style.left = `${x + 14}px`;
   tip.style.top = `${y + 12}px`;
   tip.classList.remove('hidden');
+};
+
+// ---- Founding and your people ----
+
+function savePending(p: Pending | null): void {
+  pending = p;
+  try {
+    if (p) localStorage.setItem('cw.pending', JSON.stringify(p));
+    else localStorage.removeItem('cw.pending');
+  } catch { /* private mode */ }
+  renderDock();
+}
+
+function openFounding(keep?: ConstructorParameters<typeof Founding>[1]): void {
+  if (!online || myCiv >= 0 || pending) return;
+  drawer = [];
+  selTile = -1;
+  refreshAll();
+  $('welcome').classList.add('hidden');
+  founding = new Founding({
+    world: () => w,
+    map,
+    turnstileKey,
+    onSent: (p) => {
+      founding = null;
+      savePending(p);
+      toast(`<b>Your settlers have set out.</b><br>They reach their new home when the month turns.`, 7000);
+    },
+    onClose: () => { founding = null; renderDock(); },
+  }, keep);
+  renderDock();
+}
+
+/** After each sync: have this visitor's settlers arrived? */
+function checkMine(): void {
+  if (!me) return;
+  const c = w.civs.find((x) => x.founder === me);
+  if (c && myCiv < 0) {
+    myCiv = c.id;
+    const wasPending = !!pending;
+    savePending(null);
+    map.setMarkers([], -1);
+    if (wasPending) {
+      const cap = w.setts[c.capital];
+      map.focus(cap.tile, 4);
+      openDrawer({ k: 'civ', civ: c.id }, false);
+      toast(`<b>The ${esc(c.name)} have arrived.</b><br>The first hearth is lit at ${esc(cap.name)}. Their story begins.`, 9000);
+    }
+  } else if (!c && pending && Date.now() + clockSkew > pending.eta + 30_000) {
+    // The month turned without them: ask the server what happened.
+    void getJson<{ status: string }>(`me?f=${me}`).then((r) => {
+      if (r.status === 'failed') {
+        savePending(null);
+        map.setMarkers([], -1);
+        toast('<b>Another people reached that land first.</b><br>Choose a new homeland for your settlers.', 9000);
+        openFounding();
+      } else if (r.status === 'none') savePending(null);
+    }).catch(() => undefined);
+  }
+  renderDock();
+}
+
+function renderDock(): void {
+  const b = $('mine');
+  if (!online) { b.classList.add('hidden'); return; }
+  b.classList.remove('hidden');
+  if (myCiv >= 0) {
+    b.className = 'btn mine';
+    b.innerHTML = `${banner(w.civs[myCiv], 14)} The ${esc(w.civs[myCiv].name)}`;
+  } else if (pending) {
+    const s = Math.max(0, Math.round((pending.eta - (Date.now() + clockSkew)) / 1000));
+    b.className = 'btn mine';
+    b.innerHTML = s > 0 ? `<span class="live"></span>On the road · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : '<span class="live"></span>Arriving…';
+  } else {
+    b.className = `btn gold ${founding ? 'on' : ''}`;
+    b.innerHTML = 'Found your people';
+  }
+}
+
+$('mine').onclick = () => {
+  if (myCiv >= 0) {
+    map.focus(w.setts[w.civs[myCiv].capital].tile, 3);
+    openDrawer({ k: 'civ', civ: myCiv }, false);
+  } else if (pending) map.focus(pending.tile, 4);
+  else if (founding) founding.close();
+  else openFounding();
+};
+
+let toastTimer = 0;
+function toast(html: string, ms = 5000): void {
+  const t = $('toast');
+  t.innerHTML = html;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => t.classList.add('hidden'), ms);
+}
+$('toast').onclick = () => $('toast').classList.add('hidden');
+
+function welcome(): void {
+  let seen = false;
+  try { seen = localStorage.getItem('cw.welcomed') === '1'; } catch { /* private mode */ }
+  if (seen || !online || myCiv >= 0 || pending) return;
+  $('welcome').classList.remove('hidden');
+}
+$('welcome').onclick = (e) => {
+  const a = (e.target as HTMLElement).closest<HTMLElement>('[data-w]')?.dataset.w;
+  if (!a) return;
+  try { localStorage.setItem('cw.welcomed', '1'); } catch { /* private mode */ }
+  $('welcome').classList.add('hidden');
+  if (a === 'found') openFounding();
 };
 
 // ---- Loop ----
@@ -394,6 +517,7 @@ function frame(now: number): void {
   if (online && now - lastClock > 1000) {
     lastClock = now;
     updateTop();
+    if (pending) renderDock();
   }
   if (playing && !online) {
     acc += dt * speed * TICKS_PER_YEAR;
@@ -450,6 +574,7 @@ async function loadLive(loading: HTMLElement): Promise<void> {
   worldId = st.world;
   clockSkew = st.now - Date.now();
   nextAt = st.next;
+  turnstileKey = (st as unknown as { turnstile: string | null }).turnstile;
   hist = new History(2);
   const last = Math.floor(w.tick / TICKS_PER_YEAR);
   await loadYears(hist, 0, last, (y) => { loading.textContent = `READING THE ANNALS · YEAR ${y}`; });
@@ -463,7 +588,7 @@ async function syncLoop(): Promise<void> {
     if (r.ok) {
       clockSkew = r.now - Date.now();
       nextAt = r.next;
-      if (r.steps) syncChanged = true;
+      if (r.steps) { syncChanged = true; checkMine(); }
       wait = Math.max(3000, Math.min(60_000, r.next - r.now + 1500));
     } else {
       // Out of step (or the world was reset): start again from a fresh snapshot.
@@ -493,7 +618,7 @@ async function syncLoop(): Promise<void> {
 // ---- Boot ----
 
 async function boot(): Promise<void> {
-  await Promise.race([document.fonts.load('700 22px "Cormorant Garamond"'), new Promise((r) => setTimeout(r, 2500))]);
+  await Promise.race([document.fonts.load('600 14px Inter'), new Promise((r) => setTimeout(r, 2500))]);
   const loading = $('loading');
   if (online) {
     try {
@@ -522,7 +647,20 @@ async function boot(): Promise<void> {
   renderModes();
   refreshAll();
   requestAnimationFrame(frame);
-  if (online) setTimeout(syncLoop, 3000);
+  if (online) {
+    setTimeout(syncLoop, 3000);
+    me = await myHash();
+    const mine = w.civs.find((c) => c.founder === me);
+    if (mine) { myCiv = mine.id; savePending(null); }
+    else {
+      const r = await getJson<{ status: string; eta?: number }>(`me?f=${me}`).catch(() => ({ status: 'none' }) as { status: string; eta?: number });
+      if (r.status === 'pending' && !pending) savePending({ name: 'your people', tile: -1, eta: r.eta ?? Date.now(), skew: clockSkew });
+      if (r.status !== 'pending' && pending) savePending(null);
+      if (r.status === 'failed') toast('<b>Your settlers could not reach their land.</b><br>Choose a new homeland.', 8000);
+    }
+    renderDock();
+    welcome();
+  }
 }
 
 boot();
@@ -535,6 +673,8 @@ boot();
   online,
   years(n: number) { if (online) throw new Error('the live world moves with real time'); advance(n * TICKS_PER_YEAR); refreshAll(); },
   syncNow: () => syncLoop(),
+  found: () => openFounding(),
+  get me() { return { me, myCiv, pending }; },
   pause() { playing = false; updateTimeline(); },
   play(s?: number) { playing = true; if (s) speed = s; updateTimeline(); },
   goYear,

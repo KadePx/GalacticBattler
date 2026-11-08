@@ -118,7 +118,7 @@ function nearestPair(w: World, from: number, to: number): [Sett, Sett] | null {
 /** Yearly: rulers weigh up their neighbours and some choose war. */
 export function considerWar(w: World, border: Map<number, number>, canGrow: Float64Array): void {
   for (const c of w.civs) {
-    if (c.died >= 0 || c.weary > 30 || activeWars(w, c.id).length) continue;
+    if (c.died >= 0 || c.weary > 30 || c.protectedUntil > w.tick || activeWars(w, c.id).length) continue;
     const r = new Rand(w.seed, S.AI, w.tick, 0x3a, c.id);
     const my = strength(c);
     if (my < 50) continue;
@@ -126,7 +126,7 @@ export function considerWar(w: World, border: Map<number, number>, canGrow: Floa
     let bestD = 2;
     for (const k of c.contacts) {
       const o = w.civs[k];
-      if (o.died >= 0) continue;
+      if (o.died >= 0 || o.protectedUntil > w.tick) continue;
       const rl = relOf(w, c.id, k);
       if (!rl || rl.st === 'war' || rl.st === 'ally' || rl.truce > w.tick) continue;
       const edge = border.get(c.id < k ? c.id * 65536 + k : k * 65536 + c.id) ?? 0;

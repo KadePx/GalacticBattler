@@ -11,6 +11,14 @@ import { B, BIOMES, RES_FOOD, RES_MAT, isLand } from './worldgen';
 export const TIER_POP = [0, 300, 1500, 6000, 20000];
 export const TIER_R = [1, 2, 2, 3, 3];
 export const PEOPLE_PER_FOOD = 100;
+export const RESERVE_TARGET = 8; // frontier sites held open for new players
+const RESERVE_KEEP = 2; // no civ claims land this close to a reserve
+const RESERVE_AVOID = 4; // AI settlers don't found this close to a reserve
+
+export function nearReserve(w: World, tile: number, r: number): boolean {
+  for (const t of w.reserves) if (hexDist(w.W, t, tile) <= r) return true;
+  return false;
+}
 
 export function tierFor(pop: number): number {
   let t = 0;
@@ -60,6 +68,7 @@ export function claimTiles(w: World, s: Sett): void {
   let m = 0;
   forWithin(w.W, w.H, s.tile, TIER_R[s.tier], (i) => {
     if (t.biome[i] === B.OCEAN) return;
+    if (t.owner[i] === -1 && w.reserves.length && nearReserve(w, i, RESERVE_KEEP)) return;
     if (t.owner[i] === -1) {
       t.owner[i] = s.civ;
       t.work[i] = s.id;
@@ -92,6 +101,7 @@ export function scoreSite(w: World, civ: Civ | null, tile: number): number {
   if (!isLand(t, tile) || b === B.MOUNTAIN || b === B.SNOW) return -Infinity;
   const me = civ ? civ.id : -2;
   if (t.owner[tile] !== -1 && t.owner[tile] !== me) return -Infinity;
+  if (civ && w.reserves.length && nearReserve(w, tile, RESERVE_AVOID)) return -Infinity;
   if (t.work[tile] !== -1) return -Infinity;
   let bad = false;
   forWithin(w.W, w.H, tile, 3, (i) => {
@@ -169,11 +179,12 @@ function emptyBuildings(): Record<BKey, number> {
   return { fields: 0, granary: 0, walls: 0, temple: 0, market: 0, workshop: 0, monument: 0 };
 }
 
-export function foundSettlement(w: World, c: Civ, tile: number, pop: number, parent: number): Sett {
+export function foundSettlement(w: World, c: Civ, tile: number, pop: number, parent: number, name?: string): Sett {
+  const auto = word(c.phon, c.lex, NAME_KEY.SETT, c.named++);
   const s: Sett = {
     id: w.setts.length,
     civ: c.id,
-    name: word(c.phon, c.lex, NAME_KEY.SETT, c.named++),
+    name: name ?? auto,
     tile,
     born: w.tick,
     died: -1,
@@ -222,27 +233,34 @@ export interface FoundOpts {
   values: ValueId[];
   founder: string | null;
   name?: string;
+  capital?: string;
   motto?: string;
+  byName?: string;
+  banner?: number[];
   parent?: number;
   phon?: number;
+  lex?: number;
   pop?: number;
 }
 
 export function foundCiv(w: World, o: FoundOpts): Civ {
   const id = w.civs.length;
-  const lex = hash32(w.seed, S.FOUND, id, 0x1e7);
+  const lex = o.lex ?? hash32(w.seed, S.FOUND, id, 0x1e7);
   const phon = o.phon ?? hash32(lex, 0x9407);
   const c: Civ = {
     id,
     name: o.name ?? peopleName(phon, lex),
     phon,
     lex,
-    hue: (id * 137 + (lex % 40)) % 360,
+    hue: o.banner ? o.banner[0] % 360 : (id * 137 + (lex % 40)) % 360,
     values: o.values.slice(0, 3),
     born: w.tick,
     died: -1,
     capital: -1,
     founder: o.founder,
+    byName: o.byName ?? '',
+    banner: o.banner ?? null,
+    protectedUntil: -1,
     parent: o.parent ?? -1,
     motto: o.motto ?? '',
     goal: 'grow',
@@ -266,7 +284,7 @@ export function foundCiv(w: World, o: FoundOpts): Civ {
   w.civs.push(c);
   c.ruler = newRuler(w, c, null);
   if (o.pop !== undefined) {
-    const s = foundSettlement(w, c, o.tile, o.pop, -1);
+    const s = foundSettlement(w, c, o.tile, o.pop, -1, o.capital);
     c.capital = s.id;
     ev(w, { k: 'found_civ', a: c.id, s: s.id, x: c.ruler.name });
   }
@@ -360,4 +378,42 @@ export function spawnCiv(w: World, old: Civ, capital: Sett, r: Rand): Civ {
   if (tally.live.length <= c.id) recount(w);
   transferSett(w, capital, c.id);
   return c;
+}
+
+// ---- Founding by players ----
+
+/** Can a new people be founded here right now? */
+export function canFoundAt(w: World, tile: number): boolean {
+  if (tile < 0 || tile >= w.W * w.H) return false;
+  if (scoreSite(w, null, tile) < 6) return false;
+  let ok = true;
+  forWithin(w.W, w.H, tile, 2, (i) => {
+    if (w.t.owner[i] !== -1) ok = false;
+  });
+  forWithin(w.W, w.H, tile, 4, (i) => {
+    if (w.t.city[i] !== -1) ok = false;
+  });
+  return ok;
+}
+
+/** The homelands offered to a new founder: open reserves first, then any other good free land. */
+export function foundingSpots(w: World, n: number): number[] {
+  const out = w.reserves.filter((t) => canFoundAt(w, t));
+  if (out.length < n) {
+    for (const t of suggestSpots(w, n * 2, 6)) {
+      if (out.length >= n) break;
+      if (canFoundAt(w, t) && out.every((o) => hexDist(w.W, o, t) >= 6)) out.push(t);
+    }
+  }
+  return out.slice(0, n);
+}
+
+/** Yearly: drop reserves that have been taken and hold new ones open while free land remains. */
+export function tendReserves(w: World): void {
+  w.reserves = w.reserves.filter((t) => canFoundAt(w, t));
+  if (w.reserves.length >= RESERVE_TARGET) return;
+  for (const t of suggestSpots(w, RESERVE_TARGET * 2, 8)) {
+    if (w.reserves.length >= RESERVE_TARGET) break;
+    if (w.reserves.every((o) => hexDist(w.W, o, t) >= 8)) w.reserves.push(t);
+  }
 }

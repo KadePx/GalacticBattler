@@ -5,7 +5,8 @@
 // by replaying synced inputs (same state hash); a restarted host resumes identically from
 // storage; history endpoints return data; the admin wipe archives and starts a new world.
 
-import { suggestSpots } from '../sim/civ';
+import { foundingSpots } from '../sim/civ';
+import { founderHash } from '../shared/text';
 import { assemble, stateHash, step, type Input, type World } from '../sim/index';
 import { WorldHost, type KV } from '../server/host';
 import type { D1 } from '../../net/db';
@@ -67,18 +68,35 @@ async function main(): Promise<void> {
   const client: World = assemble(await gunzip(await get(host, 'static')), await gunzip(await get(host, 'snapshot')));
   check(stateHash(client) === st.hash, 'client built from static + snapshot matches the server');
 
-  // A founding is queued, then 30 more years pass on the server.
-  const spot = suggestSpots(client, 1, 1)[0];
-  await host.queue({ k: 'found', founder: 'tester', tile: spot, values: ['curious', 'devout', 'seafaring'], name: 'Testari' });
+  // Founding through the public endpoint.
+  const spots = foundingSpots(client, 5);
+  check(spots.length >= 3, `founding screen would offer ${spots.length} homelands`);
+  const myId = 'test-founder-0123456789abcdef';
+  const body = (extra: Record<string, unknown>) => JSON.stringify({ id: myId, tile: spots[0], values: ['curious', 'devout', 'seafaring'], name: 'Testari', capital: 'Firsthome', motto: 'We came by sea.', byName: 'Kade', banner: [200, 0, 1, 3, 2], ...extra });
+  const post = (b: string) => get(host, 'found', { method: 'POST', body: b, headers: { 'content-type': 'application/json' } });
+  check((await post(body({ name: 'Fuckland' }))).status === 400, 'a rude people name is refused');
+  check((await post(body({ values: ['curious', 'curious', 'devout'] }))).status === 400, 'three distinct values are required');
+  check((await post(body({ tile: 0 }))).status === 409, 'founding in the sea is refused');
+  const ok = await post(body({}));
+  check(ok.status === 200, `founding accepted (${ok.status})`);
+  check((await post(body({ tile: spots[1] }))).status === 409, 'a second founding by the same person is refused');
+  const me = await founderHash(myId);
+  check(((await (await get(host, `me?f=${me}`)).json()) as { status: string }).status === 'pending', 'status is pending before the next month');
+  for (let k = 0; k < 2; k++) check((await post(JSON.stringify({ ...JSON.parse(body({ tile: spots[2 + k] ?? spots[2] })), id: `other-founder-${k}-0123456789` }))).status !== 429, `founding ${k + 2} from one network is allowed`);
+  check((await post(JSON.stringify({ ...JSON.parse(body({ tile: spots[4] ?? spots[2] })), id: 'other-founder-9-0123456789' }))).status === 429, 'a fourth founding from one network in a day is refused');
   await passYears(host, 30);
+  const meNow = (await (await get(host, `me?f=${me}`)).json()) as { status: string; civ: number };
+  check(meNow.status === 'founded', `status is founded after the month turns (civ ${meNow.civ})`);
 
   // The client syncs: replays inputs at their ticks and steps to the server's tick.
   const sync = await (await get(host, `sync?world=${st.world}&tick=${client.tick}`)).json() as { tick: number; hash: string; inputs: [number, Input][] };
-  check(sync.inputs.length === 1, `sync returned the founding input (${sync.inputs.length})`);
+  check(sync.inputs.length >= 1, `sync returned the founding inputs (${sync.inputs.length})`);
   const t0 = Date.now();
   while (client.tick < sync.tick) step(client, sync.inputs.filter(([t]) => t === client.tick).map(([, i]) => i));
   check(stateHash(client) === sync.hash, `client replay of 30 years matches server hash (${Date.now() - t0} ms)`);
-  check(client.civs.some((c) => c.name === 'Testari'), 'founded civ exists on the client');
+  const mine = client.civs.find((c) => c.founder === me);
+  check(!!mine && mine.name === 'Testari' && client.setts[mine.capital].name === 'Firsthome' && mine.hue === 200, 'founded civ has the chosen name, capital and colour');
+  check(!!mine && mine.protectedUntil > 600 && mine.byName === 'Kade' && !JSON.stringify(client).includes(myId), 'protected, credited, and the private id never enters the world');
 
   // History endpoints.
   const ev = await (await get(host, 'events?limit=50')).json() as { events: { id: number }[] };
