@@ -153,6 +153,12 @@ function stances(): Map<number, Stance> {
     const enemies = A.includes(selCiv) ? D : D.includes(selCiv) ? A : [];
     for (const o of enemies) m.set(o, 'war');
   }
+  // Tribute ties (known for the present only).
+  if (viewYear === null) {
+    const me = w.civs[selCiv];
+    for (const c of w.civs) if (c.died < 0 && c.lord === selCiv && m.get(c.id) !== 'war') m.set(c.id, 'vassal');
+    if (me.lord >= 0 && m.get(me.lord) !== 'war') m.set(me.lord, 'lord');
+  }
   return m;
 }
 
@@ -336,6 +342,7 @@ function renderDrawer(): void {
   const focusId = active && body.contains(active) ? active.id : '';
   const caret = focusId ? active!.selectionStart : null;
   const scroll = body.scrollTop;
+  const open = openKeys(body);
   if (top.k === 'peoples') {
     $('dtitle').textContent = 'Peoples of the world';
     body.innerHTML = peoplesHtml(c, peoplesQ);
@@ -355,6 +362,7 @@ function renderDrawer(): void {
     $('dtitle').textContent = 'Chronicle';
     body.innerHTML = chronHtml(c);
   }
+  reopen(body, open);
   body.scrollTop = scroll;
   const ni = document.getElementById('nameinp') as HTMLInputElement | null;
   if (ni) ni.value = nameDraft;
@@ -375,8 +383,18 @@ for (const b of Array.from(document.querySelectorAll<HTMLElement>('[data-open]')
   };
 }
 
+/** Breakdowns the reader has opened, so a redraw doesn't snap them shut. */
+function openKeys(el: HTMLElement): string[] {
+  return Array.from(el.querySelectorAll<HTMLDetailsElement>('details[open][data-k]'), (d) => d.dataset.k!);
+}
+function reopen(el: HTMLElement, keys: string[]): void {
+  for (const k of keys) el.querySelector<HTMLDetailsElement>(`details[data-k="${k}"]`)?.setAttribute('open', '');
+}
+
 function handlePanelClick(e: MouseEvent): void {
   const t = e.target as HTMLElement;
+  // A breakdown opens and closes itself; it should not also follow the row it sits in.
+  if (t.closest('details.whyd') && !t.closest('a')) { e.stopPropagation(); return; }
   const el = t.closest<HTMLElement>('[data-civ],[data-tile],[data-chron],[data-scope],[data-tech],[data-tscope],[data-techs],[data-omen],[data-edict],[data-askname],[data-dosname],[data-gift],[data-propose],[data-offer],[data-open],[data-share],#cmajor,#cmore,#ix');
   if (!el) return;
   e.preventDefault();
@@ -417,7 +435,12 @@ $('dbody').addEventListener('input', (e) => {
 function renderInspect(): void {
   const el = $('inspect');
   el.classList.toggle('hidden', selTile < 0);
-  if (selTile >= 0) el.innerHTML = inspectHtml(ctx(), selTile) + offerHtml(selTile);
+  if (selTile < 0) return;
+  const open = openKeys(el);
+  const scroll = el.scrollTop;
+  el.innerHTML = inspectHtml(ctx(), selTile) + offerHtml(selTile);
+  reopen(el, open);
+  el.scrollTop = scroll;
 }
 
 map.onClick = (tile) => {

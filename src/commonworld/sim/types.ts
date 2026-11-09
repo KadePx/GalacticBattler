@@ -2,7 +2,7 @@
 // Rule for all of src/commonworld/sim: no Math.random, Date, DOM, or Math.sin/exp/pow
 // (those can differ between JS engines); only + - * / sqrt floor on numbers.
 
-export const SIM_V = 6;
+export const SIM_V = 7;
 export const TICKS_PER_YEAR = 12; // one tick = one game month
 
 export const VALUES = [
@@ -41,6 +41,7 @@ export interface River {
   name: string | null;
   namedBy: number; // civ id, -1
   pn?: 1; // named by a founder (naming rights are used)
+  g?: string; // what the name means in its namers' tongue ("slow water")
 }
 
 export interface Ruler {
@@ -113,7 +114,20 @@ export interface Civ {
   faith: number; // faith id, -1 = none
   culture: number; // prestige from great works, temples, wonders and great people
   work: WonderWork | null; // a wonder under construction
+  lord: number; // the people this one pays tribute to, -1
+  lordSince: number; // tick
+  era: '' | 'golden' | 'dark';
+  eraSince: number; // tick
+  eraUntil: number; // tick it fades on its own
+  eraName: string; // "the Golden Age of Gina"
 }
+
+/** A golden or dark age, kept for the world's history. */
+export interface Era { civ: number; k: 'golden' | 'dark'; name: string; start: number; end: number }
+
+export type ClimateK = 'cold' | 'warm' | 'dry' | 'wet';
+/** A long swing of the climate. The last entry is the current one while end > tick. */
+export interface Climate { k: ClimateK; name: string; start: number; end: number }
 
 export const EDICTS = ['grow', 'expand', 'fortify', 'worship', 'build', 'trade', 'research'] as const;
 export type Edict = (typeof EDICTS)[number];
@@ -150,6 +164,7 @@ export interface Sett {
   conq: number; // tick of the last conquest, -1
   o: number; // the people who first founded it
   offers?: number; // pilgrim offerings left here
+  g?: string; // what the name means in its founders' tongue ("high ford")
   pn?: 1; // named by a founder
 }
 
@@ -171,7 +186,7 @@ export interface War {
   def: number;
   atkAllies: number[];
   defAllies: number[];
-  cause: 'land' | 'grudge' | 'succession' | 'plunder' | 'faith';
+  cause: 'land' | 'grudge' | 'succession' | 'plunder' | 'faith' | 'independence';
   start: number;
   end: number; // -1 while ongoing
   score: number; // positive favours the attacker
@@ -179,7 +194,7 @@ export interface War {
   deaths: number;
   taken: number[]; // settlements captured by the attacker side
   lost: number[]; // settlements the defender took back or captured
-  result: '' | 'victory' | 'defeat' | 'stalemate' | 'conquered';
+  result: '' | 'victory' | 'defeat' | 'stalemate' | 'conquered' | 'submitted';
 }
 
 export interface Route {
@@ -244,6 +259,8 @@ export interface World {
   omenN: number; // omens so far (ids)
   faiths: Faith[];
   wonders: Wonder[];
+  eras: Era[];
+  climates: Climate[];
 }
 
 /** A question put to a founder ("your people await a sign"). If nobody answers by `due`, the AI decides. */

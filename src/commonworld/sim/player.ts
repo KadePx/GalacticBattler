@@ -206,6 +206,7 @@ function giveName(w: World, c: Civ, what: string, id: number, name: string): voi
     const old = s.name;
     s.name = name;
     s.pn = 1;
+    delete s.g;
     ev(w, { k: 'renamed', a: c.id, s: s.id, x: old, y: name });
   } else if (what === 'great') {
     const g = c.greats[id];
@@ -224,6 +225,7 @@ function giveName(w: World, c: Civ, what: string, id: number, name: string): voi
     rv.name = name;
     rv.namedBy = c.id;
     rv.pn = 1;
+    delete rv.g;
     ev(w, { k: 'river_named', a: c.id, s: riverTouches(w, rv.id, c.id), x: name });
   }
 }
@@ -250,8 +252,9 @@ export function yearlyPlayer(w: World): void {
   for (const c of w.civs) {
     if (!c.founder || c.died >= 0) continue;
     if (c.edict && c.edictUntil <= w.tick) c.edict = '';
-    // A young people stays under protection while it is still small: few towns, or few people beside its neighbours.
-    if (w.tick - c.born < PROTECT_MAX_YEARS * TICKS_PER_YEAR && (tally.live[c.id] < 3 || tally.pop[c.id] < median * 0.3)) {
+    // A young people stays under protection while it is smaller than most. Growing (more towns,
+    // more people) doesn't end it early; only outgrowing the typical people of the world does.
+    if (w.tick - c.born < PROTECT_MAX_YEARS * TICKS_PER_YEAR && tally.pop[c.id] < median) {
       c.protectedUntil = Math.max(c.protectedUntil, w.tick + 2 * TICKS_PER_YEAR);
     }
     const r = new Rand(w.seed, S.PLAYER, w.tick, c.id, 0x5167);

@@ -3,6 +3,7 @@
 // towns drift to a neighbour whose culture outshines their own rulers'.
 
 import { ev, spawnCiv, tally, transferSett } from './civ';
+import { endEra, startEra } from './realm';
 import { rel, relOf } from './diplo';
 import { hexDist } from './hex';
 import { Rand, S } from './rng';
@@ -38,6 +39,8 @@ function collapse(w: World, c: Civ, r: Rand): boolean {
     rl.truce = w.tick + 15 * TICKS_PER_YEAR;
   }
   ev(w, { k: 'collapse', a: c.id, n: heads.length + 1 });
+  if (c.era === 'golden') endEra(w, c); // an age of glory does not survive this
+  if (!c.era) startEra(w, c, 'dark', r, r.range(20, 40));
   return true;
 }
 
@@ -46,6 +49,8 @@ function revive(w: World, s: Sett, r: Rand): void {
   const old = w.civs[s.o];
   const owner = w.civs[s.civ];
   const n = spawnCiv(w, owner, s, r, { values: old.values, phon: old.phon, parent: old.id });
+  // They take the old name back, unless a living people already bears it.
+  if (!w.civs.some((x) => x.died < 0 && x !== n && x.name === old.name)) n.name = old.name;
   if (old.faith >= 0 && w.faiths[old.faith].died < 0) n.faith = old.faith;
   for (const id of (tally.list[owner.id] ?? []).slice()) {
     const o = w.setts[id];

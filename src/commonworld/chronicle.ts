@@ -12,6 +12,7 @@ const MAJOR = new Set([
   'war', 'conquest', 'peace', 'crisis', 'new_dynasty', 'age', 'ally', 'great_born',
   'omen_claim', 'claim_war', 'omen_war', 'omen_sign', 'edict', 'renamed', 'great_named', 'wonder_named', 'gift', 'pilgrims',
   'faith_found', 'schism', 'wonder', 'quake', 'eruption', 'tsunami', 'collapse', 'revival', 'defect',
+  'tribute', 'tribute_end', 'era', 'era_end', 'climate', 'climate_end',
 ]);
 
 const GREAT_WORD: Record<string, string> = { general: 'general', scholar: 'scholar', builder: 'master builder', merchant: 'merchant prince', prophet: 'prophet' };
@@ -38,6 +39,9 @@ export function line(w: World, e: Ev, idx: number): Line {
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
   const T = (i?: number) => (i !== undefined && w.setts[i] ? w.setts[i].name : 'a place');
+  // " at Thoi", unless the name already says where ("the Great Library of Thoi").
+  const at = (e: Ev) => (e.s !== undefined && w.setts[e.s] && e.x?.includes(w.setts[e.s].name) ? '' : ` at ${T(e.s)}`);
+  const gloss = (g?: string) => (g ? ` (“${g}” in their tongue)` : '');
   const pick = (...opts: string[]) => r.pick(opts);
   let text: string;
   switch (e.k) {
@@ -55,13 +59,13 @@ export function line(w: World, e: Ev, idx: number): Line {
       break;
     case 'found_sett':
       text = pick(
-        `Settlers from ${e.x} founded ${T(e.s)}.`,
+        `Settlers from ${e.x} founded ${T(e.s)}${gloss(e.s !== undefined ? w.setts[e.s]?.g : undefined)}.`,
         `${Pc(e.a)} walked out from ${e.x} and built ${T(e.s)}.`,
         `A new village, ${T(e.s)}, grew from the families of ${e.x}.`,
       );
       break;
     case 'river_named':
-      text = `${Pc(e.a)} gave the river at ${T(e.s)} its name: the ${e.x}.`;
+      text = `${Pc(e.a)} gave the river at ${T(e.s)} its name: the ${e.x}${gloss(w.rivers.find((v) => v.name === e.x)?.g)}.`;
       break;
     case 'tier_up':
       text = pick(
@@ -119,12 +123,42 @@ export function line(w: World, e: Ev, idx: number): Line {
       text = `The alliance between ${P(e.a)} and ${P(e.b)} fell apart.`;
       break;
     case 'war': {
-      const why = e.y === 'land' ? 'hungry for land' : e.y === 'grudge' ? 'nursing old wrongs' : e.y === 'succession' ? 'pressing a claim to the throne' : e.y === 'faith' ? 'in the name of their faith' : 'eager for plunder';
+      const why = e.y === 'land' ? 'hungry for land' : e.y === 'grudge' ? 'nursing old wrongs' : e.y === 'succession' ? 'pressing a claim to the throne' : e.y === 'faith' ? 'in the name of their faith' : e.y === 'independence' ? 'refusing to pay tribute any longer' : 'eager for plunder';
       text = pick(`${Pc(e.a)}, ${why}, declared war on ${P(e.b)}: ${e.x} had begun.`, `${e.x} began. ${Pc(e.a)} marched against ${P(e.b)}, ${why}.`);
       break;
     }
     case 'war_join':
-      text = `${Pc(e.a)} joined ${e.x} against ${P(e.b)}.`;
+      text = e.y === 'lord' ? `${Pc(e.a)}, bound by tribute and oath, joined ${e.x} against ${P(e.b)}.` : `${Pc(e.a)} joined ${e.x} against ${P(e.b)}.`;
+      break;
+    case 'tribute':
+      text = pick(`Beaten, ${P(e.a)} bowed to ${P(e.b)} and agreed to pay them tribute.`, `${Pc(e.a)} became tributaries of ${P(e.b)}, sending them a share of their wealth each year.`);
+      break;
+    case 'tribute_end':
+      text = e.x === 'lord_fell'
+        ? `With ${P(e.b)} gone, ${P(e.a)} owed tribute to no one.`
+        : e.x === 'freed'
+          ? `${Pc(e.a)} no longer paid tribute to ${P(e.b)}, whose own masters now ruled them.`
+          : `After ${years(e.n ?? 0)}, ${P(e.b)} released ${P(e.a)} from their tribute.`;
+      break;
+    case 'era':
+      text = e.y === 'golden'
+        ? pick(`${Pc(e.a)} entered ${e.x}: their towns were calm, their learning bold and their works admired.`, `Under ${e.x?.replace(/^the Golden Age of /, '')}, ${P(e.a)} flourished. Later ages would call it ${e.x}.`)
+        : pick(`${Pc(e.a)} fell into ${e.x}. Learning faltered and hope ran thin.`, `For ${P(e.a)}, ${e.x} began.`);
+      break;
+    case 'era_end':
+      text = e.y === 'golden' ? `${cap1(e.x ?? 'The golden age')} of ${P(e.a)} came to an end after ${years(e.n ?? 0)}.` : `${Pc(e.a)} came out of ${e.x} after ${years(e.n ?? 0)}.`;
+      break;
+    case 'climate':
+      text = e.y === 'cold' ? `The winters grew long and bitter across the world. It was the start of ${e.x}.`
+        : e.y === 'warm' ? `The world warmed. ${cap1(e.x ?? '')} had begun.`
+        : e.y === 'dry' ? `The rains grew rare across the world, and ${e.x} began.`
+        : `Rain fell and fell. ${cap1(e.x ?? '')} had come.`;
+      break;
+    case 'climate_end':
+      text = `${cap1(e.x ?? 'The long swing of weather')} came to an end, and the seasons turned as before.`;
+      break;
+    case 'refugees':
+      text = e.y === 'famine' ? `${fmt(e.n ?? 0)} hungry people left ${e.x} for ${T(e.s)}.` : `${fmt(e.n ?? 0)} people fled the fall of ${e.x} and found shelter in ${T(e.s)}.`;
       break;
     case 'battle':
     {
@@ -139,7 +173,7 @@ export function line(w: World, e: Ev, idx: number): Line {
       text = pick(`${T(e.s)} fell to ${P(e.a)}.`, `${Pc(e.a)} took ${T(e.s)} from ${P(e.b)}.`, `After a long siege, ${T(e.s)} opened its gates to ${P(e.a)}.`);
       break;
     case 'peace': {
-      const res = e.z === 'victory' ? `${P(e.a)} won` : e.z === 'defeat' ? `${P(e.b)} held them off` : 'neither side won';
+      const res = e.z === 'victory' ? `${P(e.a)} won` : e.z === 'defeat' ? `${P(e.b)} held them off` : e.z === 'submitted' ? `${P(e.b)} bowed to ${P(e.a)} and agreed to pay them tribute` : 'neither side won';
       text = `${e.x} ended after ${years(e.n ?? 0)}: ${res}.`;
       break;
     }
@@ -316,8 +350,8 @@ export function line(w: World, e: Ev, idx: number): Line {
       break;
     case 'wonder':
       text = pick(
-        `${cap1(e.x ?? 'A wonder')} was finished at ${T(e.s)}: a wonder of the world, raised by ${P(e.a)} under ${e.y}.`,
-        `After years of labour, ${P(e.a)} completed ${e.x} at ${T(e.s)}. The whole world spoke of it.`,
+        `${cap1(e.x ?? 'A wonder')} was finished${at(e)}: a wonder of the world, raised by ${P(e.a)} under ${e.y}.`,
+        `After years of labour, ${P(e.a)} completed ${e.x}${at(e)}. The whole world spoke of it.`,
       );
       break;
     case 'wonder_beaten':
@@ -345,7 +379,9 @@ export function line(w: World, e: Ev, idx: number): Line {
       text = `The realm of ${P(e.a)} could no longer hold together and broke into ${e.n ?? 2} pieces.`;
       break;
     case 'revival':
-      text = `Remembering the fallen ${e.x}, ${T(e.s)} rose against ${P(e.b)} and became ${P(e.a)}.`;
+      text = e.a !== undefined && w.civs[e.a]?.name === e.x
+        ? `${T(e.s)} rose against ${P(e.b)}, and the ${e.x}, long fallen, lived again.`
+        : `Remembering the fallen ${e.x}, ${T(e.s)} rose against ${P(e.b)} and became ${P(e.a)}.`;
       break;
     case 'defect':
       text = `Dazzled by the splendour of ${P(e.a)}, ${T(e.s)} left ${P(e.b)} and joined them.`;

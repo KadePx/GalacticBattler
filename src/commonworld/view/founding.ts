@@ -5,7 +5,7 @@
 import { foodYield } from '../sim/civ';
 import { isCoastal } from '../sim/econ';
 import { hexDist, forWithin } from '../sim/hex';
-import { NAME_KEY, peopleName, word } from '../sim/names';
+import { peopleName, sampleTowns } from '../sim/names';
 import { VALUES, type ValueId, type World } from '../sim/types';
 import { BIOMES, RES_NAMES, isLand } from '../sim/worldgen';
 import { foundingSpots } from '../sim/civ';
@@ -65,7 +65,7 @@ const u32 = () => crypto.getRandomValues(new Uint32Array(1))[0];
 function tongue(): { phon: number; lex: number; name: string; capital: string } {
   const phon = u32();
   const lex = u32();
-  return { phon, lex, name: peopleName(phon, lex), capital: word(phon, lex, NAME_KEY.SETT, 0) };
+  return { phon, lex, name: peopleName(phon, lex), capital: sampleTowns(phon, lex, 1)[0] };
 }
 
 /** What a homeland offers, in a few words. */
@@ -236,7 +236,7 @@ export class Founding {
 
   private previewLine(): string {
     const d = this.d;
-    const towns = [1, 2, 3].map((k) => word(d.phon, d.lex, NAME_KEY.SETT, k));
+    const towns = sampleTowns(d.phon, d.lex, 4).slice(1);
     return `The ${esc(properName(d.name) ?? '…')} of ${esc(properName(d.capital) ?? '…')}. Later towns may be called ${towns.map(esc).join(', ')}.`;
   }
 

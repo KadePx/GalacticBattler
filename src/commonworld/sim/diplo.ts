@@ -64,6 +64,33 @@ export function baseOpinion(a: Civ, b: Civ): number {
   return op;
 }
 
+/**
+ * Why two peoples feel as they do, as [why, amount]. Each year their opinion moves a fifth of
+ * the way toward the sum. Shared with the people page, so the reasons shown are the real ones.
+ */
+export function opinionParts(A: Civ, B: Civ, r: Rel, edge: number, nRoutes: number): [string, number][] {
+  const out: [string, number][] = [];
+  const add = (why: string, v: number) => { if (v) out.push([why, v]); };
+  let shared = 0;
+  for (const v of A.values) if (B.values.includes(v)) shared += 8;
+  add('Shared values', shared);
+  let clash = 0;
+  for (const [x, y] of CLASH) if ((has(A, x) && has(B, y)) || (has(A, y) && has(B, x))) clash -= 8;
+  add('Clashing values', clash);
+  add('Kinship', A.parent === B.id || B.parent === A.id || (A.parent >= 0 && A.parent === B.parent) ? 10 : 0);
+  add('Distrust of outsiders', has(A, 'isolationist') || has(B, 'isolationist') ? -5 : 0);
+  const f = faithOpinion(A, B);
+  add(f > 0 ? 'Same faith' : 'Rival faiths', f);
+  add('Trade', Math.min(16, nRoutes * 4));
+  add('Border friction', -Math.min(25, edge / 3));
+  add('Old grudges', -r.grudge * 0.5);
+  add(r.st === 'ally' ? 'Alliance' : r.st === 'pact' ? 'Trade pact' : 'At war', r.st === 'ally' ? 12 : r.st === 'pact' ? 5 : r.st === 'war' ? -50 : 0);
+  add('A cruel ruler', A.ruler.trait === 'cruel' || B.ruler.trait === 'cruel' ? -5 : 0);
+  add('Two just rulers', A.ruler.trait === 'just' && B.ruler.trait === 'just' ? 5 : 0);
+  add('Tribute', A.lord === B.id || B.lord === A.id ? -8 : 0); // tribute breeds resentment
+  return out;
+}
+
 /** Yearly: opinions drift toward what borders, trade and history say; pacts and alliances form or lapse. */
 export function yearlyDiplo(w: World, border: Map<number, number>, routes: Map<number, number>): void {
   for (const r of w.rels) {
@@ -72,13 +99,8 @@ export function yearlyDiplo(w: World, border: Map<number, number>, routes: Map<n
     if (A.died >= 0 || B.died >= 0) continue;
     const k = key(r.a, r.b);
     const nRoutes = routes.get(k) ?? 0;
-    const edge = border.get(k) ?? 0;
-    let target = baseOpinion(A, B) + faithOpinion(A, B) + Math.min(16, nRoutes * 4) - Math.min(25, edge / 3) - r.grudge * 0.5;
-    if (r.st === 'ally') target += 12;
-    else if (r.st === 'pact') target += 5;
-    else if (r.st === 'war') target -= 50;
-    if (A.ruler.trait === 'cruel' || B.ruler.trait === 'cruel') target -= 5;
-    if (A.ruler.trait === 'just' && B.ruler.trait === 'just') target += 5;
+    let target = 0;
+    for (const [, v] of opinionParts(A, B, r, border.get(k) ?? 0, nRoutes)) target += v;
     r.op = Math.max(-100, Math.min(100, r.op + (target - r.op) * 0.2));
     r.grudge *= 0.93;
     if (r.st === 'war') continue;

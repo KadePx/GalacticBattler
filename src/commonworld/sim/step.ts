@@ -14,6 +14,7 @@ import { yearlyDisasters } from './disaster';
 import { yearlyFaith } from './faith';
 import { maybeDefect, yearlyFate } from './fate';
 import { refreshWonderFx, wonderFx, yearlyWonders } from './wonders';
+import { climateFood, climateNow, eraFx, flee, yearlyRealm } from './realm';
 import { Rand, S } from './rng';
 import { AGES, TECHS, civAge, pickResearch, techCost } from './techs';
 import {
@@ -182,7 +183,7 @@ function monthly(w: World, s: Sett): void {
   const temp = w.t.temp[s.tile];
   const amp = Math.max(0.04, Math.min(0.45, (22 - temp) / 60));
   let mult = 1 + amp * SEASON[(month + (y > w.H / 2 ? 6 : 0)) % 12];
-  mult *= spellMult(w, s.tile) * (1 + wonderFx(c).food);
+  mult *= spellMult(w, s.tile) * (1 + wonderFx(c).food) * climateFood(w, s.tile);
   if (s.silt > w.tick) mult *= 1.15;
   if (s.siege > 0) mult *= 0.8; // fields burned, roads cut
   const cap = avgCap(s, m);
@@ -199,7 +200,7 @@ function monthly(w: World, s: Sett): void {
     s.food = 0;
   } else {
     // Families only grow when there's food put by for the lean months.
-    const g = GROWTH * (0.4 + s.stab / 100) * m.grow;
+    const g = GROWTH * (0.4 + s.stab / 100) * m.grow * eraFx(c).grow;
     const d = s.pop * g * (1 - s.pop / cap);
     if (d < 0 || s.food >= s.pop * 2) s.pop += r.round(d);
   }
@@ -235,36 +236,52 @@ function monthly(w: World, s: Sett): void {
   }
 
   // Stability drifts toward what the situation supports.
-  const target = stabTarget(w, s, c, m);
+  const target = stabTarget(w, s, c);
   if (s.stab < target) s.stab += target - s.stab > 15 ? 2 : 1;
   else if (s.stab > target) s.stab -= s.stab - target > 15 ? 2 : 1;
 
   if (s.pop < 15) killSett(w, s);
 }
 
-function stabTarget(w: World, s: Sett, c: Civ, m: Mods): number {
-  let t = 52 + m.stab * 0.3 + luxuryCount(c) * 3;
-  if (has(c, 'stubborn')) t += 8;
-  if (has(c, 'isolationist')) t += 4;
-  if (has(c, 'martial')) t += 3;
-  t += s.b.temple * (has(c, 'devout') ? 5 : 3) + s.b.walls * 1.5 + s.b.monument * 5;
-  t += greatCount(c, 'prophet') * 4 + wonderFx(c).stab;
-  if (c.faith >= 0) {
-    if (s.b.temple > 0) t += 2;
-    if (w.faiths[c.faith].holy === s.id) t += 8;
-  }
+function stabTarget(w: World, s: Sett, c: Civ): number {
+  let t = 0;
+  for (const [, v] of stabParts(w, s, c, warring[c.id] === 1)) t += v;
+  return Math.max(5, Math.min(95, Math.round(t)));
+}
+
+/**
+ * Everything that pulls a town's stability up or down, as [why, amount]. The town drifts a
+ * point or two a month toward the sum (kept between 5 and 95). Shared with the town panel, so
+ * what players read is exactly what the world uses.
+ */
+export function stabParts(w: World, s: Sett, c: Civ, atWar: boolean): [string, number][] {
+  const m = mods(c);
+  const out: [string, number][] = [];
+  const add = (why: string, v: number) => { if (v) out.push([why, v]); };
+  add('Ordinary life', 52);
+  add('Laws and learning', m.stab * 0.3);
+  add('Luxuries', luxuryCount(c) * 3);
+  add('Their values', (has(c, 'stubborn') ? 8 : 0) + (has(c, 'isolationist') ? 4 : 0) + (has(c, 'martial') ? 3 : 0));
+  add('Temples', s.b.temple * (has(c, 'devout') ? 5 : 3) + (c.faith >= 0 && s.b.temple > 0 ? 2 : 0));
+  add('Walls', s.b.walls * 1.5);
+  add('Great work', s.b.monument * 5);
+  add('Prophets', greatCount(c, 'prophet') * 4);
+  add('Wonders', wonderFx(c).stab);
+  if (c.faith >= 0 && w.faiths[c.faith].holy === s.id) add('Holy city', 8);
   const tr = c.ruler.trait;
-  t += tr === 'pious' ? 3 : tr === 'just' ? 4 : tr === 'greedy' ? -2 : tr === 'cruel' ? -3 : 0;
-  const sizePen = Math.max(0, tally.live[c.id] - 3) * 2.2 * (has(c, 'egalitarian') ? 0.5 : 1) * (1 - m.sizePen);
+  add(`A ${tr} ruler`, tr === 'pious' ? 3 : tr === 'just' ? 4 : tr === 'greedy' ? -2 : tr === 'cruel' ? -3 : 0);
+  add('Size of the realm', -Math.max(0, tally.live[c.id] - 3) * 2.2 * (has(c, 'egalitarian') ? 0.5 : 1) * (1 - m.sizePen));
   const cap = w.setts[c.capital];
   const dist = cap && cap !== s ? hexDist(w.W, s.tile, cap.tile) : 0;
-  t -= sizePen + dist * 1.2 * (has(c, 'martial') ? 0.8 : 1);
-  if (s.lastFamine >= 0 && w.tick - s.lastFamine < 5 * TICKS_PER_YEAR) t -= 15;
-  if (s.plague > 0) t -= 10;
-  if (s.conq >= 0 && w.tick - s.conq < 20 * TICKS_PER_YEAR) t -= 12 * (1 - (w.tick - s.conq) / (20 * TICKS_PER_YEAR));
-  if (warring[c.id]) t -= 4 + c.weary / 10;
-  if (has(c, 'ancestral')) t += Math.min(10, (w.tick - s.born) / (30 * TICKS_PER_YEAR));
-  return Math.max(5, Math.min(95, Math.round(t)));
+  add('Distance from the capital', -dist * 1.2 * (has(c, 'martial') ? 0.8 : 1));
+  if (s.lastFamine >= 0 && w.tick - s.lastFamine < 5 * TICKS_PER_YEAR) add('Recent famine', -15);
+  if (s.plague > 0) add('Plague', -10);
+  if (s.conq >= 0 && w.tick - s.conq < 20 * TICKS_PER_YEAR) add('Recently conquered', -12 * (1 - (w.tick - s.conq) / (20 * TICKS_PER_YEAR)));
+  if (atWar) add('War and weariness', -(4 + c.weary / 10));
+  if (has(c, 'ancestral')) add('Old roots', Math.min(10, (w.tick - s.born) / (30 * TICKS_PER_YEAR)));
+  if (c.lord >= 0) add('Paying tribute', -3);
+  add(c.era === 'golden' ? 'Golden age' : 'Dark age', eraFx(c).stab);
+  return out;
 }
 
 function infect(w: World, s: Sett, pid: number, r: Rand): void {
@@ -297,6 +314,7 @@ function settYearly(w: World, s: Sett): void {
     ev(w, { k: 'famine', a: c.id, s: s.id, n: s.starve });
     s.lastFamine = w.tick;
     c.ruler.famines++;
+    flee(w, s, c.id, Math.floor(Math.min(s.starve * 0.5, s.pop * 0.06)), 'famine');
   }
   s.starve = 0;
   if (s.siegeBy >= 0 && w.civs[s.siegeBy].died < 0 && relOf(w, s.civ, s.siegeBy)?.st !== 'war') {
@@ -327,7 +345,8 @@ function settYearly(w: World, s: Sett): void {
   }
 
   const cap = avgCap(s, m);
-  const wantsOut = c.goal === 'expand' ? s.pop > cap * 0.3 : s.pop > cap * 0.7;
+  // Crowded villages send settlers; real towns send them sooner, while there is still land to take.
+  const wantsOut = c.goal === 'expand' ? s.pop > cap * 0.3 : s.pop > cap * (s.tier >= 2 ? 0.4 : 0.7);
   if (wantsOut && s.pop >= TIER_POP[1] && s.mat >= SETTLER_MAT && s.noSites <= w.tick && !warring[c.id]) {
     if (trySettle(w, s, c)) return;
   }
@@ -443,7 +462,8 @@ function borders(w: World): Map<number, number> {
 function yearlyNature(w: World): void {
   const r = new Rand(w.seed, S.CLIMATE, w.tick);
   w.spells = w.spells.filter((sp) => sp.end > w.tick);
-  if (r.chance(0.3)) {
+  const cl = climateNow(w);
+  if (r.chance(cl === 'dry' ? 0.4 : cl === 'wet' ? 0.2 : 0.3)) {
     const tile = randomLand(w, r);
     if (tile >= 0) {
       const yrs = r.range(1, 3);
@@ -452,7 +472,7 @@ function yearlyNature(w: World): void {
       for (const a of civsNear(w, tile, rad)) ev(w, { k: 'drought', a, n: yrs });
     }
   }
-  if (r.chance(0.25)) {
+  if (r.chance(cl === 'wet' ? 0.35 : cl === 'dry' ? 0.15 : 0.25)) {
     const tile = randomLand(w, r);
     if (tile >= 0) {
       const rad = r.range(5, 8);
@@ -460,8 +480,8 @@ function yearlyNature(w: World): void {
       for (const a of civsNear(w, tile, rad)) ev(w, { k: 'bounty', a });
     }
   }
-  if (r.chance(0.2)) {
-    const tile = randomLand(w, r, (i) => w.t.temp[i] < 10);
+  if (r.chance(cl === 'cold' ? 0.34 : cl === 'warm' ? 0.1 : 0.2)) {
+    const tile = randomLand(w, r, (i) => w.t.temp[i] < (cl === 'cold' ? 16 : 10));
     if (tile >= 0) {
       const rad = r.range(8, 12);
       w.spells.push({ k: 'winter', tile, r: rad, start: w.tick, end: w.tick + 4, mult: 600 });
@@ -471,7 +491,7 @@ function yearlyNature(w: World): void {
   // Floods along big rivers: deadly, but they leave rich silt behind.
   const rf = new Rand(w.seed, S.EVENT, w.tick);
   for (const s of w.setts) {
-    if (s.died >= 0 || w.t.flow[s.tile] < 3 || !rf.chance(0.012)) continue;
+    if (s.died >= 0 || w.t.flow[s.tile] < 3 || !rf.chance(cl === 'wet' ? 0.03 : 0.012)) continue;
     const lost = Math.floor(s.pop * (0.03 + rf.float() * 0.05));
     s.pop -= lost;
     s.silt = w.tick + TICKS_PER_YEAR;
@@ -479,11 +499,12 @@ function yearlyNature(w: World): void {
   }
   // A new plague can start in a crowded place.
   const rp = new Rand(w.seed, S.PLAGUE, w.tick);
-  if (rp.chance(0.035)) {
+  if (rp.chance(cl === 'wet' ? 0.05 : 0.035)) {
     const cands = w.setts.filter((s) => s.died < 0 && s.pop > 2500 && s.immune <= w.tick && s.plague === 0);
     if (cands.length) {
       const o = rp.pick(cands);
-      const p = { id: w.plagues.length, name: plagueName(rp), start: w.tick, end: -1, deaths: 0, origin: o.id, civs: [] as number[] };
+      const used = (x: string) => w.plagues.filter((q) => q.name === x).length;
+      const p = { id: w.plagues.length, name: plagueName(rp, o.name, used), start: w.tick, end: -1, deaths: 0, origin: o.id, civs: [] as number[] };
       w.plagues.push(p);
       ev(w, { k: 'plague_start', a: o.civ, s: o.id, x: p.name });
       infect(w, o, p.id, rp);
@@ -497,7 +518,7 @@ function research(w: World, c: Civ, r: Rand): void {
   const scholars = greatCount(c, 'scholar');
   // Research grows slower than population: a huge realm is not a huge academy.
   c.lore += Math.sqrt(pop) * 0.15 * (has(c, 'curious') ? 1.5 : 1) * (1 + 0.1 * Math.min(5, c.contacts.length)) * m.lore *
-    (c.ruler.trait === 'wise' ? 1.15 : 1) * (1 + 0.25 * scholars) * (edictOn(w, c) === 'research' ? 1.35 : 1) * (1 + wonderFx(c).lore) + 0.5;
+    (c.ruler.trait === 'wise' ? 1.15 : 1) * (1 + 0.25 * scholars) * (edictOn(w, c) === 'research' ? 1.35 : 1) * (1 + wonderFx(c).lore) * eraFx(c).lore + 0.5;
   const known = (id: number) => {
     let n = 0;
     for (const k of c.contacts) {
@@ -639,6 +660,7 @@ function yearly(w: World): void {
   yearlyFaith(w);
   yearlyWonders(w);
   yearlyFate(w);
+  yearlyRealm(w, warring);
   worldAge(w);
   tendReserves(w);
 }

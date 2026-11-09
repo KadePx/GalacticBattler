@@ -10,6 +10,8 @@ import { TICKS_PER_YEAR, type Civ, type Sett, type War, type World } from './typ
 import { B } from './worldgen';
 import { openOmen } from './player';
 import { wonderFx } from './wonders';
+import { ordinal } from './names';
+import { flee, mayAttack, maybeSubjugate } from './realm';
 
 export function generalOf(c: Civ): string | null {
   return c.greats.find((g) => g.kind === 'general')?.name ?? null;
@@ -67,15 +69,28 @@ export function monthlyArmy(w: World, c: Civ, atWar: boolean): void {
   }
 }
 
-const WAR_A = ['Long', 'Bitter', 'Red', 'Iron', 'Hundred Days', 'Burning', 'Quiet', 'Salt', 'Broken Oath', 'Winter'];
+/**
+ * A war's name says why it was fought: a claim, a faith, a grudge, land or loot. Names that
+ * the world has used before get an ordinal ("the Second ..."), so no two wars share a name.
+ */
 function warName(w: World, a: Civ, b: Civ, target: Sett | null, r: Rand, cause: War['cause']): string {
-  if (cause === 'succession') return `the War of the ${a.ruler.house} Claim`;
+  const pair = `the ${a.name}–${b.name} War`;
   const river = target && w.t.river[target.tile] ? w.rivers[w.t.river[target.tile] - 1].name : null;
-  const p = r.int(4);
-  if (p === 0 && river) return `the War of the ${river}`;
-  if (p === 1 && target) return `the ${target.name} War`;
-  if (p === 2) return `the ${r.pick(WAR_A)} War`;
-  return `the ${a.name}–${b.name} War`;
+  const month = w.tick % TICKS_PER_YEAR;
+  const south = target ? Math.floor(target.tile / w.W) > w.H / 2 : false;
+  const winter = south ? month >= 5 && month <= 7 : month <= 1 || month === 11;
+  let base: string;
+  if (cause === 'succession') base = `the War of the ${a.ruler.house} Claim`;
+  else if (cause === 'independence') base = `the ${a.name} Revolt`;
+  else if (cause === 'faith') base = r.chance(0.5) ? `the ${a.name} Crusade` : `the Holy War for ${target?.name ?? b.name}`;
+  else if (cause === 'grudge') base = pair;
+  else if (cause === 'plunder') base = target && r.chance(0.5) ? `the Raids on ${target.name}` : winter && !w.wars.some((x) => x.name.endsWith('Winter War')) ? 'the Winter War' : pair;
+  else {
+    const p = r.int(3);
+    base = p === 0 && river ? `the War of the ${river}` : p === 1 && target ? `the War for ${target.name}` : pair;
+  }
+  const earlier = w.wars.filter((x) => x.name === base || x.name.endsWith(base.replace(/^the /, ' '))).length;
+  return ordinal(base, earlier);
 }
 
 export function declareWar(w: World, a: Civ, b: Civ, cause: War['cause'], r: Rand): War {
@@ -101,6 +116,21 @@ export function declareWar(w: World, a: Civ, b: Civ, cause: War['cause'], r: Ran
     setState(w, rel(w, o, b.id), 'war');
     ev(w, { k: 'war_join', a: o, b: b.id, x: war.name });
   }
+  // Tributaries follow their overlord into war, and an overlord shields its tributaries.
+  const join = (o: Civ, side: number[], enemy: number) => {
+    if (o.died >= 0 || o.id === a.id || o.id === b.id || war.atkAllies.includes(o.id) || war.defAllies.includes(o.id)) return;
+    if (relOf(w, o.id, enemy)?.st === 'ally') return;
+    side.push(o.id);
+    setState(w, rel(w, o.id, enemy), 'war');
+    ev(w, { k: 'war_join', a: o.id, b: enemy, x: war.name, y: 'lord' });
+  };
+  if (cause !== 'independence') {
+    for (const v of w.civs) {
+      if (v.lord === a.id) join(v, war.atkAllies, b.id);
+      else if (v.lord === b.id) join(v, war.defAllies, a.id);
+    }
+    if (b.lord >= 0 && b.lord !== a.id) join(w.civs[b.lord], war.defAllies, a.id);
+  }
   // A founder's people are asked how to meet the war.
   openOmen(w, a, 'war', { b: b.id, n: war.id });
   openOmen(w, b, 'war', { b: a.id, n: war.id });
@@ -123,7 +153,7 @@ function nearestPair(w: World, from: number, to: number): [Sett, Sett] | null {
 /** Yearly: rulers weigh up their neighbours and some choose war. */
 export function considerWar(w: World, border: Map<number, number>, canGrow: Float64Array): void {
   for (const c of w.civs) {
-    if (c.died >= 0 || c.weary > 30 || c.protectedUntil > w.tick || activeWars(w, c.id).length) continue;
+    if (c.died >= 0 || c.lord >= 0 || c.weary > 30 || c.protectedUntil > w.tick || activeWars(w, c.id).length) continue;
     const r = new Rand(w.seed, S.AI, w.tick, 0x3a, c.id);
     const my = strength(c);
     if (my < 50) continue;
@@ -131,13 +161,16 @@ export function considerWar(w: World, border: Map<number, number>, canGrow: Floa
     let bestD = 2;
     for (const k of c.contacts) {
       const o = w.civs[k];
-      if (o.died >= 0 || o.protectedUntil > w.tick) continue;
+      if (o.died >= 0 || o.protectedUntil > w.tick || !mayAttack(c, o)) continue;
       const rl = relOf(w, c.id, k);
       if (!rl || rl.st === 'war' || rl.st === 'ally' || rl.truce > w.tick) continue;
       const edge = border.get(c.id < k ? c.id * 65536 + k : k * 65536 + c.id) ?? 0;
       if (!edge) continue;
       let theirs = strength(o) + 30;
       for (const al of allies(w, k)) if (al !== c.id) theirs += strength(w.civs[al]) * 0.5;
+      // An overlord and its tributaries stand together.
+      if (o.lord >= 0) theirs += strength(w.civs[o.lord]) * 0.6;
+      for (const v of w.civs) if (v.lord === k && v.died < 0) theirs += strength(v) * 0.4;
       let d = Math.min(4, (my / theirs - 1) * 1.2) - rl.op / 25 - 1 + r.float() * 0.6;
       if (canGrow[c.id] === 0) d += 0.7; // nowhere left to settle
       if (has(c, 'martial')) d += 0.4;
@@ -235,8 +268,8 @@ export function monthlyWar(w: World): void {
     } else if (!xWins) {
       T.siege = Math.max(0, T.siege - 1);
     }
-    // One name per place per war; only the first clash and decisive ones make the chronicle.
-    const decisive = ratio > 1.8 || ratio < 1 / 1.8;
+    // One name per place per war; only the first clash and crushing ones make the chronicle.
+    const decisive = ratio > 2.6 || ratio < 1 / 2.6;
     if (firstHere || decisive) {
       const name = battleName(w, T, new Rand(w.seed, S.EVENT, war.id, T.id), !firstHere && xWins);
       ev(w, { k: 'battle', a: winner.id, b: loser.id, s: T.id, x: name, n: lossL + lossW, y: gen ?? undefined });
@@ -253,6 +286,8 @@ function capture(w: World, war: War, T: Sett, X: Civ, Y: Civ, r: Rand): void {
   T.conq = w.tick;
   T.stab = 35;
   T.pop -= Math.floor(T.pop * 0.08);
+  // Some flee to their own people's nearest town.
+  flee(w, T, Y.id, Math.floor(T.pop * 0.06), 'war');
   const loot = T.mat + Y.wealth * 0.15;
   X.wealth += loot;
   Y.wealth *= 0.85;
@@ -284,11 +319,29 @@ export function considerPeace(w: World): void {
     const r = new Rand(w.seed, S.AI, w.tick, 0x9ea, war.id);
     let result: War['result'] = '';
     if (A.died >= 0 || D.died >= 0) result = 'conquered';
+    else if (shouldSubmit(w, war, A, D, r)) result = 'submitted';
     else if (war.score >= 30 && yrs >= 2 && r.chance(0.5)) result = 'victory';
     else if (war.score <= -30 && yrs >= 2 && r.chance(0.5)) result = 'defeat';
     else if (A.weary > 55 || D.weary > 65 || yrs >= 15) result = war.score >= 20 ? 'victory' : war.score <= -20 ? 'defeat' : 'stalemate';
     if (result) endWar(w, war, result);
   }
+}
+
+/**
+ * A small people facing a far stronger one, and already losing, may bow rather than be wiped
+ * out: it becomes the attacker's tributary. The proud and the warlike rarely do.
+ */
+function shouldSubmit(w: World, war: War, A: Civ, D: Civ, r: Rand): boolean {
+  if (D.lord >= 0 || A.lord >= 0 || war.cause === 'independence' || war.cause === 'succession') return false;
+  if (war.score < 10 && !war.taken.length) return false;
+  const theirs = strength(A) + war.atkAllies.reduce((s, k) => s + strength(w.civs[k]) * 0.5, 0);
+  const mine = strength(D) + war.defAllies.reduce((s, k) => s + strength(w.civs[k]) * 0.5, 0);
+  if (theirs < mine * 2.5 + 40) return false;
+  let p = 0.4;
+  if (has(D, 'stubborn')) p *= 0.4;
+  if (has(D, 'martial')) p *= 0.6;
+  if (war.cause === 'faith' || war.cause === 'grudge') p *= 0.6; // the attacker wants more than tribute
+  return r.chance(p);
 }
 
 export function endWar(w: World, war: War, result: War['result']): void {
@@ -309,14 +362,21 @@ export function endWar(w: World, war: War, result: War['result']): void {
   }
   const A = w.civs[war.atk];
   const D = w.civs[war.def];
-  if (result === 'victory' && D.died < 0) {
+  const rs = new Rand(w.seed, S.AI, w.tick, 0x7b, war.id);
+  if (result === 'submitted') {
+    for (const v of w.civs) if (v.died < 0 && v.lord === D.id) { v.lord = -1; v.lordSince = -1; }
+    D.lord = A.id;
+    D.lordSince = w.tick;
+  } else if (result === 'victory' && D.died < 0) {
     const pay = D.wealth * 0.5;
     D.wealth -= pay;
     A.wealth += pay;
+    maybeSubjugate(w, A, D, rs);
   } else if (result === 'defeat' && A.died < 0) {
     const pay = A.wealth * 0.5;
     A.wealth -= pay;
     D.wealth += pay;
+    maybeSubjugate(w, D, A, rs);
   }
   if (result !== 'conquered') {
     ev(w, { k: 'peace', a: war.atk, b: war.def, x: war.name, z: result, n: Math.max(1, Math.round((w.tick - war.start) / TICKS_PER_YEAR)) });

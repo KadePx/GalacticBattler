@@ -1,12 +1,12 @@
 // Civilizations and settlements: land yields, territory, founding, and site scoring.
 
 import { forWithin, hexDist, neighbors } from './hex';
-import { NAME_KEY, peopleName, word } from './names';
+import { NAME_KEY, houseName as famName, peopleName, personName, riverName, townName, type Concept, type PlaceCtx } from './names';
 import { hash32, Rand, S } from './rng';
 import {
   RULER_TRAITS, TICKS_PER_YEAR, type BKey, type Civ, type Ev, type Ruler, type Sett, type ValueId, type World,
 } from './types';
-import { B, BIOMES, RES_FOOD, RES_MAT, isLand } from './worldgen';
+import { B, BIOMES, R, RES_FOOD, RES_MAT, isLand } from './worldgen';
 
 export const TIER_POP = [0, 300, 1500, 6000, 20000];
 export const TIER_R = [1, 2, 2, 3, 3];
@@ -159,32 +159,81 @@ export function suggestSpots(w: World, n: number, minGap = 10): number[] {
 
 // ---- Founding ----
 
-export function houseName(c: Civ): string {
-  return word(c.phon, c.lex, NAME_KEY.HOUSE, c.houses++);
+export function houseName(w: World, c: Civ): string {
+  // Some families are known by a town of theirs.
+  const towns = w.setts.filter((s) => s.civ === c.id && s.died < 0);
+  const town = towns.length ? towns[c.houses % towns.length].name : undefined;
+  return famName(c.phon, c.lex, c.houses++, town);
 }
 
 /** A new ruler. house = null starts a new dynasty. */
 export function newRuler(w: World, c: Civ, house: string | null): Ruler {
   const r = new Rand(w.seed, S.RULER, c.id, c.rulers);
-  const name = word(c.phon, c.lex, NAME_KEY.RULER, c.rulers);
+  const name = personName(c.phon, c.lex, NAME_KEY.RULER, c.rulers);
   c.rulers++;
   const age = r.range(18, 40);
   const life = r.range(45, 78);
   const born = w.tick - age * TICKS_PER_YEAR;
   const dies = Math.max(w.tick + TICKS_PER_YEAR, born + life * TICKS_PER_YEAR + r.int(TICKS_PER_YEAR));
-  return { name, born, dies, since: w.tick, founded: 0, famines: 0, built: 0, won: 0, trait: r.pick(RULER_TRAITS), house: house ?? houseName(c) };
+  return { name, born, dies, since: w.tick, founded: 0, famines: 0, built: 0, won: 0, trait: r.pick(RULER_TRAITS), house: house ?? houseName(w, c) };
 }
 
 function emptyBuildings(): Record<BKey, number> {
   return { fields: 0, granary: 0, walls: 0, temple: 0, market: 0, workshop: 0, monument: 0 };
 }
 
+/** What a town's founders would call its place: its main feature and a few words that fit it. */
+export function placeCtx(w: World, c: Civ, tile: number): PlaceCtx {
+  const t = w.t;
+  const b = t.biome[tile];
+  const adj: Concept[] = [];
+  let feat: Concept | null = null;
+  let coast = false;
+  let lake = false;
+  const nb: number[] = [];
+  for (const j of neighbors(w.W, w.H, tile, nb)) {
+    if (t.biome[j] === B.LAKE) lake = true;
+    else if (!isLand(t, j)) coast = true;
+  }
+  if (t.river[tile]) feat = t.flow[tile] >= 3 ? 'ford' : 'brook';
+  else if (coast) feat = t.res[tile] === R.FISH ? 'fish' : (tile % 2 ? 'shore' : 'haven');
+  else if (lake) feat = 'mere';
+  else if (b === B.HILLS) feat = 'hill';
+  else if (b === B.FOREST || b === B.JUNGLE) feat = 'wood';
+  else if (b === B.TAIGA) feat = 'pine';
+  else if (b === B.DESERT) feat = 'sand';
+  else if (b === B.TUNDRA || b === B.SNOW) feat = 'frost';
+  else if (b === B.MARSH) feat = 'marsh';
+  else if (t.res[tile] === R.HORSES) feat = 'horse';
+  else if (b === B.GRASS || b === B.PLAINS || b === B.SAVANNA) feat = 'field';
+  if (t.res[tile] === R.GOLD) adj.push('gold');
+  if (t.res[tile] === R.IRON) adj.push('iron');
+  if (b === B.HILLS) adj.push('high');
+  if (b === B.DESERT || b === B.SAVANNA) adj.push('red');
+  if (b === B.TUNDRA || b === B.SNOW) adj.push('cold', 'white');
+  if (b === B.FOREST || b === B.GRASS) adj.push('green');
+  if (b === B.TAIGA || b === B.MARSH) adj.push('black');
+  const cap = c.capital >= 0 ? w.setts[c.capital] : null;
+  if (cap) {
+    adj.push('new');
+    const d = hexDist(w.W, cap.tile, tile);
+    if (d >= 5) {
+      const dx = (tile % w.W) - (cap.tile % w.W);
+      const dy = Math.floor(tile / w.W) - Math.floor(cap.tile / w.W);
+      adj.push(Math.abs(dx) > Math.abs(dy) * 1.5 ? (dx > 0 ? 'east' : 'west') : dy > 0 ? 'south' : 'north');
+    }
+    if (d >= 9) adj.push('far');
+  } else adj.push('old', 'bright');
+  return { feat, adj };
+}
+
 export function foundSettlement(w: World, c: Civ, tile: number, pop: number, parent: number, name?: string): Sett {
-  const auto = word(c.phon, c.lex, NAME_KEY.SETT, c.named++);
+  const auto = name ? null : townName(c.phon, c.lex, c.named, placeCtx(w, c, tile), (x) => w.setts.some((o) => o.name === x));
+  c.named++;
   const s: Sett = {
     id: w.setts.length,
     civ: c.id,
-    name: name ?? auto,
+    name: name ?? auto!.name,
     tile,
     born: w.tick,
     died: -1,
@@ -211,6 +260,7 @@ export function foundSettlement(w: World, c: Civ, tile: number, pop: number, par
     conq: -1,
     o: c.id,
   };
+  if (auto?.gloss) s.g = auto.gloss;
   w.setts.push(s);
   w.t.city[tile] = s.id;
   // Take the tile even if a neighbour was working it.
@@ -221,7 +271,9 @@ export function foundSettlement(w: World, c: Civ, tile: number, pop: number, par
   if (rid) {
     const river = w.rivers[rid - 1];
     if (!river.name) {
-      river.name = word(c.phon, c.lex, NAME_KEY.RIVER, rid);
+      const rn = riverName(c.phon, c.lex, rid, (x) => w.rivers.some((v) => v.name === x));
+      river.name = rn.name;
+      if (rn.gloss) river.g = rn.gloss;
       river.namedBy = c.id;
       ev(w, { k: 'river_named', a: c.id, s: s.id, x: river.name });
     }
@@ -246,8 +298,10 @@ export interface FoundOpts {
 
 export function foundCiv(w: World, o: FoundOpts): Civ {
   const id = w.civs.length;
-  const lex = o.lex ?? hash32(w.seed, S.FOUND, id, 0x1e7);
+  let lex = o.lex ?? hash32(w.seed, S.FOUND, id, 0x1e7);
   const phon = o.phon ?? hash32(lex, 0x9407);
+  // No two living peoples share a name.
+  for (let k = 0; !o.name && !o.lex && k < 6 && w.civs.some((x) => x.died < 0 && x.name === peopleName(phon, lex)); k++) lex = hash32(lex, k, 0x6e3);
   const c: Civ = {
     id,
     name: o.name ?? peopleName(phon, lex),
@@ -288,6 +342,12 @@ export function foundCiv(w: World, o: FoundOpts): Civ {
     faith: -1,
     culture: 0,
     work: null,
+    lord: -1,
+    lordSince: -1,
+    era: '',
+    eraSince: -1,
+    eraUntil: -1,
+    eraName: '',
   };
   w.civs.push(c);
   c.ruler = newRuler(w, c, null);

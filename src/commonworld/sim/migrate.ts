@@ -51,6 +51,20 @@ const STEPS: Record<number, (o: Raw) => void> = {
     o.faiths = [];
     o.wonders = [];
   },
+  // v6 -> v7: tributaries, golden and dark ages, climate swings. Nobody starts bound, in an
+  // age, or in a climate swing; town and river meanings (g) are only given to new names.
+  6: (o) => {
+    for (const c of o.civs as Record<string, unknown>[]) {
+      c.lord = -1;
+      c.lordSince = -1;
+      c.era = '';
+      c.eraSince = -1;
+      c.eraUntil = -1;
+      c.eraName = '';
+    }
+    o.eras = [];
+    o.climates = [];
+  },
 };
 
 export function migrate(o: Raw): Raw {

@@ -115,7 +115,21 @@
       .stat span { color: var(--faint); font-size: 11.5px; }
       .chart { width: 100%; height: 120px; display: block; }
       .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 10px; font-size: 13px; margin-top: 6px; }
-      .kv div:nth-child(odd) { color: var(--faint); }
+      .kv > div:nth-child(odd) { color: var(--faint); }
+      .whyd summary { cursor: pointer; list-style: none; }
+      .whyd summary::-webkit-details-marker { display: none; }
+      .whyd summary::after { content: ' ▾'; color: var(--faint); font-size: 11px; }
+      .whyd[open] summary::after { content: ' ▴'; }
+      .whybox { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--raise); border: 1px solid var(--line); font-size: 12.5px; text-align: left; }
+      .whyd.op .whybox { position: absolute; right: 12px; width: min(260px, 80vw); z-index: 4; background: #161b26; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+      .why { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; color: var(--dim); }
+      .why b { font-weight: 600; font-variant-numeric: tabular-nums; }
+      tr.th th { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 4px 6px; }
+      tr.th th.r { text-align: right; }
+      .row .n small.nocap, .nocap { text-transform: none; }
+      .row .n small.nocap::first-letter { text-transform: uppercase; }
+      .gold-t { color: #ffd98a; } .dark-t { color: #a9b3ff; }
+      .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 99px; margin-left: 4px; background: var(--raise); border: 1px solid var(--line); color: var(--dim); font-weight: 500; vertical-align: 1px; }
       table { width: 100%; border-collapse: collapse; font-size: 13px; }
       td { padding: 7px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
       td.r { text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -152,7 +166,7 @@
       .tchip.dim { opacity: 0.35; }
       .more { display: flex; margin: 14px auto; }
 
-      #inspect { position: fixed; left: 12px; bottom: calc(var(--tl) + 24px); width: 300px; padding: 14px 16px; }
+      #inspect { position: fixed; left: 12px; bottom: calc(var(--tl) + 24px); width: 320px; padding: 14px 16px; max-height: calc(100vh - var(--tl) - 120px); overflow-y: auto; overscroll-behavior: contain; }
       #inspect .x { position: absolute; right: 10px; top: 10px; color: var(--faint); font-size: 14px; }
       #inspect .h { font-size: 16px; font-weight: 600; margin-right: 22px; }
 
@@ -324,7 +338,7 @@
         #found .dot { font-size: 10px; }
         .values { grid-template-columns: 1fr; }
         #toast { top: auto; bottom: calc(var(--tl) + 122px); }
-        #inspect { left: 12px; right: 12px; width: auto; bottom: calc(var(--tl) + 72px); z-index: 3; }
+        #inspect { left: 12px; right: 12px; width: auto; bottom: calc(var(--tl) + 72px); z-index: 3; max-height: 55vh; }
         #timeline { gap: 6px; padding: 0 8px; }
         #tyear { min-width: 52px; font-size: 13px; }
         #speed { display: none; }

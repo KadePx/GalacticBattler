@@ -4,7 +4,7 @@
 import { ev, has, newRuler, spawnCiv, tally, transferSett } from './civ';
 import { rel } from './diplo';
 import { hexDist } from './hex';
-import { epithet, NAME_KEY, word } from './names';
+import { epithet, NAME_KEY, personName } from './names';
 import { Rand, S } from './rng';
 import { GREAT_KINDS, TICKS_PER_YEAR, type Civ, type GreatKind, type World } from './types';
 import { declareWar } from './war';
@@ -36,7 +36,7 @@ export function yearlyGreats(w: World, c: Civ, atWar: boolean): void {
     x -= Math.max(0.1, wts[i]);
     if (x <= 0) { kind = GREAT_KINDS[i]; break; }
   }
-  const name = word(c.phon, c.lex, NAME_KEY.GREAT, c.greatN++);
+  const name = personName(c.phon, c.lex, NAME_KEY.GREAT, c.greatN++);
   c.greats.push({ name, kind, born: w.tick, dies: w.tick + r.range(20, 40) * TICKS_PER_YEAR, deeds: 0 });
   ev(w, { k: 'great_born', a: c.id, x: name, y: kind });
 }
@@ -46,7 +46,7 @@ export function succession(w: World, c: Civ): void {
   if (c.ruler.dies > w.tick) return;
   const old = c.ruler;
   const yrs = Math.floor((w.tick - old.since) / TICKS_PER_YEAR);
-  const title = `${old.name} ${epithet(new Rand(w.seed, S.RULER, c.id, c.rulers, 1), yrs, old.founded, old.built, old.famines)}`;
+  const title = `${old.name} ${epithet(new Rand(w.seed, S.RULER, c.id, c.rulers, 1), yrs, old.founded, old.built, old.famines, old.won, old.trait)}`;
   const r = new Rand(w.seed, S.RULER, w.tick, c.id, 0xc415);
   const ids = tally.list[c.id] ?? [];
   let stab = 0;

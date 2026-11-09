@@ -7,8 +7,9 @@ import { AGES } from '../sim/techs';
 import { TICKS_PER_YEAR, type Civ } from '../sim/types';
 import { civColor } from './map';
 import { banner, esc, fmt, type Ctx } from './panels';
+import { CLIMATES, climateNow } from '../sim/realm';
 
-const WORLD_NEWS = new Set(['age', 'civ_fall', 'found_civ', 'wonder', 'faith_found', 'schism', 'collapse', 'revival', 'war', 'plague_start', 'eruption', 'tsunami']);
+const WORLD_NEWS = new Set(['age', 'civ_fall', 'found_civ', 'wonder', 'faith_found', 'schism', 'collapse', 'revival', 'war', 'plague_start', 'eruption', 'tsunami', 'climate', 'climate_end', 'era', 'tribute']);
 
 const civLink = (c: Civ) => `<a href="#" data-civ="${c.id}" style="color:${civColor(c.hue, 70)}">the ${esc(c.name)}</a>`;
 
@@ -27,12 +28,11 @@ export function worldHtml(ctx: Ctx): string {
   const founders = w.civs.filter((c) => c.founder);
 
   // Ages, from the chronicle (as far back as it is loaded).
-  const ages: [number, number][] = [[0, 0]];
-  for (const e of w.log) if (e.k === 'age' && e.n !== undefined) ages.push([e.n, yearOf(e.t)]);
-  const ageRows = ages.map(([a, y], i) => {
-    const to = ages[i + 1]?.[1];
-    return `<div class="nrow"><div><b>${AGES[a]} Age</b></div><span class="legend">${y} AW – ${to !== undefined ? `${to} AW` : 'now'}</span></div>`;
-  }).join('');
+  // Every Age up to now, with its start year where the chronicle still remembers it.
+  const began = new Map<number, number>([[0, 0]]);
+  for (const e of w.log) if (e.k === 'age' && e.n !== undefined) began.set(e.n, yearOf(e.t));
+  const yr = (a: number) => (began.has(a) ? `${began.get(a)} AW` : '?');
+  const ageRows = AGES.slice(0, w.age + 1).map((name, a) => `<div class="nrow"><div><b>${name} Age</b></div><span class="legend">${yr(a)} – ${a === w.age ? 'now' : yr(a + 1)}</span></div>`).reverse().join('');
 
   const largest = alive.slice().sort((a, b) => (pop.get(b.id) ?? 0) - (pop.get(a.id) ?? 0)).slice(0, 5);
   const oldest = alive.slice().sort((a, b) => a.born - b.born || a.id - b.id)[0];
@@ -75,6 +75,27 @@ export function worldHtml(ctx: Ctx): string {
     news.push(`<div class="line${tile !== undefined ? ' click' : ''}"${tile !== undefined ? ` data-tile="${tile}" data-year="${l.year}"` : ''}><span class="y">${l.year}</span><span>${esc(l.text)}</span></div>`);
   }
 
+  // The climate now and before.
+  const cl = climateNow(w);
+  const curCl = cl ? w.climates[w.climates.length - 1] : null;
+  const climate = `<div class="nrow"><div><b>${curCl ? esc(curCl.name) : 'Ordinary seasons'}</b><div class="legend">${curCl ? `${CLIMATES[cl as keyof typeof CLIMATES].text} Since ${yearOf(curCl.start)} AW, until about ${yearOf(curCl.end)} AW.` : 'No long swing of weather grips the world.'}</div></div></div>`
+    + w.climates.filter((x) => x !== curCl).reverse().slice(0, 6).map((x) => `<div class="nrow"><div>${esc(x.name)}</div><span class="legend">${yearOf(x.start)}–${yearOf(x.end)} AW</span></div>`).join('');
+
+  // Golden ages, now and remembered; dark ages now.
+  const goldNow = alive.filter((c) => c.era === 'golden');
+  const darkNow = alive.filter((c) => c.era === 'dark');
+  const pastGold = w.eras.filter((e) => e.k === 'golden' && e.end >= 0).sort((a, b) => b.end - b.start - (a.end - a.start)).slice(0, 6);
+  const eras = [
+    ...goldNow.map((c) => `<div class="nrow"><div><span class="gold-t">☀</span> ${esc(c.eraName)}<div class="legend">${civLink(c)}, since ${yearOf(c.eraSince)} AW</div></div><span class="legend r">now</span></div>`),
+    ...darkNow.map((c) => `<div class="nrow"><div><span class="dark-t">☾</span> ${esc(c.eraName)}<div class="legend">${civLink(c)}, since ${yearOf(c.eraSince)} AW</div></div><span class="legend r">now</span></div>`),
+    ...pastGold.map((e) => `<div class="nrow"><div><span class="gold-t">☀</span> ${esc(e.name)}<div class="legend">${civLink(w.civs[e.civ])}</div></div><span class="legend r">${yearOf(e.start)}–${yearOf(e.end)} AW</span></div>`),
+  ].join('');
+
+  // Overlords and their tributaries.
+  const lords = new Map<number, Civ[]>();
+  for (const c of alive) if (c.lord >= 0) (lords.get(c.lord) ?? lords.set(c.lord, []).get(c.lord)!).push(c);
+  const tribute = [...lords].sort((a, b) => b[1].length - a[1].length).map(([l, vs]) => `<div class="nrow"><div>${banner(w.civs[l], 16)} ${civLink(w.civs[l])}</div><span class="legend r">tribute from ${vs.map(civLink).join(', ')}</span></div>`).join('');
+
   return `<div class="stats">
       <div class="stat"><b>${year}</b><span>years old · ${AGES[w.age]} Age</span></div>
       <div class="stat"><b>${alive.length}</b><span>living peoples</span></div>
@@ -87,6 +108,9 @@ export function worldHtml(ctx: Ctx): string {
     ${largest.map((c, i) => `<div class="nrow"><div>${banner(c, 16)} ${civLink(c)}</div><span class="legend">${i === 0 ? 'the largest · ' : ''}${fmt(pop.get(c.id) ?? 0)} people</span></div>`).join('')}
     ${oldest ? `<div class="nrow"><div>${banner(oldest, 16)} ${civLink(oldest)}</div><span class="legend">the oldest · since ${yearOf(oldest.born)} AW</span></div>` : ''}
     ${cultured && cultured.culture > 1 ? `<div class="nrow"><div>${banner(cultured, 16)} ${civLink(cultured)}</div><span class="legend">the most renowned · culture ${Math.round(cultured.culture)}</span></div>` : ''}
+    <h3>Climate <span class="legend">long swings of weather that change harvests everywhere</span></h3>${climate}
+    ${eras ? `<h3>Golden and dark ages</h3>${eras}` : ''}
+    ${tribute ? `<h3>Overlords <span class="legend">peoples paid tribute by others they beat</span></h3>${tribute}` : ''}
     <h3>Wonders of the world</h3>
     ${wonders || '<p class="legend">No wonder stands yet.</p>'}
     ${building.length ? `<p class="legend">Being built: ${building.join(', ')}.</p>` : ''}

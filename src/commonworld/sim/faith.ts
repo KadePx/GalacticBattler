@@ -19,8 +19,9 @@ function templesOf(w: World, c: Civ): number {
 
 function newFaith(w: World, c: Civ, holy: number, parent: number, prophet: string): Faith {
   const id = w.faiths.length;
+  const name = faithName(c.phon, c.lex, id, prophet, w.setts[holy].name, parent >= 0 ? w.faiths[parent].name : null, (x) => w.faiths.some((f) => f.name === x));
   const f: Faith = {
-    id, name: faithName(c.phon, c.lex, id), civ: c.id, holy, born: w.tick, died: -1,
+    id, name, civ: c.id, holy, born: w.tick, died: -1,
     hue: hash32(w.seed, S.FAITH, id) % 360, parent, prophet,
   };
   w.faiths.push(f);
