@@ -8,6 +8,7 @@ import { TICKS_PER_YEAR, type Civ } from '../sim/types';
 import { civColor } from './map';
 import { banner, esc, fmt, type Ctx } from './panels';
 import { CLIMATES, climateNow } from '../sim/realm';
+import { root, type Concept } from '../sim/names';
 
 const WORLD_NEWS = new Set(['age', 'civ_fall', 'found_civ', 'wonder', 'faith_found', 'schism', 'collapse', 'revival', 'war', 'plague_start', 'eruption', 'tsunami', 'climate', 'climate_end', 'era', 'tribute']);
 
@@ -96,6 +97,16 @@ export function worldHtml(ctx: Ctx): string {
   for (const c of alive) if (c.lord >= 0) (lords.get(c.lord) ?? lords.set(c.lord, []).get(c.lord)!).push(c);
   const tribute = [...lords].sort((a, b) => b[1].length - a[1].length).map(([l, vs]) => `<div class="nrow"><div>${banner(w.civs[l], 16)} ${civLink(w.civs[l])}</div><span class="legend r">tribute from ${vs.map(civLink).join(', ')}</span></div>`).join('');
 
+  // Tongues: peoples who share a way of speaking (daughters keep their parents' words).
+  const tongues = new Map<number, Civ[]>();
+  for (const c of alive) (tongues.get(c.phon) ?? tongues.set(c.phon, []).get(c.phon)!).push(c);
+  const SAMPLE: Concept[] = ['water', 'high', 'ford', 'sun', 'new', 'stone'];
+  const tongueRows = [...tongues].filter(([, cs]) => cs.length >= 2).sort((a, b) => b[1].length - a[1].length).slice(0, 8).map(([phon, cs]) => {
+    const eldest = w.civs.filter((c) => c.phon === phon).sort((a, b) => a.born - b.born || a.id - b.id)[0];
+    const words = SAMPLE.map((k) => `<span class="wd">${esc(root(phon, k))}</span> ${k}`).join(' · ');
+    return `<div class="nrow"><div><b>The ${esc(eldest.name)} tongue</b><div class="legend">${words}</div><div class="legend">Spoken by ${cs.slice(0, 6).map(civLink).join(', ')}${cs.length > 6 ? ` and ${cs.length - 6} more` : ''}</div></div></div>`;
+  }).join('');
+
   return `<div class="stats">
       <div class="stat"><b>${year}</b><span>years old · ${AGES[w.age]} Age</span></div>
       <div class="stat"><b>${alive.length}</b><span>living peoples</span></div>
@@ -117,6 +128,7 @@ export function worldHtml(ctx: Ctx): string {
     <h3>Faiths</h3>
     ${faiths || '<p class="legend">No faith has been founded yet.</p>'}
     ${goneFaiths ? `<p class="legend">${goneFaiths} older ${goneFaiths === 1 ? 'faith is' : 'faiths are'} no longer kept.</p>` : ''}
+    ${tongueRows ? `<h3>Tongues <span class="legend">peoples who broke away keep their parents' words; most place names mean something in them</span></h3>${tongueRows}` : ''}
     <h3>Ages</h3>${ageRows}
     <h3>Lately</h3>${news.join('') || '<p class="legend">Quiet times.</p>'}
     <h3>Memorials</h3>
