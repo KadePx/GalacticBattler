@@ -186,7 +186,7 @@ export function flee(w: World, from: Sett, civ: number, n: number, kind: 'famine
   for (const id of tally.list[civ] ?? []) {
     const s = w.setts[id];
     if (s === from || s.died >= 0 || s.siege > 0) continue;
-    if (kind === 'famine' && s.food < s.pop * 1.5) continue;
+    if (kind === 'famine' && (s.food < s.pop * 1.5 || (s.lastFamine >= 0 && w.tick - s.lastFamine < 2 * Y))) continue;
     const d = hexDist(w.W, s.tile, from.tile);
     if (d < bd && d <= 10) { bd = d; best = s; }
   }

@@ -50,7 +50,7 @@ export function openOmen(w: World, c: Civ, k: Omen['k'], o: Partial<Omen> = {}):
 }
 
 /** How many choices each kind of omen offers. */
-export const OMEN_CHOICES: Record<Omen['k'], number> = { claim: 2, war: 2, sign: 3, pact: 2 };
+export const OMEN_CHOICES: Record<Omen['k'], number> = { claim: 2, war: 3, sign: 3, pact: 2 };
 
 function acceptAlliance(w: World, a: Civ, b: Civ): boolean {
   const r = relOf(w, a.id, b.id);
@@ -96,6 +96,11 @@ export function resolveOmen(w: World, om: Omen, pick: number): void {
       c.army = Math.floor(c.army * 1.3);
       c.weary = Math.max(0, c.weary - 20);
       ev(w, { k: 'omen_war', a: c.id, b: om.b, x: war.name, n: 0 });
+    } else if (pick === 2) {
+      // Bow to the attacker: the war ends and the founder's people pays them tribute.
+      if (war.def !== c.id || c.lord >= 0 || w.civs[war.atk].lord >= 0) return;
+      ev(w, { k: 'omen_war', a: c.id, b: om.b, x: war.name, n: 2 });
+      endWar(w, war, 'submitted');
     } else {
       const enemy = w.civs[om.b ?? -1];
       const pay = c.wealth * 0.25;

@@ -133,6 +133,14 @@ function stances(): Map<number, Stance> {
   const atWarNow = (war: (typeof w.wars)[number]) => war.start <= until && (war.end < 0 || war.end > until);
   if (selCiv < 0) {
     for (const c of w.civs) m.set(c.id, 'peace');
+    // The present's tribute ties: who pays, who is paid.
+    if (viewYear === null) {
+      for (const c of w.civs) {
+        if (c.died >= 0 || c.lord < 0) continue;
+        m.set(c.id, 'vassal');
+        m.set(c.lord, 'lord');
+      }
+    }
     for (const war of w.wars) if (atWarNow(war)) for (const c of [war.atk, war.def, ...war.atkAllies, ...war.defAllies]) m.set(c, 'war');
     return m;
   }
@@ -229,7 +237,7 @@ function updateTop(): void {
 // ---- Timeline ----
 
 const track = $('track');
-const MARK_KINDS: Record<string, string> = { found_civ: '#7c8cff', secede: '#d68fd0', crisis: '#d68fd0', civ_fall: '#ff4a3a', war: '#e8873a', conquest: '#c0392b', plague_start: '#9fcf6a', monument: '#7fb6e8', age: '#ffffff' };
+const MARK_KINDS: Record<string, string> = { found_civ: '#7c8cff', secede: '#d68fd0', crisis: '#d68fd0', civ_fall: '#ff4a3a', war: '#e8873a', conquest: '#c0392b', plague_start: '#9fcf6a', monument: '#7fb6e8', age: '#ffffff', collapse: '#d68fd0', climate: '#5fd4c4' };
 let marksFor = '';
 
 function updateTimeline(): void {
@@ -251,9 +259,10 @@ function updateTimeline(): void {
     if (!col || (e.k === 'found_civ' && e.t === 0)) continue;
     const player = e.k === 'found_civ' && e.a !== undefined && !!w.civs[e.a]?.founder;
     // With no one selected, only the turning points of the world: new ages, falls, newcomers.
-    if (selCiv >= 0 ? e.a !== selCiv && e.b !== selCiv && e.k !== 'age' : !(e.k === 'age' || e.k === 'civ_fall' || player)) continue;
+    if (selCiv >= 0 ? e.a !== selCiv && e.b !== selCiv && e.k !== 'age' && e.k !== 'climate' : !(e.k === 'age' || e.k === 'civ_fall' || e.k === 'climate' || player)) continue;
     const big = e.k === 'age' || player || e.k === 'civ_fall';
-    marks.push(`<div class="mk ${big ? 'big' : ''}" style="left:${(100 * e.t) / TICKS_PER_YEAR / max}%;background:${col};color:${col}"></div>`);
+    const label = e.k === 'age' ? `The ${AGES[e.n ?? 0]} Age` : e.k === 'climate' ? cap1(e.x ?? 'a change of climate') : e.k === 'civ_fall' ? `The ${w.civs[e.a ?? 0]?.name ?? ''} fell` : player ? `The ${w.civs[e.a ?? 0]?.name ?? ''} arrived` : e.k.replace('_', ' ');
+    marks.push(`<div class="mk ${big ? 'big' : ''}" title="${esc(`${Math.floor(e.t / TICKS_PER_YEAR)} AW · ${label}`)}" style="left:${(100 * e.t) / TICKS_PER_YEAR / max}%;background:${col};color:${col}"></div>`);
   }
   $('marks').innerHTML = marks.slice(-400).join('');
   const room = Math.max(3, Math.floor(track.clientWidth / 56)); // labels need ~56px each

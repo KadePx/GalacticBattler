@@ -241,9 +241,11 @@ export function line(w: World, e: Ev, idx: number): Line {
     {
       const x = e.x ?? 'a monument';
       const place = x.endsWith(` of ${T(e.s)}`) ? '' : ` at ${T(e.s)}`;
+      // "the Seven Pillars" stand; "the Spire" stands.
+      const it = /(Steps|Pillars|Terraces|Gardens) of/.test(x) ? 'They will' : 'It will';
       text = e.y && x.endsWith(` of ${e.y}`)
-        ? pick(`${Pc(e.a)} raised ${x}${place} in honour of their ruler.`, `${Pc(e.a)} finished ${x}${place}. It will stand for ages.`)
-        : pick(`${Pc(e.a)} finished ${x}${place}, the work of ${e.y}.`, `${Pc(e.a)} raised ${x}${place}. It will stand for ages.`);
+        ? pick(`${Pc(e.a)} raised ${x}${place} in honour of their ruler.`, `${Pc(e.a)} finished ${x}${place}. ${it} stand for ages.`)
+        : pick(`${Pc(e.a)} finished ${x}${place}, the work of ${e.y}.`, `${Pc(e.a)} raised ${x}${place}. ${it} stand for ages.`);
       break;
     }
     case 'temple':
@@ -312,7 +314,9 @@ export function line(w: World, e: Ev, idx: number): Line {
     case 'omen_war':
       text = e.n === 0
         ? `${Pc(e.a)} took the sign as a call to arms and rallied their levies for ${e.x}.`
-        : `${Pc(e.a)} read the sign as a warning and bought peace from ${P(e.b)}.`;
+        : e.n === 2
+          ? `${Pc(e.a)} read the sign as a counsel of humility and bowed to ${P(e.b)}.`
+          : `${Pc(e.a)} read the sign as a warning and bought peace from ${P(e.b)}.`;
       break;
     case 'omen_sign':
       text = [
@@ -371,7 +375,7 @@ export function line(w: World, e: Ev, idx: number): Line {
       break;
     case 'wonder':
       text = pick(
-        `${cap1(e.x ?? 'A wonder')} was finished${at(e)}: a wonder of the world, raised by ${P(e.a)} under ${e.y}.`,
+        `${Pc(e.a)} completed ${e.x ?? 'a wonder'}${at(e)}: a wonder of the world, raised under ${e.y}.`,
         `After years of labour, ${P(e.a)} completed ${e.x}${at(e)}. The whole world spoke of it.`,
       );
       break;

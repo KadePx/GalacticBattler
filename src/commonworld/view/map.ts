@@ -11,7 +11,7 @@ import { CORNERS, EDGE, HEX, hexPath, mapSize, neighborInDir, paintTerrain } fro
 
 export type Mode = 'political' | 'diplomacy' | 'trade' | 'faith' | 'population' | 'stability' | 'fertility' | 'terrain';
 export type Stance = 'self' | 'ally' | 'pact' | 'peace' | 'war' | 'vassal' | 'lord';
-const STANCE_COLOR: Record<Stance, string> = { self: 'rgba(124,140,255,0.6)', ally: 'rgba(110,200,110,0.5)', pact: 'rgba(90,190,200,0.45)', peace: 'rgba(170,170,190,0.28)', war: 'rgba(225,70,55,0.55)', vassal: 'rgba(180,130,240,0.55)', lord: 'rgba(240,150,90,0.55)' };
+const STANCE_COLOR: Record<Stance, string> = { self: 'rgba(124,140,255,0.6)', ally: 'rgba(110,200,110,0.5)', pact: 'rgba(90,190,200,0.45)', peace: 'rgba(170,170,190,0.28)', war: 'rgba(225,70,55,0.55)', vassal: 'rgba(170,150,255,0.5)', lord: 'rgba(235,90,200,0.6)' };
 
 export interface MapState {
   owner: Int16Array;

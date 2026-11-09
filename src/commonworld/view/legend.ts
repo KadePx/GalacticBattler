@@ -28,8 +28,8 @@ export function legendHtml(mode: Mode, selName: string | null): { title: string;
       return { title: 'Peoples', body: `<p>Who holds the land. Each people has its own colour, and the lines are borders. Click land to select its people and see where they reach.</p>` };
     case 'diplomacy':
       return selName
-        ? { title: 'Diplomacy', body: `<p>How everyone stands with the <b>${selName}</b>.</p><div class="lrow">${sw('rgba(124,140,255,0.8)', selName)}${sw('rgba(110,200,110,0.8)', 'Ally')}${sw('rgba(90,190,200,0.8)', 'Pact')}${sw('rgba(170,170,190,0.55)', 'At peace')}${sw('rgba(225,70,55,0.85)', 'At war')}${sw('rgba(180,130,240,0.8)', 'Their tributary')}${sw('rgba(240,150,90,0.8)', 'Their overlord')}${sw('rgba(30,32,44,0.9)', 'Never met')}</div>` }
-        : { title: 'Diplomacy', body: `<p>Who is fighting right now. Select a people to see their allies, pacts and enemies.</p><div class="lrow">${sw('rgba(225,70,55,0.85)', 'At war')}${sw('rgba(170,170,190,0.55)', 'At peace')}</div>` };
+        ? { title: 'Diplomacy', body: `<p>How everyone stands with the <b>${selName}</b>.</p><div class="lrow">${sw('rgba(124,140,255,0.8)', selName)}${sw('rgba(110,200,110,0.8)', 'Ally')}${sw('rgba(90,190,200,0.8)', 'Pact')}${sw('rgba(170,170,190,0.55)', 'At peace')}${sw('rgba(225,70,55,0.85)', 'At war')}${sw('rgba(170,150,255,0.8)', 'Their tributary')}${sw('rgba(235,90,200,0.85)', 'Their overlord')}${sw('rgba(30,32,44,0.9)', 'Never met')}</div>` }
+        : { title: 'Diplomacy', body: `<p>Who is fighting right now, and who pays tribute to whom. Select a people to see their allies, pacts and enemies.</p><div class="lrow">${sw('rgba(225,70,55,0.85)', 'At war')}${sw('rgba(235,90,200,0.85)', 'Receives tribute')}${sw('rgba(170,150,255,0.8)', 'Pays tribute')}${sw('rgba(170,170,190,0.55)', 'At peace')}</div>` };
     case 'trade':
       return { title: 'Trade', body: `<p>Trade routes between towns. Trade brings coin and luxuries to both ends.</p><div class="lrow">${line('#f2c766', 'Land route')}${line('#8fd0ff', 'Sea route')}</div>` };
     case 'faith':

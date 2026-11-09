@@ -59,6 +59,7 @@ function omenCard(w: World, om: Omen, c: Civ, msPerTick: number, canPay: boolean
     title = 'War has come';
     body = `Your people are at war with ${on}${war ? ` (${esc(war.name)})` : ''}. How should they meet it?`;
     choices = [['Rally the levies', 'The army grows by 30% and war-weariness eases.'], ['Seek terms', 'Pay a quarter of the treasury and make peace.']];
+    if (war && war.def === c.id && c.lord < 0 && other && other.lord < 0) choices.push(['Bow to them', 'The war ends now. Your people pay them tribute each year until they can break free.']);
     silence = 'If no sign comes, the war goes on as the rulers see fit.';
   } else if (om.k === 'sign') {
     title = 'A sign in the sky';
