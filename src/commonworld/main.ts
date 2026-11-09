@@ -231,7 +231,7 @@ function updateTop(): void {
     const s = Math.max(0, Math.round((nextAt - (Date.now() + clockSkew)) / 1000));
     clock = ` · ${SEASONS[w.tick % 12]} · next month in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
-  $('wstats').textContent = `${viewYear !== null ? 'Looking back · ' : ''}${AGES[age]} Age${climate ? ` · ${climate.name}` : ''}${clock} · ${wars ? `${wars} ${wars === 1 ? 'war' : 'wars'} · ` : ''}${civs.size} peoples · ${v.setts.length} settlements · ${fmt(pop)} souls`;
+  $('wstats').textContent = `${viewYear !== null ? 'Looking back · ' : ''}${AGES[age]} Age${climate ? ` · ${climate.name}` : ''}${clock} · ${wars ? `${wars} ${wars === 1 ? 'war' : 'wars'} · ` : ''}${civs.size} peoples · ${v.setts.length} towns · ${fmt(pop)} souls`;
 }
 
 // ---- Timeline ----
@@ -526,8 +526,8 @@ function checkMine(): void {
     if (wasPending) {
       const cap = w.setts[c.capital];
       map.focus(cap.tile, 4);
-      openDrawer({ k: 'civ', civ: c.id }, false);
-      toast(`<b>The ${esc(c.name)} have arrived.</b><br>The first hearth is lit at ${esc(cap.name)}. Their story begins.`, 9000);
+      openDrawer({ k: 'mine' }, false);
+      toast(`<b>The ${esc(c.name)} have arrived.</b><br>The first hearth is lit at ${esc(cap.name)}. This is your council: the button with their banner always brings you back here.`, 12000);
       sound.play('arrive');
     }
   } else if (!c && pending && Date.now() + clockSkew > pending.eta + 30_000) {

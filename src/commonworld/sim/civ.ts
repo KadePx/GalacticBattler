@@ -415,14 +415,29 @@ export function moveCapital(w: World, c: Civ, conqueror = -1): void {
   }
 }
 
-export function killSett(w: World, s: Sett): void {
+/** Soldiers follow their towns: a people that splits off takes its share of the old army. */
+export function shareArmy(w: World, from: Civ, to: Civ): void {
+  let mine = 0;
+  let theirs = 0;
+  for (const s of w.setts) {
+    if (s.died >= 0) continue;
+    if (s.civ === to.id) mine += s.pop;
+    else if (s.civ === from.id) theirs += s.pop;
+  }
+  const take = Math.floor((from.army * mine) / Math.max(1, mine + theirs));
+  from.army -= take;
+  to.army += take;
+}
+
+export function killSett(w: World, s: Sett, quiet = false): void {
   s.died = w.tick;
   s.pop = 0;
   releaseTiles(w, s);
   w.t.city[s.tile] = -1;
   w.routes = w.routes.filter((r) => r.a !== s.id && r.b !== s.id);
   tally.live[s.civ]--;
-  ev(w, { k: 'abandon', a: s.civ, s: s.id });
+  tally.list[s.civ] = (tally.list[s.civ] ?? []).filter((id) => id !== s.id);
+  if (!quiet) ev(w, { k: 'abandon', a: s.civ, s: s.id });
   const c = w.civs[s.civ];
   if (c.capital === s.id) moveCapital(w, c);
 }

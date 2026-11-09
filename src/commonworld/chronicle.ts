@@ -15,7 +15,7 @@ const MAJOR = new Set([
   'war', 'conquest', 'peace', 'crisis', 'new_dynasty', 'age', 'ally', 'great_born',
   'omen_claim', 'claim_war', 'omen_war', 'omen_sign', 'edict', 'renamed', 'great_named', 'wonder_named', 'gift', 'pilgrims',
   'faith_found', 'schism', 'wonder', 'quake', 'eruption', 'tsunami', 'collapse', 'revival', 'defect',
-  'tribute', 'tribute_end', 'era', 'era_end', 'climate', 'climate_end', 'usurp', 'cede', 'marriage',
+  'tribute', 'tribute_end', 'era', 'era_end', 'climate', 'climate_end', 'usurp', 'cede', 'marriage', 'razed', 'abandon',
 ]);
 
 const GREAT_WORD: Record<string, string> = { general: 'general', scholar: 'scholar', builder: 'master builder', merchant: 'merchant prince', prophet: 'prophet' };
@@ -172,6 +172,9 @@ export function line(w: World, e: Ev, idx: number): Line {
     case 'usurp':
       text = `The regent ${e.y} pushed the young ${e.x} aside and seized the throne of ${P(e.a)}, founding House ${e.z}.`;
       break;
+    case 'razed':
+      text = pick(`${Pc(e.a)} burned ${T(e.s)} to the ground. ${fmt(e.n ?? 0)} died, and the rest fled.`, `${T(e.s)} was sacked and razed by ${P(e.a)}. Only ruins remained.`);
+      break;
     case 'retongue':
       text = `Generations under ${P(e.a)} had changed how its people spoke: ${e.x} was now called ${e.y}${gloss(e.s !== undefined ? w.setts[e.s]?.g : undefined)}.`;
       break;
@@ -282,7 +285,7 @@ export function line(w: World, e: Ev, idx: number): Line {
       );
       break;
     case 'plague_start':
-      text = `${plague(e.x)} broke out in ${T(e.s)}.`;
+      text = (e.x ?? '').endsWith(` of ${T(e.s)}`) ? `${plague(e.x)} broke out.` : `${plague(e.x)} broke out in ${T(e.s)}.`;
       break;
     case 'plague_reach':
       text = `${plague(e.x)} reached ${T(e.s)}.`;

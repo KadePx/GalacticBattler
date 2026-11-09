@@ -2,7 +2,7 @@
 // ages, the climate's slow swings, and refugees fleeing famine and war.
 
 import { ev, has, tally } from './civ';
-import { relOf } from './diplo';
+import { rel, relOf } from './diplo';
 import { hexDist } from './hex';
 import { greatCount, yearlyRegency } from './people';
 import { Rand, S } from './rng';
@@ -31,6 +31,12 @@ export function maybeSubjugate(w: World, winner: Civ, loser: Civ, r: Rand): void
 
 function free(w: World, c: Civ, why: 'freed' | 'released' | 'lord_fell'): void {
   ev(w, { k: 'tribute_end', a: c.id, b: c.lord, x: why, n: Math.max(1, Math.round((w.tick - c.lordSince) / Y)) });
+  // A release is a settlement between the two: the old overlord does not turn on them at once.
+  if (why === 'released') {
+    const rl = rel(w, c.id, c.lord);
+    rl.truce = Math.max(rl.truce, w.tick + 40 * Y);
+    rl.grudge *= 0.5;
+  }
   c.lord = -1;
   c.lordSince = -1;
 }

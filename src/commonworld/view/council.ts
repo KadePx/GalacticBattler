@@ -159,6 +159,7 @@ export function councilHtml(w: World, civ: number, msPerTick: number, queued: Qu
 
   return `<div class="civhead">${banner(c, 56)}<div><div class="nm">The ${esc(c.name)}</div><div class="sub">Your people · ${yearOf(w.tick) - yearOf(c.born)} years old${c.protectedUntil > w.tick ? ' · under protection' : ''}</div></div></div>
     ${fareHtml(w, c)}
+    <p class="hint2">Your people rule themselves; you nudge them. Each action below spends <b>influence</b>, which refills by itself (about three points a day). Nothing here is ever required: if you stay away, they simply carry on.</p>
     ${infMeter(w, c, msPerTick)}
     ${queued.length ? `<div class="queued">Waiting for the month to turn: ${queued.map((q) => esc(q.label)).join(', ')}</div>` : ''}
     ${omens.length ? `<h3>Your people await a sign</h3>${omens.map((o) => omenCard(w, o, c, msPerTick, can(COST.omen), qOmens.has(o.id))).join('')}` : ''}
@@ -216,7 +217,7 @@ export function digestHtml(w: World, hist: History, civ: number, fromTick: numbe
     const techs = lines.length ? w.log.filter((e) => e.t >= fromTick && e.a === civ && e.k === 'tech').length : 0;
     const delta = (a: number, b: number) => `${fmt(a)} → <b>${fmt(b)}</b>${b > a ? ' <span class="up">▲</span>' : b < a ? ' <span class="down">▼</span>' : ''}`;
     head = `<div class="civhead">${banner(c, 44)}<div><div class="nm">The ${esc(c.name)}</div><div class="sub">${c.died >= 0 ? `<span style="color:var(--red)">fell in ${yearOf(c.died)} AW</span>` : 'your people'}</div></div></div>
-      <div class="kv"><div>People</div><div>${delta(p0, p1)}</div><div>Settlements</div><div>${delta(s0, s1)}</div><div>New knowledge</div><div>${techs} ${techs === 1 ? 'tech' : 'techs'}</div></div>
+      <div class="kv"><div>People</div><div>${delta(p0, p1)}</div><div>Towns</div><div>${delta(s0, s1)}</div><div>New knowledge</div><div>${techs} ${techs === 1 ? 'tech' : 'techs'}</div></div>
       ${w.omens.some((o) => o.civ === civ) ? '<button class="btn gold" data-open="mine" style="margin-top:10px">Your people await a sign</button>' : ''}`;
   }
   return `<div class="dhead"><div class="dt">While you were away</div><div class="legend">${nowYear - fromYear} years passed (${realTime(span, msPerTick)}) · ${fromYear}–${nowYear} AW</div></div>

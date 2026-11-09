@@ -1,7 +1,7 @@
 // Abstract war: armies are numbers, battles are rolls weighed by strength, terrain, walls and
 // generals. Sieges take towns; peace comes from victory, exhaustion or stalemate.
 
-import { ev, has, mods, moveCapital, tally, transferSett } from './civ';
+import { ev, has, killSett, mods, moveCapital, tally, transferSett } from './civ';
 import { allies, rel, relOf, setState } from './diplo';
 import { hexDist } from './hex';
 import { Rand, S } from './rng';
@@ -60,6 +60,12 @@ export function monthlyArmy(w: World, c: Civ, atWar: boolean): void {
     const back = Math.floor((c.army - want) * 0.05);
     c.army -= back;
     for (const id of ids) w.setts[id].pop += Math.floor((back * w.setts[id].pop) / pop);
+  }
+  // A full treasury hires soldiers while the war lasts.
+  if (atWar && c.wealth > 800 && w.tick % 12 === c.id % 12) {
+    const spend = Math.min(c.wealth * 0.05, pop * 0.004);
+    c.wealth -= spend;
+    c.army += Math.floor(spend);
   }
   // Upkeep; an unpaid army melts away.
   c.wealth -= c.army / 400;
@@ -291,6 +297,19 @@ export function monthlyWar(w: World): void {
 
 function capture(w: World, war: War, T: Sett, X: Civ, Y: Civ, r: Rand): void {
   const wasCapital = Y.capital === T.id;
+  // A small town taken in anger may be put to the torch instead of held.
+  const bitter = war.cause === 'grudge' || war.cause === 'faith' || X.ruler.trait === 'cruel';
+  if (!wasCapital && T.tier <= (bitter ? 2 : 1) && (tally.list[Y.id] ?? []).length > 1 && r.chance(bitter ? 0.3 : 0.1)) {
+    const dead = Math.floor(T.pop * 0.3);
+    T.pop -= dead;
+    war.deaths += dead;
+    flee(w, T, Y.id, T.pop - 15, 'war');
+    X.wealth += T.mat;
+    ev(w, { k: 'razed', a: X.id, b: Y.id, s: T.id, x: war.name, n: dead });
+    war.score += X.id === war.atk ? 10 : -10;
+    killSett(w, T, true);
+    return;
+  }
   transferSett(w, T, X.id);
   T.conq = w.tick;
   T.stab = 35;

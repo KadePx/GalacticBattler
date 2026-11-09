@@ -1,7 +1,7 @@
 // One tick = one game month. step() is the only thing that moves the world forward.
 
 import {
-  TIER_POP, canFoundAt, claimTiles, ev, foundCiv, foundSettlement, has, killSett, mods, placeCtx, recount, scoreSite,
+  TIER_POP, canFoundAt, claimTiles, ev, foundCiv, foundSettlement, has, killSett, mods, placeCtx, recount, scoreSite, shareArmy,
   spawnCiv, tally, tendReserves, tierFor, type Mods,
 } from './civ';
 import { rel, relOf, yearlyDiplo } from './diplo';
@@ -279,6 +279,8 @@ export function stabParts(w: World, s: Sett, c: Civ, atWar: boolean): [string, n
   if (s.conq >= 0 && w.tick - s.conq < 20 * TICKS_PER_YEAR) add('Recently conquered', -12 * (1 - (w.tick - s.conq) / (20 * TICKS_PER_YEAR)));
   if (atWar) add('War and weariness', -(4 + c.weary / 10));
   if (has(c, 'ancestral')) add('Old roots', Math.min(10, (w.tick - s.born) / (30 * TICKS_PER_YEAR)));
+  add('A crowded city', s.tier >= 4 ? -6 : s.tier === 3 ? -3 : 0);
+  if (s.cap > 0 && s.pop > avgCap(s, m) * 0.97) add('No land left to grow', -3);
   if (c.lord >= 0) add('Paying tribute', -3);
   if (c.ruler.regent) add('A child on the throne', -4);
   add(c.era === 'golden' ? 'Golden age' : 'Dark age', eraFx(c).stab);
@@ -316,6 +318,10 @@ function settYearly(w: World, s: Sett): void {
     s.lastFamine = w.tick;
     c.ruler.famines++;
     flee(w, s, c.id, Math.floor(Math.min(s.starve * 0.5, s.pop * 0.06)), 'famine');
+    if (s.pop < 200 && s.id !== c.capital && tally.live[c.id] > 1) {
+      flee(w, s, c.id, s.pop - 15, 'famine');
+      if (s.pop <= 20) { killSett(w, s); return; }
+    }
   }
   s.starve = 0;
   if (s.siegeBy >= 0 && w.civs[s.siegeBy].died < 0 && relOf(w, s.civ, s.siegeBy)?.st !== 'war') {
@@ -360,8 +366,10 @@ function settYearly(w: World, s: Sett): void {
  * Names a founder gave are never changed.
  */
 function retongue(w: World, s: Sett, c: Civ): void {
-  if (s.pn || s.was || s.conq < 0 || w.tick - s.conq < 120 * TICKS_PER_YEAR || w.civs[s.o].phon === c.phon) return;
-  if (!new Rand(w.seed, S.NAME, w.tick, s.id).chance(0.01)) return;
+  // Only in the third and fourth century of foreign rule, and only about one town in five.
+  const held = w.tick - s.conq;
+  if (s.pn || s.was || s.conq < 0 || held < 200 * TICKS_PER_YEAR || held > 400 * TICKS_PER_YEAR || w.civs[s.o].phon === c.phon) return;
+  if (!new Rand(w.seed, S.NAME, w.tick, s.id).chance(0.0011)) return;
   const ctx = placeCtx(w, c, s.tile);
   ctx.adj = ctx.adj.filter((x) => x !== 'new'); // an old town, whatever its new name
   const n = townName(c.phon, c.lex, c.named++, ctx, (x) => w.setts.some((o) => o.name === x));
@@ -433,6 +441,7 @@ function tryBuild(w: World, s: Sett, c: Civ, r: Rand): void {
 function secede(w: World, s: Sett, r: Rand): void {
   const old = w.civs[s.civ];
   const c = spawnCiv(w, old, s, r);
+  shareArmy(w, old, c);
   s.stab = 70;
   const rl = rel(w, c.id, old.id);
   rl.grudge = 25;

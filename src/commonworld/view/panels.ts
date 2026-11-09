@@ -74,12 +74,15 @@ export function peoplesHtml(ctx: Ctx, q: string): string {
     const arrow = Math.abs(trend) < 0.03 ? '' : trend > 0 ? `<span class="up">▲</span>` : `<span class="down">▼</span>`;
     return `<div class="row ${ctx.selCiv === c.id ? 'sel' : ''}" data-civ="${c.id}">${banner(c, 26)}
       <span class="n"><b>${esc(c.name)}</b>${c.founder ? ' <span title="Founded by a player">★</span>' : ''}${ctx.live && w.wars.some((x) => x.end < 0 && (x.atk === c.id || x.def === c.id || x.atkAllies.includes(c.id) || x.defAllies.includes(c.id))) ? ' <span class="down" title="At war">⚔</span>' : ''}${ctx.live ? civTags(w, c) : ''}<small>${c.values.join(' · ')}</small></span>
-      <span class="v">${fmt(st.pop)} ${arrow}<br><small>${st.n} ${st.n === 1 ? 'place' : 'places'}</small></span></div>`;
+      <span class="v">${fmt(st.pop)} ${arrow}<br><small>${st.n} ${st.n === 1 ? 'town' : 'towns'}</small></span></div>`;
   });
-  const fallen = w.civs.filter((c) => c.died >= 0 && c.died <= year * TICKS_PER_YEAR);
+  const allFallen = w.civs.filter((c) => c.died >= 0 && c.died <= year * TICKS_PER_YEAR);
+  const brief = (c: Civ) => c.died - c.born < 5 * TICKS_PER_YEAR && !c.founder;
+  const fallen = allFallen.filter((c) => !brief(c) || (ql && c.name.toLowerCase().includes(ql)));
+  const briefN = allFallen.length - fallen.length;
   return `<input class="search" id="psearch" placeholder="Search peoples…" value="${esc(q)}">
     ${rows.join('') || '<p class="legend">No one matches.</p>'}
-    ${fallen.length ? `<h3>Fallen</h3>${fallen.map((c) => `<div class="row fallen" data-civ="${c.id}">${banner(c, 22)}<span class="n"><b>${esc(c.name)}</b><small>${yearOf(c.born)}–${yearOf(c.died)} AW</small></span></div>`).join('')}` : ''}`;
+    ${fallen.length ? `<h3>Fallen</h3>${fallen.map((c) => `<div class="row fallen" data-civ="${c.id}">${banner(c, 22)}<span class="n"><b>${esc(c.name)}</b><small>${yearOf(c.born)}–${yearOf(c.died)} AW</small></span></div>`).join('')}${briefN ? `<p class="legend">…and ${briefN} short-lived ${briefN === 1 ? 'breakaway' : 'breakaways'} that lasted under five years. Search by name to find them.</p>` : ''}` : ''}`;
 }
 
 /** Small markers for a people's era and tribute ties. */
@@ -200,21 +203,21 @@ export function civHtml(ctx: Ctx, id: number): string {
     <div style="margin-top:8px">${c.values.map((v) => valueChip(v)).join('')}</div>
     <div class="stats">
       <div class="stat"><b>${fmt(st.pop)}</b><span>people</span></div>
-      <div class="stat"><b>${st.n}</b><span>settlements</span></div>
+      <div class="stat"><b>${st.n}</b><span>towns</span></div>
       <div class="stat"><b>${tiles}</b><span>tiles of land</span></div>
       <div class="stat"><b>${innos.length}</b><span>techs · ${AGES[innos.reduce((a, k) => Math.max(a, TECHS[k].age), 0)]}</span></div>
       <div class="stat"><b>${alive ? year - yearOf(c.born) : yearOf(c.died) - yearOf(c.born)}</b><span>years old</span></div>
       <div class="stat"><b>${rs.length}</b><span>rulers</span></div>
     </div>
     ${chart(ctx, id)}
-    ${ctx.live && alive ? `<div class="kv" style="margin-top:10px"><div>Capital</div><div><a href="#" data-tile="${capital?.tile}">${esc(capital?.name ?? '-')}</a></div><div>Ruler</div><div>${esc(c.ruler.name)} of House ${esc(c.ruler.house)}, ${Math.floor((w.tick - c.ruler.born) / 12)} years old, <span class="tipw" tabindex="0" data-tip="${esc(RULER_TIP[c.ruler.trait])}">${c.ruler.trait}</span>${c.ruler.regent ? `<br><span class="legend">a child; ${esc(c.ruler.regent)} rules as regent</span>` : ''}${c.ruler.wed !== undefined && c.ruler.wed >= 0 && w.civs[c.ruler.wed] ? `<br><span class="legend">married into the <a href="#" data-civ="${c.ruler.wed}">${esc(w.civs[c.ruler.wed].name)}</a></span>` : ''}</div><div>This year</div><div>${goalText(c.goal)}</div><div>Army</div><div>${fmt(c.army)} under arms</div><div>Treasury</div><div>${fmt(c.wealth)} coin</div>${c.research >= 0 ? `<div>Studying</div><div>${TECHS[c.research].name}</div>` : ''}</div>` : ''}
+    ${ctx.live && alive ? `<div class="kv" style="margin-top:10px"><div>Capital</div><div><a href="#" data-tile="${capital?.tile}">${esc(capital?.name ?? '-')}</a></div><div>Ruler</div><div>${esc(c.ruler.name)} of House ${esc(c.ruler.house)}, ${Math.floor((w.tick - c.ruler.born) / 12)} years old, <span class="tipw" tabindex="0" data-tip="${esc(RULER_TIP[c.ruler.trait])}">${c.ruler.trait}</span>${c.ruler.regent ? `<br><span class="legend">a child; ${esc(c.ruler.regent)} rules as regent</span>` : ''}${c.ruler.wed !== undefined && c.ruler.wed >= 0 && w.civs[c.ruler.wed] ? `<br><span class="legend">married into the <a href="#" data-civ="${c.ruler.wed}">${esc(w.civs[c.ruler.wed].name)}</a></span>` : ''}</div><div>This year</div><div>${goalText(c.goal)}</div><div>Army</div><div>${fmt(c.army)} under arms</div><div>Treasury</div><div><span class="tipw" tabindex="0" data-tip="Coin comes from people, markets and trade. It pays the army, is spent each year on building materials for the towns, hires extra soldiers in wartime and buys calm in the most restless towns. Losing a war costs half of it.">${fmt(c.wealth)} coin</span></div>${c.research >= 0 ? `<div>Studying</div><div>${TECHS[c.research].name}</div>` : ''}</div>` : ''}
     ${ctx.live && alive ? spiritHtml(ctx, c) : ''}
     ${greatsHtml(ctx, id)}
     ${warsHtml(ctx, id)}
     ${ctx.live && alive ? relationsHtml(ctx, id) : ''}
     <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">${ctx.me === id && alive ? '<button class="btn gold" data-open="mine">Your council</button>' : ''}<button class="btn" data-chron="${id}">✎ Read their chronicle</button><button class="btn" data-share="${id}">Share</button></div>
     <h3>Notable moments</h3>${notable.join('') || '<p class="legend">Nothing yet.</p>'}
-    <h3>Settlements</h3>${settRows ? `<table><tr class="th"><th>Name</th><th class="r">Size</th><th class="r">People</th><th class="r">Stability</th><th class="r">Founded</th></tr>${settRows}</table>` : '<p class="legend">None.</p>'}
+    <h3>Towns</h3>${settRows ? `<table><tr class="th"><th>Name</th><th class="r">Size</th><th class="r">People</th><th class="r">Stability</th><th class="r">Founded</th></tr>${settRows}</table>` : '<p class="legend">None.</p>'}
     ${ruins.length ? `<p class="legend">Ruins: ${ruins.map((s) => `<a href="#" data-tile="${s.tile}">${esc(s.name)}</a>`).join(', ')}</p>` : ''}
     <h3>Rulers</h3><table>${rulerRows}</table>
     <h3>Known peoples</h3><div>${[...contacts].map((k) => `<a href="#" class="chip" data-civ="${k}" style="border-color:${civColor(w.civs[k].hue, 50)}">${esc(w.civs[k].name)}</a>`).join('') || '<span class="legend">They believe they are alone.</span>'}</div>

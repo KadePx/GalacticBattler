@@ -1,7 +1,7 @@
 // Named people: great generals, scholars, builders, merchants and prophets, and the rulers'
 // dynasties, including the succession crises that can tear a realm in two.
 
-import { ev, has, newRuler, spawnCiv, tally, transferSett } from './civ';
+import { ev, has, newRuler, shareArmy, spawnCiv, tally, transferSett } from './civ';
 import { rel, relOf } from './diplo';
 import { hexDist } from './hex';
 import { epithet, NAME_KEY, personName } from './names';
@@ -104,7 +104,7 @@ export function yearlyRegency(w: World, c: Civ): void {
     return;
   }
   const r = new Rand(w.seed, S.RULER, w.tick, c.id, 0x4e9);
-  if (r.chance(k.trait === 'cautious' ? 0.01 : 0.03)) {
+  if (r.chance(k.trait === 'cautious' ? 0.006 : 0.015)) {
     const regent = k.regent;
     const child = k.name;
     c.ruler = { ...newRuler(w, c, null), name: regent };
@@ -133,6 +133,7 @@ export function civilWar(w: World, c: Civ, r: Rand, title: string, claimant: { n
     n.ruler.house = claimant.house;
   }
   for (const s of side) transferSett(w, s, n.id);
+  shareArmy(w, c, n);
   rel(w, n.id, c.id).grudge = 40;
   ev(w, { k: claimant ? 'claim_war' : 'crisis', a: n.id, b: c.id, s: claim.id, x: title, y: n.ruler.name, z: n.ruler.house, n: side.length + 1 });
   declareWar(w, n, c, 'succession', r);

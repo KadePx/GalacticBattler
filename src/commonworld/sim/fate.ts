@@ -2,7 +2,7 @@
 // successor states; towns of a fallen people may rise again under its name's memory; unhappy
 // towns drift to a neighbour whose culture outshines their own rulers'.
 
-import { ev, spawnCiv, tally, transferSett } from './civ';
+import { ev, shareArmy, spawnCiv, tally, transferSett } from './civ';
 import { endEra, startEra } from './realm';
 import { rel, relOf } from './diplo';
 import { hexDist } from './hex';
@@ -33,6 +33,7 @@ function collapse(w: World, c: Civ, r: Rand): boolean {
   for (const h of heads) {
     const n = spawnCiv(w, c, h, r);
     for (const s of share.get(h.id) ?? []) transferSett(w, s, n.id);
+    shareArmy(w, c, n);
     for (const s of [h, ...(share.get(h.id) ?? [])]) s.stab = Math.max(s.stab, 55);
     const rl = rel(w, n.id, c.id);
     rl.grudge = 20;
@@ -57,7 +58,9 @@ function revive(w: World, s: Sett, r: Rand): void {
     if (o !== s && o.o === old.id && o.id !== owner.capital && hexDist(w.W, o.tile, s.tile) <= 4 && o.stab < 50) transferSett(w, o, n.id);
   }
   s.stab = 70;
+  shareArmy(w, owner, n);
   rel(w, n.id, owner.id).grudge = 30;
+  rel(w, n.id, owner.id).truce = w.tick + 15 * TICKS_PER_YEAR; // the old masters need time to answer
   ev(w, { k: 'revival', a: n.id, b: owner.id, s: s.id, x: old.name, n: old.id });
 }
 
@@ -75,12 +78,13 @@ export function yearlyFate(w: World): void {
   }
 
   const revived = new Set<number>();
-  for (const c of w.civs) if (c.died < 0 && c.parent >= 0 && w.civs[c.parent].died >= 0 && c.born >= w.civs[c.parent].died) revived.add(c.parent);
+  for (const c of w.civs) if (c.parent >= 0 && w.civs[c.parent].died >= 0 && c.born >= w.civs[c.parent].died) revived.add(c.parent);
   for (const s of w.setts) {
     if (s.died >= 0 || s.o === s.civ || s.stab >= 35 || revived.has(s.o)) continue;
     const old = w.civs[s.o];
     const owner = w.civs[s.civ];
     if (old.died < 0 || w.tick - old.died > REVIVE_YEARS * TICKS_PER_YEAR || owner.capital === s.id) continue;
+    if (old.parent >= 0 && w.civs[old.parent].name === old.name) continue; // already a people risen again
     const r = new Rand(w.seed, S.CULTURE, w.tick, s.id, 0x4e7);
     if (!r.chance(0.02)) continue;
     revive(w, s, r);

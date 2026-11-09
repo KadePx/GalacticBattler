@@ -139,6 +139,14 @@ export function settIncome(w: World, s: Sett, c: Civ): number {
 export function invest(w: World, c: Civ): void {
   const reserve = 60 + (c.army / 400) * 24;
   if (c.wealth <= reserve) return;
+  // Bread and festivals first: coin spent on the most restless towns buys a little calm.
+  for (const id of tally.list[c.id] ?? []) {
+    const s = w.setts[id];
+    const cost = s.pop / 20;
+    if (s.stab >= 30 || c.wealth - reserve < cost * 2) continue;
+    c.wealth -= cost;
+    s.stab += 4;
+  }
   const spend = (c.wealth - reserve) * 0.3;
   const ids = tally.list[c.id] ?? [];
   const pop = tally.pop[c.id] || 1;

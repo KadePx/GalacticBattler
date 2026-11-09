@@ -181,6 +181,7 @@ export function peopleName(phon: number, lex: number): string {
   const end = r.pick(L.people);
   let rootW = gen(L, r, 1, 2, 3, 7);
   if (isV(rootW[rootW.length - 1]) && isV(end[0])) rootW = rootW.slice(0, -1);
+  if (rootW.length + end.length < 5) rootW += L.link + r.pick(L.med); // "Shi" is too slight a name for a people
   const name = cap(rootW + end);
   return isClean(name) && name.length <= 12 ? name : cap(rootW + 'ar');
 }
