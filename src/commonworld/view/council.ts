@@ -53,7 +53,7 @@ function omenCard(w: World, om: Omen, c: Civ, msPerTick: number, canPay: boolean
     title = 'Who should rule?';
     body = `The old ruler is dead. <b>${esc(om.x ?? '')}</b> has taken the seat, but <b>${esc(om.y ?? '')}</b> of House ${esc(om.z ?? '')} claims it too.`;
     choices = [[`Confirm ${om.x}`, 'The rival is forgotten and every town takes heart (+5 stability).'], [`Crown ${om.y}`, `House ${om.z} takes the throne, without bloodshed.`]];
-    silence = 'If no sign comes, the rival may raise a revolt and split the realm.';
+    silence = 'If no sign comes, the heir keeps the throne.';
   } else if (om.k === 'war') {
     const war = w.wars[om.n ?? -1];
     title = 'War has come';

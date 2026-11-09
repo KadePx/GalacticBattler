@@ -6,7 +6,6 @@
 
 import { ev, newRuler, tally } from './civ';
 import { rel, relOf, setState } from './diplo';
-import { civilWar } from './people';
 import { Rand, S } from './rng';
 import { TECHS, techCost } from './techs';
 import {
@@ -70,7 +69,6 @@ export function resolveOmen(w: World, om: Omen, pick: number): void {
   w.omens = w.omens.filter((x) => x !== om);
   const c = w.civs[om.civ];
   if (c.died >= 0) return;
-  const r = new Rand(w.seed, S.PLAYER, w.tick, om.id);
   const by = pick >= 0 ? 1 : 0; // the chronicle says whether the founder chose
   if (om.k === 'claim') {
     if (pick === 0) {
@@ -81,13 +79,8 @@ export function resolveOmen(w: World, om: Omen, pick: number): void {
       c.ruler = { ...newRuler(w, c, om.z ?? null), name: om.y ?? heir.name };
       ev(w, { k: 'omen_claim', a: c.id, x: om.x, y: om.y, z: om.z, n: 1 });
     } else {
-      // Unanswered: the rival may still press the claim, as a realm without a sign would.
-      const ids = w.setts.filter((s) => s.civ === c.id && s.died < 0);
-      const stab = ids.reduce((a, s) => a + s.stab, 0) / Math.max(1, ids.length);
-      const p = 0.1 + (ids.length >= 6 ? 0.1 : 0) + (stab < 45 ? 0.15 : 0);
-      if (!r.chance(p) || !civilWar(w, c, r, om.x ?? c.ruler.name, { name: om.y ?? '', house: om.z ?? '' })) {
-        ev(w, { k: 'omen_claim', a: c.id, x: om.x, y: om.y, n: 2 });
-      }
+      // Unanswered: the heir simply keeps the throne. Not answering never costs a founder anything.
+      ev(w, { k: 'omen_claim', a: c.id, x: om.x, y: om.y, n: 2 });
     }
   } else if (om.k === 'war') {
     const war = w.wars[om.n ?? -1];
