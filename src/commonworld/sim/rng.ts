@@ -83,4 +83,9 @@ export const S = {
   INNO: 10,
   BUILD: 11,
   CHRON: 12,
+  PLAYER: 13,
+  FAITH: 14,
+  WONDER: 15,
+  DISASTER: 16,
+  CULTURE: 17,
 } as const;

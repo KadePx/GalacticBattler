@@ -8,6 +8,8 @@ import { Rand, S } from './rng';
 import { available } from './techs';
 import { TICKS_PER_YEAR, type Civ, type Sett, type War, type World } from './types';
 import { B } from './worldgen';
+import { openOmen } from './player';
+import { wonderFx } from './wonders';
 
 export function generalOf(c: Civ): string | null {
   return c.greats.find((g) => g.kind === 'general')?.name ?? null;
@@ -99,6 +101,9 @@ export function declareWar(w: World, a: Civ, b: Civ, cause: War['cause'], r: Ran
     setState(w, rel(w, o, b.id), 'war');
     ev(w, { k: 'war_join', a: o, b: b.id, x: war.name });
   }
+  // A founder's people are asked how to meet the war.
+  openOmen(w, a, 'war', { b: b.id, n: war.id });
+  openOmen(w, b, 'war', { b: a.id, n: war.id });
   return war;
 }
 
@@ -141,12 +146,15 @@ export function considerWar(w: World, border: Map<number, number>, canGrow: Floa
       if (c.ruler.trait === 'bold' || c.ruler.trait === 'cruel') d += 0.5;
       if (c.ruler.trait === 'cautious' || c.ruler.trait === 'just') d -= 0.5;
       if (rl.st === 'pact') d -= 0.7;
+      const zeal = c.faith >= 0 && o.faith >= 0 && c.faith !== o.faith && has(c, 'devout');
+      if (zeal) d += 0.3;
       d -= c.weary / 30;
       if (d > bestD) { bestD = d; best = o; }
     }
     if (best) {
       const rl = relOf(w, c.id, best.id)!;
-      declareWar(w, c, best, rl.grudge > 20 ? 'grudge' : canGrow[c.id] === 0 ? 'land' : 'plunder', r);
+      const zeal = c.faith >= 0 && best.faith >= 0 && c.faith !== best.faith && has(c, 'devout');
+      declareWar(w, c, best, rl.grudge > 20 ? 'grudge' : zeal && rl.op < -10 ? 'faith' : canGrow[c.id] === 0 ? 'land' : 'plunder', r);
     }
   }
 }
@@ -191,9 +199,10 @@ export function monthlyWar(w: World): void {
       if (s.siegeBy === X.id && s.siege > 0) { T = s; break; }
     }
     const my = mods(Y);
+    const def = my.def + wonderFx(Y).def;
     let fX = strength(X) * 0.55 + (atkMoves ? sideStrength(w, war.atkAllies) : sideStrength(w, war.defAllies)) * 0.5;
     let fY = strength(Y) * 0.45 + (atkMoves ? sideStrength(w, war.defAllies) : sideStrength(w, war.atkAllies)) * 0.4;
-    fY += T.pop * 0.012 * (1 + T.b.walls * 0.5) * (1 + my.def);
+    fY += T.pop * 0.012 * (1 + T.b.walls * 0.5) * (1 + def);
     if (w.t.biome[T.tile] === B.HILLS) fY *= 1.2;
     if (Y.capital === T.id) fY *= 1.15;
     const ratio = (fX * (0.7 + r.float() * 0.6) + 1) / (fY * (0.7 + r.float() * 0.6) + 1);
@@ -233,7 +242,7 @@ export function monthlyWar(w: World): void {
       ev(w, { k: 'battle', a: winner.id, b: loser.id, s: T.id, x: name, n: lossL + lossW, y: gen ?? undefined });
     }
 
-    const need = 3 + T.b.walls * 2 + T.tier + Math.round(my.def * 3);
+    const need = 3 + T.b.walls * 2 + T.tier + Math.round(def * 3);
     if (xWins && T.siege >= need) capture(w, war, T, X, Y, r);
   }
 }

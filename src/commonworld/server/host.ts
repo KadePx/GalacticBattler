@@ -5,10 +5,13 @@
 
 import {
   createWorld, serializeDynamic, serializeStatic, assemble, stateHash, step, SIM_V, TICKS_PER_YEAR, VALUES,
-  type FoundInput, type Input, type ValueId, type World,
+  EDICTS, type ActInput, type Edict, type FoundInput, type Input, type ValueId, type World,
 } from '../sim/index';
+import { COST, OMEN_CHOICES, influence, nameable } from '../sim/player';
+import { AGES, civAge } from '../sim/techs';
+import { ogImage } from './og';
 import { canFoundAt } from '../sim/civ';
-import { cleanBanner, cleanByName, cleanMotto, founderHash, isFounderId, properName } from '../shared/text';
+import { cleanBanner, cleanByName, cleanMotto, founderHash, isFounderId, placeName, properName } from '../shared/text';
 import { frameToWire, yearRecord, type YearRecord } from '../history';
 import type { D1, D1Stmt } from '../../net/db';
 
@@ -57,6 +60,9 @@ async function schema(db: D1): Promise<void> {
       civ INTEGER, created INTEGER NOT NULL, PRIMARY KEY (world, founder)
     )`),
     db.prepare('CREATE INDEX IF NOT EXISTS cw_foundings_ip ON cw_foundings (world, ip, created)'),
+    db.prepare(`CREATE TABLE IF NOT EXISTS cw_offers (
+      world TEXT NOT NULL, founder TEXT NOT NULL, day INTEGER NOT NULL, s INTEGER NOT NULL, PRIMARY KEY (world, founder, day)
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS cw_snaps (
       world TEXT NOT NULL, tick INTEGER NOT NULL, kind TEXT NOT NULL, v INTEGER NOT NULL,
       data TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY (world, tick, kind)
@@ -87,6 +93,7 @@ export class WorldHost {
   private lock: Promise<unknown> = Promise.resolve();
   private gzCache: { key: string; body: Uint8Array } | null = null;
   private staticGz: Uint8Array | null = null;
+  private ogCache = new Map<string, Uint8Array>();
 
   constructor(private kv: KV, private db: D1, private o: HostOpts) {}
 
@@ -184,7 +191,9 @@ export class WorldHost {
       if (!n) return 0;
       // Tell founders whether their people arrived (the land may have been taken meanwhile).
       for (const inp of inputs) {
-        const f = (JSON.parse(inp.body) as FoundInput).founder;
+        const body = JSON.parse(inp.body) as Input;
+        if (body.k !== 'found') continue;
+        const f = body.founder;
         const c = w.civs.find((x) => x.founder === f);
         await this.db.prepare('UPDATE cw_foundings SET status = ?1, civ = ?2 WHERE world = ?3 AND founder = ?4')
           .bind(c ? 'founded' : 'failed', c ? c.id : null, this.meta.id, f).run();
@@ -252,6 +261,8 @@ export class WorldHost {
     try {
       if (path.startsWith('admin/')) return await this.admin(path.slice(6), req);
       if (path === 'found' && req.method === 'POST') return await this.found(req);
+      if (path === 'act' && req.method === 'POST') return await this.act(req);
+      if (path === 'offer' && req.method === 'POST') return await this.offer(req);
       const w = await this.serial(() => this.load());
       const q = url.searchParams;
       switch (path) {
@@ -266,9 +277,10 @@ export class WorldHost {
           const f = q.get('f') ?? '';
           const civ = w.civs.find((c) => c.founder === f);
           if (civ) return json({ status: 'founded', civ: civ.id });
-          if (this.pending.some((p) => p.founder === f)) return json({ status: 'pending', eta: this.nextTickAt(), now: this.o.now() });
+          if (this.pending.some((p) => p.k === 'found' && p.founder === f)) return json({ status: 'pending', eta: this.nextTickAt(), now: this.o.now() });
+          const offered = await this.db.prepare('SELECT s FROM cw_offers WHERE world = ?1 AND founder = ?2 AND day = ?3').bind(this.meta.id, f, this.day()).first<{ s: number }>();
           const row = await this.db.prepare('SELECT status FROM cw_foundings WHERE world = ?1 AND founder = ?2').bind(this.meta.id, f).first<{ status: string }>();
-          return json({ status: row?.status === 'failed' ? 'failed' : 'none' });
+          return json({ status: row?.status === 'failed' ? 'failed' : 'none', offered: offered?.s ?? null });
         }
         case 'static': {
           // Cacheable only when asked for by world id, so a new world never gets old terrain.
@@ -313,6 +325,33 @@ export class WorldHost {
             .bind(this.meta.id, from, to).all<{ year: number; stats: string; frame: string | null }>();
           return json({ world: this.meta.id, years: res.results }, 200, 'public, max-age=30');
         }
+        case 'civ': {
+          // A people's summary, for share pages.
+          const c = w.civs[Number(q.get('id'))];
+          if (!c) return json({ error: 'no such people' }, 404);
+          let pop = 0;
+          let setts = 0;
+          for (const s of w.setts) if (s.civ === c.id && s.died < 0) { pop += s.pop; setts++; }
+          return json({
+            id: c.id, name: c.name, alive: c.died < 0, born: Math.floor(c.born / TICKS_PER_YEAR), died: c.died >= 0 ? Math.floor(c.died / TICKS_PER_YEAR) : null,
+            year: Math.floor(w.tick / TICKS_PER_YEAR), pop: Math.round(pop), setts, peak: Math.round(c.peakPop), founder: !!c.founder, byName: c.byName,
+            motto: c.motto, values: c.values, age: AGES[civAge(c)], faith: c.faith >= 0 ? w.faiths[c.faith].name : null,
+            capital: w.setts[c.capital]?.name ?? null,
+          }, 200, 'public, max-age=300');
+        }
+        case 'og': {
+          // The map around a people, for link previews. Redrawn at most every ten game years.
+          const id = Number(q.get('id'));
+          if (!w.civs[id]) return json({ error: 'no such people' }, 404);
+          const key = `${id}:${Math.floor(w.tick / 120)}`;
+          let img = this.ogCache.get(key);
+          if (!img) {
+            img = await ogImage(w, id);
+            if (this.ogCache.size > 50) this.ogCache.clear();
+            this.ogCache.set(key, img);
+          }
+          return new Response(img, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=3600' } });
+        }
         default:
           return json({ error: 'not found' }, 404);
       }
@@ -350,7 +389,7 @@ export class WorldHost {
 
     return this.serial(async () => {
       const w = await this.load();
-      if (w.civs.some((c) => c.founder === f) || this.pending.some((p) => p.founder === f)) return json({ error: 'you have already founded a people' }, 409);
+      if (w.civs.some((c) => c.founder === f) || this.pending.some((p) => p.k === 'found' && p.founder === f)) return json({ error: 'you have already founded a people' }, 409);
       const prev = await this.db.prepare('SELECT status FROM cw_foundings WHERE world = ?1 AND founder = ?2').bind(this.meta.id, f).first<{ status: string }>();
       if (prev && prev.status !== 'failed') return json({ error: 'you have already founded a people' }, 409);
       const recent = await this.db.prepare('SELECT COUNT(*) AS n FROM cw_foundings WHERE world = ?1 AND ip = ?2 AND created > ?3')
@@ -358,7 +397,7 @@ export class WorldHost {
       if ((recent?.n ?? 0) >= FOUNDINGS_PER_IP_PER_DAY) return json({ error: 'too many foundings from this network today' }, 429);
       const tile = Number(b.tile);
       if (!Number.isInteger(tile) || !canFoundAt(w, tile)) return json({ error: 'that land is no longer free; choose another' }, 409);
-      if (this.pending.some((p) => p.tile === tile)) return json({ error: 'another people is already heading there; choose another' }, 409);
+      if (this.pending.some((p) => p.k === 'found' && p.tile === tile)) return json({ error: 'another people is already heading there; choose another' }, 409);
       const inp: FoundInput = {
         k: 'found', founder: f, tile, values: values as ValueId[], name, capital, motto: motto || undefined,
         byName: byName || undefined, banner, phon: u32(b.phon), lex: u32(b.lex),
@@ -368,6 +407,92 @@ export class WorldHost {
       await this.db.prepare('INSERT OR REPLACE INTO cw_foundings (world, founder, ip, tile, status, civ, created) VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6)')
         .bind(this.meta.id, f, ipKey, tile, 'pending', this.o.now()).run();
       return json({ ok: true, founder: f, eta: this.nextTickAt(), now: this.o.now() });
+    });
+  }
+
+  private day(): number {
+    return Math.floor(this.o.now() / 86_400_000);
+  }
+
+  private async body(req: Request): Promise<Record<string, unknown> | null> {
+    const text = await req.text();
+    if (text.length > 2000) return null;
+    try { return JSON.parse(text) as Record<string, unknown>; } catch { return null; }
+  }
+
+  /** POST /act: a founder's nudge (edict, omen answer, name, gift, alliance offer). Applied at the next tick. */
+  private async act(req: Request): Promise<Response> {
+    const b = await this.body(req);
+    if (!b || !isFounderId(b.id)) return json({ error: 'bad request' }, 400);
+    const f = await founderHash(b.id);
+    const a = (b.act ?? {}) as Record<string, unknown>;
+    const int = (x: unknown) => (Number.isInteger(x) ? (x as number) : -1);
+    let inp: ActInput;
+    switch (a.k) {
+      case 'edict':
+        if (!(EDICTS as readonly unknown[]).includes(a.edict)) return json({ error: 'unknown edict' }, 400);
+        inp = { k: 'edict', founder: f, edict: a.edict as Edict };
+        break;
+      case 'omen':
+        inp = { k: 'omen', founder: f, id: int(a.id), pick: int(a.pick) };
+        break;
+      case 'name': {
+        const name = placeName(a.name);
+        if (!name) return json({ error: 'that name is not allowed' }, 400);
+        if (!['sett', 'river', 'great', 'wonder'].includes(a.what as string)) return json({ error: 'bad request' }, 400);
+        inp = { k: 'name', founder: f, what: a.what as 'sett', id: int(a.id), name };
+        break;
+      }
+      case 'gift':
+      case 'propose':
+        inp = { k: a.k, founder: f, to: int(a.to) };
+        break;
+      default:
+        return json({ error: 'unknown action' }, 400);
+    }
+    return this.serial(async () => {
+      const w = await this.load();
+      const c = w.civs.find((x) => x.founder === f && x.died < 0);
+      if (!c) return json({ error: 'you have no living people' }, 403);
+      const queued = this.pending.filter((p) => p.k !== 'found' && p.k !== 'offer' && p.founder === f) as ActInput[];
+      if (queued.length >= 4) return json({ error: 'wait for the month to turn' }, 429);
+      const owed = queued.reduce((n, p) => n + COST[p.k], 0);
+      if (influence(w, c) < owed + COST[inp.k]) return json({ error: 'not enough influence' }, 409);
+      if (inp.k === 'omen') {
+        const id = inp.id;
+        const om = w.omens.find((o) => o.id === id && o.civ === c.id);
+        if (!om || inp.pick < 0 || inp.pick >= OMEN_CHOICES[om.k]) return json({ error: 'that omen has passed' }, 409);
+        if (queued.some((p) => p.k === 'omen' && p.id === id)) return json({ error: 'already answered' }, 409);
+      }
+      if (inp.k === 'name' && !nameable(w, c, inp.what, inp.id)) return json({ error: 'that can no longer be named' }, 409);
+      if (inp.k === 'gift' || inp.k === 'propose') {
+        const o = w.civs[inp.to];
+        if (!o || o.died >= 0 || !c.contacts.includes(o.id)) return json({ error: 'your people do not know them' }, 409);
+      }
+      this.pending.push(inp);
+      await this.kv.put('pending', JSON.stringify(this.pending));
+      return json({ ok: true, eta: this.nextTickAt(), now: this.o.now() });
+    });
+  }
+
+  /** POST /offer: a pilgrim's offering, once a real day, for anyone without a living people. */
+  private async offer(req: Request): Promise<Response> {
+    const b = await this.body(req);
+    if (!b || !isFounderId(b.id) || !Number.isInteger(b.s)) return json({ error: 'bad request' }, 400);
+    const f = await founderHash(b.id);
+    const sid = b.s as number;
+    return this.serial(async () => {
+      const w = await this.load();
+      if (w.civs.some((c) => c.founder === f && c.died < 0)) return json({ error: 'founders tend their own people' }, 403);
+      const s = w.setts[sid];
+      if (!s || s.died >= 0) return json({ error: 'that place is gone' }, 409);
+      const day = this.day();
+      const done = await this.db.prepare('SELECT s FROM cw_offers WHERE world = ?1 AND founder = ?2 AND day = ?3').bind(this.meta.id, f, day).first();
+      if (done) return json({ error: 'you have already left an offering today' }, 429);
+      await this.db.prepare('INSERT INTO cw_offers (world, founder, day, s) VALUES (?1, ?2, ?3, ?4)').bind(this.meta.id, f, day, sid).run();
+      this.pending.push({ k: 'offer', s: sid });
+      await this.kv.put('pending', JSON.stringify(this.pending));
+      return json({ ok: true, eta: this.nextTickAt(), now: this.o.now() });
     });
   }
 
@@ -388,6 +513,7 @@ export class WorldHost {
           this.db.prepare('DELETE FROM cw_years WHERE world = ?1').bind(old),
           this.db.prepare('DELETE FROM cw_inputs WHERE world = ?1').bind(old),
           this.db.prepare('DELETE FROM cw_foundings WHERE world = ?1').bind(old),
+          this.db.prepare('DELETE FROM cw_offers WHERE world = ?1').bind(old),
         ]);
         const seed = Number.isFinite(body.seed) ? Number(body.seed) : this.o.now() % 1_000_000_007;
         await this.create(seed, Number(body.civs) || this.o.civs);

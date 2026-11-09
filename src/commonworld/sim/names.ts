@@ -77,7 +77,7 @@ export function peopleName(phon: number, lex: number): string {
   return isClean(name) ? name : cap(root + 'ar');
 }
 
-export const NAME_KEY = { SETT: 1, RULER: 2, RIVER: 3, HOUSE: 4, GREAT: 5 } as const;
+export const NAME_KEY = { SETT: 1, RULER: 2, RIVER: 3, HOUSE: 4, GREAT: 5, FAITH: 6 } as const;
 
 const PLAGUE_A = ['Grey', 'Red', 'Black', 'Pale', 'Weeping', 'Burning', 'Sweating', 'Silent', 'Yellow', 'Shaking'];
 const PLAGUE_B = ['Cough', 'Fever', 'Pox', 'Rot', 'Sickness', 'Blight', 'Flux', 'Wasting', 'Death', 'Chill'];
@@ -100,4 +100,11 @@ export function epithet(r: Rand, reignYears: number, founded: number, built: num
   if (built >= 8) return 'the Builder';
   if (reignYears >= 40) return 'the Old';
   return r.pick(EPITHETS);
+}
+
+const FAITH_FORM = [(w: string) => `the Way of ${w}`, (w: string) => `the ${w} Faith`, (w: string) => `the Path of ${w}`, (w: string) => `the Light of ${w}`, (w: string) => `the ${w} Covenant`, (w: string) => `the Church of ${w}`, (w: string) => `the Mysteries of ${w}`];
+/** A faith's name, in the language of the people who founded it. */
+export function faithName(phon: number, lex: number, n: number): string {
+  const r = new Rand(lex, NAME_KEY.FAITH, n, 0xfa17);
+  return r.pick(FAITH_FORM)(word(phon, lex, NAME_KEY.FAITH, n));
 }

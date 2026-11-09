@@ -9,6 +9,11 @@ import { invest, isCoastal, luxuryCount, settIncome, yearlyEcon } from './econ';
 import { forWithin, hexDist, neighbors } from './hex';
 import { monumentName, plagueName } from './names';
 import { greatCount, succession, yearlyGreats } from './people';
+import { applyAct, applyOffer, edictOn, yearlyPlayer } from './player';
+import { yearlyDisasters } from './disaster';
+import { yearlyFaith } from './faith';
+import { maybeDefect, yearlyFate } from './fate';
+import { refreshWonderFx, wonderFx, yearlyWonders } from './wonders';
 import { Rand, S } from './rng';
 import { AGES, TECHS, civAge, pickResearch, techCost } from './techs';
 import {
@@ -58,6 +63,7 @@ const VALUE_GOAL: Partial<Record<ValueId, Partial<Record<Goal, number>>>> = {
 let warring = new Uint8Array(0);
 
 export function step(w: World, inputs: Input[] = []): void {
+  refreshWonderFx(w);
   for (const inp of inputs) applyInput(w, inp);
   recount(w);
   markWars(w);
@@ -92,7 +98,9 @@ function markWars(w: World): void {
 }
 
 function applyInput(w: World, inp: Input): void {
-  if (inp.k === 'found') {
+  if (inp.k === 'offer') { applyOffer(w, inp); return; }
+  if (inp.k !== 'found') { applyAct(w, inp); return; }
+  {
     if (w.civs.some((c) => c.founder === inp.founder)) return; // one founding per person
     if (!canFoundAt(w, inp.tile)) return;
     const values = [...new Set(inp.values)].filter((v) => (VALUES as readonly string[]).includes(v));
@@ -105,10 +113,35 @@ function applyInput(w: World, inp: Input): void {
     });
     c.techs = boon.techs;
     c.protectedUntil = w.tick + 30 * TICKS_PER_YEAR;
-    c.army = Math.floor(boon.pop * 0.02);
-    w.setts[c.capital].mat += boon.mat;
+    const home = w.setts[c.capital];
+    home.mat += boon.mat;
+    // No more settlers than the land can feed: the rest found a second town nearby, if there is room.
+    const fit = (x: Sett) => Math.max(120, Math.round(avgCap(x, mods(c)) * 0.85));
+    const extra = home.pop - fit(home);
+    if (extra > 0) {
+      setPop(home, fit(home));
+      let best = -1;
+      let bestScore = 4;
+      forWithin(w.W, w.H, home.tile, 6, (i) => {
+        if (hexDist(w.W, home.tile, i) < 3) return;
+        const sc = scoreSite(w, c, i);
+        if (sc > bestScore) { bestScore = sc; best = i; }
+      });
+      if (best >= 0 && extra >= 150) {
+        const t = foundSettlement(w, c, best, extra, home.id);
+        setPop(t, Math.min(extra, fit(t)));
+        ev(w, { k: 'found_sett', a: c.id, s: t.id, x: home.name });
+      }
+    }
+    c.army = Math.floor(home.pop * 0.02);
     w.reserves = w.reserves.filter((t) => hexDist(w.W, t, inp.tile) > 4);
   }
+}
+
+function setPop(s: Sett, pop: number): void {
+  s.pop = pop;
+  s.food = pop * 3;
+  s.tier = s.maxTier = tierFor(pop);
 }
 
 /** What a newcomer starts with: the knowledge most peoples share, and more settlers in later ages. */
@@ -119,7 +152,11 @@ export function lateBoon(w: World): { pop: number; mat: number; techs: number[] 
     const n = alive.filter((c) => c.techs.includes(t.id)).length;
     if (alive.length && n * 2 >= alive.length && t.req.every((r) => known.has(r))) known.add(t.id);
   }
-  return { pop: 120 + 60 * w.age, mat: 40 + 40 * w.age, techs: [...known] };
+  // Enough settlers to stand beside an ordinary capital of the age, not just a camp.
+  const caps = alive.filter((c) => !c.founder).map((c) => w.setts[c.capital]?.pop ?? 0).sort((a, b) => a - b);
+  const median = caps.length ? caps[caps.length >> 1] : 0;
+  const pop = Math.min(5000, Math.max(120 + 60 * w.age, Math.round(median * 0.4)));
+  return { pop, mat: 40 + 40 * w.age, techs: [...known] };
 }
 
 // ---- Monthly ----
@@ -145,7 +182,7 @@ function monthly(w: World, s: Sett): void {
   const temp = w.t.temp[s.tile];
   const amp = Math.max(0.04, Math.min(0.45, (22 - temp) / 60));
   let mult = 1 + amp * SEASON[(month + (y > w.H / 2 ? 6 : 0)) % 12];
-  mult *= spellMult(w, s.tile);
+  mult *= spellMult(w, s.tile) * (1 + wonderFx(c).food);
   if (s.silt > w.tick) mult *= 1.15;
   if (s.siege > 0) mult *= 0.8; // fields burned, roads cut
   const cap = avgCap(s, m);
@@ -173,11 +210,11 @@ function monthly(w: World, s: Sett): void {
   if (greatCount(c, 'builder')) matMul *= 1.1;
   s.mat += (s.matBase * labor * matMul) / 6;
   if (s.mat > Math.max(600, s.pop)) s.mat = Math.max(600, s.pop); // storehouses only hold so much
-  c.wealth += settIncome(w, s, c) * (greatCount(c, 'merchant') ? 1.15 : 1);
+  c.wealth += settIncome(w, s, c) * (greatCount(c, 'merchant') ? 1.15 : 1) * (1 + wonderFx(c).wealth);
 
   // Sickness.
   if (s.plague > 0) {
-    const deaths = r.round(s.pop * (0.02 + r.float() * 0.03) * (1 - m.plagueRes));
+    const deaths = r.round(s.pop * (0.02 + r.float() * 0.03) * (1 - Math.min(0.85, m.plagueRes + wonderFx(c).plagueRes)));
     s.pop -= deaths;
     w.plagues[s.plagueId].deaths += deaths;
     s.plague--;
@@ -211,7 +248,11 @@ function stabTarget(w: World, s: Sett, c: Civ, m: Mods): number {
   if (has(c, 'isolationist')) t += 4;
   if (has(c, 'martial')) t += 3;
   t += s.b.temple * (has(c, 'devout') ? 5 : 3) + s.b.walls * 1.5 + s.b.monument * 5;
-  t += greatCount(c, 'prophet') * 4;
+  t += greatCount(c, 'prophet') * 4 + wonderFx(c).stab;
+  if (c.faith >= 0) {
+    if (s.b.temple > 0) t += 2;
+    if (w.faiths[c.faith].holy === s.id) t += 8;
+  }
   const tr = c.ruler.trait;
   t += tr === 'pious' ? 3 : tr === 'just' ? 4 : tr === 'greedy' ? -2 : tr === 'cruel' ? -3 : 0;
   const sizePen = Math.max(0, tally.live[c.id] - 3) * 2.2 * (has(c, 'egalitarian') ? 0.5 : 1) * (1 - m.sizePen);
@@ -279,6 +320,7 @@ function settYearly(w: World, s: Sett): void {
     return;
   }
   const capS = w.setts[c.capital];
+  if (maybeDefect(w, s, r)) return;
   if (s.stab < 12 && s.id !== c.capital && tally.live[c.id] >= 5 && hexDist(w.W, s.tile, capS.tile) >= 5 && r.chance(0.2)) {
     secede(w, s, r);
     return;
@@ -455,7 +497,7 @@ function research(w: World, c: Civ, r: Rand): void {
   const scholars = greatCount(c, 'scholar');
   // Research grows slower than population: a huge realm is not a huge academy.
   c.lore += Math.sqrt(pop) * 0.15 * (has(c, 'curious') ? 1.5 : 1) * (1 + 0.1 * Math.min(5, c.contacts.length)) * m.lore *
-    (c.ruler.trait === 'wise' ? 1.15 : 1) * (1 + 0.25 * scholars) + 0.5;
+    (c.ruler.trait === 'wise' ? 1.15 : 1) * (1 + 0.25 * scholars) * (edictOn(w, c) === 'research' ? 1.35 : 1) * (1 + wonderFx(c).lore) + 0.5;
   const known = (id: number) => {
     let n = 0;
     for (const k of c.contacts) {
@@ -510,6 +552,8 @@ function pickGoal(w: World, c: Civ, crowding: number, room: number, r: Rand): vo
     const vg = VALUE_GOAL[v];
     if (vg) for (const g of GOALS) util[g] += vg[g] ?? 0;
   }
+  const ed = edictOn(w, c);
+  if (ed && ed !== 'research') util[ed as Goal] += 3; // a founder's edict weighs heavily, but is not an order
   let best: Goal = 'grow';
   let bu = -99;
   for (const g of GOALS) {
@@ -555,6 +599,8 @@ function worldAge(w: World): void {
 
 function yearly(w: World): void {
   yearlyNature(w);
+  yearlyDisasters(w);
+  yearlyPlayer(w);
 
   const crowd = new Float64Array(w.civs.length);
   const canGrow = new Float64Array(w.civs.length);
@@ -590,6 +636,9 @@ function yearly(w: World): void {
   markWars(w);
   considerWar(w, border, canGrow);
   contacts(w);
+  yearlyFaith(w);
+  yearlyWonders(w);
+  yearlyFate(w);
   worldAge(w);
   tendReserves(w);
 }

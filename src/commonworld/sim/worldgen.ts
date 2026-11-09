@@ -240,5 +240,5 @@ export function generateWorld(seed: number, W = 128, H = 96): World {
     t.res[i] = r;
   }
 
-  return { v: SIM_V, seed, tick: 0, W, H, t, rivers, civs: [], setts: [], spells: [], plagues: [], rels: [], wars: [], routes: [], age: 0, log: [], logBase: 0, reserves: [] };
+  return { v: SIM_V, seed, tick: 0, W, H, t, rivers, civs: [], setts: [], spells: [], plagues: [], rels: [], wars: [], routes: [], age: 0, log: [], logBase: 0, reserves: [], omens: [], omenN: 0, faiths: [], wonders: [] };
 }

@@ -3,6 +3,7 @@
 import { ev, has } from './civ';
 import { Rand, S } from './rng';
 import { TICKS_PER_YEAR, type Civ, type Rel, type ValueId, type World } from './types';
+import { faithOpinion } from './faith';
 
 const index = new WeakMap<World, { n: number; m: Map<number, Rel> }>();
 const key = (a: number, b: number) => (a < b ? a * 65536 + b : b * 65536 + a);
@@ -72,7 +73,7 @@ export function yearlyDiplo(w: World, border: Map<number, number>, routes: Map<n
     const k = key(r.a, r.b);
     const nRoutes = routes.get(k) ?? 0;
     const edge = border.get(k) ?? 0;
-    let target = baseOpinion(A, B) + Math.min(16, nRoutes * 4) - Math.min(25, edge / 3) - r.grudge * 0.5;
+    let target = baseOpinion(A, B) + faithOpinion(A, B) + Math.min(16, nRoutes * 4) - Math.min(25, edge / 3) - r.grudge * 0.5;
     if (r.st === 'ally') target += 12;
     else if (r.st === 'pact') target += 5;
     else if (r.st === 'war') target -= 50;

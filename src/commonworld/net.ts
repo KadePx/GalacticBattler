@@ -18,6 +18,12 @@ export async function getJson<T>(path: string): Promise<T> {
   return (await r.json()) as T;
 }
 
+/** POST JSON; returns the parsed reply even for error statuses (they carry a message). */
+export async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(API + path, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } });
+  return (await r.json()) as T;
+}
+
 async function getGz(path: string): Promise<string> {
   // Terrain never changes within a world, so it may be cached, but only under that world's id.
   const r = await fetch(API + path, { cache: path.startsWith('static') ? 'default' : 'no-store' });

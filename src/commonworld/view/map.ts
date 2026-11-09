@@ -9,7 +9,7 @@ import { isLand } from '../sim/worldgen';
 import type { SettView } from '../history';
 import { CORNERS, EDGE, HEX, hexPath, mapSize, neighborInDir, paintTerrain } from './terrain';
 
-export type Mode = 'political' | 'diplomacy' | 'trade' | 'population' | 'stability' | 'fertility' | 'terrain';
+export type Mode = 'political' | 'diplomacy' | 'trade' | 'faith' | 'population' | 'stability' | 'fertility' | 'terrain';
 export type Stance = 'self' | 'ally' | 'pact' | 'peace' | 'war';
 const STANCE_COLOR: Record<Stance, string> = { self: 'rgba(124,140,255,0.6)', ally: 'rgba(110,200,110,0.5)', pact: 'rgba(90,190,200,0.45)', peace: 'rgba(170,170,190,0.28)', war: 'rgba(225,70,55,0.55)' };
 
@@ -18,6 +18,8 @@ export interface MapState {
   setts: SettView[];
   ruins: number[]; // tiles
   monuments: number[]; // tiles
+  wonders: number[]; // tiles of standing wonders
+  faith: Map<number, number>; // civ -> faith hue (faith mode; no entry = no faith)
   capitals: Set<number>; // settlement ids
   routes: [number, number, boolean][]; // tile pairs, by sea
   battles: number[]; // tiles of recent battles
@@ -174,6 +176,16 @@ export class MapView {
         const [cx, cy] = tileCenter(w.W, i, HEX);
         hexPath(g, cx, cy, HEX * 1.03);
         g.fillStyle = stance ? STANCE_COLOR[stance] : 'rgba(10,10,20,0.45)';
+        g.fill();
+      }
+    } else if (st.mode === 'faith') {
+      for (let i = 0; i < n; i++) {
+        const o = own[i];
+        if (o < 0) continue;
+        const hue = st.faith.get(o);
+        const [cx, cy] = tileCenter(w.W, i, HEX);
+        hexPath(g, cx, cy, HEX * 1.03);
+        g.fillStyle = hue === undefined ? 'rgba(10,10,20,0.45)' : `hsla(${hue}, 65%, 55%, ${sel < 0 || sel === o ? 0.5 : 0.3})`;
         g.fill();
       }
     } else if (st.mode === 'trade') {
@@ -351,6 +363,13 @@ export class MapView {
         .stroke({ width: 3.4 * k, color: 0x0a0d14 })
         .moveTo(x - r, y - r).lineTo(x + r, y + r).moveTo(x + r, y - r).lineTo(x - r, y + r)
         .stroke({ width: 1.8 * k, color: 0xff6a4d });
+    }
+    for (const tile of st.wonders) {
+      // A wonder: a bright four-pointed star with a dark edge.
+      const [cx, cy] = tileCenter(w.W, tile, HEX);
+      const x = cx - 7 * k;
+      const y = cy - 8 * k;
+      g.star(x, y, 4, 5.5 * k, 2.2 * k).fill({ color: 0xffe08a }).stroke({ width: 1.2, color: 0x0a0d14 });
     }
     for (const tile of st.monuments) {
       const [cx, cy] = tileCenter(w.W, tile, HEX);

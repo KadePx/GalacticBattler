@@ -6,8 +6,11 @@ import { decodeOwner, frameRoutes, frameSetts, History, liveSetts, type SettView
 import { line } from './chronicle';
 import { createWorld, serialize, step, worldHash, AGES, TICKS_PER_YEAR, TIER_NAMES, type World } from './sim/index';
 import { BIOMES } from './sim/worldgen';
-import { getJson, loadOlderEvents, loadWorld, loadYears, sync } from './net';
-import { myHash } from './identity';
+import { getJson, loadOlderEvents, loadWorld, loadYears, postJson, sync } from './net';
+import { founderId, myHash } from './identity';
+import { EDICT_TEXT, councilHtml, digestHtml, type Queued } from './view/council';
+import { sound } from './view/sound';
+import { worldHtml } from './view/world';
 import { Founding, type Pending } from './view/founding';
 import { SIM_V } from './sim/types';
 import { legendFull } from './view/legend';
@@ -38,7 +41,13 @@ let speed = 5; // years per second
 let mode: Mode = 'political';
 let selCiv = -1;
 let selTile = -1;
-type DrawerKind = { k: 'peoples' } | { k: 'civ'; civ: number } | { k: 'chron' } | { k: 'tech' };
+type DrawerKind = { k: 'peoples' } | { k: 'civ'; civ: number } | { k: 'chron' } | { k: 'tech' } | { k: 'mine' } | { k: 'world' };
+let msPerTick = 60_000; // real ms per game month (from the server)
+let queued: Queued[] = []; // founder actions sent but not yet applied
+let naming = ''; // 'what:id' being named in the council
+let nameDraft = '';
+let offeredToday: number | null = null; // settlement where this visitor left today's offering
+let lastNotified = -1; // global id of the last event already shown as a notification
 let techSel = -1;
 let techScope: 'world' | 'civ' = 'world';
 let drawer: DrawerKind[] = [];
@@ -54,7 +63,7 @@ const shownYear = () => viewYear ?? lastYear();
 // ---- What the screen shows for the current year ----
 
 interface View {
-  owner: Int16Array; setts: SettView[]; ruins: number[]; monuments: number[]; capitals: Set<number>;
+  owner: Int16Array; setts: SettView[]; ruins: number[]; monuments: number[]; wonders: number[]; capitals: Set<number>;
   routes: [number, number, boolean][]; battles: number[]; sieges: number[];
 }
 let viewCache: { key: string; v: View } | null = null;
@@ -71,6 +80,7 @@ function view(): View {
       setts: liveSetts(w),
       ruins: w.setts.filter((s) => s.died >= 0).map((s) => s.tile),
       monuments: w.setts.filter((s) => s.died < 0 && s.monument).map((s) => s.tile),
+      wonders: w.wonders.filter((x) => w.setts[x.s].died < 0).map((x) => w.setts[x.s].tile),
       capitals: new Set(w.civs.filter((c) => c.died < 0).map((c) => c.capital)),
       routes: frameRoutes(w, null),
       battles: recentBattles(until),
@@ -93,6 +103,7 @@ function view(): View {
       setts,
       ruins: w.setts.filter((s) => s.died >= 0 && s.died <= until).map((s) => s.tile),
       monuments: mons,
+      wonders: w.wonders.filter((x) => x.t <= until && (w.setts[x.s].died < 0 || w.setts[x.s].died > until) && alive.has(x.s)).map((x) => w.setts[x.s].tile),
       capitals: new Set(caps.values()),
       routes: frameRoutes(w, f),
       battles: recentBattles(until),
@@ -145,16 +156,35 @@ function stances(): Map<number, Stance> {
   return m;
 }
 
+/** Each people's faith in the shown year, as a hue (live: now; past: replayed from the chronicle). */
+function faithHues(): Map<number, number> {
+  const m = new Map<number, number>();
+  if (viewYear === null) {
+    for (const c of w.civs) if (c.died < 0 && c.faith >= 0) m.set(c.id, w.faiths[c.faith].hue);
+    return m;
+  }
+  const until = shownYear() * TICKS_PER_YEAR + TICKS_PER_YEAR - 1;
+  const byName = new Map(w.faiths.map((f) => [f.name, f.hue]));
+  for (const e of w.log) {
+    if (e.t > until) break;
+    if ((e.k === 'faith_found' || e.k === 'convert' || e.k === 'schism') && e.a !== undefined && e.x) {
+      const h = byName.get(e.x);
+      if (h !== undefined) m.set(e.a, h);
+    }
+  }
+  return m;
+}
+
 function ctx(): Ctx {
   const v = view();
-  return { w, hist, year: shownYear(), live: viewYear === null, setts: v.setts, owner: v.owner, selCiv, chron };
+  return { w, hist, year: shownYear(), live: viewYear === null, setts: v.setts, owner: v.owner, selCiv, chron, me: myCiv };
 }
 
 // ---- Map ----
 
 function updateMap(): void {
   const v = view();
-  const st: MapState = { ...v, stance: mode === 'diplomacy' ? stances() : new Map(), mode, selCiv, key: `${viewYear === null ? 'L' + w.tick : 'Y' + shownYear()}|${mode}|${selCiv}` };
+  const st: MapState = { ...v, stance: mode === 'diplomacy' ? stances() : new Map(), faith: mode === 'faith' ? faithHues() : new Map(), mode, selCiv, key: `${viewYear === null ? 'L' + w.tick : 'Y' + shownYear()}|${mode}|${selCiv}` };
   map.selTile = selTile;
   renderLegend();
   map.update(st);
@@ -246,11 +276,15 @@ track.addEventListener('pointerdown', (e) => {
 $('live').onclick = () => goYear(null);
 $('replay').onclick = () => { replaying = true; viewYear = 0; refreshAll(); };
 $('play').onclick = () => { playing = !playing; updateTimeline(); };
+const sndBtn = $('snd');
+const showSound = () => { sndBtn.classList.toggle('off', !sound.on); sndBtn.title = sound.on ? 'Sound is on' : 'Sound is off'; };
+sndBtn.onclick = () => { sound.toggle(); showSound(); };
+showSound();
 $<HTMLSelectElement>('speed').onchange = (e) => { speed = Number((e.target as HTMLSelectElement).value); };
 
 // ---- Modes ----
 
-const MODES: [Mode, string][] = [['political', 'Peoples'], ['diplomacy', 'Diplomacy'], ['trade', 'Trade'], ['population', 'Population'], ['stability', 'Stability'], ['fertility', 'Fertility'], ['terrain', 'Terrain']];
+const MODES: [Mode, string][] = [['political', 'Peoples'], ['diplomacy', 'Diplomacy'], ['trade', 'Trade'], ['faith', 'Faith'], ['population', 'Population'], ['stability', 'Stability'], ['fertility', 'Fertility'], ['terrain', 'Terrain']];
 function renderModes(): void {
   $('modes').innerHTML = MODES.map(([m, label]) => `<button class="btn ${m === mode ? 'on' : ''}" data-mode="${m}">${label}</button>`).join('');
 }
@@ -311,11 +345,19 @@ function renderDrawer(): void {
   } else if (top.k === 'tech') {
     $('dtitle').textContent = 'Tech tree';
     body.innerHTML = techHtml(c, techSel, techScope);
+  } else if (top.k === 'mine') {
+    $('dtitle').textContent = 'Your people';
+    body.innerHTML = myCiv >= 0 ? councilHtml(w, myCiv, msPerTick, queued, naming) : '';
+  } else if (top.k === 'world') {
+    $('dtitle').textContent = 'The world';
+    body.innerHTML = worldHtml(c);
   } else {
     $('dtitle').textContent = 'Chronicle';
     body.innerHTML = chronHtml(c);
   }
   body.scrollTop = scroll;
+  const ni = document.getElementById('nameinp') as HTMLInputElement | null;
+  if (ni) ni.value = nameDraft;
   if (focusId) {
     const inp = document.getElementById(focusId) as HTMLInputElement | null;
     if (inp) { inp.focus(); if (caret !== null) inp.setSelectionRange(caret, caret); }
@@ -326,7 +368,7 @@ $('dclose').onclick = () => { drawer = []; selCiv = -1; refreshAll(); };
 $('dback').onclick = () => { drawer.pop(); const t = drawer[drawer.length - 1]; if (t?.k === 'civ') selCiv = t.civ; refreshAll(); };
 for (const b of Array.from(document.querySelectorAll<HTMLElement>('[data-open]'))) {
   b.onclick = () => {
-    const k = b.dataset.open as 'peoples' | 'chron' | 'tech';
+    const k = b.dataset.open as 'peoples' | 'chron' | 'tech' | 'world';
     if (k === 'chron') chron.scope = selCiv >= 0 ? 'civ' : 'world';
     if (k === 'tech') techScope = selCiv >= 0 ? 'civ' : 'world';
     openDrawer({ k }, false);
@@ -335,9 +377,10 @@ for (const b of Array.from(document.querySelectorAll<HTMLElement>('[data-open]')
 
 function handlePanelClick(e: MouseEvent): void {
   const t = e.target as HTMLElement;
-  const el = t.closest<HTMLElement>('[data-civ],[data-tile],[data-chron],[data-scope],[data-tech],[data-tscope],[data-techs],#cmajor,#cmore,#ix');
+  const el = t.closest<HTMLElement>('[data-civ],[data-tile],[data-chron],[data-scope],[data-tech],[data-tscope],[data-techs],[data-omen],[data-edict],[data-askname],[data-dosname],[data-gift],[data-propose],[data-offer],[data-open],[data-share],#cmajor,#cmore,#ix');
   if (!el) return;
   e.preventDefault();
+  if (founderClick(el)) return;
   if (el.id === 'ix') { selTile = -1; map.selTile = -1; refreshAll(); return; }
   if (el.id === 'cmajor') { chron.major = !chron.major; renderDrawer(); return; }
   if (el.id === 'cmore') { chron.limit += 200; renderDrawer(); return; }
@@ -365,6 +408,7 @@ $('dbody').addEventListener('input', (e) => {
   const t = e.target as HTMLInputElement;
   if (t.id === 'psearch') peoplesQ = t.value;
   if (t.id === 'csearch') { chron.q = t.value; chron.limit = 200; }
+  if (t.id === 'nameinp') { nameDraft = t.value; return; }
   renderDrawer();
 });
 
@@ -373,7 +417,7 @@ $('dbody').addEventListener('input', (e) => {
 function renderInspect(): void {
   const el = $('inspect');
   el.classList.toggle('hidden', selTile < 0);
-  if (selTile >= 0) el.innerHTML = inspectHtml(ctx(), selTile);
+  if (selTile >= 0) el.innerHTML = inspectHtml(ctx(), selTile) + offerHtml(selTile);
 }
 
 map.onClick = (tile) => {
@@ -448,6 +492,7 @@ function checkMine(): void {
       map.focus(cap.tile, 4);
       openDrawer({ k: 'civ', civ: c.id }, false);
       toast(`<b>The ${esc(c.name)} have arrived.</b><br>The first hearth is lit at ${esc(cap.name)}. Their story begins.`, 9000);
+      sound.play('arrive');
     }
   } else if (!c && pending && Date.now() + clockSkew > pending.eta + 30_000) {
     // The month turned without them: ask the server what happened.
@@ -469,7 +514,8 @@ function renderDock(): void {
   b.classList.remove('hidden');
   if (myCiv >= 0) {
     b.className = 'btn mine';
-    b.innerHTML = `${banner(w.civs[myCiv], 14)} The ${esc(w.civs[myCiv].name)}`;
+    const waiting = w.omens.some((o) => o.civ === myCiv);
+    b.innerHTML = `${banner(w.civs[myCiv], 14)} The ${esc(w.civs[myCiv].name)}${waiting ? '<span class="badge" title="Your people await a sign">!</span>' : ''}`;
   } else if (pending) {
     const s = Math.max(0, Math.round((pending.eta - (Date.now() + clockSkew)) / 1000));
     b.className = 'btn mine';
@@ -482,8 +528,8 @@ function renderDock(): void {
 
 $('mine').onclick = () => {
   if (myCiv >= 0) {
-    map.focus(w.setts[w.civs[myCiv].capital].tile, 3);
-    openDrawer({ k: 'civ', civ: myCiv }, false);
+    if (w.civs[myCiv].died < 0) map.focus(w.setts[w.civs[myCiv].capital].tile, 3);
+    openDrawer({ k: 'mine' }, false);
   } else if (pending) map.focus(pending.tile, 4);
   else if (founding) founding.close();
   else openFounding();
@@ -512,6 +558,166 @@ $('welcome').onclick = (e) => {
   $('welcome').classList.add('hidden');
   if (a === 'found') openFounding();
 };
+
+// ---- Founder actions, offerings, notifications, digest (milestone 6) ----
+
+const cap1 = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Send a founder action. It lands when the month turns. */
+async function act(a: Record<string, unknown>, q: Omit<Queued, 'tick'>): Promise<boolean> {
+  try {
+    const r = await postJson<{ ok?: boolean; error?: string }>('act', { id: founderId(), act: a });
+    if (!r.ok) { toast(`<b>${esc(cap1(r.error ?? 'that did not work'))}.</b>`, 5000); return false; }
+    queued.push({ ...q, tick: w.tick });
+    sound.play('send');
+    toast(`<b>Sent.</b> ${esc(cap1(q.label))} is heard when the month turns.`, 4000);
+    renderDrawer();
+    return true;
+  } catch {
+    toast('<b>The world could not be reached.</b> Try again in a moment.', 5000);
+    return false;
+  }
+}
+
+async function offer(sid: number): Promise<void> {
+  try {
+    const r = await postJson<{ ok?: boolean; error?: string }>('offer', { id: founderId(), s: sid });
+    if (!r.ok) { toast(`<b>${esc(cap1(r.error ?? 'that did not work'))}.</b>`, 5000); return; }
+    offeredToday = sid;
+    sound.play('send');
+    toast(`<b>Your offering was left at ${esc(w.setts[sid].name)}.</b> Come back tomorrow to leave another.`, 5000);
+    renderInspect();
+  } catch {
+    toast('<b>The world could not be reached.</b> Try again in a moment.', 5000);
+  }
+}
+
+/** Buttons that act for the founder or the visitor. Returns true if handled. */
+function founderClick(el: HTMLElement): boolean {
+  const d = el.dataset;
+  const name = (id: number) => `the ${w.civs[id]?.name ?? 'people'}`;
+  if (d.omen !== undefined) { void act({ k: 'omen', id: Number(d.omen), pick: Number(d.pick) }, { label: 'your answer', cost: 1, omen: Number(d.omen) }); return true; }
+  if (d.edict) { void act({ k: 'edict', edict: d.edict }, { label: `the ${EDICT_TEXT[d.edict as keyof typeof EDICT_TEXT][0].toLowerCase()} edict`, cost: 2 }); return true; }
+  if (d.askname) {
+    naming = d.askname;
+    nameDraft = '';
+    renderDrawer();
+    (document.getElementById('nameinp') as HTMLInputElement | null)?.focus();
+    return true;
+  }
+  if (d.dosname) { submitName(); return true; }
+  if (d.gift) { void act({ k: 'gift', to: Number(d.gift) }, { label: `gifts for ${name(Number(d.gift))}`, cost: 2 }); return true; }
+  if (d.propose) { void act({ k: 'propose', to: Number(d.propose) }, { label: `an offer of alliance to ${name(Number(d.propose))}`, cost: 3 }); return true; }
+  if (d.offer) { void offer(Number(d.offer)); return true; }
+  if (d.share) { void share(Number(d.share)); return true; }
+  if (d.open === 'mine') { closeDigest(); openDrawer({ k: 'mine' }, false); return true; }
+  if (d.open === 'world') { openDrawer({ k: 'world' }, false); return true; }
+  return false;
+}
+
+function submitName(): void {
+  const [what, id] = naming.split(':');
+  const n = nameDraft.trim();
+  if (n.length < 3) { toast('<b>A name needs at least three letters.</b>', 4000); return; }
+  void act({ k: 'name', what, id: Number(id), name: n }, { label: `the name ${n}`, cost: 1 }).then((ok) => {
+    if (ok) { naming = ''; renderDrawer(); }
+  });
+}
+$('dbody').addEventListener('keydown', (e) => {
+  if ((e.target as HTMLElement).id === 'nameinp' && e.key === 'Enter') { e.preventDefault(); submitName(); }
+  if ((e.target as HTMLElement).id === 'nameinp' && e.key === 'Escape') { naming = ''; renderDrawer(); }
+});
+
+/** The pilgrim's offering row in the tile inspector. */
+function offerHtml(tile: number): string {
+  if (!online || viewYear !== null) return '';
+  const sid = w.t.city[tile];
+  if (sid < 0 || w.setts[sid].died >= 0) return '';
+  const s = w.setts[sid];
+  const founderAlive = myCiv >= 0 && w.civs[myCiv].died < 0;
+  const n = s.offers ?? 0;
+  const count = n ? `${n} pilgrim ${n === 1 ? 'offering' : 'offerings'}` : 'No offerings yet';
+  let btn = '';
+  if (!founderAlive) {
+    btn = offeredToday === null
+      ? `<button class="btn sm" data-offer="${sid}">Leave an offering</button>`
+      : `<span class="legend">${offeredToday === sid ? 'You left today\'s offering here.' : 'You left today\'s offering elsewhere.'}</span>`;
+  }
+  return `<div class="offer"><span>🕯 ${count}</span>${btn}</div>`;
+}
+
+const NOTIFY = new Set([
+  'omen', 'war', 'war_join', 'gift', 'proposal', 'proposal_refused', 'ally', 'conquest', 'civ_fall', 'wonder', 'wonder_beaten', 'faith_found', 'schism',
+  'convert', 'crisis', 'claim_war', 'quake', 'eruption', 'fire', 'tsunami', 'revival', 'defect', 'collapse', 'peace', 'great_born', 'plague_reach', 'pilgrims',
+]);
+
+/** New events about this visitor's people since the last look, as one toast. */
+function notify(): void {
+  const end = w.logBase + w.log.length - 1;
+  if (myCiv < 0) { lastNotified = end; return; }
+  const msgs: string[] = [];
+  let omen = false;
+  for (let id = Math.max(lastNotified + 1, w.logBase); id <= end; id++) {
+    const e = w.log[id - w.logBase];
+    if ((e.a !== myCiv && e.b !== myCiv) || !NOTIFY.has(e.k)) continue;
+    if (e.k === 'omen' && e.a === myCiv) omen = true;
+    msgs.push(line(w, e, id).text);
+  }
+  lastNotified = end;
+  if (!msgs.length) return;
+  sound.play(omen ? 'omen' : 'note');
+  const more = msgs.length > 3 ? `<br><span class="legend">and ${msgs.length - 3} more in your chronicle</span>` : '';
+  toast(`${omen ? '<b>Your people await a sign.</b> <a href="#" data-open="mine">Open your council</a><br>' : ''}${msgs.slice(-3).map((m) => esc(m)).join('<br>')}${more}`, 9000);
+}
+$('toast').addEventListener('click', (e) => {
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-open]');
+  if (el) { e.preventDefault(); e.stopPropagation(); $('toast').classList.add('hidden'); founderClick(el); }
+});
+
+function saveSeen(): void {
+  if (!online || !worldId) return;
+  try { localStorage.setItem('cw.seen', JSON.stringify({ world: worldId, tick: w.tick })); } catch { /* private mode */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveSeen(); });
+
+/** "While you were away": shown on return when enough time has passed. */
+function showDigest(): boolean {
+  let seen: { world: string; tick: number } | null = null;
+  try { seen = JSON.parse(localStorage.getItem('cw.seen') ?? 'null'); } catch { seen = null; }
+  if (!seen || seen.world !== worldId) return false;
+  const html = digestHtml(w, hist, myCiv, seen.tick, msPerTick);
+  if (!html) return false;
+  $('digest').querySelector('.card')!.innerHTML = html;
+  $('digest').classList.remove('hidden');
+  sound.play('note');
+  return true;
+}
+function closeDigest(): void {
+  $('digest').classList.add('hidden');
+}
+$('digest').addEventListener('click', (e) => {
+  const t = e.target as HTMLElement;
+  if (t.id === 'digest') { closeDigest(); return; }
+  const el = t.closest<HTMLElement>('[data-digest],[data-open],[data-tile]');
+  if (!el) return;
+  e.preventDefault();
+  if (el.dataset.digest) { closeDigest(); return; }
+  if (el.dataset.open) { founderClick(el); return; }
+  closeDigest();
+  handlePanelClick(e as MouseEvent);
+});
+
+/** Share a people: the system share sheet on phones, the clipboard elsewhere. */
+async function share(civ: number): Promise<void> {
+  const c = w.civs[civ];
+  const url = `${location.origin}/commonworld/c/${civ}`;
+  const text = `The ${c.name} of Commonworld`;
+  try {
+    if (navigator.share) { await navigator.share({ title: text, url }); return; }
+    await navigator.clipboard.writeText(url);
+    toast(`<b>Link copied.</b> ${esc(url)}`, 5000);
+  } catch { /* cancelled */ }
+}
 
 // ---- Loop ----
 
@@ -602,6 +808,7 @@ async function loadLive(loading: HTMLElement): Promise<void> {
   worldId = st.world;
   clockSkew = st.now - Date.now();
   nextAt = st.next;
+  msPerTick = st.msPerTick;
   turnstileKey = (st as unknown as { turnstile: string | null }).turnstile;
   hist = new History(2);
   const last = Math.floor(w.tick / TICKS_PER_YEAR);
@@ -616,7 +823,13 @@ async function syncLoop(): Promise<void> {
     if (r.ok) {
       clockSkew = r.now - Date.now();
       nextAt = r.next;
-      if (r.steps) { syncChanged = true; checkMine(); }
+      if (r.steps) {
+        syncChanged = true;
+        queued = queued.filter((x) => x.tick >= w.tick);
+        checkMine();
+        notify();
+        saveSeen();
+      }
       wait = Math.max(3000, Math.min(60_000, r.next - r.now + 1500));
     } else {
       // Out of step (or the world was reset): start again from a fresh snapshot.
@@ -675,19 +888,29 @@ async function boot(): Promise<void> {
   renderModes();
   refreshAll();
   requestAnimationFrame(frame);
+  const shared = Number(q.get('civ'));
+  if (q.has('civ') && w.civs[shared]) {
+    const c = w.civs[shared];
+    if (c.died < 0) map.focus(w.setts[c.capital].tile, 3);
+    openDrawer({ k: 'civ', civ: shared }, false);
+    try { localStorage.setItem('cw.welcomed', '1'); } catch { /* private mode */ }
+  }
   if (online) {
     setTimeout(syncLoop, 3000);
     me = await myHash();
     const mine = w.civs.find((c) => c.founder === me);
     if (mine) { myCiv = mine.id; savePending(null); }
     else {
-      const r = await getJson<{ status: string; eta?: number }>(`me?f=${me}`).catch(() => ({ status: 'none' }) as { status: string; eta?: number });
+      const r = await getJson<{ status: string; eta?: number; offered?: number | null }>(`me?f=${me}`).catch(() => ({ status: 'none' }) as { status: string; eta?: number; offered?: number | null });
+      offeredToday = r.offered ?? null;
       if (r.status === 'pending' && !pending) savePending({ name: 'your people', tile: -1, eta: r.eta ?? Date.now(), skew: clockSkew });
       if (r.status !== 'pending' && pending) savePending(null);
       if (r.status === 'failed') toast('<b>Your settlers could not reach their land.</b><br>Choose a new homeland.', 8000);
     }
+    lastNotified = w.logBase + w.log.length - 1;
     renderDock();
-    welcome();
+    if (!showDigest()) welcome();
+    saveSeen();
   }
 }
 
@@ -734,7 +957,7 @@ boot();
   play(s?: number) { playing = true; if (s) speed = s; updateTimeline(); },
   goYear,
   select(civ: number) { selCiv = civ; refreshAll(); },
-  open(k: 'peoples' | 'chron' | 'tech' | number) { openDrawer(typeof k === 'number' ? { k: 'civ', civ: k } : { k }, false); },
+  open(k: 'peoples' | 'chron' | 'tech' | 'mine' | 'world' | number) { openDrawer(typeof k === 'number' ? { k: 'civ', civ: k } : { k }, false); },
   mode(m: Mode) { mode = m; renderModes(); updateMap(); },
   hash: () => worldHash(w),
   dump: () => serialize(w),

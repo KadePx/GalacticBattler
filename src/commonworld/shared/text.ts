@@ -32,6 +32,14 @@ export function properName(s: unknown): string | null {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+/** A name given with naming rights (a town, river, wonder or great person): 1-3 words, 3-24 long. */
+export function placeName(s: unknown): string | null {
+  const t = tidy(s, 24).replace(/^the\s+/i, '');
+  if (!/^[\p{L}][\p{L}'-]*( [\p{L}][\p{L}'-]*){0,2}$/u.test(t) || t.length < 3) return null;
+  if (!isClean(t)) return null;
+  return t.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 export const MOTTO_MAX = 60;
 export const BYNAME_MAX = 20;
 

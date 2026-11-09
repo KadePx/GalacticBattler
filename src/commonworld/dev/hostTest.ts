@@ -8,6 +8,7 @@
 import { foundingSpots } from '../sim/civ';
 import { founderHash } from '../shared/text';
 import { assemble, stateHash, step, type Input, type World } from '../sim/index';
+import { influence, nameable } from '../sim/player';
 import { WorldHost, type KV } from '../server/host';
 import type { D1 } from '../../net/db';
 
@@ -98,21 +99,89 @@ async function main(): Promise<void> {
   check(!!mine && mine.name === 'Testari' && client.setts[mine.capital].name === 'Firsthome' && mine.hue === 200, 'founded civ has the chosen name, capital and colour');
   check(!!mine && mine.protectedUntil > 600 && mine.byName === 'Kade' && !JSON.stringify(client).includes(myId), 'protected, credited, and the private id never enters the world');
 
+  // Founder actions (milestone 6).
+  const staticText = await gunzip(await get(host, 'static'));
+  const live = async () => assemble(staticText, await gunzip(await get(host, 'snapshot')));
+  const act = (a: Record<string, unknown>, id = myId) => get(host, 'act', { method: 'POST', body: JSON.stringify({ id, act: a }), headers: { 'content-type': 'application/json' } });
+  const month = async () => { clock += MS; await host.advance(); };
+  let lw = await live();
+  let mineNow = lw.civs.find((c) => c.founder === me)!;
+  const inf0 = influence(lw, mineNow);
+  check((await act({ k: 'edict', edict: 'conquer' })).status === 400, 'an unknown edict is refused');
+  check((await act({ k: 'edict', edict: 'research' })).status === 200, `edict accepted (influence ${inf0.toFixed(2)})`);
+  check((await act({ k: 'edict', edict: 'grow' })).status === 409, 'a second edict without the influence is refused');
+  check((await act({ k: 'edict', edict: 'grow' }, 'nobody-has-this-id-0123')).status === 403, 'someone without a people cannot act');
+  await month();
+  lw = await live();
+  mineNow = lw.civs.find((c) => c.founder === me)!;
+  check(mineNow.edict === 'research' && influence(lw, mineNow) < inf0 - 1.9, `edict applied, influence now ${influence(lw, mineNow).toFixed(2)}`);
+  const pilgrim = 'pilgrim-0123456789abcdef';
+  const offer = (s: number, id = pilgrim) => get(host, 'offer', { method: 'POST', body: JSON.stringify({ id, s }), headers: { 'content-type': 'application/json' } });
+  check((await offer(mineNow.capital)).status === 200, 'a pilgrim leaves an offering');
+  check((await offer(mineNow.capital)).status === 429, 'one offering a day');
+  check((await offer(mineNow.capital, myId)).status === 403, 'founders cannot leave offerings');
+  await month();
+  lw = await live();
+  check(lw.setts[lw.civs.find((c) => c.founder === me)!.capital].offers === 1, 'the offering is counted at the town');
+  // Time passes: influence refills, and sooner or later the people await a sign.
+  for (let y = 0; y < 300 && !lw.omens.some((o) => o.civ === mineNow.id); y += 10) {
+    await passYears(host, 10);
+    lw = await live();
+  }
+  mineNow = lw.civs.find((c) => c.founder === me)!;
+  const om = lw.omens.find((o) => o.civ === mineNow.id);
+  check(!!om, `an omen came for the founder (${om?.k})`);
+  if (om) {
+    check((await act({ k: 'omen', id: om.id, pick: 9 })).status === 409, 'an impossible answer is refused');
+    check((await act({ k: 'omen', id: om.id, pick: 0 })).status === 200, 'the founder answers the omen');
+    await month();
+    lw = await live();
+    check(!lw.omens.some((o) => o.id === om.id), 'the omen is settled');
+  }
+  mineNow = lw.civs.find((c) => c.founder === me)!;
+  const young = lw.setts.find((s) => nameable(lw, mineNow, 'sett', s.id));
+  if (young) {
+    check((await act({ k: 'name', what: 'sett', id: young.id, name: 'Shitville' })).status === 400, 'a rude name is refused');
+    check((await act({ k: 'name', what: 'sett', id: young.id, name: 'new haven' })).status === 200, `naming ${young.name}`);
+    await month();
+    lw = await live();
+    check(lw.setts[young.id].name === 'New Haven' && lw.setts[young.id].pn === 1, 'the town has its new name');
+  } else {
+    check((await act({ k: 'name', what: 'sett', id: mineNow.capital, name: 'Old Haven' })).status === 409, 'an old town cannot be renamed');
+  }
+  const friend = mineNow.contacts.find((k) => lw.civs[k].died < 0 && lw.rels.find((r) => (r.a === k || r.b === k) && (r.a === mineNow.id || r.b === mineNow.id))?.st !== 'war');
+  if (friend !== undefined && influence(lw, mineNow) >= 2) {
+    const before = lw.rels.find((r) => (r.a === friend || r.b === friend) && (r.a === mineNow.id || r.b === mineNow.id))!.op;
+    check((await act({ k: 'gift', to: friend })).status === 200, 'a gift caravan sets out');
+    await month();
+    lw = await live();
+    const after = lw.rels.find((r) => (r.a === friend || r.b === friend) && (r.a === mineNow.id || r.b === mineNow.id))!.op;
+    check(after > before, `the gift warmed relations (${before.toFixed(1)} -> ${after.toFixed(1)})`);
+  }
+  // The client replays every founder action identically.
+  const sync2 = await (await get(host, `sync?world=${st.world}&tick=${client.tick}`)).json() as { tick: number; hash: string; inputs: [number, Input][] };
+  while (client.tick < sync2.tick) step(client, sync2.inputs.filter(([t]) => t === client.tick).map(([, i]) => i));
+  check(stateHash(client) === sync2.hash, `client replay of founder actions matches the server (${sync2.inputs.length} inputs)`);
+
   // History endpoints.
   const ev = await (await get(host, 'events?limit=50')).json() as { events: { id: number }[] };
   check(ev.events.length === 50 && ev.events[0].id > ev.events[1].id, `events endpoint pages newest first (top id ${ev.events[0]?.id})`);
   const yrs = await (await get(host, 'years?from=0&to=100')).json() as { years: { year: number; frame: string | null }[] };
-  check(yrs.years.length === 81 && yrs.years.filter((y) => y.frame).length === 41, `years endpoint: ${yrs.years.length} years, ${yrs.years.filter((y) => y.frame).length} frames`);
+  const nowYear = Math.floor(((await (await get(host, 'state')).json()) as { tick: number }).tick / 12);
+  const want = Math.min(100, nowYear) + 1;
+  check(yrs.years.length === want && yrs.years.filter((y) => y.frame).length === Math.ceil(want / 2), `years endpoint: ${yrs.years.length} years, ${yrs.years.filter((y) => y.frame).length} frames`);
   const civEv = await (await get(host, 'events?civ=0&limit=20')).json() as { events: { a?: number; b?: number }[] };
   check(civEv.events.every((e) => e.a === 0 || e.b === 0), 'events can be filtered by civ');
 
   // Restart: a new host on the same storage resumes the same world.
+  const hashBefore = ((await (await get(host, 'state')).json()) as { hash: string }).hash;
   const host2 = new WorldHost(kv, db, opts);
   const st2 = await (await get(host2, 'state')).json() as { tick: number; hash: string; world: string };
-  check(st2.world === st.world && st2.hash === sync.hash, 'restarted host resumed the same world');
+  check(st2.world === st.world && st2.hash === hashBefore, 'restarted host resumed the same world');
   await passYears(host2, 10);
   await passYears(host, 0);
-  while (client.tick < 90 * 12) step(client, []);
+  const sync3 = await (await get(host2, `sync?world=${st.world}&tick=${client.tick}`)).json() as { tick: number; inputs: [number, Input][] };
+  while (client.tick < sync3.tick) step(client, sync3.inputs.filter(([t]) => t === client.tick).map(([, i]) => i));
   const st3 = await (await get(host2, 'state')).json() as { hash: string };
   check(st3.hash === stateHash(client), 'restarted host keeps stepping identically');
 
@@ -121,7 +190,7 @@ async function main(): Promise<void> {
   let calls = 0;
   while ((await host2.advance()) > 0) calls++;
   const st4 = await (await get(host2, 'state')).json() as { tick: number };
-  check(st4.tick === 190 * 12, `caught up 100 years of downtime in ${calls} steps`);
+  check(st4.tick === client.tick + 100 * 12, `caught up 100 years of downtime in ${calls} steps`);
   console.log(`     live storage ${(kv.size() / 1024).toFixed(0)} KB`);
 
   // Speed change: a host with a faster clock keeps the month, then runs faster.

@@ -111,7 +111,7 @@ function report(): void {
   const avgLen = ended.length ? ended.reduce((a, x) => a + (x.end - x.start) / 12, 0) / ended.length : 0;
   console.log(`
 Wars: ${w.wars.length} (${w.wars.filter((x) => x.end < 0).length} ongoing), avg ${avgLen.toFixed(1)} yrs, results ${[...res].map(([a, b]) => `${a} ${b}`).join(', ')}`);
-  console.log(`  causes ${['land', 'grudge', 'plunder', 'succession'].map((c) => `${c} ${w.wars.filter((x) => x.cause === c).length}`).join(', ')}; deaths ${k(w.wars.reduce((a, x) => a + x.deaths, 0))}; battles ${w.wars.reduce((a, x) => a + x.battles, 0)}`);
+  console.log(`  causes ${['land', 'grudge', 'plunder', 'succession', 'faith'].map((c) => `${c} ${w.wars.filter((x) => x.cause === c).length}`).join(', ')}; deaths ${k(w.wars.reduce((a, x) => a + x.deaths, 0))}; battles ${w.wars.reduce((a, x) => a + x.battles, 0)}`);
   const civYears = w.civs.reduce((a, c) => a + ((c.died >= 0 ? c.died : w.tick) - c.born) / 12, 0);
   const warYears = w.wars.reduce((a, x) => a + ((x.end >= 0 ? x.end : w.tick) - x.start) / 12 * (2 + x.atkAllies.length + x.defAllies.length), 0);
   console.log(`  share of civ-years at war: ${Math.round((100 * warYears) / Math.max(1, civYears))}%`);
@@ -121,6 +121,13 @@ Wars: ${w.wars.length} (${w.wars.filter((x) => x.end < 0).length} ongoing), avg 
   const alive = w.civs.filter((c) => c.died < 0);
   const ages = AGES.map((_, i) => alive.filter((c) => civAge(c) === i).length);
   console.log(`World age: ${AGES[w.age]}. Civs by age: ${AGES.map((a, i) => `${a} ${ages[i]}`).join(', ')}`);
+  {
+    const kept = (f: number) => alive.filter((c) => c.faith === f).length;
+    console.log(`Faiths: ${w.faiths.length} ever, ${w.faiths.filter((f) => f.died < 0).length} alive; ${w.faiths.filter((f) => f.died < 0).map((f) => `${f.name} (${kept(f.id)})`).join(', ')}; civs without faith ${alive.filter((c) => c.faith < 0).length}`);
+    console.log(`Wonders: ${w.wonders.map((x) => `${x.name} y${Math.floor(x.t / 12)}`).join(', ') || 'none'}; being built ${alive.filter((c) => c.work).length}`);
+    const top = alive.slice().sort((a, b) => b.culture - a.culture).slice(0, 3);
+    console.log(`Culture leaders: ${top.map((c) => `${c.name} ${Math.round(c.culture)}`).join(', ')}`);
+  }
   console.log(`Great people alive: ${alive.reduce((a, c) => a + c.greats.length, 0)}`);
   const spots = foundingSpots(w, 5);
   const boon = lateBoon(w);

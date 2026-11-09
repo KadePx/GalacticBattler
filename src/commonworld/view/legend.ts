@@ -18,6 +18,7 @@ const SYMBOLS = `<div class="lsym">
   <span class="lg"><svg viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="#ff6a4d" stroke-width="2"/></svg>Battle</span>
   <span class="lg"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="#e5483a" stroke-width="2"/></svg>Siege</span>
   <span class="lg"><svg viewBox="0 0 16 16"><path d="M8 3l5 9H3z" fill="#f5c451" stroke="#0a0d14"/></svg>Great work</span>
+  <span class="lg"><svg viewBox="0 0 16 16"><path d="M8 1.5l1.8 4.7 4.7 1.8-4.7 1.8L8 14.5l-1.8-4.7L1.5 8l4.7-1.8z" fill="#ffe08a" stroke="#0a0d14"/></svg>Wonder</span>
   <span class="lg"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="#9aa4b8" stroke-width="1.6"/></svg>Ruin</span>
 </div>`;
 
@@ -31,6 +32,8 @@ export function legendHtml(mode: Mode, selName: string | null): { title: string;
         : { title: 'Diplomacy', body: `<p>Who is fighting right now. Select a people to see their allies, pacts and enemies.</p><div class="lrow">${sw('rgba(225,70,55,0.85)', 'At war')}${sw('rgba(170,170,190,0.55)', 'At peace')}</div>` };
     case 'trade':
       return { title: 'Trade', body: `<p>Trade routes between towns. Trade brings coin and luxuries to both ends.</p><div class="lrow">${line('#f2c766', 'Land route')}${line('#8fd0ff', 'Sea route')}</div>` };
+    case 'faith':
+      return { title: 'Faith', body: `<p>Which faith each people keeps. Each faith has its own colour; dark land keeps none yet. A shared faith brings peoples closer, and the devout may go to war over a rival one. The full list is on the World page.</p>` };
     case 'population':
       return { title: 'Population', body: `<p>Where people live. Each town glows, and bigger, brighter glows mean more people.</p>${bar(['rgba(120,20,40,0.6)', 'rgb(230,90,40)', 'rgb(255,190,90)'], 'Few', 'Many')}` };
     case 'stability':

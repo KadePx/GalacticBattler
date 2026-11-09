@@ -2,7 +2,7 @@
 // Rule for all of src/commonworld/sim: no Math.random, Date, DOM, or Math.sin/exp/pow
 // (those can differ between JS engines); only + - * / sqrt floor on numbers.
 
-export const SIM_V = 5;
+export const SIM_V = 6;
 export const TICKS_PER_YEAR = 12; // one tick = one game month
 
 export const VALUES = [
@@ -40,6 +40,7 @@ export interface River {
   len: number;
   name: string | null;
   namedBy: number; // civ id, -1
+  pn?: 1; // named by a founder (naming rights are used)
 }
 
 export interface Ruler {
@@ -67,6 +68,7 @@ export interface Great {
   born: number; // tick they came to prominence
   dies: number; // tick
   deeds: number;
+  pn?: 1; // named by a founder
 }
 
 export interface Civ {
@@ -102,7 +104,21 @@ export interface Civ {
   peakPop: number;
   peakSetts: number;
   named: number; // settlements named so far (for name keys)
+  // Milestone 6: a founder's small nudges.
+  inf: number; // influence banked at infT (player civs only)
+  infT: number; // tick of the last spend
+  edict: Edict | ''; // the founder's priority, '' = none
+  edictUntil: number; // tick
+  // Milestone 7.
+  faith: number; // faith id, -1 = none
+  culture: number; // prestige from great works, temples, wonders and great people
+  work: WonderWork | null; // a wonder under construction
 }
+
+export const EDICTS = ['grow', 'expand', 'fortify', 'worship', 'build', 'trade', 'research'] as const;
+export type Edict = (typeof EDICTS)[number];
+
+export interface WonderWork { id: number; s: number; prog: number }
 
 export interface Sett {
   id: number;
@@ -132,6 +148,9 @@ export interface Sett {
   siege: number; // progress of an enemy siege
   siegeBy: number; // civ besieging, -1
   conq: number; // tick of the last conquest, -1
+  o: number; // the people who first founded it
+  offers?: number; // pilgrim offerings left here
+  pn?: 1; // named by a founder
 }
 
 export type RelState = 'peace' | 'pact' | 'ally' | 'war';
@@ -152,7 +171,7 @@ export interface War {
   def: number;
   atkAllies: number[];
   defAllies: number[];
-  cause: 'land' | 'grudge' | 'succession' | 'plunder';
+  cause: 'land' | 'grudge' | 'succession' | 'plunder' | 'faith';
   start: number;
   end: number; // -1 while ongoing
   score: number; // positive favours the attacker
@@ -171,7 +190,7 @@ export interface Route {
 }
 
 export interface Spell {
-  k: 'drought' | 'bounty' | 'winter';
+  k: 'drought' | 'bounty' | 'winter' | 'locusts';
   tile: number;
   r: number;
   start: number;
@@ -221,6 +240,46 @@ export interface World {
   log: Ev[];
   logBase: number; // global id of log[0]; the server moves old events out to storage
   reserves: number[]; // frontier tiles held open for players to found on; AI settlers keep clear
+  omens: Omen[]; // open questions waiting on a founder
+  omenN: number; // omens so far (ids)
+  faiths: Faith[];
+  wonders: Wonder[];
+}
+
+/** A question put to a founder ("your people await a sign"). If nobody answers by `due`, the AI decides. */
+export interface Omen {
+  id: number;
+  civ: number;
+  k: 'claim' | 'war' | 'sign' | 'pact';
+  t: number; // tick it appeared
+  due: number; // tick
+  b?: number; // other civ (pact: who proposes; war: the enemy)
+  n?: number; // war id
+  x?: string; // claim: the heir
+  y?: string; // claim: the rival claimant
+  z?: string; // claim: the rival's house
+}
+
+export interface Faith {
+  id: number;
+  name: string;
+  civ: number; // the people who founded it
+  holy: number; // settlement id of the holy city
+  born: number;
+  died: number; // -1 while anyone keeps it
+  hue: number;
+  parent: number; // faith it split from, -1
+  prophet: string;
+}
+
+/** A finished world wonder. Whoever holds the settlement holds the wonder. */
+export interface Wonder {
+  id: number; // index into WONDERS
+  name: string;
+  s: number; // settlement
+  civ: number; // the people who built it
+  t: number; // tick finished
+  by: string; // founder's name for it ('' = none)
 }
 
 /** Intents from players, applied at the start of the next tick. */
@@ -237,4 +296,14 @@ export interface FoundInput {
   phon?: number; // language chosen from suggestions
   lex?: number;
 }
-export type Input = FoundInput;
+
+/** A founder's nudge. `founder` is the hash of their private id; the sim checks it owns `civ`. */
+export type ActInput =
+  | { k: 'edict'; founder: string; edict: Edict }
+  | { k: 'omen'; founder: string; id: number; pick: number }
+  | { k: 'name'; founder: string; what: 'sett' | 'river' | 'great' | 'wonder'; id: number; name: string }
+  | { k: 'gift'; founder: string; to: number }
+  | { k: 'propose'; founder: string; to: number };
+/** A pilgrim's offering at a settlement (anyone without a living people, once a day; the server checks). */
+export interface OfferInput { k: 'offer'; s: number }
+export type Input = FoundInput | ActInput | OfferInput;

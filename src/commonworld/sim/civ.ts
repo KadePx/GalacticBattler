@@ -209,6 +209,7 @@ export function foundSettlement(w: World, c: Civ, tile: number, pop: number, par
     siege: 0,
     siegeBy: -1,
     conq: -1,
+    o: c.id,
   };
   w.setts.push(s);
   w.t.city[tile] = s.id;
@@ -280,6 +281,13 @@ export function foundCiv(w: World, o: FoundOpts): Civ {
     peakPop: 0,
     peakSetts: 1,
     named: 0,
+    inf: o.founder ? 3 : 0,
+    infT: w.tick,
+    edict: '',
+    edictUntil: -1,
+    faith: -1,
+    culture: 0,
+    work: null,
   };
   w.civs.push(c);
   c.ruler = newRuler(w, c, null);
@@ -360,10 +368,16 @@ export function killSett(w: World, s: Sett): void {
 }
 
 /** A new civ rising from part of an old one (revolt or civil war). It keeps the old tongue. */
-export function spawnCiv(w: World, old: Civ, capital: Sett, r: Rand): Civ {
+/**
+ * A new people taking `capital` from `old`. By default it is a daughter of `old` (its sound of
+ * speech, two of its values). A revival passes the values, speech and parent of a fallen people.
+ */
+export function spawnCiv(w: World, old: Civ, capital: Sett, r: Rand, as?: { values: ValueId[]; phon: number; parent: number }): Civ {
   const keep = r.shuffle(old.values).slice(0, 2);
   const pool = (['curious', 'devout', 'martial', 'mercantile', 'seafaring', 'stubborn', 'artistic', 'expansionist', 'isolationist', 'egalitarian', 'ancestral', 'pragmatic'] as ValueId[]).filter((v) => !keep.includes(v));
-  const c = foundCiv(w, { tile: capital.tile, values: [...keep, r.pick(pool)], founder: null, parent: old.id, phon: old.phon });
+  const values = as ? as.values.slice() : [...keep, r.pick(pool)];
+  const c = foundCiv(w, { tile: capital.tile, values, founder: null, parent: as ? as.parent : old.id, phon: as ? as.phon : old.phon });
+  c.faith = old.faith;
   c.techs = old.techs.slice();
   c.access = old.access;
   c.capital = capital.id;

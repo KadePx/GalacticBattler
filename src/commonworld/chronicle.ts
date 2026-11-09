@@ -10,6 +10,8 @@ export interface Line { year: number; text: string; civs: number[]; kind: string
 const MAJOR = new Set([
   'found_civ', 'civ_fall', 'secede', 'monument', 'plague_start', 'plague_end', 'tier_up', 'contact', 'succession',
   'war', 'conquest', 'peace', 'crisis', 'new_dynasty', 'age', 'ally', 'great_born',
+  'omen_claim', 'claim_war', 'omen_war', 'omen_sign', 'edict', 'renamed', 'great_named', 'wonder_named', 'gift', 'pilgrims',
+  'faith_found', 'schism', 'wonder', 'quake', 'eruption', 'tsunami', 'collapse', 'revival', 'defect',
 ]);
 
 const GREAT_WORD: Record<string, string> = { general: 'general', scholar: 'scholar', builder: 'master builder', merchant: 'merchant prince', prophet: 'prophet' };
@@ -117,7 +119,7 @@ export function line(w: World, e: Ev, idx: number): Line {
       text = `The alliance between ${P(e.a)} and ${P(e.b)} fell apart.`;
       break;
     case 'war': {
-      const why = e.y === 'land' ? 'hungry for land' : e.y === 'grudge' ? 'nursing old wrongs' : e.y === 'succession' ? 'pressing a claim to the throne' : 'eager for plunder';
+      const why = e.y === 'land' ? 'hungry for land' : e.y === 'grudge' ? 'nursing old wrongs' : e.y === 'succession' ? 'pressing a claim to the throne' : e.y === 'faith' ? 'in the name of their faith' : 'eager for plunder';
       text = pick(`${Pc(e.a)}, ${why}, declared war on ${P(e.b)}: ${e.x} had begun.`, `${e.x} began. ${Pc(e.a)} marched against ${P(e.b)}, ${why}.`);
       break;
     }
@@ -230,6 +232,123 @@ export function line(w: World, e: Ev, idx: number): Line {
       break;
     case 'plague_end':
       text = `${plague(e.x)} finally passed, after taking ${fmt(e.n ?? 0)} lives.`;
+      break;
+    // ---- Milestone 6: founders ----
+    case 'omen':
+      text = e.x === 'claim'
+        ? `${Pc(e.a)} awaited a sign: who should rule them?`
+        : e.x === 'war' ? `${Pc(e.a)} awaited a sign on how to meet the war with ${P(e.b)}.`
+          : e.x === 'pact' ? `${Pc(e.b)} offered an alliance, and ${P(e.a)} awaited a sign.`
+            : pick(`A comet crossed the sky above ${P(e.a)}. What could it mean?`, `Strange lights burned over the lands of ${P(e.a)}, and the people awaited a sign.`);
+      break;
+    case 'omen_claim':
+      text = e.n === 0
+        ? `The sign was read: ${e.x} was the rightful ruler, and the claim of ${e.y} was forgotten. ${Pc(e.a)} took heart.`
+        : e.n === 1 ? `The sign favoured ${e.y} of House ${e.z}, who took the throne of ${P(e.a)} from ${e.x} without a drop of blood.`
+          : `No sign came, and the claim of ${e.y} faded away. ${e.x} kept the throne of ${P(e.a)}.`;
+      break;
+    case 'claim_war':
+    {
+      const others = (e.n ?? 1) - 1;
+      const who = others < 1 ? T(e.s) : `${T(e.s)} and ${others === 1 ? 'one other town' : `${others} other towns`}`;
+      text = `No sign came. ${e.y} of House ${e.z} pressed their claim against ${e.x}, and ${who} broke away as ${P(e.a)}.`;
+    }
+      break;
+    case 'omen_war':
+      text = e.n === 0
+        ? `${Pc(e.a)} took the sign as a call to arms and rallied their levies for ${e.x}.`
+        : `${Pc(e.a)} read the sign as a warning and bought peace from ${P(e.b)}.`;
+      break;
+    case 'omen_sign':
+      text = [
+        `${Pc(e.a)} read the sign as a promise of plenty, and the harvests swelled.`,
+        `The sign was read as wisdom, and the scholars of ${P(e.a)} worked with new fire.`,
+        `The sign was read as strength. ${Pc(e.a)} took up arms and stood taller.`,
+      ][e.n ?? 0] ?? '';
+      break;
+    case 'edict': {
+      const what: Record<string, string> = {
+        grow: 'to tend their fields and families', expand: 'to settle new land', fortify: 'to raise walls and stand guard',
+        worship: 'to honour the gods', build: 'to build great works', trade: 'to trade far and wide', research: 'to seek knowledge',
+      };
+      text = `By decree, ${P(e.a)} set themselves ${what[e.x ?? ''] ?? e.x} for a generation.`;
+      break;
+    }
+    case 'renamed':
+      text = `${Pc(e.a)} renamed ${e.x}: from now on it was called ${e.y}.`;
+      break;
+    case 'great_named':
+      text = `The ${GREAT_WORD[e.z ?? ''] ?? 'hero'} ${e.x} of ${P(e.a)} would be remembered as ${e.y}.`;
+      break;
+    case 'wonder_named':
+      text = `${Pc(e.a)} gave ${e.x} at ${T(e.s)} a name of their own: ${e.y}.`;
+      break;
+    case 'gift':
+      text = pick(`${Pc(e.a)} sent a caravan of gifts to ${P(e.b)}.`, `Gifts from ${P(e.a)} reached ${P(e.b)}, and old wrongs seemed smaller.`);
+      break;
+    case 'proposal':
+      text = `${Pc(e.a)} proposed an alliance to ${P(e.b)}.`;
+      break;
+    case 'proposal_refused':
+      text = `${Pc(e.b)} turned down the alliance offered by ${P(e.a)}.`;
+      break;
+    case 'pilgrims':
+      text = `Pilgrims had left ${fmt(e.n ?? 0)} offerings at ${T(e.s)}.`;
+      break;
+    // ---- Milestone 7: faith, wonders, disasters, fate ----
+    case 'faith_found':
+      text = pick(
+        `In ${T(e.s)}, ${e.y} began to preach ${e.x}. ${Pc(e.a)} were the first to keep it.`,
+        `${e.x} was born in ${T(e.s)}, from the words of ${e.y}.`,
+      );
+      break;
+    case 'convert':
+      text = e.y ? `${Pc(e.a)} turned from ${e.y} to ${e.x}.` : `${Pc(e.a)} took up ${e.x}.`;
+      break;
+    case 'schism':
+      text = `${Pc(e.a)} broke with ${e.y}. In ${T(e.s)}, ${e.z} proclaimed ${e.x}.`;
+      break;
+    case 'faith_end':
+      text = `The last keepers of ${e.x} were gone.`;
+      break;
+    case 'wonder_start':
+      text = `${Pc(e.a)} began work on ${e.x} at ${T(e.s)}.`;
+      break;
+    case 'wonder':
+      text = pick(
+        `${cap1(e.x ?? 'A wonder')} was finished at ${T(e.s)}: a wonder of the world, raised by ${P(e.a)} under ${e.y}.`,
+        `After years of labour, ${P(e.a)} completed ${e.x} at ${T(e.s)}. The whole world spoke of it.`,
+      );
+      break;
+    case 'wonder_beaten':
+      text = `${Pc(e.b)} finished ${e.x} first, and the half-built work of ${P(e.a)} at ${T(e.s)} was left to the weeds.`;
+      break;
+    case 'wonder_abandoned':
+      text = `Work on ${e.x} at ${T(e.s)} was abandoned.`;
+      break;
+    case 'quake':
+      text = `The earth shook beneath ${T(e.s)}. ${fmt(e.n ?? 0)} died in the ruins.`;
+      break;
+    case 'eruption':
+      text = `The mountain above ${T(e.s)} burst into fire. ${fmt(e.n ?? 0)} died under the ash.`;
+      break;
+    case 'fire':
+      text = pick(`A great fire swept through ${T(e.s)}. ${fmt(e.n ?? 0)} died.`, `${T(e.s)} burned for three days. ${fmt(e.n ?? 0)} were lost.`);
+      break;
+    case 'locusts':
+      text = `Locusts darkened the sky over ${P(e.a)} and ate the fields bare.`;
+      break;
+    case 'tsunami':
+      text = `A great wave struck the coast at ${T(e.s)}. ${fmt(e.n ?? 0)} were taken by the sea.`;
+      break;
+    case 'collapse':
+      text = `The realm of ${P(e.a)} could no longer hold together and broke into ${e.n ?? 2} pieces.`;
+      break;
+    case 'revival':
+      text = `Remembering the fallen ${e.x}, ${T(e.s)} rose against ${P(e.b)} and became ${P(e.a)}.`;
+      break;
+    case 'defect':
+      text = `Dazzled by the splendour of ${P(e.a)}, ${T(e.s)} left ${P(e.b)} and joined them.`;
       break;
     default:
       text = e.k;

@@ -22,6 +22,35 @@ const STEPS: Record<number, (o: Raw) => void> = {
   },
   // v4 -> v5: four more Ages (Enlightenment to Modern). New techs only; saves are unchanged.
   4: () => {},
+  // v5 -> v6: milestones 6 and 7. Founders get influence and edicts; omens, faiths and wonders
+  // start empty; culture starts from the great works and temples already standing; every
+  // settlement remembers who founded it (taken as its current people).
+  5: (o) => {
+    const tick = o.tick as number;
+    const setts = o.setts as Record<string, unknown>[];
+    const civs = o.civs as Record<string, unknown>[];
+    const culture = new Map<number, number>();
+    for (const s of setts) {
+      s.o = s.civ;
+      if ((s.died as number) >= 0) continue;
+      const b = s.b as Record<string, number>;
+      const civ = s.civ as number;
+      culture.set(civ, (culture.get(civ) ?? 0) + b.monument * 20 + b.temple * 3);
+    }
+    for (const c of civs) {
+      c.inf = c.founder ? 3 : 0;
+      c.infT = tick;
+      c.edict = '';
+      c.edictUntil = -1;
+      c.faith = -1;
+      c.culture = culture.get(c.id as number) ?? 0;
+      c.work = null;
+    }
+    o.omens = [];
+    o.omenN = 0;
+    o.faiths = [];
+    o.wonders = [];
+  },
 };
 
 export function migrate(o: Raw): Raw {

@@ -12,6 +12,8 @@ import type { History, SettView } from '../history';
 import { bannerSpec, bannerSvg } from './banner';
 import { civColor } from './map';
 import { RULER_TIP, VALUE_TIP } from './traits';
+import { WONDERS, wonderCost, wonderHolder } from '../sim/wonders';
+import { EDICT_TEXT } from './council';
 
 export interface Ctx {
   w: World;
@@ -22,6 +24,7 @@ export interface Ctx {
   owner: Int16Array; // tile owners in that year
   selCiv: number;
   chron: { major: boolean; scope: 'world' | 'civ'; q: string; limit: number };
+  me: number; // this visitor's people, -1
 }
 
 /** A value chip that explains itself on hover or tap. */
@@ -145,7 +148,8 @@ export function civHtml(ctx: Ctx, id: number): string {
   const settRows = mine.map((s) => {
     const full = w.setts[s.id];
     const isCap = s.id === c.capital && ctx.live;
-    return `<tr class="click" data-tile="${s.tile}"><td>${isCap ? '★ ' : ''}${esc(full.name)}${full.monument && ctx.live ? ' <span title="' + esc(full.monument) + '">◆</span>' : ''}</td>
+    const wonder = ctx.live ? w.wonders.find((x) => x.s === s.id) : undefined;
+    return `<tr class="click" data-tile="${s.tile}"><td>${isCap ? '★ ' : ''}${esc(full.name)}${full.monument && ctx.live ? ' <span title="' + esc(full.monument) + '">◆</span>' : ''}${wonder ? ' <span title="' + esc(wonder.name) + '" style="color:#ffe08a">✦</span>' : ''}</td>
       <td class="r">${TIER_NAMES[s.tier]}</td><td class="r">${fmt(s.pop)}</td><td class="r">${yearOf(full.born)}</td></tr>`;
   }).join('');
   const ruins = w.setts.filter((s) => s.civ === id && s.died >= 0 && s.died <= until);
@@ -181,10 +185,11 @@ export function civHtml(ctx: Ctx, id: number): string {
     </div>
     ${chart(ctx, id)}
     ${ctx.live && alive ? `<div class="kv" style="margin-top:10px"><div>Capital</div><div><a href="#" data-tile="${capital?.tile}">${esc(capital?.name ?? '-')}</a></div><div>Ruler</div><div>${esc(c.ruler.name)} of House ${esc(c.ruler.house)}, ${Math.floor((w.tick - c.ruler.born) / 12)} years old, <span class="tipw" tabindex="0" data-tip="${esc(RULER_TIP[c.ruler.trait])}">${c.ruler.trait}</span></div><div>This year</div><div>${goalText(c.goal)}</div><div>Army</div><div>${fmt(c.army)} under arms</div><div>Treasury</div><div>${fmt(c.wealth)} coin</div>${c.research >= 0 ? `<div>Studying</div><div>${TECHS[c.research].name}</div>` : ''}</div>` : ''}
+    ${ctx.live && alive ? spiritHtml(ctx, c) : ''}
     ${greatsHtml(ctx, id)}
     ${warsHtml(ctx, id)}
     ${ctx.live && alive ? relationsHtml(ctx, id) : ''}
-    <div style="margin-top:10px"><button class="btn" data-chron="${id}">✎ Read their chronicle</button></div>
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">${ctx.me === id && alive ? '<button class="btn gold" data-open="mine">Your council</button>' : ''}<button class="btn" data-chron="${id}">✎ Read their chronicle</button><button class="btn" data-share="${id}">Share</button></div>
     <h3>Notable moments</h3>${notable.join('') || '<p class="legend">Nothing yet.</p>'}
     <h3>Settlements</h3>${settRows ? `<table>${settRows}</table>` : '<p class="legend">None.</p>'}
     ${ruins.length ? `<p class="legend">Ruins: ${ruins.map((s) => `<a href="#" data-tile="${s.tile}">${esc(s.name)}</a>`).join(', ')}</p>` : ''}
@@ -194,6 +199,23 @@ export function civHtml(ctx: Ctx, id: number): string {
       const ts = innos.filter((k) => TECHS[k].age === age);
       return ts.length ? `<div class="legend" style="margin-top:4px">${a}</div><div>${ts.map((k) => `<span class="chip">${TECHS[k].name}</span>`).join('')}</div>` : '';
     }).join('') || '<span class="legend">Nothing learned yet.</span>'}`;
+}
+
+/** Faith, renown, wonders and the founder's edict (live only). */
+function spiritHtml(ctx: Ctx, c: Civ): string {
+  const { w } = ctx;
+  const f = c.faith >= 0 ? w.faiths[c.faith] : null;
+  const held = w.wonders.map((x, i) => [x, i] as const).filter(([, i]) => wonderHolder(w, i) === c.id);
+  const ranked = w.civs.filter((x) => x.died < 0).sort((a, b) => b.culture - a.culture);
+  const rank = ranked.indexOf(c) + 1;
+  const ed = c.edict && c.edictUntil > w.tick ? c.edict : '';
+  const rows: string[] = [];
+  rows.push(`<div>Faith</div><div>${f ? `<i class="dot" style="background:hsl(${f.hue},65%,58%)"></i>${esc(f.name)}${f.civ === c.id ? ' <span class="legend">(they founded it)</span>' : ''}` : '<span class="legend">none yet</span>'}</div>`);
+  rows.push(`<div>Renown</div><div>${Math.round(c.culture)} culture <span class="legend">· ${ord(rank)} of ${ranked.length}</span></div>`);
+  if (held.length) rows.push(`<div>Wonders</div><div>${held.map(([x]) => `<span style="color:#ffe08a">✦</span> <a href="#" data-tile="${w.setts[x.s].tile}">${esc(x.name)}</a>`).join('<br>')}</div>`);
+  if (c.work) rows.push(`<div>Building</div><div>${esc(WONDERS[c.work.id].name)} at ${esc(w.setts[c.work.s].name)} <span class="legend">· ${Math.min(99, Math.floor((100 * c.work.prog) / wonderCost(c.work.id)))}%</span></div>`);
+  if (ed) rows.push(`<div>Edict</div><div>${EDICT_TEXT[ed as keyof typeof EDICT_TEXT][0]} <span class="legend">· ${Math.ceil((c.edictUntil - w.tick) / TICKS_PER_YEAR)} more years</span></div>`);
+  return `<div class="kv" style="margin-top:4px">${rows.join('')}</div>`;
 }
 
 const GREAT_ICON: Record<string, string> = { general: '⚔', scholar: '✒', builder: '⌂', merchant: '⚖', prophet: '☀' };
@@ -311,7 +333,9 @@ export function inspectHtml(ctx: Ctx, tile: number): string {
       <div>Founded</div><div>${yearOf(full.born)} AW${full.parent >= 0 ? ` from ${esc(w.setts[full.parent].name)}` : ''}</div>
       ${full.monument && ctx.live ? `<div>Great work</div><div>${esc(full.monument)}</div>` : ''}
       ${ctx.live ? `<div>Land feeds</div><div>~${fmt(full.cap)} (reach ${TIER_R[s.tier]})</div>` : ''}
-      ${ctx.live && full.plague > 0 ? `<div>Sickness</div><div>${esc(w.plagues[full.plagueId].name)}</div>` : ''}</div>`;
+      ${ctx.live && full.plague > 0 ? `<div>Sickness</div><div>${esc(w.plagues[full.plagueId].name)}</div>` : ''}
+      ${ctx.live && w.wonders.some((x) => x.s === s.id) ? `<div>Wonder</div><div style="color:#ffe08a">✦ ${esc(w.wonders.find((x) => x.s === s.id)!.name)}</div>` : ''}
+      ${ctx.live && w.faiths.some((f) => f.holy === s.id && f.died < 0) ? `<div>Holy city</div><div>of ${esc(w.faiths.find((f) => f.holy === s.id && f.died < 0)!.name)}</div>` : ''}</div>`;
   } else if (ruin) {
     html += `<div class="h">Ruins of ${esc(ruin.name)}</div><div class="legend">Abandoned ${yearOf(ruin.died)} AW, once of the ${esc(w.civs[ruin.civ].name)}</div>`;
   } else {
