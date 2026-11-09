@@ -196,6 +196,30 @@
       .spot small { display: block; color: var(--dim); font-size: 12.5px; line-height: 1.4; margin-top: 2px; }
       .stars { color: var(--accent2); font-size: 11px; letter-spacing: 1px; margin-left: 4px; } .stars i { color: var(--raise2); font-style: normal; }
       .tongues { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      /* Map key */
+      #legend { position: fixed; right: 12px; bottom: calc(var(--tl) + 24px); width: 290px; padding: 4px 14px 12px; font-size: 12.5px; transition: right 0.2s; }
+      body:has(#drawer:not(.hidden)) #legend { right: 424px; }
+      #legend.closed { width: auto; padding-bottom: 4px; }
+      #legend.closed .lbody { display: none; }
+      #legend.closed .lcar { transform: rotate(180deg); }
+      #legend .lhead { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; background: none; border: 0; padding: 0; color: var(--ink); font-size: 13px; text-align: left; }
+      #legend .lhead .legend { flex: 1; }
+      #legend .lcar { color: var(--faint); font-size: 11px; transition: transform 0.15s; }
+      #legend p { margin: 0 0 10px; color: var(--dim); line-height: 1.5; }
+      #legend p b { color: var(--ink); font-weight: 600; }
+      .lrow, .lsym { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 8px; }
+      .lg { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 12px; white-space: nowrap; }
+      .lg i { width: 12px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+      .lg i.ln { width: 18px; height: 3px; border-radius: 2px; box-shadow: none; }
+      .lg svg { width: 14px; height: 14px; }
+      .lbar { height: 10px; border-radius: 99px; margin-top: 2px; }
+      .lends { display: flex; justify-content: space-between; color: var(--faint); font-size: 11.5px; margin: 4px 0 8px; }
+      .lsub { color: var(--faint); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin: 10px 0 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+      .tip, .tipw { cursor: help; }
+      .tip:hover, .tip:focus { border-color: var(--accent); outline: none; }
+      .tipw { border-bottom: 1px dotted var(--faint); }
+      .tipw:focus { outline: none; color: var(--accent2); }
+      .tipbox { display: none; position: fixed; z-index: 1000; max-width: 260px; padding: 8px 11px; border-radius: 10px; background: var(--solid); border: 1px solid var(--line2); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); font-size: 12.5px; line-height: 1.45; color: var(--ink); pointer-events: none; }
       .chipbtn { height: 32px; padding: 0 12px; border-radius: 99px; background: var(--raise); border: 1px solid var(--line); font-size: 13px; font-weight: 500; }
       .chipbtn:hover { border-color: var(--line2); }
       .chipbtn small { color: var(--faint); font-weight: 400; }
@@ -238,6 +262,7 @@
       @media (max-width: 1180px) {
         #top { max-width: calc(100vw - 24px); }
         #modes { top: auto; bottom: calc(var(--tl) + 22px); left: 50%; right: auto; transform: translateX(-50%); }
+        #legend { bottom: calc(var(--tl) + 72px); }
       }
       @media (max-width: 760px) {
         :root { --tl: 56px; }
@@ -245,6 +270,9 @@
         #wstats { font-size: 11.5px; }
         #modes { left: 12px; right: 12px; transform: none; overflow-x: auto; justify-content: space-between; scrollbar-width: none; }
         #modes .btn { padding: 0 9px; font-size: 12.5px; }
+        #legend { top: 72px; bottom: auto; max-height: 50vh; overflow-y: auto; width: min(290px, calc(100vw - 24px)); }
+        #legend.closed { width: auto; }
+        body:has(#drawer:not(.hidden)) #legend { display: none; }
         #dock { top: auto; bottom: calc(var(--tl) + 72px); flex-direction: row; flex-wrap: wrap; right: 12px; }
         #drawer { left: 0; right: 0; bottom: 0; top: 40%; width: auto; border-radius: 18px 18px 0 0; z-index: 4; }
         #found { left: 0; right: 0; bottom: 0; top: 34%; width: auto; border-radius: 18px 18px 0 0; }
@@ -266,6 +294,7 @@
       <span id="wstats"></span>
     </div>
     <div id="modes" class="panel" role="tablist" aria-label="Map view"></div>
+    <div id="legend" class="panel" aria-label="Map key"></div>
     <div id="dock">
       <button class="btn gold hidden" id="mine">Found your people</button>
       <button class="btn" data-open="peoples">Peoples</button>

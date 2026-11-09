@@ -10,6 +10,7 @@ import { getJson, loadOlderEvents, loadWorld, loadYears, sync } from './net';
 import { myHash } from './identity';
 import { Founding, type Pending } from './view/founding';
 import { SIM_V } from './sim/types';
+import { legendFull } from './view/legend';
 import { MapView, civColor, type MapState, type Mode, type Stance } from './view/map';
 import { banner, chronHtml, civHtml, esc, fmt, inspectHtml, peoplesHtml, techHtml, type Ctx } from './view/panels';
 
@@ -155,6 +156,7 @@ function updateMap(): void {
   const v = view();
   const st: MapState = { ...v, stance: mode === 'diplomacy' ? stances() : new Map(), mode, selCiv, key: `${viewYear === null ? 'L' + w.tick : 'Y' + shownYear()}|${mode}|${selCiv}` };
   map.selTile = selTile;
+  renderLegend();
   map.update(st);
 }
 
@@ -252,6 +254,23 @@ const MODES: [Mode, string][] = [['political', 'Peoples'], ['diplomacy', 'Diplom
 function renderModes(): void {
   $('modes').innerHTML = MODES.map(([m, label]) => `<button class="btn ${m === mode ? 'on' : ''}" data-mode="${m}">${label}</button>`).join('');
 }
+let legendKey = '';
+let legendOpen = (() => { try { const v = localStorage.getItem('cw_legend'); return v === null ? innerWidth > 760 : v === '1'; } catch { return innerWidth > 760; } })();
+function renderLegend(): void {
+  const el = $('legend');
+  el.classList.toggle('closed', !legendOpen);
+  const name = mode === 'diplomacy' && selCiv >= 0 ? esc(w.civs[selCiv].name) : null;
+  const key = `${mode}|${name}`;
+  if (key === legendKey) return;
+  legendKey = key;
+  el.innerHTML = legendFull(mode, name);
+}
+$('legend').onclick = (e) => {
+  if (!(e.target as HTMLElement).closest('[data-lg]')) return;
+  legendOpen = !legendOpen;
+  try { localStorage.setItem('cw_legend', legendOpen ? '1' : '0'); } catch { /* private mode */ }
+  renderLegend();
+};
 $('modes').onclick = (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>('[data-mode]');
   if (!b) return;
@@ -672,6 +691,33 @@ async function boot(): Promise<void> {
   }
 }
 
+/** One floating tooltip for anything with data-tip: hover on desktop, tap (focus) on phones. */
+function bindTips(): void {
+  const tip = document.createElement('div');
+  tip.className = 'tipbox';
+  document.body.appendChild(tip);
+  let on: HTMLElement | null = null;
+  const show = (el: HTMLElement) => {
+    on = el;
+    tip.textContent = el.dataset.tip ?? '';
+    tip.style.display = 'block';
+    const r = el.getBoundingClientRect();
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    const x = Math.max(8, Math.min(innerWidth - tw - 8, r.left + r.width / 2 - tw / 2));
+    const y = r.top - th - 8 >= 8 ? r.top - th - 8 : r.bottom + 8;
+    tip.style.left = `${x}px`;
+    tip.style.top = `${y}px`;
+  };
+  const hide = () => { on = null; tip.style.display = 'none'; };
+  const find = (e: Event) => (e.target as HTMLElement | null)?.closest?.('[data-tip]') as HTMLElement | null;
+  document.addEventListener('pointerover', (e) => { const el = find(e); if (el && el !== on) show(el); else if (!el && on && document.activeElement !== on) hide(); });
+  document.addEventListener('focusin', (e) => { const el = find(e); if (el) show(el); });
+  document.addEventListener('focusout', (e) => { if (find(e) === on) hide(); });
+  document.addEventListener('scroll', hide, true);
+}
+
+bindTips();
 boot();
 
 // ---- Dev hooks ----

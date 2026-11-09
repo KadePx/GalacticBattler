@@ -11,6 +11,7 @@ import { BIOMES, RES_NAMES } from '../sim/worldgen';
 import type { History, SettView } from '../history';
 import { bannerSpec, bannerSvg } from './banner';
 import { civColor } from './map';
+import { RULER_TIP, VALUE_TIP } from './traits';
 
 export interface Ctx {
   w: World;
@@ -23,6 +24,8 @@ export interface Ctx {
   chron: { major: boolean; scope: 'world' | 'civ'; q: string; limit: number };
 }
 
+/** A value chip that explains itself on hover or tap. */
+export const valueChip = (v: keyof typeof VALUE_TIP) => `<span class="chip tip" tabindex="0" data-tip="${esc(VALUE_TIP[v])}">${v}</span>`;
 export const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 export const fmt = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 10000 ? Math.round(n / 1000) + 'k' : Math.round(n).toLocaleString('en-US'));
 const ord = (n: number) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
@@ -167,7 +170,7 @@ export function civHtml(ctx: Ctx, id: number): string {
   return `<div class="civhead">${banner(c, 64)}<div><div class="nm">The ${esc(c.name)}</div><div class="sub">${sub}</div>
       ${!alive ? `<div class="sub" style="color:var(--red)">Fell in ${yearOf(c.died)} AW</div>` : ''}</div></div>
     ${c.motto ? `<div class="motto">“${esc(c.motto)}”</div>` : ''}
-    <div style="margin-top:8px">${c.values.map((v) => `<span class="chip">${v}</span>`).join('')}</div>
+    <div style="margin-top:8px">${c.values.map((v) => valueChip(v)).join('')}</div>
     <div class="stats">
       <div class="stat"><b>${fmt(st.pop)}</b><span>people</span></div>
       <div class="stat"><b>${st.n}</b><span>settlements</span></div>
@@ -177,7 +180,7 @@ export function civHtml(ctx: Ctx, id: number): string {
       <div class="stat"><b>${rs.length}</b><span>rulers</span></div>
     </div>
     ${chart(ctx, id)}
-    ${ctx.live && alive ? `<div class="kv" style="margin-top:10px"><div>Capital</div><div><a href="#" data-tile="${capital?.tile}">${esc(capital?.name ?? '-')}</a></div><div>Ruler</div><div>${esc(c.ruler.name)} of House ${esc(c.ruler.house)}, ${Math.floor((w.tick - c.ruler.born) / 12)} years old, ${c.ruler.trait}</div><div>This year</div><div>${goalText(c.goal)}</div><div>Army</div><div>${fmt(c.army)} under arms</div><div>Treasury</div><div>${fmt(c.wealth)} coin</div>${c.research >= 0 ? `<div>Studying</div><div>${TECHS[c.research].name}</div>` : ''}</div>` : ''}
+    ${ctx.live && alive ? `<div class="kv" style="margin-top:10px"><div>Capital</div><div><a href="#" data-tile="${capital?.tile}">${esc(capital?.name ?? '-')}</a></div><div>Ruler</div><div>${esc(c.ruler.name)} of House ${esc(c.ruler.house)}, ${Math.floor((w.tick - c.ruler.born) / 12)} years old, <span class="tipw" tabindex="0" data-tip="${esc(RULER_TIP[c.ruler.trait])}">${c.ruler.trait}</span></div><div>This year</div><div>${goalText(c.goal)}</div><div>Army</div><div>${fmt(c.army)} under arms</div><div>Treasury</div><div>${fmt(c.wealth)} coin</div>${c.research >= 0 ? `<div>Studying</div><div>${TECHS[c.research].name}</div>` : ''}</div>` : ''}
     ${greatsHtml(ctx, id)}
     ${warsHtml(ctx, id)}
     ${ctx.live && alive ? relationsHtml(ctx, id) : ''}

@@ -12,7 +12,7 @@ import { foundingSpots } from '../sim/civ';
 import { BYNAME_MAX, MOTTO_MAX, properName, cleanMotto, cleanByName } from '../shared/text';
 import { founderId } from '../identity';
 import { bannerSvg, specFromNums, CHARGES, DIVISIONS, METALS } from './banner';
-import { esc } from './panels';
+import { esc, valueChip } from './panels';
 import type { MapView } from './map';
 
 export interface FoundingHost {
@@ -278,7 +278,7 @@ export class Founding {
       const spot = describeSpot(w, d.tile);
       body = `<div class="summary">${bannerSvg(specFromNums(d.banner), 56)}<div><div class="sname">The ${esc(properName(d.name) ?? '')}</div>
           <div class="hint">of ${esc(properName(d.capital) ?? '')} · ${esc(spot.title.toLowerCase())}${spot.facts.length ? ', ' + esc(spot.facts[0]) : ''}</div>
-          <div>${d.values.map((v) => `<span class="chip">${v}</span>`).join('')}</div></div></div>
+          <div>${d.values.map((v) => valueChip(v)).join('')}</div></div></div>
         <label>Motto <span class="hint">(optional)</span><input data-f="motto" maxlength="${MOTTO_MAX}" value="${esc(d.motto)}" placeholder="We came with the river."></label><div class="warn" data-warn="motto">${this.warning('motto')}</div>
         <label>Your name <span class="hint">(optional, shown as their founder)</span><input data-f="byName" maxlength="${BYNAME_MAX}" value="${esc(d.byName)}"></label><div class="warn" data-warn="byName">${this.warning('byName')}</div>
         <p class="oath">This cannot be undone. You get one people, and they will outlive this visit. Check in whenever you like to see how they fare.</p>
