@@ -1,7 +1,7 @@
 // Side panels: the peoples list, a civ's page, the chronicle reader, the tech tree and the tile inspector.
 // Each returns HTML for the year being shown (live or a past year on the timeline).
 
-import { line, yearOf, type Line } from '../chronicle';
+import { WORLD_QUIET, line, yearOf, type Line } from '../chronicle';
 import { TIER_R } from '../sim/civ';
 import { AGES, TECHS, civAge, mods, techCost } from '../sim/techs';
 import { opinionParts, relOf } from '../sim/diplo';
@@ -207,7 +207,7 @@ export function civHtml(ctx: Ctx, id: number): string {
       <div class="stat"><b>${rs.length}</b><span>rulers</span></div>
     </div>
     ${chart(ctx, id)}
-    ${ctx.live && alive ? `<div class="kv" style="margin-top:10px"><div>Capital</div><div><a href="#" data-tile="${capital?.tile}">${esc(capital?.name ?? '-')}</a></div><div>Ruler</div><div>${esc(c.ruler.name)} of House ${esc(c.ruler.house)}, ${Math.floor((w.tick - c.ruler.born) / 12)} years old, <span class="tipw" tabindex="0" data-tip="${esc(RULER_TIP[c.ruler.trait])}">${c.ruler.trait}</span></div><div>This year</div><div>${goalText(c.goal)}</div><div>Army</div><div>${fmt(c.army)} under arms</div><div>Treasury</div><div>${fmt(c.wealth)} coin</div>${c.research >= 0 ? `<div>Studying</div><div>${TECHS[c.research].name}</div>` : ''}</div>` : ''}
+    ${ctx.live && alive ? `<div class="kv" style="margin-top:10px"><div>Capital</div><div><a href="#" data-tile="${capital?.tile}">${esc(capital?.name ?? '-')}</a></div><div>Ruler</div><div>${esc(c.ruler.name)} of House ${esc(c.ruler.house)}, ${Math.floor((w.tick - c.ruler.born) / 12)} years old, <span class="tipw" tabindex="0" data-tip="${esc(RULER_TIP[c.ruler.trait])}">${c.ruler.trait}</span>${c.ruler.regent ? `<br><span class="legend">a child; ${esc(c.ruler.regent)} rules as regent</span>` : ''}${c.ruler.wed !== undefined && c.ruler.wed >= 0 && w.civs[c.ruler.wed] ? `<br><span class="legend">married into the <a href="#" data-civ="${c.ruler.wed}">${esc(w.civs[c.ruler.wed].name)}</a></span>` : ''}</div><div>This year</div><div>${goalText(c.goal)}</div><div>Army</div><div>${fmt(c.army)} under arms</div><div>Treasury</div><div>${fmt(c.wealth)} coin</div>${c.research >= 0 ? `<div>Studying</div><div>${TECHS[c.research].name}</div>` : ''}</div>` : ''}
     ${ctx.live && alive ? spiritHtml(ctx, c) : ''}
     ${greatsHtml(ctx, id)}
     ${warsHtml(ctx, id)}
@@ -302,14 +302,18 @@ function relationsHtml(ctx: Ctx, id: number): string {
     if (a === id) nRoutes.set(b, (nRoutes.get(b) ?? 0) + 1);
     else if (b === id) nRoutes.set(a, (nRoutes.get(a) ?? 0) + 1);
   }
-  return `<h3>Neighbours <span class="legend">tap a feeling to see why</span></h3><table>${rows.map(({ k, r }) => {
+  return `<h3>Neighbours <span class="legend">tap one to see how they feel, and why</span></h3>${rows.map(({ k, r }) => {
     const o = w.civs[k];
     const op = Math.round(r!.op);
     const ratio = my / Math.max(1, strength(o));
     const might = ratio > 1.5 ? 'weaker' : ratio < 0.67 ? 'stronger' : 'evenly matched';
-    return `<tr class="click" data-civ="${k}"><td><span class="sw" style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${civColor(o.hue, 55)}"></span> ${esc(o.name)}<br><small class="legend">${might}, ${AGES[civAge(o)]} age</small></td>
-      <td class="r">${STANCE_LABEL[r!.st]}${o.lord === id ? '<br><small class="legend">their tributary</small>' : c.lord === k ? '<br><small class="legend">their overlord</small>' : ''}</td><td class="r">${opWhy(opinionParts(c, o, r!, edges.get(k) ?? 0, nRoutes.get(k) ?? 0), op, k)}</td></tr>`;
-  }).join('')}</table>`;
+    const parts = opinionParts(c, o, r!, edges.get(k) ?? 0, nRoutes.get(k) ?? 0);
+    const target = Math.round(parts.reduce((a, [, v]) => a + v, 0));
+    const tie = o.lord === id ? '<small class="legend">their tributary</small>' : c.lord === k ? '<small class="legend">their overlord</small>' : '';
+    return `<details class="whyd nb" data-k="op${k}"><summary><span class="nbn"><span class="sw" style="background:${civColor(o.hue, 55)}"></span><a href="#" data-civ="${k}">${esc(o.name)}</a><small class="legend">${might}, ${AGES[civAge(o)]} age</small></span>
+      <span class="nbs">${STANCE_LABEL[r!.st]}${tie}</span><span class="nbo ${op >= 0 ? 'up' : 'down'}">${op > 0 ? '+' : ''}${op}</span></summary>
+      <div class="whybox">${partsList(parts)}<div class="legend" style="margin-top:4px">How the ${esc(c.name)} feel about the ${esc(o.name)}. It moves a fifth of the way toward ${target > 0 ? '+' : ''}${target} each year.</div></div></details>`;
+  }).join('')}`;
 }
 
 export const stabColor = (s: number) => `hsl(${Math.round(s * 1.2)},70%,62%)`;
@@ -332,12 +336,6 @@ function stabWhy(ctx: Ctx, sid: number): string {
   const mood = s.stab < 20 ? 'close to revolt' : s.stab < 35 ? 'restless' : s.stab < 55 ? 'uneasy' : s.stab < 75 ? 'content' : 'loyal';
   return `<details class="whyd" data-k="stab"><summary><b style="color:${stabColor(s.stab)}">${s.stab}</b> ${mood} · ${dir}</summary><div class="whybox">${partsList(parts)}
     <div class="legend" style="margin-top:4px">Stability drifts a point or two each month toward the total (kept between 5 and 95). Below 20 a town may revolt; far-off towns below 12 may break away.</div></div></details>`;
-}
-
-/** Opinion of a neighbour, with a tap-open list of reasons. */
-function opWhy(parts: [string, number][], op: number, key: number): string {
-  const target = Math.round(parts.reduce((a, [, v]) => a + v, 0));
-  return `<details class="whyd op" data-k="op${key}"><summary><span class="${op >= 0 ? 'up' : 'down'}">${op > 0 ? '+' : ''}${op}</span></summary><div class="whybox">${partsList(parts)}<div class="legend" style="margin-top:4px">Opinion moves a fifth of the way toward ${target > 0 ? '+' : ''}${target} each year.</div></div></details>`;
 }
 
 /** Tiles of shared border between a people and each neighbour. */
@@ -409,7 +407,7 @@ export function chronHtml(ctx: Ctx): string {
     if (e.t > until) continue;
     if (civ >= 0 && e.a !== civ && e.b !== civ) continue;
     const l = line(w, e, w.logBase + i);
-    if (ctx.chron.major && !l.major && civ < 0) continue;
+    if (ctx.chron.major && civ < 0 && (!l.major || WORLD_QUIET.has(e.k))) continue;
     if (q && !l.text.toLowerCase().includes(q)) continue;
     if (shown >= ctx.chron.limit) { more = true; break; }
     const cen = Math.floor(l.year / 100);
@@ -443,7 +441,7 @@ export function inspectHtml(ctx: Ctx, tile: number): string {
   if (s) {
     const full = w.setts[s.id];
     const owner = w.civs[s.civ];
-    html += `<div class="h">${esc(full.name)}</div><div class="legend">${TIER_NAMES[s.tier]} of the ${esc(owner.name)}${full.g ? ` · “${esc(full.g)}” in the tongue of the ${esc(w.civs[full.o].name)}` : ''}</div>
+    html += `<div class="h">${esc(full.name)}</div><div class="legend">${TIER_NAMES[s.tier]} of the ${esc(owner.name)}${full.g ? ` · “${esc(full.g)}” in the tongue of the ${esc(full.was ? owner.name : w.civs[full.o].name)}` : ''}${full.was ? ` · once called ${esc(full.was)}` : ''}</div>
       <div class="kv"><div>People</div><div>${fmt(s.pop)}</div><div>Stability</div><div>${ctx.live ? stabWhy(ctx, full.id) : s.stab}</div>
       <div>Founded</div><div>${yearOf(full.born)} AW${full.parent >= 0 ? ` from ${esc(w.setts[full.parent].name)}` : ''}${full.o !== s.civ ? ` by the ${esc(w.civs[full.o].name)}` : ''}</div>
       ${ctx.live ? townLife(ctx, full.id) : ''}

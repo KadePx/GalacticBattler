@@ -69,9 +69,9 @@ export function yearlyFate(w: World): void {
     let stab = 0;
     for (const id of ids) stab += w.setts[id].stab;
     stab /= ids.length;
-    if (stab >= 32) continue;
+    if (stab >= 32 || (c.lastCollapse !== undefined && w.tick - c.lastCollapse < 80 * TICKS_PER_YEAR)) continue;
     const r = new Rand(w.seed, S.CULTURE, w.tick, c.id, 0xc011);
-    if (r.chance(0.2)) collapse(w, c, r);
+    if (r.chance(0.2) && collapse(w, c, r)) c.lastCollapse = w.tick;
   }
 
   const revived = new Set<number>();

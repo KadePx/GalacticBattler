@@ -4,7 +4,9 @@
 import { line, yearOf } from '../chronicle';
 import type { History } from '../history';
 import { relOf } from '../sim/diplo';
-import { COST, EDICT_YEARS, INF_CAP, INF_TICKS, edictOn, influence, nameable } from '../sim/player';
+import { COST, EDICT_YEARS, INF_CAP, INF_TICKS, PROTECT_MAX_YEARS, edictOn, influence, nameable } from '../sim/player';
+import { strength } from '../sim/war';
+import { vassalsOf } from '../sim/realm';
 import { EDICTS, TICKS_PER_YEAR, type Civ, type Edict, type Omen, type World } from '../sim/types';
 import { banner, esc, fmt } from './panels';
 import { civColor } from './map';
@@ -75,6 +77,32 @@ function omenCard(w: World, om: Omen, c: Civ, msPerTick: number, canPay: boolean
     <div class="legend">${queued ? 'Your answer is on its way; it is heard when the month turns.' : `Costs ${COST.omen} influence. ${silence} ${left} left.`}</div></div>`;
 }
 
+/** How the founder's people are doing, in plain words: mood, food, standing, threats, protection. */
+function fareHtml(w: World, c: Civ): string {
+  const towns = w.setts.filter((s) => s.civ === c.id && s.died < 0);
+  const pop = towns.reduce((a, s) => a + s.pop, 0);
+  const stab = towns.length ? towns.reduce((a, s) => a + s.stab, 0) / towns.length : 0;
+  const mood = stab < 25 ? '<span class="down">close to revolt</span>' : stab < 40 ? '<span class="down">restless</span>' : stab < 55 ? 'uneasy' : stab < 75 ? 'content' : '<span class="up">loyal</span>';
+  const hungry = towns.filter((s) => s.lastFamine >= 0 && w.tick - s.lastFamine < 3 * TICKS_PER_YEAR).length;
+  const rows: string[] = [];
+  rows.push(`<div>People</div><div>${fmt(pop)} in ${towns.length} ${towns.length === 1 ? 'town' : 'towns'} · ${mood}</div>`);
+  rows.push(`<div>Food</div><div>${hungry ? `<span class="down">famine in ${hungry} ${hungry === 1 ? 'town' : 'towns'} lately</span>` : 'enough to eat'}</div>`);
+  if (c.era) rows.push(`<div>Era</div><div class="${c.era === 'golden' ? 'gold-t' : 'dark-t'}">${c.era === 'golden' ? '☀' : '☾'} ${esc(c.eraName)}</div>`);
+  if (c.lord >= 0) rows.push(`<div>Tribute</div><div>You pay tribute to the ${esc(w.civs[c.lord].name)}</div>`);
+  const vs = vassalsOf(w, c.id);
+  if (vs.length) rows.push(`<div>Tribute</div><div>${vs.map((v) => `the ${esc(v.name)}`).join(', ')} ${vs.length === 1 ? 'pays' : 'pay'} you tribute</div>`);
+  // Neighbours who are stronger and dislike them.
+  const mine = strength(c);
+  const threats = c.contacts.map((k) => w.civs[k]).filter((o) => o.died < 0).map((o) => ({ o, op: relOf(w, c.id, o.id)?.op ?? 0, ratio: strength(o) / Math.max(1, mine) }))
+    .filter((x) => x.ratio > 1.3 && x.op < 0 && relOf(w, c.id, x.o.id)?.st !== 'ally').sort((a, b) => a.op - b.op).slice(0, 3);
+  rows.push(`<div>Threats</div><div>${threats.length ? threats.map((x) => `<a href="#" data-civ="${x.o.id}">the ${esc(x.o.name)}</a> <span class="legend">(${x.ratio > 3 ? 'far ' : ''}stronger, feeling ${Math.round(x.op)})</span>`).join('<br>') : 'none close at hand'}</div>`);
+  const age = (w.tick - c.born) / TICKS_PER_YEAR;
+  const prot = c.protectedUntil > w.tick
+    ? `No one may declare war on you while your people are young (under ${PROTECT_MAX_YEARS} years) and smaller than most. At the latest it ends in ${Math.max(1, Math.ceil(PROTECT_MAX_YEARS - age))} years.`
+    : age < PROTECT_MAX_YEARS ? 'Your people have outgrown protection: others may now make war on them.' : 'Protection has ended. Your people stand on their own.';
+  return `<div class="kv" style="margin-top:8px">${rows.join('')}</div><p class="legend" style="margin-top:6px">${prot}</p>`;
+}
+
 /** Rivers that cross a people's land. */
 function riversOf(w: World, civ: number): number[] {
   const out = new Set<number>();
@@ -129,6 +157,7 @@ export function councilHtml(w: World, civ: number, msPerTick: number, queued: Qu
   }).join('');
 
   return `<div class="civhead">${banner(c, 56)}<div><div class="nm">The ${esc(c.name)}</div><div class="sub">Your people · ${yearOf(w.tick) - yearOf(c.born)} years old${c.protectedUntil > w.tick ? ' · under protection' : ''}</div></div></div>
+    ${fareHtml(w, c)}
     ${infMeter(w, c, msPerTick)}
     ${queued.length ? `<div class="queued">Waiting for the month to turn: ${queued.map((q) => esc(q.label)).join(', ')}</div>` : ''}
     ${omens.length ? `<h3>Your people await a sign</h3>${omens.map((o) => omenCard(w, o, c, msPerTick, can(COST.omen), qOmens.has(o.id))).join('')}` : ''}
@@ -147,9 +176,9 @@ const DIGEST_KINDS = new Set([
   'found_sett', 'tier_up', 'famine', 'revolt', 'secede', 'abandon', 'capital_move', 'civ_fall', 'tech', 'war', 'conquest', 'peace', 'crisis', 'claim_war',
   'new_dynasty', 'succession', 'great_born', 'monument', 'plague_reach', 'ally', 'pact', 'gift', 'proposal', 'proposal_refused', 'omen_claim', 'omen_war',
   'omen_sign', 'faith_found', 'convert', 'schism', 'wonder', 'wonder_beaten', 'quake', 'eruption', 'fire', 'tsunami', 'collapse', 'revival', 'defect', 'contact',
-  'pilgrims', 'omen',
+  'pilgrims', 'omen', 'tribute', 'tribute_end', 'era', 'era_end', 'marriage', 'regency', 'regency_end', 'usurp', 'cede', 'refugees',
 ]);
-const WORLD_KINDS = new Set(['age', 'civ_fall', 'found_civ', 'wonder', 'faith_found', 'schism', 'collapse', 'revival', 'war', 'plague_start', 'eruption']);
+const WORLD_KINDS = new Set(['age', 'civ_fall', 'found_civ', 'wonder', 'faith_found', 'schism', 'collapse', 'revival', 'war', 'plague_start', 'eruption', 'climate', 'climate_end']);
 
 export function digestHtml(w: World, hist: History, civ: number, fromTick: number, msPerTick: number): string | null {
   const span = w.tick - fromTick;

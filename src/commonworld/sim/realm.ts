@@ -4,7 +4,7 @@
 import { ev, has, tally } from './civ';
 import { relOf } from './diplo';
 import { hexDist } from './hex';
-import { greatCount } from './people';
+import { greatCount, yearlyRegency } from './people';
 import { Rand, S } from './rng';
 import { TICKS_PER_YEAR, type Civ, type ClimateK, type Sett, type World } from './types';
 import { activeWars, declareWar, strength } from './war';
@@ -52,21 +52,22 @@ function yearlyTribute(w: World, c: Civ, r: Rand): void {
   const mine = strength(c);
   const theirs = strength(lord) + vassalsOf(w, lord.id).filter((v) => v !== c).reduce((s, v) => s + strength(v) * 0.3, 0);
   const busy = activeWars(w, lord.id).length > 0;
+  // A revolt needs a real chance of winning; resentment and a distracted overlord only tip it.
   let p = 0;
-  if (mine > theirs * 0.8) p += 0.25;
-  if (busy) p += 0.06;
-  if (lord.ruler.trait === 'cruel') p += 0.03;
-  if (op < -30) p += 0.04;
+  if (mine > theirs * 0.75) p += 0.1;
+  else if (mine > theirs * 0.5 && busy) p += 0.05;
+  if (p > 0 && lord.ruler.trait === 'cruel') p += 0.02;
+  if (p > 0 && op < -30) p += 0.02;
   if (has(c, 'stubborn')) p *= 1.4;
-  if (yrs >= 5 && r.chance(p)) {
+  if (yrs >= 15 && r.chance(p)) {
     const old = c.lord;
     c.lord = -1;
     c.lordSince = -1;
     declareWar(w, c, w.civs[old], 'independence', r);
     return;
   }
-  // Long, quiet tribute may simply lapse.
-  if (yrs >= 60 && op > 10 && r.chance(0.03)) free(w, c, 'released');
+  // Tribute lapses in time, sooner if the two get along.
+  if (yrs >= 30 && r.chance(op > 0 ? 0.05 : 0.025)) free(w, c, 'released');
 }
 
 // ---- Golden and dark ages ----
@@ -199,12 +200,35 @@ export function flee(w: World, from: Sett, civ: number, n: number, kind: 'famine
 
 // ---- Yearly ----
 
+// ---- Royal marriages ----
+
+/** Two rulers who married into each other's houses. */
+export function wedded(a: Civ, b: Civ): boolean {
+  return a.ruler.wed === b.id && b.ruler.wed === a.id;
+}
+
+function yearlyMarriages(w: World): void {
+  for (const rl of w.rels) {
+    if ((rl.st !== 'ally' && rl.st !== 'pact') || rl.op < 30) continue;
+    const A = w.civs[rl.a];
+    const B = w.civs[rl.b];
+    if (A.died >= 0 || B.died >= 0 || A.ruler.wed !== undefined || B.ruler.wed !== undefined) continue;
+    const r = new Rand(w.seed, S.RULER, w.tick, rl.a, rl.b, 0x3ed);
+    if (!r.chance(rl.st === 'ally' ? 0.03 : 0.012)) continue;
+    A.ruler.wed = B.id;
+    B.ruler.wed = A.id;
+    ev(w, { k: 'marriage', a: A.id, b: B.id, x: A.ruler.house, y: B.ruler.house });
+  }
+}
+
 export function yearlyRealm(w: World, warring: Uint8Array): void {
   yearlyClimate(w);
+  yearlyMarriages(w);
   for (const c of w.civs) {
     if (c.died >= 0) continue;
     const r = new Rand(w.seed, S.CULTURE, w.tick, c.id, 0x4e1);
     if (c.lord >= 0) yearlyTribute(w, c, r);
+    yearlyRegency(w, c);
     yearlyEra(w, c, r, warring[c.id] === 1);
   }
 }

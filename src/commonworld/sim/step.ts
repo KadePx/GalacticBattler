@@ -1,13 +1,13 @@
 // One tick = one game month. step() is the only thing that moves the world forward.
 
 import {
-  TIER_POP, canFoundAt, claimTiles, ev, foundCiv, foundSettlement, has, killSett, mods, recount, scoreSite,
+  TIER_POP, canFoundAt, claimTiles, ev, foundCiv, foundSettlement, has, killSett, mods, placeCtx, recount, scoreSite,
   spawnCiv, tally, tendReserves, tierFor, type Mods,
 } from './civ';
 import { rel, relOf, yearlyDiplo } from './diplo';
 import { invest, isCoastal, luxuryCount, settIncome, yearlyEcon } from './econ';
 import { forWithin, hexDist, neighbors } from './hex';
-import { monumentName, plagueName } from './names';
+import { monumentName, plagueName, townName } from './names';
 import { greatCount, succession, yearlyGreats } from './people';
 import { applyAct, applyOffer, edictOn, yearlyPlayer } from './player';
 import { yearlyDisasters } from './disaster';
@@ -280,6 +280,7 @@ export function stabParts(w: World, s: Sett, c: Civ, atWar: boolean): [string, n
   if (atWar) add('War and weariness', -(4 + c.weary / 10));
   if (has(c, 'ancestral')) add('Old roots', Math.min(10, (w.tick - s.born) / (30 * TICKS_PER_YEAR)));
   if (c.lord >= 0) add('Paying tribute', -3);
+  if (c.ruler.regent) add('A child on the throne', -4);
   add(c.era === 'golden' ? 'Golden age' : 'Dark age', eraFx(c).stab);
   return out;
 }
@@ -339,6 +340,7 @@ function settYearly(w: World, s: Sett): void {
   }
   const capS = w.setts[c.capital];
   if (maybeDefect(w, s, r)) return;
+  retongue(w, s, c);
   if (s.stab < 12 && s.id !== c.capital && tally.live[c.id] >= 5 && hexDist(w.W, s.tile, capS.tile) >= 5 && r.chance(0.2)) {
     secede(w, s, r);
     return;
@@ -351,6 +353,23 @@ function settYearly(w: World, s: Sett): void {
     if (trySettle(w, s, c)) return;
   }
   tryBuild(w, s, c, r);
+}
+
+/**
+ * A town held for generations by a people of another tongue slowly takes a name in theirs.
+ * Names a founder gave are never changed.
+ */
+function retongue(w: World, s: Sett, c: Civ): void {
+  if (s.pn || s.was || s.conq < 0 || w.tick - s.conq < 120 * TICKS_PER_YEAR || w.civs[s.o].phon === c.phon) return;
+  if (!new Rand(w.seed, S.NAME, w.tick, s.id).chance(0.01)) return;
+  const ctx = placeCtx(w, c, s.tile);
+  ctx.adj = ctx.adj.filter((x) => x !== 'new'); // an old town, whatever its new name
+  const n = townName(c.phon, c.lex, c.named++, ctx, (x) => w.setts.some((o) => o.name === x));
+  s.was = s.name;
+  s.name = n.name;
+  if (n.gloss) s.g = n.gloss;
+  else delete s.g;
+  ev(w, { k: 'retongue', a: c.id, s: s.id, x: s.was, y: s.name });
 }
 
 function trySettle(w: World, s: Sett, c: Civ): boolean {

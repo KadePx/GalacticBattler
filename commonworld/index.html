@@ -121,7 +121,17 @@
       .whyd summary::after { content: ' ▾'; color: var(--faint); font-size: 11px; }
       .whyd[open] summary::after { content: ' ▴'; }
       .whybox { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--raise); border: 1px solid var(--line); font-size: 12.5px; text-align: left; }
-      .whyd.op .whybox { position: absolute; right: 12px; width: min(260px, 80vw); z-index: 4; background: #161b26; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+      details.nb { border-bottom: 1px solid var(--line); }
+      details.nb summary { display: flex; align-items: center; gap: 10px; padding: 8px 2px; font-size: 13px; }
+      details.nb summary:hover { background: var(--raise); }
+      details.nb summary::after, details.nb[open] summary::after { content: none; }
+      details.nb .nbn { flex: 1; min-width: 0; }
+      details.nb .nbn a { color: var(--ink); font-weight: 500; }
+      details.nb .nbn small, details.nb .nbs small { display: block; }
+      details.nb .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+      details.nb .nbs { text-align: right; }
+      details.nb .nbo { width: 42px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+      details.nb .whybox { margin: 0 0 10px; }
       .why { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; color: var(--dim); }
       .why b { font-weight: 600; font-variant-numeric: tabular-nums; }
       tr.th th { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 4px 6px; }

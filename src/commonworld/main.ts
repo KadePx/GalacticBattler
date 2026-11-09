@@ -208,18 +208,22 @@ function updateTop(): void {
   const v = view();
   const civs = new Set(v.setts.map((s) => s.civ));
   const pop = v.setts.reduce((a, s) => a + s.pop, 0);
+  // The present Age is known exactly; a past one is read from the chronicle.
   let age = 0;
-  for (const e of w.log) {
+  if (viewYear === null) age = w.age;
+  else for (const e of w.log) {
     if (e.t > y * TICKS_PER_YEAR + TICKS_PER_YEAR - 1) break;
     if (e.k === 'age') age = e.n ?? age;
   }
+  const at = y * TICKS_PER_YEAR + 6;
+  const climate = w.climates.find((c) => c.start <= at && c.end > at);
   const wars = w.wars.filter((x) => x.start <= y * TICKS_PER_YEAR + 11 && (x.end < 0 || x.end > y * TICKS_PER_YEAR + 11)).length;
   let clock = '';
   if (online && viewYear === null && nextAt) {
     const s = Math.max(0, Math.round((nextAt - (Date.now() + clockSkew)) / 1000));
     clock = ` · ${SEASONS[w.tick % 12]} · next month in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
-  $('wstats').textContent = `${viewYear !== null ? 'Looking back · ' : ''}${AGES[age]} Age${clock} · ${wars ? `${wars} ${wars === 1 ? 'war' : 'wars'} · ` : ''}${civs.size} peoples · ${v.setts.length} settlements · ${fmt(pop)} souls`;
+  $('wstats').textContent = `${viewYear !== null ? 'Looking back · ' : ''}${AGES[age]} Age${climate ? ` · ${climate.name}` : ''}${clock} · ${wars ? `${wars} ${wars === 1 ? 'war' : 'wars'} · ` : ''}${civs.size} peoples · ${v.setts.length} settlements · ${fmt(pop)} souls`;
 }
 
 // ---- Timeline ----

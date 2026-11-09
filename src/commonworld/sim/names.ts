@@ -224,10 +224,10 @@ export function townName(phon: number, lex: number, n: number, ctx: PlaceCtx, ta
 }
 
 /** A few town names a tongue might give, for the founding screen (no place in mind). */
-export function sampleTowns(phon: number, lex: number, n: number): string[] {
+export function sampleTowns(phon: number, lex: number, n: number): Named[] {
   const feats: Concept[] = ['ford', 'hill', 'wood', 'shore', 'field'];
   const adjs: Concept[] = ['new', 'high', 'old', 'green'];
-  return Array.from({ length: n }, (_, i) => townName(phon, lex, 1 + i, { feat: feats[i % feats.length], adj: [adjs[i % adjs.length]] }).name);
+  return Array.from({ length: n }, (_, i) => townName(phon, lex, 1 + i, { feat: feats[i % feats.length], adj: [adjs[i % adjs.length]] }));
 }
 
 const RIVER_ADJ: Concept[] = ['slow', 'deep', 'cold', 'long', 'bright', 'white', 'black', 'red', 'green', 'wild', 'salt'];

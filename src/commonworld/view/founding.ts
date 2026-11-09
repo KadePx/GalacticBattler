@@ -65,7 +65,7 @@ const u32 = () => crypto.getRandomValues(new Uint32Array(1))[0];
 function tongue(): { phon: number; lex: number; name: string; capital: string } {
   const phon = u32();
   const lex = u32();
-  return { phon, lex, name: peopleName(phon, lex), capital: sampleTowns(phon, lex, 1)[0] };
+  return { phon, lex, name: peopleName(phon, lex), capital: sampleTowns(phon, lex, 1)[0].name };
 }
 
 /** What a homeland offers, in a few words. */
@@ -80,7 +80,7 @@ export function describeSpot(w: World, tile: number): { title: string; stars: nu
   const facts: string[] = [];
   if (w.t.river[tile]) {
     const r = w.rivers[w.t.river[tile] - 1];
-    facts.push(r.name ? `on the River ${r.name}` : 'on an unnamed river');
+    facts.push(r.name ? `on the ${r.name}` : 'on an unnamed river');
   }
   if (isCoastal(w, tile)) facts.push('by the sea');
   const tc = w.t.temp[tile];
@@ -237,7 +237,7 @@ export class Founding {
   private previewLine(): string {
     const d = this.d;
     const towns = sampleTowns(d.phon, d.lex, 4).slice(1);
-    return `The ${esc(properName(d.name) ?? '…')} of ${esc(properName(d.capital) ?? '…')}. Later towns may be called ${towns.map(esc).join(', ')}.`;
+    return `The ${esc(properName(d.name) ?? '…')} of ${esc(properName(d.capital) ?? '…')}. Later towns may be called ${towns.map((t) => esc(t.name) + (t.gloss ? ` <span class="legend">(“${esc(t.gloss)}”)</span>` : '')).join(', ')}. Most names in their tongue mean something about the place.`;
   }
 
   private render(): void {

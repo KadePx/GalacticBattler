@@ -5,6 +5,9 @@ import { Rand, S } from './sim/rng';
 import { AGES } from './sim/techs';
 import { TIER_NAMES, TICKS_PER_YEAR, type Ev, type World } from './sim/types';
 
+/** Major for one people, but too common to fill the world's "great events" feed. */
+export const WORLD_QUIET = new Set(['succession', 'great_born', 'contact', 'tier_up', 'ally', 'marriage', 'pilgrims']);
+
 export interface Line { year: number; text: string; civs: number[]; kind: string; major: boolean }
 
 const MAJOR = new Set([
@@ -12,7 +15,7 @@ const MAJOR = new Set([
   'war', 'conquest', 'peace', 'crisis', 'new_dynasty', 'age', 'ally', 'great_born',
   'omen_claim', 'claim_war', 'omen_war', 'omen_sign', 'edict', 'renamed', 'great_named', 'wonder_named', 'gift', 'pilgrims',
   'faith_found', 'schism', 'wonder', 'quake', 'eruption', 'tsunami', 'collapse', 'revival', 'defect',
-  'tribute', 'tribute_end', 'era', 'era_end', 'climate', 'climate_end',
+  'tribute', 'tribute_end', 'era', 'era_end', 'climate', 'climate_end', 'usurp', 'cede', 'marriage',
 ]);
 
 const GREAT_WORD: Record<string, string> = { general: 'general', scholar: 'scholar', builder: 'master builder', merchant: 'merchant prince', prophet: 'prophet' };
@@ -146,7 +149,7 @@ export function line(w: World, e: Ev, idx: number): Line {
         : pick(`${Pc(e.a)} fell into ${e.x}. Learning faltered and hope ran thin.`, `For ${P(e.a)}, ${e.x} began.`);
       break;
     case 'era_end':
-      text = e.y === 'golden' ? `${cap1(e.x ?? 'The golden age')} of ${P(e.a)} came to an end after ${years(e.n ?? 0)}.` : `${Pc(e.a)} came out of ${e.x} after ${years(e.n ?? 0)}.`;
+      text = e.y === 'golden' ? `For ${P(e.a)}, ${e.x ?? 'the golden age'} came to an end after ${years(e.n ?? 0)}.` : `${Pc(e.a)} came out of ${e.x} after ${years(e.n ?? 0)}.`;
       break;
     case 'climate':
       text = e.y === 'cold' ? `The winters grew long and bitter across the world. It was the start of ${e.x}.`
@@ -156,6 +159,24 @@ export function line(w: World, e: Ev, idx: number): Line {
       break;
     case 'climate_end':
       text = `${cap1(e.x ?? 'The long swing of weather')} came to an end, and the seasons turned as before.`;
+      break;
+    case 'marriage':
+      text = pick(`House ${e.x} of ${P(e.a)} and House ${e.y} of ${P(e.b)} were joined by marriage.`, `A royal wedding bound ${P(e.a)} to ${P(e.b)}: the houses of ${e.x} and ${e.y} became one family.`);
+      break;
+    case 'regency':
+      text = `The new ruler of ${P(e.a)}, ${e.x}, was only ${e.n ?? 'a few'} years old. ${e.y} would rule as regent until they came of age.`;
+      break;
+    case 'regency_end':
+      text = `${e.x} came of age and took the rule of ${P(e.a)} from the regent ${e.y}.`;
+      break;
+    case 'usurp':
+      text = `The regent ${e.y} pushed the young ${e.x} aside and seized the throne of ${P(e.a)}, founding House ${e.z}.`;
+      break;
+    case 'retongue':
+      text = `Generations under ${P(e.a)} had changed how its people spoke: ${e.x} was now called ${e.y}${gloss(e.s !== undefined ? w.setts[e.s]?.g : undefined)}.`;
+      break;
+    case 'cede':
+      text = `By the peace that ended ${e.x}, ${T(e.s)} was handed to ${P(e.a)}.`;
       break;
     case 'refugees':
       text = e.y === 'famine' ? `${fmt(e.n ?? 0)} hungry people left ${e.x} for ${T(e.s)}.` : `${fmt(e.n ?? 0)} people fled the fall of ${e.x} and found shelter in ${T(e.s)}.`;

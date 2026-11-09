@@ -2,12 +2,13 @@
 // dynasties, including the succession crises that can tear a realm in two.
 
 import { ev, has, newRuler, spawnCiv, tally, transferSett } from './civ';
-import { rel } from './diplo';
+import { rel, relOf } from './diplo';
 import { hexDist } from './hex';
 import { epithet, NAME_KEY, personName } from './names';
+import { mayAttack } from './realm';
 import { Rand, S } from './rng';
 import { GREAT_KINDS, TICKS_PER_YEAR, type Civ, type GreatKind, type World } from './types';
-import { declareWar } from './war';
+import { activeWars, declareWar, strength } from './war';
 import { openOmen } from './player';
 
 const KIND_VALUE: Record<GreatKind, string> = { general: 'martial', scholar: 'curious', builder: 'artistic', merchant: 'mercantile', prophet: 'devout' };
@@ -64,6 +65,13 @@ export function succession(w: World, c: Civ): void {
   if (!r.chance(crisisP)) {
     c.ruler = newRuler(w, c, old.house);
     ev(w, { k: 'succession', a: c.id, x: title, y: c.ruler.name, z: old.house, n: yrs });
+    maybeRegency(w, c, r);
+    // The house the old ruler married into may claim the throne for one of its own.
+    const kin = old.wed !== undefined && old.wed >= 0 ? w.civs[old.wed] : null;
+    if (kin && kin.died < 0 && c.protectedUntil <= w.tick && mayAttack(kin, c) && !activeWars(w, kin.id).length &&
+      (relOf(w, kin.id, c.id)?.op ?? 0) < 20 && strength(kin) > strength(c) * 1.2 && r.chance(0.06)) {
+      declareWar(w, kin, c, 'succession', r);
+    }
     return;
   }
   // A crisis. A big, distant town backs a rival claimant; if there is none, a new house seizes the throne.
@@ -71,6 +79,38 @@ export function succession(w: World, c: Civ): void {
   c.ruler = newRuler(w, c, null);
   for (const id of ids) w.setts[id].stab = Math.max(5, w.setts[id].stab - 10);
   ev(w, { k: 'new_dynasty', a: c.id, x: title, y: c.ruler.name, z: c.ruler.house, n: yrs });
+}
+
+/** Sometimes the heir is a child, and a regent rules until they come of age. */
+function maybeRegency(w: World, c: Civ, r: Rand): void {
+  if (!r.chance(0.12)) return;
+  const k = c.ruler;
+  const age = r.range(5, 14);
+  const born = w.tick - age * TICKS_PER_YEAR;
+  k.dies = Math.max(w.tick + 20 * TICKS_PER_YEAR, born + (k.dies - k.born));
+  k.born = born;
+  k.regent = personName(c.phon, c.lex, NAME_KEY.RULER, 10000 + c.rulers);
+  ev(w, { k: 'regency', a: c.id, x: k.name, y: k.regent, n: age });
+}
+
+/** Yearly: a child ruler comes of age, or the regent takes the throne for good. */
+export function yearlyRegency(w: World, c: Civ): void {
+  const k = c.ruler;
+  if (!k.regent) return;
+  const age = (w.tick - k.born) / TICKS_PER_YEAR;
+  if (age >= 16) {
+    ev(w, { k: 'regency_end', a: c.id, x: k.name, y: k.regent });
+    delete k.regent;
+    return;
+  }
+  const r = new Rand(w.seed, S.RULER, w.tick, c.id, 0x4e9);
+  if (r.chance(k.trait === 'cautious' ? 0.01 : 0.03)) {
+    const regent = k.regent;
+    const child = k.name;
+    c.ruler = { ...newRuler(w, c, null), name: regent };
+    for (const id of tally.list[c.id] ?? []) w.setts[id].stab = Math.max(5, w.setts[id].stab - 8);
+    ev(w, { k: 'usurp', a: c.id, x: child, y: regent, z: c.ruler.house });
+  }
 }
 
 /**

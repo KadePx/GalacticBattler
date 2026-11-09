@@ -152,8 +152,16 @@ function nearestPair(w: World, from: number, to: number): [Sett, Sett] | null {
 
 /** Yearly: rulers weigh up their neighbours and some choose war. */
 export function considerWar(w: World, border: Map<number, number>, canGrow: Float64Array): void {
+  // When each people's last war ended: realms rest a few years between campaigns.
+  const lastEnd = new Map<number, number>();
+  for (const x of w.wars) {
+    if (x.end < 0 || w.tick - x.end > 10 * TICKS_PER_YEAR) continue;
+    for (const k of [x.atk, x.def, ...x.atkAllies, ...x.defAllies]) lastEnd.set(k, Math.max(lastEnd.get(k) ?? -1, x.end));
+  }
   for (const c of w.civs) {
     if (c.died >= 0 || c.lord >= 0 || c.weary > 30 || c.protectedUntil > w.tick || activeWars(w, c.id).length) continue;
+    const rest = (has(c, 'martial') ? 3 : has(c, 'isolationist') ? 8 : 5) + (c.ruler.trait === 'cautious' ? 2 : c.ruler.trait === 'bold' ? -1 : 0) + (c.era === 'dark' ? 6 : 0);
+    if (w.tick - (lastEnd.get(c.id) ?? -9999) < rest * TICKS_PER_YEAR) continue;
     const r = new Rand(w.seed, S.AI, w.tick, 0x3a, c.id);
     const my = strength(c);
     if (my < 50) continue;
@@ -179,6 +187,7 @@ export function considerWar(w: World, border: Map<number, number>, canGrow: Floa
       if (c.ruler.trait === 'bold' || c.ruler.trait === 'cruel') d += 0.5;
       if (c.ruler.trait === 'cautious' || c.ruler.trait === 'just') d -= 0.5;
       if (rl.st === 'pact') d -= 0.7;
+      if (c.era === 'dark') d -= 1.2; // a people in its dark years looks inward
       const zeal = c.faith >= 0 && o.faith >= 0 && c.faith !== o.faith && has(c, 'devout');
       if (zeal) d += 0.3;
       d -= c.weary / 30;
@@ -344,6 +353,22 @@ function shouldSubmit(w: World, war: War, A: Civ, D: Civ, r: Rand): boolean {
   return r.chance(p);
 }
 
+/** The peace hands the winner the town they were besieging, if any (never a capital). */
+function cede(w: World, war: War, winner: Civ, loser: Civ): void {
+  let best: Sett | null = null;
+  for (const id of tally.list[loser.id] ?? []) {
+    const s = w.setts[id];
+    if (s.siegeBy === winner.id && s.siege > 0 && s.id !== loser.capital && (!best || s.siege > best.siege)) best = s;
+  }
+  if (!best) return;
+  transferSett(w, best, winner.id);
+  best.conq = w.tick;
+  best.stab = 40;
+  if (winner.id === war.atk) war.taken.push(best.id);
+  else war.lost.push(best.id);
+  ev(w, { k: 'cede', a: winner.id, b: loser.id, s: best.id, x: war.name });
+}
+
 export function endWar(w: World, war: War, result: War['result']): void {
   war.end = w.tick;
   war.result = result;
@@ -371,11 +396,13 @@ export function endWar(w: World, war: War, result: War['result']): void {
     const pay = D.wealth * 0.5;
     D.wealth -= pay;
     A.wealth += pay;
+    cede(w, war, A, D);
     maybeSubjugate(w, A, D, rs);
   } else if (result === 'defeat' && A.died < 0) {
     const pay = A.wealth * 0.5;
     A.wealth -= pay;
     D.wealth += pay;
+    cede(w, war, D, A);
     maybeSubjugate(w, D, A, rs);
   }
   if (result !== 'conquered') {

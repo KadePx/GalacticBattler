@@ -55,6 +55,8 @@ export interface Ruler {
   won: number; // battles won during the reign
   trait: RulerTrait;
   house: string; // dynasty
+  regent?: string; // who rules for a child ruler, until they come of age
+  wed?: number; // the people this ruler married into (civ id)
 }
 
 export const RULER_TRAITS = ['bold', 'cautious', 'pious', 'greedy', 'wise', 'cruel', 'builder', 'just'] as const;
@@ -120,6 +122,7 @@ export interface Civ {
   eraSince: number; // tick
   eraUntil: number; // tick it fades on its own
   eraName: string; // "the Golden Age of Gina"
+  lastCollapse?: number; // tick the realm last broke apart
 }
 
 /** A golden or dark age, kept for the world's history. */
@@ -165,6 +168,7 @@ export interface Sett {
   o: number; // the people who first founded it
   offers?: number; // pilgrim offerings left here
   g?: string; // what the name means in its founders' tongue ("high ford")
+  was?: string; // its name before its rulers' tongue renamed it
   pn?: 1; // named by a founder
 }
 

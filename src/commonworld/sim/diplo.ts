@@ -88,6 +88,7 @@ export function opinionParts(A: Civ, B: Civ, r: Rel, edge: number, nRoutes: numb
   add('A cruel ruler', A.ruler.trait === 'cruel' || B.ruler.trait === 'cruel' ? -5 : 0);
   add('Two just rulers', A.ruler.trait === 'just' && B.ruler.trait === 'just' ? 5 : 0);
   add('Tribute', A.lord === B.id || B.lord === A.id ? -8 : 0); // tribute breeds resentment
+  add('Royal marriage', A.ruler.wed === B.id && B.ruler.wed === A.id ? 10 : 0);
   return out;
 }
 
