@@ -14,6 +14,7 @@ export interface Archive { id: string; seed: number; year: number; ended: number
 export interface PreFounded { tile: number; name: string | null; banner: number[]; byName: string | null; values: ValueId[]; mine: boolean }
 export interface NextInfo {
   phase: 'none' | 'vote' | 'prep';
+  simV?: number; held?: boolean;
   round?: string; seeds?: number[]; civs?: number; seed?: number | null; startAt?: number | null; now: number;
   points?: number[]; firsts?: number[]; voters?: number;
   mine?: { first: number; second: number } | Record<string, unknown> | null;
@@ -123,7 +124,7 @@ const facts = (c: Candidate) => `${c.masses === 1 ? 'One great landmass' : `${c.
  * The card. `live` is true on the living world's page (where founding means going to the
  * new world's page) and false on the new world's own page.
  */
-export function nextHtml(n: NextInfo, now: number, opts: { live: boolean; viewing: number; ballot: [number, number] }): string {
+export function nextHtml(n: NextInfo, now: number, opts: { live: boolean; viewing: number; ballot: [number, number]; unnamed?: boolean }): string {
   if (n.phase === 'none') return '';
   const civs = n.civs ?? 20;
   if (n.phase === 'vote') {
@@ -143,6 +144,7 @@ export function nextHtml(n: NextInfo, now: number, opts: { live: boolean; viewin
           <div class="cb"><button class="btn ${i === first ? 'on' : ''}" data-n="first" data-v="${i}">1st pick</button><button class="btn ${i === second ? 'on' : ''}" data-n="second" data-v="${i}">2nd pick</button></div>
         </div>`;
       }).join('')}</div>
+      ${opts.unnamed ? '<p class="hint">The ancient peoples, towns and rivers are named when the world begins.</p>' : ''}
       <p class="hint">${n.voters ?? 0} ${n.voters === 1 ? 'ballot' : 'ballots'} so far. ${first >= 0 ? 'Your ballot is saved; you can change it until voting closes.' : 'Pick a map to cast your ballot.'} Dots are where the ${civs} ancient peoples begin.${opts.live ? ' Tap a map to look at it up close.' : ''}</p>
       ${opts.live ? '<p class="hint">This world carries on until the new one begins, and stays open to visit afterward.</p>' : ''}`;
   }
@@ -159,8 +161,20 @@ export function nextHtml(n: NextInfo, now: number, opts: { live: boolean; viewin
     <div class="prep"><img src="${c.img}" alt="The new world's map"><div>${start}<p class="hint">${facts(c)}</p></div></div>
     <p class="lead">Found your people now and they arrive in its very first month, alongside the ${civs} ancient peoples. You can change or withdraw them until it begins. Peoples in the current world carry on there until it ends.</p>
     ${act}
+    ${opts.unnamed ? '<p class="hint">The ancient peoples, towns and rivers are named when the world begins.</p>' : ''}
+    ${n.held ? '<p class="hint">The current world now holds still until the new one begins.</p>' : ''}
     <h3>Ready to set out <span class="legend">${peoples.length}</span></h3>
     ${peoples.length ? `<div class="waiting">${peoples.map((p, i) => `<button class="wp" data-n="tile" data-v="${p.tile}"><span class="wn">${i + 1}</span>${bannerSvg(specFromNums(p.banner), 18)}<span><b>${esc(p.name ?? 'A people')}</b>${p.byName ? `<small>founded by ${esc(p.byName)}</small>` : ''}</span></button>`).join('')}</div>` : '<p class="hint">No one yet. Be the first.</p>'}`;
+}
+
+/**
+ * The new world will run a newer sim than this page, which names things differently: blank
+ * the names rather than show ones that will change. Land and starting places are the same.
+ */
+export function unname(w: World): void {
+  for (const c of w.civs) c.name = '';
+  for (const s of w.setts) s.name = '';
+  for (const r of w.rivers) r.name = '';
 }
 
 /** Earlier worlds, for the world page. */

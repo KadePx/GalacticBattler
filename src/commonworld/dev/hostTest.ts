@@ -8,7 +8,7 @@
 import { canFoundAt, foundingSpots } from '../sim/civ';
 import { forWithin, hexDist } from '../sim/hex';
 import { founderHash } from '../shared/text';
-import { assemble, createWorld, stateHash, step, type Input, type World } from '../sim/index';
+import { SIM_V, assemble, createWorld, stateHash, step, type Input, type World } from '../sim/index';
 import { influence, nameable } from '../sim/player';
 import { WorldHost, type KV } from '../server/host';
 import type { D1 } from '../../net/db';
@@ -270,14 +270,45 @@ async function main(): Promise<void> {
   check(oev.events.length === 50 && oyr.years.length > 10, 'its chronicle and history are still served');
   check((await get(fast, 'archive/static?world=nope')).status === 404, 'unknown worlds are not served');
 
+  // A next world meant for a newer sim: it waits for that code, and an older world holds still under it.
+  await adm('open', { simV: SIM_V + 1 });
+  await adm('close', { at: clock + 3_600_000 });
+  const g0 = ((await (await get(fast, 'state')).json()) as { world: string; tick: number });
+  clock += 2 * 3_600_000;
+  while ((await fast.advance()) > 0) { /* catch up */ }
+  const t1 = ((await (await get(fast, 'state')).json()) as { world: string; tick: number });
+  check(t1.world === g0.world && t1.tick > g0.tick, 'the start waits for the newer sim; the world runs on meanwhile');
+  // Pretend the newer code is now deployed: the stored world is one version behind it.
+  const nx = JSON.parse((await kv.get('next'))!) as { simV: number; startAt: number };
+  nx.simV = SIM_V;
+  nx.startAt = clock + 3_600_000;
+  await kv.put('next', JSON.stringify(nx));
+  await kv.put('dyn', (await kv.get('dyn'))!.replace(`"v":${SIM_V}`, `"v":${SIM_V - 1}`));
+  const newer = new WorldHost(kv, db, { ...opts, msPerTick: MS / 5 });
+  const h0 = ((await (await get(newer, 'state')).json()) as { tick: number; hash: string });
+  clock += 1_800_000;
+  await newer.advance();
+  const h1 = ((await (await get(newer, 'state')).json()) as { tick: number; hash: string });
+  check(h1.tick === h0.tick, 'an older world holds still under newer code while the next world waits');
+  check(newer.nextWakeAt() >= nx.startAt, 'and sleeps until the start');
+  check((await (await get(newer, 'act', { method: 'POST', body: JSON.stringify({ id: ids[0], act: { k: 'edict', edict: 'grow' } }) })).status) === 409, 'founder actions wait too');
+  check((await kv.get('dyn'))!.startsWith(`{"v":${SIM_V - 1}`), 'the held world is not re-saved in the new format');
+  clock = nx.startAt + 3 * (MS / 5) + 10;
+  while ((await newer.advance()) > 0) { /* catch up */ }
+  const h2 = ((await (await get(newer, 'state')).json()) as { world: string; tick: number });
+  check(h2.world !== g0.world && h2.tick === 3, 'at the start the new world begins and runs');
+  const aw = assemble(await gunzip(await get(newer, `archive/static?world=${g0.world}`)), await gunzip(await get(newer, `archive/snapshot?world=${g0.world}`)));
+  check(aw.tick === h0.tick, 'the old world was archived exactly as it stood');
+  const fast2 = newer;
+
   // Admin.
-  const denied = await get(fast, 'admin/wipe', { method: 'POST' });
+  const denied = await get(fast2, 'admin/wipe', { method: 'POST' });
   check(denied.status === 403, 'wipe without key is refused');
-  const wipe = await (await get(fast, 'admin/wipe', { method: 'POST', headers: { 'x-admin-key': 'secret' }, body: JSON.stringify({ seed: 77 }) })).json() as { ok: boolean; world: string };
-  const st5 = await (await get(fast, 'state')).json() as { world: string; tick: number };
+  const wipe = await (await get(fast2, 'admin/wipe', { method: 'POST', headers: { 'x-admin-key': 'secret' }, body: JSON.stringify({ seed: 77 }) })).json() as { ok: boolean; world: string };
+  const st5 = await (await get(fast2, 'state')).json() as { world: string; tick: number };
   check(wipe.ok && st5.world !== st.world && st5.tick === 0, `wipe started a new world (${st5.world})`);
   const arch = await db.prepare("SELECT COUNT(*) AS n FROM cw_snaps WHERE kind = 'archive'").first<{ n: number }>();
-  check((arch?.n ?? 0) === 2, 'old world archived before the wipe');
+  check((arch?.n ?? 0) === 3, 'old world archived before the wipe');
 
   console.log(fails ? `\n${fails} check(s) failed` : '\nall checks passed');
   if (fails) process.exit(1);

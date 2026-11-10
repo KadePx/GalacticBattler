@@ -99,7 +99,9 @@ export function describeSpot(w: World, tile: number): { title: string; stars: nu
     const d = hexDist(w.W, s.tile, tile);
     if (d < nearest) { nearest = d; who = s.civ; }
   }
-  const near = who < 0 ? 'No one lives nearby.' : nearest <= 8 ? `The ${w.civs[who].name} live close by.` : nearest <= 14 ? `The ${w.civs[who].name} are a few days' walk away.` : 'Far from other peoples.';
+  const them = who < 0 ? '' : w.civs[who].name ? `The ${w.civs[who].name}` : 'An ancient people';
+  const one = who >= 0 && !w.civs[who].name;
+  const near = who < 0 ? 'No one lives nearby.' : nearest <= 8 ? `${them} ${one ? 'lives' : 'live'} close by.` : nearest <= 14 ? `${them} ${one ? 'is' : 'are'} a few days' walk away.` : 'Far from other peoples.';
   let land = 0;
   forWithin(w.W, w.H, tile, 2, (i) => { if (isLand(w.t, i)) land++; });
   return { title: BIOMES[w.t.biome[tile]].n, stars: Math.max(1, Math.min(5, Math.round((food - 20) / 7))), facts, near: land < 10 ? `${near} A small, tight homeland.` : near };

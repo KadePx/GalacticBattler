@@ -7,7 +7,7 @@ import { line } from './chronicle';
 import { createWorld, serialize, step, worldHash, AGES, TICKS_PER_YEAR, TIER_NAMES, type World } from './sim/index';
 import { BIOMES } from './sim/worldgen';
 import { getJson, loadArchive, loadOlderEvents, loadWorld, loadYears, postJson, sync } from './net';
-import { archivesHtml, candidate, countdown, nextHtml, pillText, type NextInfo } from './view/next';
+import { archivesHtml, candidate, countdown, nextHtml, pillText, unname, type NextInfo } from './view/next';
 import { foundingSpots } from './sim/civ';
 import { hexDist } from './sim/hex';
 import { founderId, myHash } from './identity';
@@ -922,6 +922,7 @@ async function boot(): Promise<void> {
         if (!(viewing >= 0 && viewing < n.seeds!.length)) viewing = Math.max(0, ballot[0]);
         w = candidate(n.seeds![viewing], n.civs ?? 20).w;
       } else w = candidate(n.seed!, n.civs ?? 20).w;
+      if (unnamed()) unname(w);
     } catch (e) {
       console.error('[cw]', e);
       loading.innerHTML = '<div style="text-align:center;max-width:420px;padding:20px;font-size:18px;line-height:1.5">The new world can\'t be reached right now.<br><br><a href="./">Go to the living world</a></div>';
@@ -1015,6 +1016,9 @@ async function boot(): Promise<void> {
 
 // ---- The coming world: ballot, founding period, countdown ----
 
+/** The coming world runs a newer sim than this page, so its names are not known here yet. */
+const unnamed = () => (nextInfo?.simV ?? SIM_V) > SIM_V;
+
 function setNext(n: NextInfo): void {
   nextInfo = n;
   const m = n.mine as { first?: number; second?: number } | null | undefined;
@@ -1071,7 +1075,7 @@ function renderNext(): void {
   if (!nextInfo) return;
   const card = $('next').querySelector<HTMLElement>('.card')!;
   const scroll = card.scrollTop;
-  card.innerHTML = nextHtml(nextInfo, Date.now() + clockSkew, { live: !nextMode, viewing: nextMode ? viewing : -1, ballot });
+  card.innerHTML = nextHtml(nextInfo, Date.now() + clockSkew, { live: !nextMode, viewing: nextMode ? viewing : -1, ballot, unnamed: nextMode && unnamed() });
   card.scrollTop = scroll;
 }
 
@@ -1150,6 +1154,7 @@ $('next').onclick = (e) => {
     if (!nextMode) { location.href = `?next=1&see=${v}`; return; }
     viewing = v;
     w = candidate(nextInfo.seeds![v], nextInfo.civs ?? 20).w;
+    if (unnamed()) unname(w);
     hist = new History(2);
     hist.record(w);
     viewCache = null;

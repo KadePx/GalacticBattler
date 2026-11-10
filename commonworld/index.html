@@ -333,7 +333,7 @@
       #next .wp:hover { background: var(--raise); }
       #next .wn { width: 18px; height: 18px; border-radius: 50%; background: #fff; color: #0a0d14; font-size: 11px; font-weight: 700; display: grid; place-items: center; flex: none; }
       #next .wp small { display: block; color: var(--dim); font-size: 11px; }
-      body.nextmode #modes, body.nextmode #legend { display: none; }
+      body.nextmode #modes, body.nextmode #legend, body.nextmode #dock [data-open] { display: none; }
       #welcome { position: fixed; inset: 0; display: grid; place-items: center; z-index: 9; background: rgba(6, 8, 13, 0.6); backdrop-filter: blur(4px); padding: 16px; }
       #welcome .card { max-width: 440px; padding: 28px; text-align: left; }
       #welcome .mark { width: 40px; height: 40px; border-radius: 50%; background: conic-gradient(from 200deg, #4ade80, #38bdf8, var(--accent), #4ade80); box-shadow: 0 0 30px rgba(124, 140, 255, 0.45); margin-bottom: 18px; }
