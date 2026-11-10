@@ -21,7 +21,7 @@ export interface KV {
 }
 
 export interface HostOpts {
-  msPerTick: number; // real milliseconds per game month (60000 = 5 game years per real hour)
+  msPerTick: number; // real milliseconds per game month (12000 = 25 game years per real hour)
   maxStep: number; // most ticks to simulate in one call (catching up after downtime)
   civs: number; // ancient civs in a brand-new world
   adminKey?: string;
