@@ -225,7 +225,7 @@ function updateTop(): void {
   const yearEl = $('year');
   if (nextMode) {
     yearEl.innerHTML = nextInfo?.phase === 'vote' ? `Next world · Map ${viewing + 1}` : 'The new world';
-    $('wstats').textContent = `${w.civs.length} ancient peoples · ${nextInfo?.phase === 'vote' ? 'voting open' : nextInfo?.startAt ? `begins in ${countdown(nextInfo.startAt - (Date.now() + clockSkew))}` : 'start time to be announced'}`;
+    $('wstats').textContent = `${w.civs.length ? `${w.civs.length} ancient peoples` : 'Empty land'} · ${nextInfo?.phase === 'vote' ? 'voting open' : nextInfo?.startAt ? `begins in ${countdown(nextInfo.startAt - (Date.now() + clockSkew))}` : 'start time to be announced'}`;
     return;
   }
   yearEl.innerHTML = `${online || viewYear !== null ? '<span class="live"></span> ' : ''}Year ${y} AW`;
@@ -624,6 +624,7 @@ $('welcome').onclick = (e) => {
   try { localStorage.setItem('cw.welcomed', '1'); } catch { /* private mode */ }
   $('welcome').classList.add('hidden');
   if (a === 'found') openFounding();
+  else maybeShowNext();
 };
 
 // ---- Founder actions, offerings, notifications, digest (milestone 6) ----

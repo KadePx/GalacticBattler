@@ -12,7 +12,7 @@ import { TICKS_PER_YEAR, type Civ, type Sett, type World } from './types';
 const REVIVE_YEARS = 400; // how long the memory of a fallen people can still raise rebels
 
 /** A realm of many towns with no loyalty left breaks into pieces. */
-function collapse(w: World, c: Civ, r: Rand): boolean {
+export function collapse(w: World, c: Civ, r: Rand): boolean {
   const cap = w.setts[c.capital];
   const towns = (tally.list[c.id] ?? []).map((id) => w.setts[id]).filter((s) => s.id !== c.capital).sort((a, b) => b.pop - a.pop || a.id - b.id);
   const heads: Sett[] = [];

@@ -77,6 +77,7 @@ export interface Great {
 export interface Civ {
   id: number;
   name: string; // "Ashkari"
+  horde?: number; // a horde's strength multiple (set only by the owner's hand)
   phon: number; // sound of the language (shared with daughter civs)
   lex: number; // the words themselves
   hue: number; // 0..359
@@ -265,6 +266,7 @@ export interface World {
   wonders: Wonder[];
   eras: Era[];
   climates: Climate[];
+  fill?: number; // AI peoples arrive over the first years until this many peoples live (worlds that begin empty)
 }
 
 /** A question put to a founder ("your people await a sign"). If nobody answers by `due`, the AI decides. */
@@ -327,4 +329,16 @@ export type ActInput =
   | { k: 'propose'; founder: string; to: number };
 /** A pilgrim's offering at a settlement (anyone without a living people, once a day; the server checks). */
 export interface OfferInput { k: 'offer'; s: number }
-export type Input = FoundInput | ActInput | OfferInput;
+/** The owner's hand (admin only; the server checks the key). */
+export interface GodInput {
+  k: 'god';
+  what: 'say' | 'plague' | 'quake' | 'eruption' | 'fire' | 'flood' | 'tsunami' | 'famine' | 'bless' | 'war' | 'peace' | 'revolt' | 'collapse' | 'horde' | 'calm';
+  s?: number; // settlement
+  a?: number; // civ
+  b?: number; // other civ
+  tile?: number;
+  text?: string;
+  name?: string;
+  power?: number;
+}
+export type Input = FoundInput | ActInput | OfferInput | GodInput;
