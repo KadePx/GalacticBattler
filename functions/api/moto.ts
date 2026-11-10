@@ -14,7 +14,9 @@ import { MAX_SAMPLES, checkRun, decode } from '../../src/motomaze/path';
 const TOP = 25;
 const MAX_PATHS = 60;
 const MAX_BODY = 60_000;
-const COLORS = 12;
+// color = palette index (12) + 12 * look, where look packs hat x hair x hair colour x skin (7 x 6 x 7 x 5).
+// Keep in step with LOOKS in src/motomaze/rider.ts.
+const COLORS = 12 * 7 * 6 * 7 * 5;
 
 interface Row { player: string; name: string; color: number; ms: number; path: string; tries: number; updated: number }
 

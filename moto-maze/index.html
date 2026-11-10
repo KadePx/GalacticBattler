@@ -87,6 +87,17 @@
       .swatches { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
       .swatches button { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; }
       .swatches button.on { border-color: #fff; transform: scale(1.12); }
+      /* rider look: turntable preview beside the pickers */
+      .rider { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+      #mPreview { width: 116px; height: 116px; flex: none; border-radius: 12px; background: radial-gradient(circle at 50% 70%, rgba(255, 209, 102, 0.18), rgba(0, 0, 0, 0.28) 70%); }
+      .looks { flex: 1; min-width: 0; display: grid; gap: 7px; }
+      .pick { display: flex; align-items: center; gap: 6px; }
+      .pick > span, .tiny > span { width: 40px; flex: none; color: var(--dim); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+      .pick b { flex: 1; text-align: center; font-weight: 600; white-space: nowrap; }
+      .pick button { width: 30px; height: 28px; border-radius: 8px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.3); font-size: 18px; line-height: 1; }
+      .tiny { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+      .tiny button { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.18); }
+      .tiny button.on { border-color: #fff; transform: scale(1.15); }
       .board { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
       .board h3 { gap: 8px; margin: 0 0 6px; font-size: 12px; letter-spacing: 1px; color: var(--dim); text-transform: uppercase; display: flex; justify-content: space-between; }
       .board ol { list-style: none; margin: 0; padding: 0; max-height: 210px; overflow-y: auto; }
@@ -163,6 +174,15 @@
         <label class="field" for="mName">Rider name (for the leaderboard)</label>
         <input type="text" id="mName" maxlength="14" placeholder="YOUR NAME" autocomplete="off" spellcheck="false" />
         <div class="swatches" id="mColors"></div>
+        <div class="rider">
+          <canvas id="mPreview" aria-label="Your rider"></canvas>
+          <div class="looks">
+            <div class="pick"><span>Hat</span><button data-k="hat" data-d="-1" aria-label="Previous hat">‹</button><b id="lHat"></b><button data-k="hat" data-d="1" aria-label="Next hat">›</button></div>
+            <div class="pick"><span>Hair</span><button data-k="hair" data-d="-1" aria-label="Previous hair">‹</button><b id="lHair"></b><button data-k="hair" data-d="1" aria-label="Next hair">›</button></div>
+            <div class="tiny" id="lHairColor"><span>Color</span></div>
+            <div class="tiny" id="lSkin"><span>Skin</span></div>
+          </div>
+        </div>
         <div class="board">
           <h3><span id="boardTitle">Today's fastest</span><span id="boardCount"></span></h3>
           <ol id="board"><li class="empty">Loading…</li></ol>
