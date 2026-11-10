@@ -6,6 +6,10 @@ import {
 } from './maze';
 import { type Bike, type Ev, type Input, DT, SAMPLE_EVERY, newBike, noInput, speedOf, step, wrap } from './sim';
 import { type Sample, MAX_SAMPLES, SAMPLE_MS, decode, encode, stepsToMs } from './path';
+import {
+  type Look, FLAME_POS, FORK_PIVOT, FRONT_AXLE, HAIRS, HAIR_COLORS, HATS, REAR_AXLE, SKINS,
+  forkParts, frameParts, packLook, unpackLook, wheelGeo,
+} from './rider';
 
 // ---------------------------------------------------------------- basics
 
@@ -29,7 +33,7 @@ const cleanName = (raw: string) => {
 
 // ---------------------------------------------------------------- save
 
-interface Save { id: string; name: string; color: number; ghosts: boolean; muted: boolean; best: Record<string, { ms: number; path: string }> }
+interface Save { id: string; name: string; color: number; look: number; ghosts: boolean; muted: boolean; best: Record<string, { ms: number; path: string }> }
 const SAVE_KEY = 'motomaze.v1';
 function loadSave(): Save {
   let s: Partial<Save> = {};
@@ -41,12 +45,18 @@ function loadSave(): Save {
     id,
     name: typeof s.name === 'string' ? s.name : '',
     color: Number.isInteger(s.color) ? (s.color as number) % PALETTE.length : Math.floor(Math.random() * PALETTE.length),
+    // look = hat, hair, hair colour and skin packed into one number (see rider.ts); new riders start in a helmet
+    look: Number.isInteger(s.look) ? packLook(unpackLook(s.look as number))
+      : packLook({ hat: 0, hair: Math.floor(Math.random() * HAIRS.length), hairColor: Math.floor(Math.random() * HAIR_COLORS.length), skin: Math.floor(Math.random() * SKINS.length) }),
     ghosts: s.ghosts !== false,
     muted: !!s.muted,
     best: s.best && typeof s.best === 'object' ? s.best : {},
   };
 }
 const save = loadSave();
+/** What the server stores as a rider's colour: palette index plus look, so replays show everyone's outfit. */
+const colorCode = () => save.color + PALETTE.length * save.look;
+const lookOf = (code: number) => unpackLook(Math.floor(code / PALETTE.length));
 function persist() {
   const keep = [dayKey(), dayKey(Date.now() - 864e5)];
   for (const k of Object.keys(save.best)) if (!keep.includes(k)) delete save.best[k];
@@ -124,60 +134,16 @@ resize();
 // ---------------------------------------------------------------- bike models
 
 const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
-const cyl = (a: number, b: number, h: number, s: number) => new THREE.CylinderGeometry(a, b, h, s);
+const cyl = (a: number, b: number, h: number, n: number) => new THREE.CylinderGeometry(a, b, h, n);
 const HALF = Math.PI / 2;
-const FORK_PIVOT: [number, number, number] = [0, 1.05, 0.62];
 
-function wheelGeo() {
-  return merge([
-    paint(place(cyl(0.36, 0.36, 0.2, 10), [0, 0, 0], [0, 0, HALF]), 0x1d1b22, 0.15),
-    paint(place(cyl(0.17, 0.17, 0.23, 6), [0, 0, 0], [0, 0, HALF]), 0xb8b8c4, 0.1),
-  ]);
-}
-
-/** Frame and rider, facing +z, wheels on the ground at y = 0. */
-function frameParts(color: number) {
-  const suit = 0x2b2536, metal = 0x55525e;
-  return [
-    paint(place(box(0.12, 0.1, 0.72), [0, 0.42, -0.4], [0.15, 0, 0]), metal),
-    paint(place(box(0.34, 0.32, 0.45), [0, 0.52, 0]), 0x3d3a45, 0.1),
-    paint(place(box(0.3, 0.24, 0.9), [0, 0.78, 0], [0.08, 0, 0]), color, 0.08),
-    paint(place(box(0.44, 0.3, 0.52), [0, 0.98, 0.22], [-0.12, 0, 0]), color, 0.08),
-    paint(place(box(0.32, 0.12, 0.55), [0, 0.98, -0.3]), 0x18161c),
-    paint(place(box(0.26, 0.16, 0.38), [0, 1.04, -0.66], [-0.35, 0, 0]), color, 0.08),
-    paint(place(cyl(0.07, 0.09, 0.62, 6), [0.21, 0.5, -0.5], [HALF - 0.15, 0, 0]), 0xd0d0d8),
-    // rider
-    paint(place(box(0.16, 0.5, 0.17), [0.17, 0.92, 0.08], [1.25, 0, 0]), suit),
-    paint(place(box(0.16, 0.5, 0.17), [-0.17, 0.92, 0.08], [1.25, 0, 0]), suit),
-    paint(place(box(0.15, 0.48, 0.16), [0.21, 0.62, 0.32], [-0.35, 0, 0]), suit),
-    paint(place(box(0.15, 0.48, 0.16), [-0.21, 0.62, 0.32], [-0.35, 0, 0]), suit),
-    paint(place(box(0.46, 0.62, 0.3), [0, 1.38, -0.04], [0.62, 0, 0]), color, 0.1),
-    paint(place(box(0.2, 0.12, 0.31), [0, 1.42, -0.07], [0.62, 0, 0]), 0xffffff),
-    paint(place(box(0.12, 0.52, 0.12), [0.27, 1.37, 0.3], [1.15, 0, 0]), suit),
-    paint(place(box(0.12, 0.52, 0.12), [-0.27, 1.37, 0.3], [1.15, 0, 0]), suit),
-    paint(place(new THREE.IcosahedronGeometry(0.25, 1), [0, 1.8, 0.2]), color, 0.12),
-    paint(place(box(0.32, 0.12, 0.14), [0, 1.8, 0.39], [0.2, 0, 0]), 0x101018),
-  ];
-}
-
-/** Fork, bars and headlight, around the steering pivot. */
-function forkParts(color: number) {
-  return [
-    paint(place(box(0.07, 0.76, 0.07), [0.13, -0.345, 0.09], [-0.26, 0, 0]), 0xc8c8d0),
-    paint(place(box(0.07, 0.76, 0.07), [-0.13, -0.345, 0.09], [-0.26, 0, 0]), 0xc8c8d0),
-    paint(place(box(0.72, 0.06, 0.06), [0, 0.12, -0.08]), 0x22222a),
-    paint(place(box(0.36, 0.3, 0.16), [0, 0.02, 0.08], [-0.3, 0, 0]), color, 0.08),
-    paint(place(box(0.22, 0.16, 0.06), [0, 0.0, 0.17], [-0.3, 0, 0]), 0xfff6c8),
-  ];
-}
-
-const WHEEL_GEO = wheelGeo();
+const WHEEL_GEO = merge(wheelGeo());
 const FLAME_GEO = new THREE.ConeGeometry(0.13, 0.9, 6).rotateX(-HALF).translate(0, 0, -0.45);
 const FLAME_MAT = new THREE.MeshBasicMaterial({ color: 0x7ff6ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
 
 interface Rig { root: THREE.Group; pitch: THREE.Group; roll: THREE.Group; fork?: THREE.Group; wf?: THREE.Mesh; wr?: THREE.Mesh; flame: THREE.Mesh; label?: THREE.Sprite; body: THREE.Mesh }
 
-function makeRig(color: number, ghost: boolean, name?: string): Rig {
+function makeRig(color: number, look: Look, ghost: boolean, name?: string): Rig {
   const root = new THREE.Group(), pitch = new THREE.Group(), roll = new THREE.Group();
   root.add(pitch);
   pitch.add(roll);
@@ -185,25 +151,26 @@ function makeRig(color: number, ghost: boolean, name?: string): Rig {
   if (ghost) {
     // One draw call per ghost: everything merged.
     const fp = forkParts(color).map((g) => g.translate(...FORK_PIVOT));
-    const wa = WHEEL_GEO.clone().translate(0, 0.36, -0.72), wb = WHEEL_GEO.clone().translate(0, 0.36, 0.8);
-    body = new THREE.Mesh(merge([...frameParts(color), ...fp, wa, wb]), GHOST_MAT);
+    const wa = WHEEL_GEO.clone().translate(...REAR_AXLE), wb = WHEEL_GEO.clone().translate(0, 0.36, 0.8);
+    body = new THREE.Mesh(merge([...frameParts(color, look), ...fp, wa, wb]), GHOST_MAT);
     roll.add(body);
   } else {
-    body = new THREE.Mesh(merge(frameParts(color)), MAT);
+    body = new THREE.Mesh(merge(frameParts(color, look)), MAT);
     fork = new THREE.Group();
     fork.position.set(...FORK_PIVOT);
     fork.add(new THREE.Mesh(merge(forkParts(color)), MAT));
     wf = new THREE.Mesh(WHEEL_GEO, MAT);
-    wf.position.set(0, 0.36 - FORK_PIVOT[1], 0.8 - FORK_PIVOT[2]);
+    wf.position.set(...FRONT_AXLE);
     fork.add(wf);
     wr = new THREE.Mesh(WHEEL_GEO, MAT);
-    wr.position.set(0, 0.36, -0.72);
+    wr.position.set(...REAR_AXLE);
     roll.add(body, fork, wr);
     for (const o of [body, wf, wr, fork.children[0] as THREE.Mesh]) { o.castShadow = true; }
   }
   body.castShadow = true;
   const flame = new THREE.Mesh(FLAME_GEO, FLAME_MAT);
-  flame.position.set(0.21, 0.47, -0.8);
+  flame.position.set(...FLAME_POS);
+  flame.rotation.x = -0.4;
   flame.visible = false;
   roll.add(flame);
   let label: THREE.Sprite | undefined;
@@ -843,7 +810,7 @@ async function postRun(day: string, ms: number, path: string) {
     const r = await fetch('/api/moto', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ player: save.id, name: save.name, color: save.color, day, ms, path }),
+      body: JSON.stringify({ player: save.id, name: save.name, color: colorCode(), day, ms, path }),
     });
     const j = await r.json();
     return r.ok ? (j as { improved: boolean; best: number; rank: number; total: number }) : { error: String(j.error ?? r.status) };
@@ -858,13 +825,11 @@ type Mode = 'menu' | 'count' | 'ride' | 'done' | 'watch';
 let mode: Mode = 'menu';
 let maze = genMaze(dayKey());
 let bike: Bike = newBike(maze);
-let rig = makeRig(PALETTE[save.color], false);
+let rig = makeRig(PALETTE[save.color], lookOf(colorCode()), false);
 scene.add(rig.root);
 let samples: Sample[] = [];
 let countT = 0;
 let acc = 0;
-let revealed = new Uint8Array(maze.w * maze.h);
-let lastCell = -1;
 let shake = 0;
 let camH = 0;
 let board: Board | null = null;
@@ -893,7 +858,7 @@ function addGhost(run: { name: string; color: number; ms: number; path: string; 
   const s = decode(run.path);
   if (!s || s.length < 2) return null;
   const color = PALETTE[run.color % PALETTE.length] ?? 0xffffff;
-  const r = makeRig(color, true, run.name);
+  const r = makeRig(color, lookOf(run.color), true, run.name);
   r.body.material = solid ? MAT : GHOST_MAT;
   if (r.label) r.label.material.opacity = solid ? 1 : 0.7;
   scene.add(r.root);
@@ -979,6 +944,7 @@ async function refreshBoard() {
 
 function showMenu() {
   mode = 'menu';
+  sfx.engine(false, 0, 0, false);
   clearGhosts();
   if (maze.day !== dayKey()) loadMaze(dayKey());
   bike = newBike(maze);
@@ -991,17 +957,6 @@ function showMenu() {
 
 // ---------------------------------------------------------------- ride
 
-function reveal(c: number) {
-  revealed[c] = 1;
-  for (let d = 0; d < 4; d++) {
-    let a = c;
-    for (let k = 0; k < 10 && isOpen(maze, a, d); k++) {
-      a = a + DI[d] + DJ[d] * maze.w;
-      revealed[a] = 1;
-    }
-  }
-}
-
 function startRide() {
   sfx.init();
   if (mode === 'watch') exitWatch(false);
@@ -1011,16 +966,13 @@ function startRide() {
   bike.y = 0;
   samples = [sampleOf(bike)];
   resetCrates();
-  revealed = new Uint8Array(maze.w * maze.h);
-  lastCell = maze.start;
-  reveal(maze.start);
   clearGhosts();
   if (save.ghosts) {
     const mine = save.best[day];
     const leader = board?.runs?.find((r) => !r.me);
     const meRun = board?.runs?.find((r) => r.me);
     if (leader) addGhost(leader, false);
-    if (mine) addGhost({ name: 'YOUR BEST', color: save.color, ms: mine.ms, path: mine.path, me: true }, false);
+    if (mine) addGhost({ name: 'YOUR BEST', color: colorCode(), ms: mine.ms, path: mine.path, me: true }, false);
     else if (meRun) addGhost({ ...meRun, name: 'YOUR BEST' }, false);
   }
   mode = 'count';
@@ -1093,10 +1045,8 @@ function updateRide(dt: number) {
       if (bike.steps % SAMPLE_EVERY === 0 && samples.length <= MAX_SAMPLES) samples.push(sampleOf(bike));
       if (bike.finished) { finishRide(); break; }
     }
-    const c = cellAt(maze, bike.x, bike.z);
-    if (c >= 0 && c !== lastCell) { lastCell = c; reveal(c); }
-    const inp = readInput();
-    sfx.engine(true, speedOf(bike), inp.thr, !bike.grounded);
+    // finishRide has already cut the engine; turning it back on here left it droning on the results screen
+    if (mode === 'ride') sfx.engine(true, speedOf(bike), readInput().thr, !bike.grounded);
     if (bike.drifting && Math.random() < 0.6) spark(bike.x - Math.sin(bike.h) * 0.7, 0.15, bike.z - Math.cos(bike.h) * 0.7, (Math.random() - 0.5) * 2, 0.5, (Math.random() - 0.5) * 2, 0xcfc4b8, 0.8, false);
     const t = bike.steps * DT * 1000;
     for (const g of ghosts) poseGhost(g, t, dt);
@@ -1200,7 +1150,7 @@ async function startWatch(day = dayKey()) {
   if (token !== watchToken || mode !== 'watch') return;
   const runs = b?.runs ?? [];
   // Offline or no one yet: still show your own local best for today.
-  if (!runs.some((r) => r.me) && save.best[day]) runs.push({ name: save.name || 'YOU', color: save.color, ms: save.best[day].ms, path: save.best[day].path, me: true });
+  if (!runs.some((r) => r.me) && save.best[day]) runs.push({ name: save.name || 'YOU', color: colorCode(), ms: save.best[day].ms, path: save.best[day].path, me: true });
   for (const r of runs) addGhost(r, true);
   if (!ghosts.length) {
     msg.innerHTML = b ? 'No one has ridden this maze yet.<br><br><button class="btn small" id="wRideNow">BE THE FIRST</button>' : 'Couldn’t load riders (offline).';
@@ -1382,12 +1332,13 @@ function drawMini() {
   const X = (x: number) => ox + x * sc, Z = (z: number) => oz + z * sc;
   const cs = CS * sc;
   mg.fillStyle = 'rgba(255,255,255,0.08)';
-  for (let c = 0; c < revealed.length; c++) if (revealed[c]) mg.fillRect(X((c % maze.w) * CS), Z(Math.floor(c / maze.w) * CS), cs, cs);
+  // the whole maze is on the map from the start
+  const cells = maze.w * maze.h;
+  for (let c = 0; c < cells; c++) mg.fillRect(X((c % maze.w) * CS), Z(Math.floor(c / maze.w) * CS), cs, cs);
   mg.strokeStyle = 'rgba(255,244,232,0.85)';
   mg.lineWidth = 1.5;
   mg.beginPath();
-  for (let c = 0; c < revealed.length; c++) {
-    if (!revealed[c]) continue;
+  for (let c = 0; c < cells; c++) {
     const x = X((c % maze.w) * CS), z = Z(Math.floor(c / maze.w) * CS), wl = maze.walls[c];
     if (wl & DIRS[0]) { mg.moveTo(x, z); mg.lineTo(x + cs, z); }
     if (wl & DIRS[2]) { mg.moveTo(x, z + cs); mg.lineTo(x + cs, z + cs); }
@@ -1437,11 +1388,73 @@ swatches.addEventListener('click', (e) => {
   save.color = i;
   persist();
   drawSwatches();
+  rebuildRiders();
+});
+
+// rider look: hat and hair pickers, hair colour and skin swatches, and a turntable preview
+function drawLooks() {
+  const l = unpackLook(save.look);
+  $('lHat').textContent = HATS[l.hat];
+  $('lHair').textContent = HAIRS[l.hair];
+  const dots = (cols: number[], on: number, k: string, title: string) =>
+    cols.map((c, i) => `<button data-k="${k}" data-i="${i}" class="${i === on ? 'on' : ''}" style="background:${css(c)}" title="${title}"></button>`).join('');
+  $('lHairColor').innerHTML = `<span>Color</span>${dots(HAIR_COLORS, l.hairColor, 'hairColor', 'Hair colour')}`;
+  $('lSkin').innerHTML = `<span>Skin</span>${dots(SKINS, l.skin, 'skin', 'Skin tone')}`;
+}
+drawLooks();
+$('menu').querySelector('.looks')!.addEventListener('click', (e) => {
+  const t = (e.target as HTMLElement).closest('button');
+  if (!t?.dataset.k) return;
+  const l = unpackLook(save.look);
+  const k = t.dataset.k as keyof Look;
+  const n = { hat: HATS.length, hair: HAIRS.length, hairColor: HAIR_COLORS.length, skin: SKINS.length }[k];
+  l[k] = t.dataset.d ? (l[k] + Number(t.dataset.d) + n) % n : Number(t.dataset.i);
+  save.look = packLook(l);
+  persist();
+  drawLooks();
+  rebuildRiders();
+});
+
+const prevCanvas = $('mPreview') as HTMLCanvasElement;
+const prevScene = new THREE.Scene();
+prevScene.add(new THREE.HemisphereLight(0xffe4cc, 0x5a3a4e, 1.5));
+const prevSun = new THREE.DirectionalLight(0xffdcb0, 2.4);
+prevSun.position.set(3, 5, 4);
+prevScene.add(prevSun);
+const prevCam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+prevCam.position.set(0, 1.55, 5.9);
+prevCam.lookAt(0, 1.02, -0.05);
+let prevR: THREE.WebGLRenderer | null = null;
+let prevRig: Rig | null = null;
+let prevSpin = -0.9;
+
+function rebuildRiders() {
   disposeRig(rig);
-  rig = makeRig(PALETTE[i], false);
+  rig = makeRig(PALETTE[save.color], lookOf(colorCode()), false);
   scene.add(rig.root);
   poseBike();
-});
+  if (prevRig) disposeRig(prevRig);
+  prevRig = null;
+}
+
+function drawPreview(dt: number) {
+  if (mode !== 'menu' || $('menu').classList.contains('hidden')) return;
+  const w = prevCanvas.clientWidth;
+  if (!w) return;
+  if (!prevR) {
+    try { prevR = new THREE.WebGLRenderer({ canvas: prevCanvas, antialias: true, alpha: true }); } catch { return; }
+  }
+  const px = Math.round(w * Math.min(2, devicePixelRatio));
+  if (prevCanvas.width !== px) { prevR.setPixelRatio(Math.min(2, devicePixelRatio)); prevR.setSize(w, w, false); }
+  if (!prevRig) {
+    prevRig = makeRig(PALETTE[save.color], lookOf(colorCode()), false);
+    prevRig.root.position.z = 0.1;
+    prevScene.add(prevRig.root);
+  }
+  prevSpin += dt * 0.7;
+  prevRig.root.rotation.y = prevSpin;
+  prevR.render(prevScene, prevCam);
+}
 const ghostBox = $('mGhosts') as HTMLInputElement;
 ghostBox.checked = save.ghosts;
 ghostBox.addEventListener('change', () => { save.ghosts = ghostBox.checked; persist(); });
@@ -1490,6 +1503,7 @@ function frame(now: number) {
   last = now;
   if (!paused) update(dt);
   if (renderer.domElement.width > 0) renderer.render(scene, camera);
+  drawPreview(dt);
 }
 showMenu();
 requestAnimationFrame(frame);
