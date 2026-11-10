@@ -41,7 +41,7 @@ interface Meta { id: string; seed: number; epoch: number; created: number; msPer
  * people on it ahead of time, and once the owner sets startAt the current world is archived and
  * the new one begins at that moment, with every pre-founded people arriving in its first month.
  */
-export interface Next { round: string; phase: 'vote' | 'prep'; seeds: number[]; civs: number; opened: number; seed?: number; startAt?: number | null }
+export interface Next { round: string; phase: 'vote' | 'prep'; seeds: number[]; civs: number; opened: number; seed?: number; startAt?: number | null; simV?: number }
 /** A finished world, kept read-only. */
 export interface Archive { id: string; seed: number; year: number; ended: number; peoples: number; founders: number }
 
@@ -144,6 +144,7 @@ export class WorldHost {
   private archives: Archive[] = [];
   private preview: { seed: number; w: World } | null = null; // the chosen map at year 0, for checking pre-foundings
   private archCache = new Map<string, { st: Uint8Array; dyn: Uint8Array }>();
+  private savedV = SIM_V; // sim version the stored world was last saved under
 
   constructor(private kv: KV, private db: D1, private o: HostOpts) {}
 
@@ -163,6 +164,7 @@ export class WorldHost {
     if (!meta) return this.create(this.o.now() % 1_000_000_007, this.o.civs);
     this.meta = JSON.parse(meta);
     const [st, dyn, pending, seq] = await Promise.all([this.kv.get('static'), this.kv.get('dyn'), this.kv.get('pending'), this.kv.get('seq')]);
+    this.savedV = Number(/"v":(\d+)/.exec(dyn!.slice(0, 40))?.[1] ?? SIM_V);
     const w = assemble(st!, dyn!);
     this.w = w;
     this.pending = JSON.parse(pending ?? '[]');
@@ -216,8 +218,18 @@ export class WorldHost {
     return behind ? this.o.now() + 1000 : this.meta.epoch + (this.w.tick + 1) * this.o.msPerTick;
   }
 
+  /**
+   * The world is held still: newer sim code is running while a next world is being prepared.
+   * The old world ends under the rules it lived by, so it waits for the start instead of
+   * running on (and is never saved in the new format, so a restart still sees it as old).
+   */
+  private held(): boolean {
+    return !!this.next && this.savedV < SIM_V;
+  }
+
   /** When the host next needs waking: the next month, or the new world's start if sooner. */
   nextWakeAt(): number {
+    if (this.w && this.held()) return Math.max(this.o.now() + 1000, this.next?.startAt ?? this.o.now() + 60_000);
     const t = this.nextTickAt();
     const at = this.next?.phase === 'prep' ? this.next.startAt : null;
     return at && at > this.o.now() ? Math.min(t, at) : t;
@@ -240,6 +252,7 @@ export class WorldHost {
   private async maybeStart(): Promise<void> {
     const n = this.next;
     if (!n || n.phase !== 'prep' || n.seed === undefined || !n.startAt || this.o.now() < n.startAt) return;
+    if (SIM_V < (n.simV ?? 0)) return; // wait for the sim version the new world is meant to run
     const old = this.w!;
     await this.snapshot('archive');
     this.archives.unshift({
@@ -260,6 +273,7 @@ export class WorldHost {
     await this.kv.put('pending', JSON.stringify(this.pending));
     this.next = null;
     this.preview = null;
+    this.savedV = SIM_V;
     await this.saveNext();
   }
 
@@ -277,6 +291,7 @@ export class WorldHost {
     return this.serial(async () => {
       await this.load();
       await this.maybeStart();
+      if (this.held()) return 0;
       const w = this.w!;
       const target = this.dueTick();
       let n = 0;
@@ -518,6 +533,7 @@ export class WorldHost {
     const tile = inp.tile;
     return this.serial(async () => {
       const w = await this.load();
+      if (this.held()) return json({ error: 'this world is ending; found your people in the new one' }, 409);
       if (w.civs.some((c) => c.founder === f) || this.pending.some((p) => p.k === 'found' && p.founder === f)) return json({ error: 'you have already founded a people' }, 409);
       const prev = await this.db.prepare('SELECT status FROM cw_foundings WHERE world = ?1 AND founder = ?2').bind(this.meta.id, f).first<{ status: string }>();
       if (prev && prev.status !== 'failed') return json({ error: 'you have already founded a people' }, 409);
@@ -539,7 +555,7 @@ export class WorldHost {
     const n = this.next;
     const now = this.o.now();
     if (!n) return json({ phase: 'none', now, archives: this.archives });
-    const base = { phase: n.phase, round: n.round, seeds: n.seeds, civs: n.civs, seed: n.seed ?? null, startAt: n.startAt ?? null, now, archives: this.archives };
+    const base = { phase: n.phase, round: n.round, seeds: n.seeds, civs: n.civs, seed: n.seed ?? null, startAt: n.startAt ?? null, simV: n.simV ?? SIM_V, held: this.held(), now, archives: this.archives };
     if (n.phase === 'vote') {
       const rows = await this.db.prepare('SELECT founder, first, second FROM cw_votes WHERE round = ?1').bind(n.round).all<{ founder: string; first: number; second: number }>();
       const t = tally(n.seeds.length, rows.results);
@@ -675,6 +691,7 @@ export class WorldHost {
     }
     return this.serial(async () => {
       const w = await this.load();
+      if (this.held()) return json({ error: 'this world is ending and holds still until the new one begins' }, 409);
       const c = w.civs.find((x) => x.founder === f && x.died < 0);
       if (!c) return json({ error: 'you have no living people' }, 403);
       const queued = this.pending.filter((p) => p.k !== 'found' && p.k !== 'offer' && p.founder === f) as ActInput[];
@@ -721,7 +738,7 @@ export class WorldHost {
 
   private async admin(cmd: string, req: Request): Promise<Response> {
     if (!this.o.adminKey || req.headers.get('x-admin-key') !== this.o.adminKey) return json({ error: 'forbidden' }, 403);
-    const body = req.method === 'POST' ? ((await req.json().catch(() => ({}))) as { seed?: number; civs?: number; seeds?: number[]; pick?: number; at?: number; force?: boolean }) : {};
+    const body = req.method === 'POST' ? ((await req.json().catch(() => ({}))) as { seed?: number; civs?: number; seeds?: number[]; pick?: number; at?: number; force?: boolean; simV?: number }) : {};
     if (cmd.startsWith('next/') && req.method === 'POST') return this.serial(() => this.adminNext(cmd.slice(5), body));
     if (cmd === 'status') {
       const w = await this.serial(() => this.load());
@@ -736,7 +753,7 @@ export class WorldHost {
           next = { ...n, prefounds: c?.n ?? 0, startsIn: n.startAt ? `${((n.startAt - this.o.now()) / 3_600_000).toFixed(2)} h` : 'not scheduled' };
         }
       }
-      return json({ world: this.meta.id, seed: this.meta.seed, epoch: this.meta.epoch, tick: w.tick, year: Math.floor(w.tick / 12), civs: w.civs.filter((c) => c.died < 0).length, events: this.flushed, pending: this.pending.length, next, archives: this.archives });
+      return json({ world: this.meta.id, simV: SIM_V, savedV: this.savedV, held: this.held(), seed: this.meta.seed, epoch: this.meta.epoch, tick: w.tick, year: Math.floor(w.tick / 12), civs: w.civs.filter((c) => c.died < 0).length, events: this.flushed, pending: this.pending.length, next, archives: this.archives });
     }
     if (cmd === 'wipe' && req.method === 'POST') {
       return this.serial(async () => {
@@ -759,7 +776,7 @@ export class WorldHost {
   }
 
   /** Owner commands for the next world: open (a ballot), close (pick the winner), schedule (the start), cancel. */
-  private async adminNext(cmd: string, body: { seeds?: number[]; civs?: number; pick?: number; at?: number; force?: boolean }): Promise<Response> {
+  private async adminNext(cmd: string, body: { seeds?: number[]; civs?: number; pick?: number; at?: number; force?: boolean; simV?: number }): Promise<Response> {
     await this.load();
     const now = this.o.now();
     const n = this.next;
@@ -768,7 +785,7 @@ export class WorldHost {
       const seeds = Array.isArray(body.seeds) && body.seeds.length >= 2 && body.seeds.every((s) => Number.isInteger(s) && s >= 0)
         ? body.seeds.slice(0, 12)
         : Array.from({ length: BALLOT_SIZE }, (_, i) => (Math.floor(now / 1000) * 7919 + i * 104_729 + 17) % 1_000_000_007);
-      this.next = { round: `r${now.toString(36)}`, phase: 'vote', seeds, civs: Number(body.civs) || this.o.civs, opened: now };
+      this.next = { round: `r${now.toString(36)}`, phase: 'vote', seeds, civs: Number(body.civs) || this.o.civs, opened: now, simV: Number(body.simV) || SIM_V };
       await this.saveNext();
       return json({ ok: true, next: this.next });
     }

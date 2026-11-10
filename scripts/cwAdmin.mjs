@@ -2,7 +2,8 @@
 //
 //   npm run world:admin -- status
 //   npm run world:admin -- wipe --confirm [--seed 123] [--civs 20]
-//   npm run world:admin -- next open [--seeds 11,22,33,44,55,66]     open the map ballot (6 random maps by default)
+//   npm run world:admin -- next open [--seeds 11,22,33,44,55,66] [--sim 7]   open the map ballot (6 random maps);
+//        --sim N: the new world begins only once sim version N is deployed (an older world then holds still)
 //   npm run world:admin -- next close [--pick 3] [--at "2026-11-14 19:00"]   end voting (winner, or map number --pick)
 //   npm run world:admin -- next schedule --at "2026-11-14 19:00"     set or move the start (local time), or --in 2h
 //   npm run world:admin -- next unschedule | next cancel
@@ -43,7 +44,7 @@ if (!key) { console.error('No admin key: set CW_ADMIN_KEY or create .cw-admin-ke
 if (cmd === 'next') {
   const sub = args[1];
   let body = {};
-  if (sub === 'open') body = { seeds: opt('seeds') ? opt('seeds').split(',').map(Number) : undefined, civs: opt('civs') ? Number(opt('civs')) : undefined };
+  if (sub === 'open') body = { seeds: opt('seeds') ? opt('seeds').split(',').map(Number) : undefined, civs: opt('civs') ? Number(opt('civs')) : undefined, simV: opt('sim') ? Number(opt('sim')) : undefined };
   else if (sub === 'close') body = { pick: opt('pick') ? Number(opt('pick')) - 1 : undefined, at: startTime() };
   else if (sub === 'schedule') {
     const at = startTime();
