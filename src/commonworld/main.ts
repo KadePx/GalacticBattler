@@ -588,6 +588,7 @@ $('welcome').onclick = (e) => {
   try { localStorage.setItem('cw.welcomed', '1'); } catch { /* private mode */ }
   $('welcome').classList.add('hidden');
   if (a === 'found') openFounding();
+  else maybeShowNext();
 };
 
 // ---- Founder actions, offerings, notifications, digest (milestone 6) ----
