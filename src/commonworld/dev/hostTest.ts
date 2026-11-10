@@ -5,9 +5,10 @@
 // by replaying synced inputs (same state hash); a restarted host resumes identically from
 // storage; history endpoints return data; the admin wipe archives and starts a new world.
 
-import { foundingSpots } from '../sim/civ';
+import { canFoundAt, foundingSpots } from '../sim/civ';
+import { forWithin, hexDist } from '../sim/hex';
 import { founderHash } from '../shared/text';
-import { assemble, stateHash, step, type Input, type World } from '../sim/index';
+import { assemble, createWorld, stateHash, step, type Input, type World } from '../sim/index';
 import { influence, nameable } from '../sim/player';
 import { WorldHost, type KV } from '../server/host';
 import type { D1 } from '../../net/db';
@@ -204,6 +205,71 @@ async function main(): Promise<void> {
   const later = (await (await get(fast, 'state')).json()) as { tick: number };
   check(later.tick === before.tick + 10, `ten fast months later: +${later.tick - before.tick}`);
 
+  // The next world: a ballot, a pre-founding period, then a scheduled start.
+  const adm = (cmd: string, b: unknown = {}) => get(fast, `admin/next/${cmd}`, { method: 'POST', headers: { 'x-admin-key': 'secret' }, body: JSON.stringify(b) });
+  const postAs = (path: string, b: unknown) => get(fast, path, { method: 'POST', body: JSON.stringify(b), headers: { 'content-type': 'application/json' } });
+  const ids = ['voter-a-0123456789abcdef', 'voter-b-0123456789abcdef', 'voter-c-0123456789abcdef', 'voter-d-0123456789abcdef'];
+  check((await postAs('vote', { id: ids[0], first: 0, second: 1 })).status === 409, 'no voting before a round opens');
+  check((await get(fast, 'admin/next/open', { method: 'POST' })).status === 403, 'opening a round needs the key');
+  const opened = await (await adm('open')).json() as { next: { seeds: number[] } };
+  check(opened.next.seeds.length === 6 && new Set(opened.next.seeds).size === 6, 'a ballot of six maps opened');
+  check((await postAs('vote', { id: ids[0], first: 2, second: 2 })).status === 400, 'a second pick must differ from the first');
+  await postAs('vote', { id: ids[0], first: 1, second: 4 });
+  await postAs('vote', { id: ids[0], first: 2, second: 4 }); // changed their mind
+  await postAs('vote', { id: ids[1], first: 4, second: 2 });
+  await postAs('vote', { id: ids[2], first: 4, second: -1 });
+  check((await postAs('vote', { id: ids[3], first: 0, second: 1 })).status === 429, 'a fourth ballot from one network is refused');
+  const nv = await (await get(fast, `next?f=${await founderHash(ids[0])}`)).json() as { phase: string; points: number[]; voters: number; mine: { first: number } };
+  check(nv.phase === 'vote' && nv.voters === 3 && nv.points.join() === '0,0,3,0,5,0' && nv.mine.first === 2, `ballots tallied (${nv.points.join(' ')})`);
+  const closed = await (await adm('close')).json() as { pick: number; seed: number };
+  check(closed.pick === 4 && closed.seed === opened.next.seeds[4], 'closing the vote picks the map with most points');
+  check((await postAs('vote', { id: ids[0], first: 1, second: 2 })).status === 409, 'no voting after it closes');
+
+  const pw = createWorld({ seed: closed.seed, civs: 20 });
+  const homes = foundingSpots(pw, 14);
+  const pf = (id: string, tile: number, name: string) => postAs('prefound', { id, tile, values: ['curious', 'devout', 'seafaring'], name, capital: 'Firsthome', banner: [200, 0, 1, 3, 2] });
+  check((await pf(ids[0], homes[0], 'Earlyfolk')).status === 200, 'founding ahead of the start is accepted');
+  let near = -1;
+  forWithin(pw.W, pw.H, homes[0], 5, (i) => { if (near < 0 && i !== homes[0] && canFoundAt(pw, i)) near = i; });
+  if (near >= 0) check((await pf(ids[1], near, 'Crowders')).status === 409, 'a second homeland too close to the first is refused');
+  const far = homes.find((t) => hexDist(pw.W, t, homes[0]) >= 6)!;
+  check((await pf(ids[1], far, 'Farfolk')).status === 200, 'a second people founds further away');
+  check((await pf(ids[0], homes[0], 'Laterfolk')).status === 200, 'a pre-founding can be changed');
+  await pf(ids[2], homes.find((t) => hexDist(pw.W, t, homes[0]) >= 6 && hexDist(pw.W, t, far) >= 6)!, 'Quitters');
+  await postAs('prefound/cancel', { id: ids[2] });
+  const np = await (await get(fast, `next?f=${await founderHash(ids[1])}`)).json() as { phase: string; peoples: { name: string; mine: boolean }[]; startAt: number | null };
+  check(np.phase === 'prep' && np.peoples.length === 2 && np.peoples.filter((x) => x.mine).length === 1 && np.startAt === null, 'two peoples wait for the new world');
+
+  const startAt = clock + 3 * 3_600_000;
+  await adm('schedule', { at: startAt });
+  check(fast.nextWakeAt() <= startAt, 'the host will wake for the start');
+  clock += 3_600_000;
+  await fast.advance();
+  const pre = await (await get(fast, 'state')).json() as { world: string; hash: string; tick: number };
+  check(pre.tick > before.tick, 'the old world runs on until the start');
+  const oldId = pre.world;
+  clock = startAt + 5 * (MS / 5) + 10;
+  while ((await fast.advance()) > 0) { /* catch up */ }
+  const nw = await (await get(fast, 'state')).json() as { world: string; tick: number };
+  check(nw.world !== oldId && nw.tick === 5, `the new world began at the start time (${nw.world}, month ${nw.tick})`);
+  const nwWorld = assemble(await gunzip(await get(fast, 'static')), await gunzip(await get(fast, 'snapshot')));
+  const fA = await founderHash(ids[0]);
+  const fB = await founderHash(ids[1]);
+  const ca = nwWorld.civs.find((c) => c.founder === fA);
+  check(!!ca && ca.name === 'Laterfolk' && nwWorld.civs.some((c) => c.founder === fB) && !nwWorld.civs.some((c) => c.founder === (founderHash(ids[2]) as unknown)), 'pre-founded peoples arrived in the first month');
+  check(nwWorld.civs.filter((c) => c.founder).every((c) => c.born === 0), 'they arrived in month zero');
+  const meA = await (await get(fast, `me?f=${fA}`)).json() as { status: string };
+  check(meA.status === 'founded', 'a pre-founder is told their people was founded');
+  check(((await (await get(fast, 'next')).json()) as { phase: string }).phase === 'none', 'the round is over');
+  const archs = await (await get(fast, 'archives')).json() as { archives: { id: string; year: number }[] };
+  check(archs.archives.length === 1 && archs.archives[0].id === oldId, 'the old world is listed as an earlier world');
+  const oldW = assemble(await gunzip(await get(fast, `archive/static?world=${oldId}`)), await gunzip(await get(fast, `archive/snapshot?world=${oldId}`)));
+  check(stateHash(oldW) === pre.hash, 'the earlier world can be loaded as it ended');
+  const oev = await (await get(fast, `events?world=${oldId}&limit=50`)).json() as { events: unknown[] };
+  const oyr = await (await get(fast, `years?world=${oldId}&from=0&to=20`)).json() as { years: unknown[] };
+  check(oev.events.length === 50 && oyr.years.length > 10, 'its chronicle and history are still served');
+  check((await get(fast, 'archive/static?world=nope')).status === 404, 'unknown worlds are not served');
+
   // Admin.
   const denied = await get(fast, 'admin/wipe', { method: 'POST' });
   check(denied.status === 403, 'wipe without key is refused');
@@ -211,7 +277,7 @@ async function main(): Promise<void> {
   const st5 = await (await get(fast, 'state')).json() as { world: string; tick: number };
   check(wipe.ok && st5.world !== st.world && st5.tick === 0, `wipe started a new world (${st5.world})`);
   const arch = await db.prepare("SELECT COUNT(*) AS n FROM cw_snaps WHERE kind = 'archive'").first<{ n: number }>();
-  check((arch?.n ?? 0) === 1, 'old world archived before the wipe');
+  check((arch?.n ?? 0) === 2, 'old world archived before the wipe');
 
   console.log(fails ? `\n${fails} check(s) failed` : '\nall checks passed');
   if (fails) process.exit(1);

@@ -52,7 +52,7 @@ export class WorldDO extends DurableObject<Env> {
   /** Catch up, then make sure an alarm will wake us for the next month. */
   private async tick(): Promise<void> {
     await this.host.advance();
-    const next = this.host.nextTickAt();
+    const next = this.host.nextWakeAt();
     const cur = await this.store.getAlarm();
     if (cur === null || cur > next || cur < Date.now()) await this.store.setAlarm(next);
   }

@@ -6,7 +6,10 @@ import { decodeOwner, frameRoutes, frameSetts, History, liveSetts, type SettView
 import { line } from './chronicle';
 import { createWorld, serialize, step, worldHash, AGES, TICKS_PER_YEAR, TIER_NAMES, type World } from './sim/index';
 import { BIOMES } from './sim/worldgen';
-import { getJson, loadOlderEvents, loadWorld, loadYears, postJson, sync } from './net';
+import { getJson, loadArchive, loadOlderEvents, loadWorld, loadYears, postJson, sync } from './net';
+import { archivesHtml, candidate, countdown, nextHtml, pillText, type NextInfo } from './view/next';
+import { foundingSpots } from './sim/civ';
+import { hexDist } from './sim/hex';
 import { founderId, myHash } from './identity';
 import { EDICT_TEXT, councilHtml, digestHtml, type Queued } from './view/council';
 import { sound } from './view/sound';
@@ -20,7 +23,12 @@ import { banner, chronHtml, civHtml, esc, fmt, inspectHtml, peoplesHtml, techHtm
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const q = new URLSearchParams(location.search);
 // Live by default; ?local=1 runs a private world in the browser (fast-forward, for development).
-const online = !q.has('local');
+// ?world=<id> shows an earlier, finished world; ?next=1 shows the coming world (its ballot, or
+// its map during the founding period before it begins).
+const archiveId = q.get('world');
+const nextMode = !archiveId && q.has('next');
+const online = !q.has('local') && !archiveId && !nextMode;
+const server = !q.has('local'); // talks to /api/cw at all
 
 // ---- State ----
 let w: World;
@@ -53,6 +61,10 @@ let techScope: 'world' | 'civ' = 'world';
 let drawer: DrawerKind[] = [];
 const chron: Ctx['chron'] = { major: true, scope: 'world', q: '', limit: 200 };
 let peoplesQ = '';
+let nextInfo: NextInfo | null = null;
+let ballot: [number, number] = [-1, -1];
+let viewing = Number(q.get('see') ?? -1); // which candidate map the coming-world page shows
+let archiveYear = 0;
 let ownerScratch = new Int16Array(0);
 
 const map = new MapView();
@@ -197,6 +209,11 @@ const SEASONS = ['deep winter', 'late winter', 'early spring', 'spring', 'late s
 function updateTop(): void {
   const y = shownYear();
   const yearEl = $('year');
+  if (nextMode) {
+    yearEl.innerHTML = nextInfo?.phase === 'vote' ? `Next world · Map ${viewing + 1}` : 'The new world';
+    $('wstats').textContent = `${w.civs.length} ancient peoples · ${nextInfo?.phase === 'vote' ? 'voting open' : nextInfo?.startAt ? `begins in ${countdown(nextInfo.startAt - (Date.now() + clockSkew))}` : 'start time to be announced'}`;
+    return;
+  }
   yearEl.innerHTML = `${online || viewYear !== null ? '<span class="live"></span> ' : ''}Year ${y} AW`;
   yearEl.classList.toggle('past', viewYear !== null);
   const v = view();
@@ -213,7 +230,7 @@ function updateTop(): void {
     const s = Math.max(0, Math.round((nextAt - (Date.now() + clockSkew)) / 1000));
     clock = ` · ${SEASONS[w.tick % 12]} · next month in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
-  $('wstats').textContent = `${viewYear !== null ? 'Looking back · ' : ''}${AGES[age]} Age${clock} · ${wars ? `${wars} ${wars === 1 ? 'war' : 'wars'} · ` : ''}${civs.size} peoples · ${v.setts.length} settlements · ${fmt(pop)} souls`;
+  $('wstats').textContent = `${archiveId ? `An earlier world, ended in year ${archiveYear} · ` : viewYear !== null ? 'Looking back · ' : ''}${AGES[age]} Age${clock} · ${wars ? `${wars} ${wars === 1 ? 'war' : 'wars'} · ` : ''}${civs.size} peoples · ${v.setts.length} settlements · ${fmt(pop)} souls`;
 }
 
 // ---- Timeline ----
@@ -350,7 +367,7 @@ function renderDrawer(): void {
     body.innerHTML = myCiv >= 0 ? councilHtml(w, myCiv, msPerTick, queued, naming) : '';
   } else if (top.k === 'world') {
     $('dtitle').textContent = 'The world';
-    body.innerHTML = worldHtml(c);
+    body.innerHTML = worldHtml(c) + archivesHtml(nextInfo?.archives ?? []);
   } else {
     $('dtitle').textContent = 'Chronicle';
     body.innerHTML = chronHtml(c);
@@ -510,6 +527,13 @@ function checkMine(): void {
 
 function renderDock(): void {
   const b = $('mine');
+  if (nextMode) {
+    b.classList.remove('hidden');
+    const mine = nextInfo?.peoples?.find((p) => p.mine);
+    b.className = `btn ${mine ? 'mine' : 'gold'}`;
+    b.innerHTML = nextInfo?.phase === 'vote' ? 'Ballot' : mine ? `The ${esc(mine.name ?? 'people')} · ready` : 'Found your people';
+    return;
+  }
   if (!online) { b.classList.add('hidden'); return; }
   b.classList.remove('hidden');
   if (myCiv >= 0) {
@@ -527,6 +551,12 @@ function renderDock(): void {
 }
 
 $('mine').onclick = () => {
+  if (nextMode) {
+    if (founding) founding.close();
+    else if (nextInfo?.phase === 'prep' && !nextInfo.peoples?.some((p) => p.mine)) openPrefound();
+    else toggleNext(true);
+    return;
+  }
   if (myCiv >= 0) {
     if (w.civs[myCiv].died < 0) map.focus(w.setts[w.civs[myCiv].capital].tile, 3);
     openDrawer({ k: 'mine' }, false);
@@ -545,11 +575,12 @@ function toast(html: string, ms = 5000): void {
 }
 $('toast').onclick = () => $('toast').classList.add('hidden');
 
-function welcome(): void {
+function welcome(): boolean {
   let seen = false;
   try { seen = localStorage.getItem('cw.welcomed') === '1'; } catch { /* private mode */ }
-  if (seen || !online || myCiv >= 0 || pending) return;
+  if (seen || !online || myCiv >= 0 || pending) return false;
   $('welcome').classList.remove('hidden');
+  return true;
 }
 $('welcome').onclick = (e) => {
   const a = (e.target as HTMLElement).closest<HTMLElement>('[data-w]')?.dataset.w;
@@ -694,6 +725,7 @@ function showDigest(): boolean {
 }
 function closeDigest(): void {
   $('digest').classList.add('hidden');
+  maybeShowNext();
 }
 $('digest').addEventListener('click', (e) => {
   const t = e.target as HTMLElement;
@@ -748,10 +780,11 @@ function frame(now: number): void {
   const dt = Math.min(0.25, (now - last) / 1000);
   last = now;
   let changed = false;
-  if (online && now - lastClock > 1000) {
+  if ((online || nextMode) && now - lastClock > 1000) {
     lastClock = now;
     updateTop();
     if (pending) renderDock();
+    tickNext();
   }
   if (playing && !online) {
     acc += dt * speed * TICKS_PER_YEAR;
@@ -861,7 +894,45 @@ async function syncLoop(): Promise<void> {
 async function boot(): Promise<void> {
   await Promise.race([document.fonts.load('600 14px Inter'), new Promise((r) => setTimeout(r, 2500))]);
   const loading = $('loading');
-  if (online) {
+  if (archiveId) {
+    try {
+      loading.textContent = 'OPENING AN EARLIER WORLD…';
+      w = await loadArchive(archiveId);
+      archiveYear = Math.floor(w.tick / TICKS_PER_YEAR);
+      hist = new History(2);
+      await loadYears(hist, 0, archiveYear, (y) => { loading.textContent = `READING THE ANNALS · YEAR ${y}`; });
+      await loadOlderEvents(w, 6000);
+    } catch (e) {
+      console.error('[cw]', e);
+      loading.innerHTML = '<div style="text-align:center;max-width:420px;padding:20px;font-size:18px;line-height:1.5">That world could not be found.<br><br><a href="./">Go to the living world</a></div>';
+      return;
+    }
+    playing = false;
+    $('speed').classList.add('hidden');
+    $('play').classList.add('hidden');
+    $('live').textContent = 'END';
+  } else if (nextMode) {
+    try {
+      const [n, st] = await Promise.all([getJson<NextInfo>(`next?f=${await myHash()}`), getJson<{ turnstile: string | null; now: number }>('state')]);
+      if (n.phase === 'none') { location.replace(location.pathname); return; }
+      clockSkew = st.now - Date.now();
+      turnstileKey = st.turnstile;
+      setNext(n);
+      if (n.phase === 'vote') {
+        if (!(viewing >= 0 && viewing < n.seeds!.length)) viewing = Math.max(0, ballot[0]);
+        w = candidate(n.seeds![viewing], n.civs ?? 20).w;
+      } else w = candidate(n.seed!, n.civs ?? 20).w;
+    } catch (e) {
+      console.error('[cw]', e);
+      loading.innerHTML = '<div style="text-align:center;max-width:420px;padding:20px;font-size:18px;line-height:1.5">The new world can\'t be reached right now.<br><br><a href="./">Go to the living world</a></div>';
+      return;
+    }
+    hist = new History(2);
+    hist.record(w);
+    playing = false;
+    $('timeline').classList.add('hidden');
+    document.body.classList.add('nextmode');
+  } else if (online) {
     try {
       await loadLive(loading);
     } catch (e) {
@@ -899,7 +970,19 @@ async function boot(): Promise<void> {
     setTimeout(syncLoop, 3000);
     me = await myHash();
     const mine = w.civs.find((c) => c.founder === me);
-    if (mine) { myCiv = mine.id; savePending(null); }
+    if (mine) {
+      myCiv = mine.id;
+      savePending(null);
+      // A people founded ahead of time, seeing the new world for the first time.
+      let told = '';
+      try { told = localStorage.getItem('cw.begun') ?? ''; } catch { /* private mode */ }
+      if (mine.born === 0 && told !== worldId) {
+        try { localStorage.setItem('cw.begun', worldId); } catch { /* private mode */ }
+        const cap = w.setts[mine.capital];
+        if (mine.died < 0) map.focus(cap.tile, 4);
+        toast(`<b>The new world has begun.</b><br>The ${esc(mine.name)} lit their first hearth at ${esc(cap.name)} in its very first month.`, 10000);
+      }
+    }
     else {
       const r = await getJson<{ status: string; eta?: number; offered?: number | null }>(`me?f=${me}`).catch(() => ({ status: 'none' }) as { status: string; eta?: number; offered?: number | null });
       offeredToday = r.offered ?? null;
@@ -909,10 +992,187 @@ async function boot(): Promise<void> {
     }
     lastNotified = w.logBase + w.log.length - 1;
     renderDock();
-    if (!showDigest()) welcome();
+    const greeted = showDigest() || welcome();
     saveSeen();
+    await pollNext();
+    if (!greeted) maybeShowNext();
+    setInterval(() => void pollNext(), 60_000);
+  }
+  if (archiveId) {
+    goYear(null);
+    $('nextpill').innerHTML = 'Go to the living world';
+    $('nextpill').classList.remove('hidden');
+    void pollNext();
+  }
+  if (nextMode) {
+    renderDock();
+    if (nextInfo?.phase === 'prep' && q.has('found') && !nextInfo.peoples?.some((p) => p.mine)) openPrefound();
+    else toggleNext(true);
+    markWaiting();
+    setInterval(() => void pollNext(), 30_000);
   }
 }
+
+// ---- The coming world: ballot, founding period, countdown ----
+
+function setNext(n: NextInfo): void {
+  nextInfo = n;
+  const m = n.mine as { first?: number; second?: number } | null | undefined;
+  if (n.phase === 'vote') ballot = [m?.first ?? -1, m?.second ?? -1];
+}
+
+async function pollNext(): Promise<void> {
+  if (!server) return;
+  try {
+    const n = await getJson<NextInfo>(`next?f=${me || (await myHash())}`);
+    if (nextMode && n.phase === 'none') { location.replace(location.pathname); return; }
+    const before = `${nextInfo?.phase}:${nextInfo?.seed}`;
+    setNext(n);
+    if (nextMode && before !== `${n.phase}:${n.seed}` && n.phase === 'prep') { location.replace('?next=1'); return; }
+    renderPill();
+    renderDock();
+    if (!$('next').classList.contains('hidden')) renderNext();
+    markWaiting();
+  } catch (e) {
+    console.warn('[cw] next', e);
+  }
+}
+
+/** On the new world's map, ring the homelands peoples have chosen (numbered as in the list). */
+function markWaiting(): void {
+  if (!nextMode || founding || nextInfo?.phase !== 'prep') return;
+  const ps = nextInfo.peoples ?? [];
+  map.setMarkers(ps.map((p) => p.tile), ps.find((p) => p.mine)?.tile ?? -1);
+}
+
+function renderPill(): void {
+  if (archiveId) return;
+  const p = $('nextpill');
+  const t = nextMode ? '‹ The living world' : pillText(nextInfo, Date.now() + clockSkew);
+  p.classList.toggle('hidden', !t);
+  p.textContent = t;
+}
+
+/** Every second: countdowns, and a quick check once the start time has come. */
+let startPoll = 0;
+function tickNext(): void {
+  if (!nextInfo || nextInfo.phase !== 'prep') return;
+  const now = Date.now() + clockSkew;
+  renderPill();
+  document.querySelectorAll<HTMLElement>('[data-countdown]').forEach((el) => { el.textContent = countdown(Number(el.dataset.countdown) - now); });
+  if (nextInfo.startAt && now >= nextInfo.startAt && now - startPoll > 5000) {
+    startPoll = now;
+    if (nextMode) void pollNext();
+    else location.reload();
+  }
+}
+
+function renderNext(): void {
+  if (!nextInfo) return;
+  const card = $('next').querySelector<HTMLElement>('.card')!;
+  const scroll = card.scrollTop;
+  card.innerHTML = nextHtml(nextInfo, Date.now() + clockSkew, { live: !nextMode, viewing: nextMode ? viewing : -1, ballot });
+  card.scrollTop = scroll;
+}
+
+function toggleNext(open: boolean): void {
+  $('next').classList.toggle('hidden', !open || !nextInfo || nextInfo.phase === 'none');
+  $('next').classList.toggle('side', nextMode);
+  if (open) renderNext();
+}
+
+/** Show the ballot or the countdown once per round and phase, after any other greeting. */
+function maybeShowNext(): void {
+  if (!nextInfo || nextInfo.phase === 'none') return;
+  const key = `${nextInfo.round}:${nextInfo.phase}`;
+  let seen = '';
+  try { seen = localStorage.getItem('cw.nextSeen') ?? ''; } catch { /* private mode */ }
+  if (seen === key) return;
+  try { localStorage.setItem('cw.nextSeen', key); } catch { /* private mode */ }
+  toggleNext(true);
+}
+
+async function castBallot(): Promise<void> {
+  if (ballot[0] < 0) { renderNext(); return; }
+  const r: { ok?: boolean; error?: string } = await postJson<{ ok?: boolean; error?: string }>('vote', { id: founderId(), first: ballot[0], second: ballot[1] }).catch(() => ({ error: 'Could not reach the world.' }));
+  if (!r.ok) toast(esc(r.error ?? 'Something went wrong.'), 6000);
+  await pollNext();
+}
+
+/** Homelands on the new map: good free land not too close to anyone else's pre-founding. */
+function prefoundSpots(): number[] {
+  const all = nextInfo?.peoples ?? [];
+  const taken = all.filter((p) => !p.mine).map((p) => p.tile);
+  const out = foundingSpots(w, 24).filter((t) => taken.every((o) => hexDist(w.W, o, t) >= 6)).slice(0, 6);
+  const mine = all.find((p) => p.mine);
+  if (mine && !out.includes(mine.tile)) out.unshift(mine.tile);
+  return out;
+}
+
+function openPrefound(edit = false): void {
+  if (!nextMode || nextInfo?.phase !== 'prep') return;
+  toggleNext(false);
+  const keep = edit && nextInfo.mine ? (nextInfo.mine as ConstructorParameters<typeof Founding>[1]) : undefined;
+  founding = new Founding({
+    world: () => w,
+    map,
+    turnstileKey,
+    endpoint: 'prefound',
+    spots: prefoundSpots,
+    lead: 'Choose a homeland in the new world. Your people arrive in its very first month, together with everyone else who founds before it begins. You can change your mind until then.',
+    onSent: () => {
+      founding = null;
+      map.setMarkers([], -1);
+      toast('<b>Your people are ready.</b><br>They set out the moment the new world begins.', 8000);
+      void pollNext().then(() => toggleNext(true));
+    },
+    onClose: () => { founding = null; renderDock(); toggleNext(true); markWaiting(); },
+  }, keep);
+  renderDock();
+}
+
+$('next').onclick = (e) => {
+  const t = e.target as HTMLElement;
+  if (t.id === 'next' && !nextMode) { toggleNext(false); return; }
+  const el = t.closest<HTMLElement>('[data-n]');
+  if (!el || !nextInfo) return;
+  const a = el.dataset.n!;
+  const v = Number(el.dataset.v);
+  if (a === 'close') toggleNext(false);
+  else if (a === 'first' || a === 'second') {
+    const k = a === 'first' ? 0 : 1;
+    ballot[k] = ballot[k] === v ? -1 : v;
+    if (ballot[1 - k] === ballot[k]) ballot[1 - k] = -1;
+    if (k === 1 && ballot[0] < 0) { renderNext(); toast('Choose your first pick too.', 4000); return; }
+    renderNext();
+    void castBallot();
+  } else if (a === 'see') {
+    if (!nextMode) { location.href = `?next=1&see=${v}`; return; }
+    viewing = v;
+    w = candidate(nextInfo.seeds![v], nextInfo.civs ?? 20).w;
+    hist = new History(2);
+    hist.record(w);
+    viewCache = null;
+    selCiv = -1;
+    selTile = -1;
+    map.setWorld(w);
+    refreshAll();
+    renderNext();
+  } else if (a === 'go') location.href = '?next=1&found=1';
+  else if (a === 'found') openPrefound();
+  else if (a === 'edit') openPrefound(true);
+  else if (a === 'withdraw') {
+    void postJson<{ ok?: boolean; error?: string }>('prefound/cancel', { id: founderId() }).then((r) => {
+      if (!r.ok) toast(esc(r.error ?? 'Something went wrong.'), 6000);
+      return pollNext();
+    });
+  } else if (a === 'tile') map.focus(v, 4);
+};
+
+$('nextpill').onclick = () => {
+  if (archiveId || nextMode) { location.href = location.pathname; return; }
+  toggleNext($('next').classList.contains('hidden'));
+};
 
 /** One floating tooltip for anything with data-tip: hover on desktop, tap (focus) on phones. */
 function bindTips(): void {

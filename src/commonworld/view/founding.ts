@@ -21,6 +21,12 @@ export interface FoundingHost {
   turnstileKey: string | null;
   /** Called once the server accepted the founding. */
   onSent(p: Pending): void;
+  /** Where to send the founding ('found' now, or 'prefound' for the coming world). */
+  endpoint?: string;
+  /** The homelands to offer (default: the best free land now). */
+  spots?: () => number[];
+  /** The opening words of the first step. */
+  lead?: string;
   onClose(): void;
 }
 export interface Pending { name: string; tile: number; eta: number; skew: number }
@@ -109,7 +115,7 @@ export class Founding {
     this.el = document.getElementById('found')!;
     const t = this.suggestions[0];
     const w = host.world();
-    const spots = foundingSpots(w, 5);
+    const spots = host.spots?.() ?? foundingSpots(w, 5);
     this.d = {
       step: 0, spots, tile: spots[0] ?? -1, name: t.name, capital: t.capital, phon: t.phon, lex: t.lex,
       values: [], banner: [HUES[u32() % HUES.length], u32() % 2, u32() % 3, u32() % 8, u32() % 8],
@@ -246,7 +252,7 @@ export class Founding {
     const dots = STEPS.map((s, i) => `<span class="dot ${i === d.step ? 'on' : i < d.step ? 'done' : ''}">${s}</span>`).join('');
     let body = '';
     if (d.step === 0) {
-      body = `<p class="lead">Every visitor may found one people, once. They will live on without you: growing, trading, warring, perhaps falling. Choose their homeland well.</p>
+      body = `<p class="lead">${this.host.lead ?? 'Every visitor may found one people, once. They will live on without you: growing, trading, warring, perhaps falling. Choose their homeland well.'}</p>
         ${d.spots.length ? d.spots.map((t, i) => {
           const s = describeSpot(w, t);
           return `<button class="spot ${t === d.tile ? 'on' : ''}" data-a="spot" data-v="${t}"><span class="num">${i + 1}</span><span class="sb"><b>${s.title}</b> <span class="stars">${'★'.repeat(s.stars)}<i>${'★'.repeat(5 - s.stars)}</i></span><small>${esc(s.facts.join(' · '))}</small><small>${esc(s.near)}</small></span></button>`;
@@ -333,7 +339,7 @@ export class Founding {
     d.error = '';
     this.render();
     try {
-      const r = await fetch('/api/cw/found', {
+      const r = await fetch(`/api/cw/${this.host.endpoint ?? 'found'}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -346,7 +352,7 @@ export class Founding {
         d.sending = false;
         d.token = '';
         d.error = out.error ?? 'Something went wrong. Please try again.';
-        if (r.status === 409 && /land/.test(d.error)) { d.spots = foundingSpots(this.host.world(), 5); d.tile = d.spots[0] ?? -1; }
+        if (r.status === 409 && /land|near/.test(d.error)) { d.spots = this.host.spots?.() ?? foundingSpots(this.host.world(), 5); d.tile = d.spots[0] ?? -1; }
         this.render();
         return;
       }

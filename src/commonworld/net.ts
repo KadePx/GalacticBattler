@@ -11,6 +11,14 @@ export interface ServerState {
 }
 
 const API = '/api/cw/';
+let wq = ''; // '&world=<id>' while looking at an earlier world
+
+/** Look at an earlier, finished world instead of the living one. */
+export async function loadArchive(id: string): Promise<World> {
+  wq = `&world=${encodeURIComponent(id)}`;
+  const [stat, dyn] = await Promise.all([getGz(`archive/static?world=${encodeURIComponent(id)}`), getGz(`archive/snapshot?world=${encodeURIComponent(id)}`)]);
+  return assemble(stat, dyn);
+}
 
 export async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(API + path, { cache: 'no-store' });
@@ -26,7 +34,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 async function getGz(path: string): Promise<string> {
   // Terrain never changes within a world, so it may be cached, but only under that world's id.
-  const r = await fetch(API + path, { cache: path.startsWith('static') ? 'default' : 'no-store' });
+  const r = await fetch(API + path, { cache: path.startsWith('static') || path.startsWith('archive') ? 'default' : 'no-store' });
   if (!r.ok || !r.body) throw new Error(`${path}: ${r.status}`);
   return new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text();
 }
@@ -40,7 +48,7 @@ export async function loadWorld(): Promise<{ w: World; st: ServerState }> {
 /** Fill the history with the server's yearly records for [from, to]. */
 export async function loadYears(hist: History, from: number, to: number, onPage?: (year: number) => void): Promise<void> {
   for (let y = from; y <= to; y += 500) {
-    const r = await getJson<{ years: { year: number; stats: string; frame: string | null }[] }>(`years?from=${y}&to=${Math.min(to, y + 499)}`);
+    const r = await getJson<{ years: { year: number; stats: string; frame: string | null }[] }>(`years?from=${y}&to=${Math.min(to, y + 499)}${wq}`);
     for (const row of r.years) hist.add({ year: row.year, stats: JSON.parse(row.stats), frame: row.frame ? frameFromWire(row.year, row.frame) : null });
     onPage?.(Math.min(to, y + 499));
   }
@@ -50,7 +58,7 @@ export async function loadYears(hist: History, from: number, to: number, onPage?
 export async function loadOlderEvents(w: World, max: number): Promise<void> {
   let got = 0;
   while (got < max && w.logBase > 0) {
-    const r = await getJson<{ events: (Ev & { id: number })[] }>(`events?before=${w.logBase}&limit=${Math.min(2000, max - got)}`);
+    const r = await getJson<{ events: (Ev & { id: number })[] }>(`events?before=${w.logBase}&limit=${Math.min(2000, max - got)}${wq}`);
     if (!r.events.length) break;
     const older: Ev[] = [];
     for (let i = r.events.length - 1; i >= 0; i--) {
