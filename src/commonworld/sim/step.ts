@@ -1,7 +1,7 @@
 // One tick = one game month. step() is the only thing that moves the world forward.
 
 import {
-  TIER_POP, canFoundAt, claimTiles, ev, foundCiv, foundSettlement, has, killSett, mods, recount, scoreSite,
+  TIER_POP, canFoundAt, claimTiles, ev, foundCiv, foundSettlement, has, killSett, mods, recount, scoreSite, suggestSpots,
   spawnCiv, tally, tendReserves, tierFor, type Mods,
 } from './civ';
 import { rel, relOf, yearlyDiplo } from './diplo';
@@ -11,6 +11,7 @@ import { monumentName, plagueName } from './names';
 import { greatCount, succession, yearlyGreats } from './people';
 import { applyAct, applyOffer, edictOn, yearlyPlayer } from './player';
 import { yearlyDisasters } from './disaster';
+import { applyGod, monthlyHordes } from './god';
 import { yearlyFaith } from './faith';
 import { maybeDefect, yearlyFate } from './fate';
 import { refreshWonderFx, wonderFx, yearlyWonders } from './wonders';
@@ -73,7 +74,8 @@ export function step(w: World, inputs: Input[] = []): void {
     recount(w);
     markWars(w);
   }
-  for (const c of w.civs) if (c.died < 0) monthlyArmy(w, c, warring[c.id] === 1);
+  for (const c of w.civs) if (c.died < 0 && !c.horde) monthlyArmy(w, c, warring[c.id] === 1);
+  monthlyHordes(w);
   const n = w.setts.length;
   for (let k = 0; k < n; k++) {
     const s = w.setts[k];
@@ -99,6 +101,7 @@ function markWars(w: World): void {
 
 function applyInput(w: World, inp: Input): void {
   if (inp.k === 'offer') { applyOffer(w, inp); return; }
+  if (inp.k === 'god') { applyGod(w, inp); return; }
   if (inp.k !== 'found') { applyAct(w, inp); return; }
   {
     if (w.civs.some((c) => c.founder === inp.founder)) return; // one founding per person
@@ -641,4 +644,49 @@ function yearly(w: World): void {
   yearlyFate(w);
   worldAge(w);
   tendReserves(w);
+  backfill(w);
+}
+
+const FILL_FROM = 2; // years the founders have the world to themselves
+const FILL_GAP = 8; // hexes between a newcomer and any town or held-open homeland
+
+/**
+ * Yearly, in a world that began empty: AI peoples arrive on open land, a few at a time, until
+ * the world holds `fill` peoples. They keep clear of everyone already there and of the homelands
+ * held open for founders, and they come knowing what most peoples already know.
+ */
+function backfill(w: World): void {
+  if (!w.fill || w.tick < FILL_FROM * TICKS_PER_YEAR) return;
+  const alive = w.civs.filter((c) => c.died < 0).length;
+  const want = w.fill - alive;
+  if (want <= 0) return;
+  const n = Math.max(1, Math.ceil(want / 3));
+  const r = new Rand(w.seed, S.FOUND, w.tick, 0xf11);
+  const towns = w.setts.filter((s) => s.died < 0).map((s) => s.tile);
+  const placed: number[] = [];
+  // Roomy first; if the land is filling up, closer (but never on a held-open homeland).
+  for (const [gap, held] of [[FILL_GAP, FILL_GAP], [6, 4]]) {
+    const clear = (t: number) => [...towns, ...placed].every((o) => hexDist(w.W, o, t) >= gap) && w.reserves.every((o) => hexDist(w.W, o, t) >= held);
+    for (const t of suggestSpots(w, 80, gap)) {
+      if (placed.length >= n) break;
+      if (canFoundAt(w, t) && clear(t)) placed.push(t);
+    }
+  }
+  for (const t of placed) {
+    const boon = lateBoon(w);
+    const c = foundCiv(w, { tile: t, values: randomValues(r), founder: null, pop: Math.max(100, Math.round(boon.pop * 0.6)) });
+    c.techs = boon.techs;
+  }
+  if (placed.length) recount(w);
+}
+
+function randomValues(r: Rand): ValueId[] {
+  const out: ValueId[] = [];
+  while (out.length < 3) {
+    const v = r.pick(VALUES);
+    if (out.includes(v)) continue;
+    if ((v === 'expansionist' && out.includes('isolationist')) || (v === 'isolationist' && out.includes('expansionist'))) continue;
+    out.push(v);
+  }
+  return out;
 }

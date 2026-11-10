@@ -205,6 +205,25 @@ async function main(): Promise<void> {
   const later = (await (await get(fast, 'state')).json()) as { tick: number };
   check(later.tick === before.tick + 10, `ten fast months later: +${later.tick - before.tick}`);
 
+  // The owner's hand.
+  const god = (b: unknown, key = 'secret') => get(fast, 'admin/god', { method: 'POST', headers: { 'x-admin-key': key, 'content-type': 'application/json' }, body: JSON.stringify(b) });
+  check((await god({ what: 'say', text: 'hi' }, 'nope')).status === 403, 'admin events need the key');
+  check((await god({ what: 'plague', town: 'Nowhere-at-all' })).status === 404, 'an unknown town is refused');
+  const gw = assemble(await gunzip(await get(fast, 'static')), await gunzip(await get(fast, 'snapshot')));
+  const someone = gw.civs.find((c) => c.died < 0)!;
+  check((await god({ what: 'say', text: 'A comet hung in the sky.' })).status === 200, 'a chronicle line is queued');
+  check((await god({ what: 'horde', civ: someone.name, name: 'Vargan', power: 3 })).status === 200, 'a horde is queued, by people name');
+  clock += 2 * (MS / 5);
+  await fast.advance();
+  const gw2 = assemble(await gunzip(await get(fast, 'static')), await gunzip(await get(fast, 'snapshot')));
+  const hd = gw2.civs.find((c) => c.horde);
+  check(!!hd && hd.name === 'Vargan' && gw2.log.some((e) => e.k === 'god') && gw2.wars.some((x) => x.end < 0 && x.atk === hd.id), 'the horde rode in and made war; the line is in the chronicle');
+  const gs = await (await get(fast, `sync?world=${(await (await get(fast, 'state')).json() as { world: string }).world}&tick=${gw.tick}`)).json() as { inputs: [number, Input][]; tick: number; hash: string };
+  const rep = gw;
+  while (rep.tick < gs.tick) step(rep, gs.inputs.filter(([t]) => t === rep.tick).map(([, i]) => i));
+  check(stateHash(rep) === gs.hash, 'clients replay admin events identically');
+  check((await god({ what: 'calm', civ: 'Vargan' })).status === 200, 'the horde can be calmed by name');
+
   // The next world: a ballot, a pre-founding period, then a scheduled start.
   const adm = (cmd: string, b: unknown = {}) => get(fast, `admin/next/${cmd}`, { method: 'POST', headers: { 'x-admin-key': 'secret' }, body: JSON.stringify(b) });
   const postAs = (path: string, b: unknown) => get(fast, path, { method: 'POST', body: JSON.stringify(b), headers: { 'content-type': 'application/json' } });
@@ -221,6 +240,7 @@ async function main(): Promise<void> {
   check((await postAs('vote', { id: ids[3], first: 0, second: 1 })).status === 429, 'a fourth ballot from one network is refused');
   const nv = await (await get(fast, `next?f=${await founderHash(ids[0])}`)).json() as { phase: string; points: number[]; voters: number; mine: { first: number } };
   check(nv.phase === 'vote' && nv.voters === 3 && nv.points.join() === '0,0,3,0,5,0' && nv.mine.first === 2, `ballots tallied (${nv.points.join(' ')})`);
+  check((await adm('set', { civs: 0, fill: 20 })).status === 200, 'the coming world can be set to begin empty');
   const closed = await (await adm('close')).json() as { pick: number; seed: number };
   check(closed.pick === 4 && closed.seed === opened.next.seeds[4], 'closing the vote picks the map with most points');
   check((await postAs('vote', { id: ids[0], first: 1, second: 2 })).status === 409, 'no voting after it closes');
@@ -258,6 +278,7 @@ async function main(): Promise<void> {
   const ca = nwWorld.civs.find((c) => c.founder === fA);
   check(!!ca && ca.name === 'Laterfolk' && nwWorld.civs.some((c) => c.founder === fB) && !nwWorld.civs.some((c) => c.founder === (founderHash(ids[2]) as unknown)), 'pre-founded peoples arrived in the first month');
   check(nwWorld.civs.filter((c) => c.founder).every((c) => c.born === 0), 'they arrived in month zero');
+  check(nwWorld.fill === 20 && nwWorld.civs.every((c) => c.founder), 'the new world began with only its founders, to be filled later');
   const meA = await (await get(fast, `me?f=${fA}`)).json() as { status: string };
   check(meA.status === 'founded', 'a pre-founder is told their people was founded');
   check(((await (await get(fast, 'next')).json()) as { phase: string }).phase === 'none', 'the round is over');

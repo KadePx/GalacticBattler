@@ -80,6 +80,7 @@ export function succession(w: World, c: Civ): void {
  * the realm is too small or has no such town.
  */
 export function civilWar(w: World, c: Civ, r: Rand, title: string, claimant: { name: string; house: string } | null): boolean {
+  if (c.horde) return false;
   const ids = tally.list[c.id] ?? [];
   const cap = w.setts[c.capital];
   const rivals = ids.map((id) => w.setts[id]).filter((s) => s.id !== c.capital && hexDist(w.W, s.tile, cap.tile) >= 4).sort((a, b) => b.pop - a.pop || a.id - b.id);

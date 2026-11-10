@@ -24,6 +24,11 @@ export function strength(c: Civ): number {
   return s * (1 - c.weary / 250);
 }
 
+/** True if any of these peoples is a living horde: its wars move fast and end only in conquest. */
+export function hordeWar(w: World, ids: number[]): boolean {
+  return ids.some((id) => !!w.civs[id]?.horde && w.civs[id].died < 0);
+}
+
 export function activeWars(w: World, c: number): War[] {
   return w.wars.filter((x) => x.end < 0 && (x.atk === c || x.def === c || x.atkAllies.includes(c) || x.defAllies.includes(c)));
 }
@@ -179,7 +184,7 @@ function sideStrength(w: World, ids: number[]): number {
 /** Every three months each war sees a clash at the front. */
 export function monthlyWar(w: World): void {
   for (const war of w.wars) {
-    if (war.end >= 0 || w.tick % 3 !== war.id % 3) continue;
+    if (war.end >= 0 || (w.tick % 3 !== war.id % 3 && !hordeWar(w, [war.atk, war.def]))) continue;
     const A = w.civs[war.atk];
     const D = w.civs[war.def];
     if (A.died >= 0 || D.died >= 0) continue;
@@ -231,7 +236,7 @@ export function monthlyWar(w: World): void {
     if (xWins && ratio > 1.15) {
       if (T.siegeBy !== X.id) T.siege = 0;
       T.siegeBy = X.id;
-      T.siege += ratio > 1.8 ? 2 : 1;
+      T.siege += (ratio > 1.8 ? 2 : 1) + Math.round(X.horde ?? 0);
     } else if (!xWins) {
       T.siege = Math.max(0, T.siege - 1);
     }
@@ -284,6 +289,7 @@ export function considerPeace(w: World): void {
     const r = new Rand(w.seed, S.AI, w.tick, 0x9ea, war.id);
     let result: War['result'] = '';
     if (A.died >= 0 || D.died >= 0) result = 'conquered';
+    else if (hordeWar(w, [war.atk, war.def])) continue;
     else if (war.score >= 30 && yrs >= 2 && r.chance(0.5)) result = 'victory';
     else if (war.score <= -30 && yrs >= 2 && r.chance(0.5)) result = 'defeat';
     else if (A.weary > 55 || D.weary > 65 || yrs >= 15) result = war.score >= 20 ? 'victory' : war.score <= -20 ? 'defeat' : 'stalemate';

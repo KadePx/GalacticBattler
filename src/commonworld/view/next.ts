@@ -15,7 +15,7 @@ export interface PreFounded { tile: number; name: string | null; banner: number[
 export interface NextInfo {
   phase: 'none' | 'vote' | 'prep';
   simV?: number; held?: boolean;
-  round?: string; seeds?: number[]; civs?: number; seed?: number | null; startAt?: number | null; now: number;
+  round?: string; seeds?: number[]; civs?: number; fill?: number; seed?: number | null; startAt?: number | null; now: number;
   points?: number[]; firsts?: number[]; voters?: number;
   mine?: { first: number; second: number } | Record<string, unknown> | null;
   peoples?: PreFounded[];
@@ -133,7 +133,7 @@ export function nextHtml(n: NextInfo, now: number, opts: { live: boolean; viewin
     const max = Math.max(1, ...pts);
     const [first, second] = opts.ballot;
     return `<div class="nh"><h2>Choose the next world</h2><button class="icon" data-n="close" aria-label="Close">✕</button></div>
-      <p class="lead">A new world is coming. Vote for its map: your first pick counts 2 points, your second 1. When voting closes, founding opens on the winning map, and everyone who founds a people before it begins starts together in year 0.</p>
+      <p class="lead">A new world is coming. Vote for its map: your first pick counts 2 points, your second 1. When voting closes, founding opens on the winning map, and everyone who founds a people before it begins starts together in year 0${civs ? '' : ', with the land to themselves at first'}.</p>
       <div class="cands">${seeds.map((seed, i) => {
         const c = candidate(seed, civs);
         const tag = i === first ? '<span class="pick p1">1st</span>' : i === second ? '<span class="pick p2">2nd</span>' : '';
@@ -144,8 +144,8 @@ export function nextHtml(n: NextInfo, now: number, opts: { live: boolean; viewin
           <div class="cb"><button class="btn ${i === first ? 'on' : ''}" data-n="first" data-v="${i}">1st pick</button><button class="btn ${i === second ? 'on' : ''}" data-n="second" data-v="${i}">2nd pick</button></div>
         </div>`;
       }).join('')}</div>
-      ${opts.unnamed ? '<p class="hint">The ancient peoples, towns and rivers are named when the world begins.</p>' : ''}
-      <p class="hint">${n.voters ?? 0} ${n.voters === 1 ? 'ballot' : 'ballots'} so far. ${first >= 0 ? 'Your ballot is saved; you can change it until voting closes.' : 'Pick a map to cast your ballot.'} Dots are where the ${civs} ancient peoples begin.${opts.live ? ' Tap a map to look at it up close.' : ''}</p>
+      ${opts.unnamed ? `<p class="hint">${civs ? 'The ancient peoples, towns and rivers are' : 'Rivers are'} named when the world begins.</p>` : ''}
+      <p class="hint">${n.voters ?? 0} ${n.voters === 1 ? 'ballot' : 'ballots'} so far. ${first >= 0 ? 'Your ballot is saved; you can change it until voting closes.' : 'Pick a map to cast your ballot.'} ${civs ? `Dots are where the ${civs} ancient peoples begin.` : `No one lives here at the start: founders arrive first, and AI peoples come later to fill the empty land.`}${opts.live ? ' Tap a map to look at it up close.' : ''}</p>
       ${opts.live ? '<p class="hint">This world carries on until the new one begins, and stays open to visit afterward.</p>' : ''}`;
   }
   const c = candidate(n.seed!, civs);
@@ -159,9 +159,9 @@ export function nextHtml(n: NextInfo, now: number, opts: { live: boolean; viewin
     : `<div class="row2"><button class="btn gold" data-n="${opts.live ? 'go' : 'found'}">Found your people in the new world</button></div>`;
   return `<div class="nh"><h2>The new world</h2><button class="icon" data-n="close" aria-label="Close">✕</button></div>
     <div class="prep"><img src="${c.img}" alt="The new world's map"><div>${start}<p class="hint">${facts(c)}</p></div></div>
-    <p class="lead">Found your people now and they arrive in its very first month, alongside the ${civs} ancient peoples. You can change or withdraw them until it begins. Peoples in the current world carry on there until it ends.</p>
+    <p class="lead">Found your people now and they arrive in its very first month, ${civs ? `alongside the ${civs} ancient peoples` : 'before anyone else: AI peoples only arrive from the second year, on land no founder has taken'}. You can change or withdraw them until it begins. Peoples in the current world carry on there until it ends.</p>
     ${act}
-    ${opts.unnamed ? '<p class="hint">The ancient peoples, towns and rivers are named when the world begins.</p>' : ''}
+    ${opts.unnamed ? `<p class="hint">${civs ? 'The ancient peoples, towns and rivers are' : 'Rivers are'} named when the world begins.</p>` : ''}
     ${n.held ? '<p class="hint">The current world now holds still until the new one begins.</p>' : ''}
     <h3>Ready to set out <span class="legend">${peoples.length}</span></h3>
     ${peoples.length ? `<div class="waiting">${peoples.map((p, i) => `<button class="wp" data-n="tile" data-v="${p.tile}"><span class="wn">${i + 1}</span>${bannerSvg(specFromNums(p.banner), 18)}<span><b>${esc(p.name ?? 'A people')}</b>${p.byName ? `<small>founded by ${esc(p.byName)}</small>` : ''}</span></button>`).join('')}</div>` : '<p class="hint">No one yet. Be the first.</p>'}`;

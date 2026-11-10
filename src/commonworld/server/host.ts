@@ -5,7 +5,7 @@
 
 import {
   createWorld, serializeDynamic, serializeStatic, assemble, stateHash, step, SIM_V, TICKS_PER_YEAR, VALUES,
-  EDICTS, type ActInput, type Edict, type FoundInput, type Input, type ValueId, type World,
+  EDICTS, type ActInput, type Edict, type FoundInput, type GodInput, type Input, type ValueId, type World,
 } from '../sim/index';
 import { COST, OMEN_CHOICES, influence, nameable } from '../sim/player';
 import { AGES, civAge } from '../sim/techs';
@@ -41,7 +41,7 @@ interface Meta { id: string; seed: number; epoch: number; created: number; msPer
  * people on it ahead of time, and once the owner sets startAt the current world is archived and
  * the new one begins at that moment, with every pre-founded people arriving in its first month.
  */
-export interface Next { round: string; phase: 'vote' | 'prep'; seeds: number[]; civs: number; opened: number; seed?: number; startAt?: number | null; simV?: number }
+export interface Next { round: string; phase: 'vote' | 'prep'; seeds: number[]; civs: number; opened: number; seed?: number; startAt?: number | null; simV?: number; fill?: number }
 /** A finished world, kept read-only. */
 export interface Archive { id: string; seed: number; year: number; ended: number; peoples: number; founders: number }
 
@@ -189,9 +189,9 @@ export class WorldHost {
     await this.kv.put('meta', JSON.stringify(this.meta));
   }
 
-  private async create(seed: number, civs: number, epoch = this.o.now()): Promise<World> {
+  private async create(seed: number, civs: number, epoch = this.o.now(), fill?: number): Promise<World> {
     const now = this.o.now();
-    const w = createWorld({ seed, civs });
+    const w = createWorld({ seed, civs, fill });
     this.w = w;
     this.meta = { id: `w${seed.toString(36)}${now.toString(36)}`, seed, epoch, created: now, msPerTick: this.o.msPerTick };
     this.pending = [];
@@ -262,7 +262,7 @@ export class WorldHost {
     await this.kv.put('archives', JSON.stringify(this.archives));
     const rows = await this.db.prepare('SELECT founder, ip, tile, body, created FROM cw_prefounds WHERE round = ?1 ORDER BY created')
       .bind(n.round).all<{ founder: string; ip: string; tile: number; body: string; created: number }>();
-    await this.create(n.seed, n.civs, n.startAt);
+    await this.create(n.seed, n.civs, n.startAt, n.fill);
     const stmts: D1Stmt[] = [];
     for (const r of rows.results) {
       this.pending.push(JSON.parse(r.body) as FoundInput);
@@ -555,7 +555,7 @@ export class WorldHost {
     const n = this.next;
     const now = this.o.now();
     if (!n) return json({ phase: 'none', now, archives: this.archives });
-    const base = { phase: n.phase, round: n.round, seeds: n.seeds, civs: n.civs, seed: n.seed ?? null, startAt: n.startAt ?? null, simV: n.simV ?? SIM_V, held: this.held(), now, archives: this.archives };
+    const base = { phase: n.phase, round: n.round, seeds: n.seeds, civs: n.civs, fill: n.fill ?? 0, seed: n.seed ?? null, startAt: n.startAt ?? null, simV: n.simV ?? SIM_V, held: this.held(), now, archives: this.archives };
     if (n.phase === 'vote') {
       const rows = await this.db.prepare('SELECT founder, first, second FROM cw_votes WHERE round = ?1').bind(n.round).all<{ founder: string; first: number; second: number }>();
       const t = tally(n.seeds.length, rows.results);
@@ -694,7 +694,7 @@ export class WorldHost {
       if (this.held()) return json({ error: 'this world is ending and holds still until the new one begins' }, 409);
       const c = w.civs.find((x) => x.founder === f && x.died < 0);
       if (!c) return json({ error: 'you have no living people' }, 403);
-      const queued = this.pending.filter((p) => p.k !== 'found' && p.k !== 'offer' && p.founder === f) as ActInput[];
+      const queued = this.pending.filter((p) => p.k !== 'found' && p.k !== 'offer' && p.k !== 'god' && p.founder === f) as ActInput[];
       if (queued.length >= 4) return json({ error: 'wait for the month to turn' }, 429);
       const owed = queued.reduce((n, p) => n + COST[p.k], 0);
       if (influence(w, c) < owed + COST[inp.k]) return json({ error: 'not enough influence' }, 409);
@@ -738,8 +738,9 @@ export class WorldHost {
 
   private async admin(cmd: string, req: Request): Promise<Response> {
     if (!this.o.adminKey || req.headers.get('x-admin-key') !== this.o.adminKey) return json({ error: 'forbidden' }, 403);
-    const body = req.method === 'POST' ? ((await req.json().catch(() => ({}))) as { seed?: number; civs?: number; seeds?: number[]; pick?: number; at?: number; force?: boolean; simV?: number }) : {};
+    const body = req.method === 'POST' ? ((await req.json().catch(() => ({}))) as { seed?: number; civs?: number; seeds?: number[]; pick?: number; at?: number; force?: boolean; simV?: number; fill?: number }) : {};
     if (cmd.startsWith('next/') && req.method === 'POST') return this.serial(() => this.adminNext(cmd.slice(5), body));
+    if (cmd === 'god' && req.method === 'POST') return this.serial(() => this.adminGod(body as Record<string, unknown>));
     if (cmd === 'status') {
       const w = await this.serial(() => this.load());
       let next: unknown = this.next;
@@ -775,8 +776,49 @@ export class WorldHost {
     return json({ error: 'unknown admin command' }, 404);
   }
 
+  /** POST admin/god: the owner's hand. Peoples and towns may be named; the event lands next month. */
+  private async adminGod(b: Record<string, unknown>): Promise<Response> {
+    const w = await this.load();
+    const WHAT = ['say', 'plague', 'quake', 'eruption', 'fire', 'flood', 'tsunami', 'famine', 'bless', 'war', 'peace', 'revolt', 'collapse', 'horde', 'calm'];
+    if (!WHAT.includes(b.what as string)) return json({ error: `what must be one of: ${WHAT.join(', ')}` }, 400);
+    const lc = (x: unknown) => String(x ?? '').trim().toLowerCase();
+    const civ = (x: unknown): number | undefined => {
+      if (x === undefined || x === null || x === '') return undefined;
+      if (Number.isInteger(x)) return x as number;
+      const n = lc(x).replace(/^the /, '');
+      return w.civs.find((c) => c.died < 0 && c.name.toLowerCase() === n)?.id ?? -1;
+    };
+    const sett = (x: unknown): number | undefined => {
+      if (x === undefined || x === null || x === '') return undefined;
+      if (Number.isInteger(x)) return x as number;
+      return w.setts.find((s) => s.died < 0 && s.name.toLowerCase() === lc(x))?.id ?? -1;
+    };
+    const inp: GodInput = { k: 'god', what: b.what as GodInput['what'] };
+    const a = civ(b.civ);
+    const o = civ(b.other);
+    const s = sett(b.town);
+    if (a === -1 || o === -1 || s === -1) return json({ error: `no living ${a === -1 ? `people "${b.civ}"` : o === -1 ? `people "${b.other}"` : `town "${b.town}"`}` }, 404);
+    if (a !== undefined) inp.a = a;
+    if (o !== undefined) inp.b = o;
+    if (s !== undefined) inp.s = s;
+    if (Number.isInteger(b.tile)) inp.tile = b.tile as number;
+    if (typeof b.text === 'string' && b.text.trim()) inp.text = b.text.trim().slice(0, 280);
+    if (typeof b.name === 'string' && b.name.trim()) {
+      const nm = properName(b.name);
+      if (!nm) return json({ error: 'that name is not allowed' }, 400);
+      inp.name = nm;
+    }
+    if (Number.isFinite(b.power)) inp.power = Number(b.power);
+    const needs: Record<string, string> = { plague: 's', quake: 's', eruption: 's', fire: 's', flood: 's', tsunami: 's', revolt: 's', famine: 'a', bless: 'a', collapse: 'a', calm: 'a', war: 'ab', peace: 'ab', say: '' };
+    for (const k of needs[inp.what] ?? '') if ((inp as unknown as Record<string, unknown>)[k] === undefined) return json({ error: `${inp.what} needs ${k === 's' ? '--town' : k === 'a' ? '--civ' : '--other'}` }, 400);
+    if (inp.what === 'say' && !inp.text) return json({ error: 'say needs --text' }, 400);
+    this.pending.push(inp);
+    await this.kv.put('pending', JSON.stringify(this.pending));
+    return json({ ok: true, queued: inp, eta: this.nextTickAt(), now: this.o.now() });
+  }
+
   /** Owner commands for the next world: open (a ballot), close (pick the winner), schedule (the start), cancel. */
-  private async adminNext(cmd: string, body: { seeds?: number[]; civs?: number; pick?: number; at?: number; force?: boolean; simV?: number }): Promise<Response> {
+  private async adminNext(cmd: string, body: { seeds?: number[]; civs?: number; pick?: number; at?: number; force?: boolean; simV?: number; fill?: number }): Promise<Response> {
     await this.load();
     const now = this.o.now();
     const n = this.next;
@@ -785,11 +827,21 @@ export class WorldHost {
       const seeds = Array.isArray(body.seeds) && body.seeds.length >= 2 && body.seeds.every((s) => Number.isInteger(s) && s >= 0)
         ? body.seeds.slice(0, 12)
         : Array.from({ length: BALLOT_SIZE }, (_, i) => (Math.floor(now / 1000) * 7919 + i * 104_729 + 17) % 1_000_000_007);
-      this.next = { round: `r${now.toString(36)}`, phase: 'vote', seeds, civs: Number(body.civs) || this.o.civs, opened: now, simV: Number(body.simV) || SIM_V };
+      const civs = Number.isInteger(body.civs) ? Math.max(0, Math.min(40, body.civs!)) : this.o.civs;
+      this.next = { round: `r${now.toString(36)}`, phase: 'vote', seeds, civs, opened: now, simV: Number(body.simV) || SIM_V, fill: Number.isInteger(body.fill) ? body.fill : undefined };
       await this.saveNext();
       return json({ ok: true, next: this.next });
     }
     if (!n) return json({ error: 'no round is open' }, 409);
+    if (cmd === 'set') {
+      // Change how the coming world begins: ancient peoples at the start (civs) and/or AI peoples arriving later (fill).
+      if (Number.isInteger(body.civs)) n.civs = Math.max(0, Math.min(40, body.civs!));
+      if (Number.isInteger(body.fill)) n.fill = Math.max(0, Math.min(60, body.fill!)) || undefined;
+      if (Number.isInteger(body.simV)) n.simV = body.simV;
+      this.preview = null;
+      await this.saveNext();
+      return json({ ok: true, next: n });
+    }
     if (cmd === 'cancel') {
       this.next = null;
       this.preview = null;

@@ -11,7 +11,7 @@ const MAJOR = new Set([
   'found_civ', 'civ_fall', 'secede', 'monument', 'plague_start', 'plague_end', 'tier_up', 'contact', 'succession',
   'war', 'conquest', 'peace', 'crisis', 'new_dynasty', 'age', 'ally', 'great_born',
   'omen_claim', 'claim_war', 'omen_war', 'omen_sign', 'edict', 'renamed', 'great_named', 'wonder_named', 'gift', 'pilgrims',
-  'faith_found', 'schism', 'wonder', 'quake', 'eruption', 'tsunami', 'collapse', 'revival', 'defect',
+  'faith_found', 'schism', 'wonder', 'quake', 'eruption', 'tsunami', 'collapse', 'revival', 'defect', 'horde', 'horde_end', 'god',
 ]);
 
 const GREAT_WORD: Record<string, string> = { general: 'general', scholar: 'scholar', builder: 'master builder', merchant: 'merchant prince', prophet: 'prophet' };
@@ -340,6 +340,15 @@ export function line(w: World, e: Ev, idx: number): Line {
       break;
     case 'tsunami':
       text = `A great wave struck the coast at ${T(e.s)}. ${fmt(e.n ?? 0)} were taken by the sea.`;
+      break;
+    case 'horde':
+      text = `From beyond the edge of the known world rode ${P(e.a)}, a horde without number, led by ${e.x}. They made camp near ${T(e.s)} and turned their eyes on every people around them.`;
+      break;
+    case 'horde_end':
+      text = `The fury of ${P(e.a)} was spent at last. They laid down the sword and became a people like any other.`;
+      break;
+    case 'god':
+      text = e.x ?? '';
       break;
     case 'collapse':
       text = `The realm of ${P(e.a)} could no longer hold together and broke into ${e.n ?? 2} pieces.`;

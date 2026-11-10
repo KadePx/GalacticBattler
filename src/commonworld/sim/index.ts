@@ -11,12 +11,13 @@ export { step } from './step';
 export { AGES, TECHS } from './techs';
 export * from './types';
 
-export interface CreateOpts { seed: number; civs?: number; W?: number; H?: number }
+export interface CreateOpts { seed: number; civs?: number; W?: number; H?: number; fill?: number }
 
 /** A new world with a handful of ancient AI civs, so it is never empty. */
 export function createWorld(o: CreateOpts): World {
   const w = generateWorld(o.seed, o.W, o.H);
   const n = o.civs ?? 20;
+  if (o.fill) w.fill = o.fill;
   const spots = suggestSpots(w, n, Math.max(8, Math.floor(Math.sqrt((w.W * w.H * 0.4) / n) * 0.9)));
   for (let k = 0; k < spots.length; k++) {
     const r = new Rand(o.seed, S.FOUND, 0xa1, k);
