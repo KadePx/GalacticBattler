@@ -65,6 +65,8 @@ export class MapView {
   onUserMove: () => void = () => {};
   selected: Id = 0;
   followId: Id = 0;
+  /** The colonist this browser made: always marked and named, 0 for none. */
+  mineId: Id = 0;
 
   private c!: Colony;
   private mw = 0;
@@ -80,6 +82,7 @@ export class MapView {
   private overLayer = new Container();
   private bldSel = new Graphics();
   private ring = new Graphics();
+  private mineMark = new Graphics();
   private wxLayer = new Container();
   private fog = new Graphics();
   private flashG = new Graphics();
@@ -130,6 +133,9 @@ export class MapView {
     this.ring.ellipse(0, 0, 10, 7).stroke({ width: 2, color: 0x7c8cff });
     this.ring.ellipse(0, 0, 13, 9.4).stroke({ width: 1, color: 0x7c8cff, alpha: 0.4 });
     this.ring.visible = false;
+    // my own colonist wears a small accent marker overhead that never hides
+    this.mineMark.poly([-5, -7, 5, -7, 0, 0]).fill(0x7c8cff).stroke({ width: 1.5, color: 0xffffff });
+    this.mineMark.visible = false;
     this.fog.visible = false;
     this.wxLayer.addChild(this.fog, this.flashG);
     this.app.stage.addChild(this.cam, this.wxLayer, this.labelLayer);
@@ -164,7 +170,7 @@ export class MapView {
       }
     }
     this.night.clear().rect(0, 0, this.mw, this.mh).fill(0xffffff);
-    this.overLayer.addChild(this.ring);
+    this.overLayer.addChild(this.ring, this.mineMark);
     this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.pawnLayer, this.canopyLayer, this.night, this.lightLayer, this.overLayer);
     this.pal = null;
     this.selectBld(this.selBld);
@@ -318,6 +324,7 @@ export class MapView {
     const overScale = Math.max(0.7, Math.min(2.2, 0.95 / s));
     const showNames = s >= 1.15;
     let sel: PawnView | undefined;
+    let mine: PawnView | undefined;
     for (const p of c.pawns) {
       const v = this.views.get(p.id) ?? this.makeView(p);
       v.stamp = stamp;
@@ -393,10 +400,16 @@ export class MapView {
 
       const isSel = p.id === this.selected;
       if (isSel) sel = v;
-      v.label.visible = showNames || isSel || p.id === this.followId;
+      if (p.id === this.mineId) mine = v;
+      v.label.visible = showNames || isSel || p.id === this.followId || p.id === this.mineId;
     }
     for (const [id, v] of this.views) {
       if (v.stamp !== stamp) { this.dropView(v); this.views.delete(id); }
+    }
+    this.mineMark.visible = !!mine;
+    if (mine) {
+      this.mineMark.position.set(mine.x, mine.y - (mine.asleep ? 12 : 12 * mine.size + 4) - Math.abs(Math.sin(this.time * 0.004)) * 2 - (mine.bubble.visible ? 18 * overScale : 0));
+      this.mineMark.scale.set(Math.max(0.8, overScale));
     }
     this.ring.visible = !!sel;
     if (sel) {

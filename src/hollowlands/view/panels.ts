@@ -20,7 +20,7 @@ export type Sel = { k: 'pawn'; id: Id } | { k: 'dead'; id: Id } | { k: 'bld'; id
 export type Tab = 'feed' | 'people' | 'colony';
 
 /** What the controller tells the panels about the current view. */
-export interface ViewState { sel: Sel; follow: Id; speed: number }
+export interface ViewState { sel: Sel; follow: Id; speed: number; /** my own colonist (living, or the last one lost), 0 for none */ me: Id }
 
 /** What the panels ask the controller to do. */
 export interface Hooks {
@@ -44,6 +44,16 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getEl
 // Event kinds whose number is a person (elsewhere it is a count of guests or listeners).
 const N_IS_ID = new Set(['birth', 'bastard_plain', 'found_out', 'defend', 'gossip']);
 
+/** My colonist and the people closest to them: partner, parents and children, living or dead. */
+function myCircle(c: Colony, me: Id): Set<Id> {
+  const out = new Set<Id>([me]);
+  const p = person(c, me);
+  if (p) for (const id of [p.sp, p.mo, p.fa]) if (id) out.add(id);
+  for (const o of c.pawns) if (o.mo === me || o.fa === me) out.add(o.id);
+  for (const o of c.dead) if (o.mo === me || o.fa === me) out.add(o.id);
+  return out;
+}
+
 const clock = (tick: number): string => {
   const t = ((tick % TICKS_PER_DAY) + TICKS_PER_DAY) % TICKS_PER_DAY;
   return `${String(Math.floor(t / 10)).padStart(2, '0')}:${String((t % 10) * 6).padStart(2, '0')}`;
@@ -52,7 +62,7 @@ const clock = (tick: number): string => {
 export class Panels {
   tab: Tab = 'feed';
   shut = false;
-  private filter: 'all' | 'notable' = 'all';
+  private filter: 'all' | 'notable' | 'mine' = 'all';
   private sort: 'mood' | 'name' = 'mood';
   private ui: CardUi = { open: new Set(), allRel: false, following: false };
   private last = new Map<HTMLElement, string>();
@@ -139,7 +149,7 @@ export class Panels {
     else if (d.act === 'follow') this.hooks.follow();
     else if (d.act === 'find') this.hooks.find();
     else if (d.act === 'allrel') this.ui.allRel = !this.ui.allRel;
-    else if (d.filter === 'all' || d.filter === 'notable') { this.filter = d.filter; this.feedKey = ''; }
+    else if (d.filter === 'all' || d.filter === 'notable' || d.filter === 'mine') { this.filter = d.filter; this.feedKey = ''; }
     else if (d.sort === 'mood' || d.sort === 'name') this.sort = d.sort;
     this.dirty = true;
   }
@@ -167,7 +177,7 @@ export class Panels {
     if (this.dirty || now >= this.nextBody) {
       this.nextBody = now + 500;
       this.dirty = false;
-      if (!this.shut) this.put(this.sbody, this.tab === 'feed' ? this.feed(c) : this.tab === 'people' ? this.people(c, v) : this.colony(c));
+      if (!this.shut) this.put(this.sbody, this.tab === 'feed' ? this.feed(c, v.me) : this.tab === 'people' ? this.people(c, v) : this.colony(c));
       this.drawCard(c, v);
     }
   }
@@ -190,24 +200,27 @@ export class Panels {
 
   // ---------- Feed ----------
 
-  private feed(c: Colony): string {
-    const key = `${c.log.length}|${c.logBase}|${this.filter}`;
+  private feed(c: Colony, me: Id): string {
+    if (this.filter === 'mine' && !me) this.filter = 'all';
+    const circle = this.filter === 'mine' ? myCircle(c, me) : null;
+    const key = `${c.log.length}|${c.logBase}|${this.filter}|${me}|${circle ? circle.size : 0}`;
     if (key === this.feedKey) return this.feedHtml;
     this.feedKey = key;
     const chip = (k: string, label: string): string => `<button class="chip${this.filter === k ? ' on' : ''}" data-filter="${k}">${label}</button>`;
-    let h = `<div class="filters">${chip('all', 'All')}${chip('notable', 'Notable')}<button class="chip" disabled title="Comes with player-made colonists">My colonist</button></div>`;
+    let h = `<div class="filters">${chip('all', 'All')}${chip('notable', 'Notable')}${me ? chip('mine', 'My colonist') : '<button class="chip" disabled title="Make a colonist first">My colonist</button>'}</div>`;
     let n = 0;
     let day = -1;
     for (let i = c.log.length - 1; i >= 0 && n < 250; i--) {
       const e = c.log[i];
       const w = WEIGHT[e.k] ?? 1;
       if (this.filter === 'notable' && w < 2) continue;
+      if (circle && !circle.has(e.a ?? 0) && !circle.has(e.b ?? 0) && !(N_IS_ID.has(e.k) && circle.has(e.n ?? 0))) continue;
       const d = Math.floor(e.t / TICKS_PER_DAY);
       if (d !== day) { day = d; h += `<div class="cen">${dateText(e.t)}</div>`; }
       h += `<div class="ln w${w}" title="${dateText(e.t, true)}"><span class="y">${clock(e.t)}</span><span class="t">${linkNames(c, evText(c, e), [e.a, e.b, N_IS_ID.has(e.k) ? e.n : undefined])}</span></div>`;
       n++;
     }
-    if (!n) h += `<div class="hint">${this.filter === 'notable' ? 'Nothing of note yet. Give them time.' : 'Nothing has happened yet.'}</div>`;
+    if (!n) h += `<div class="hint">${this.filter === 'mine' ? 'Nothing has happened to them or theirs yet.' : this.filter === 'notable' ? 'Nothing of note yet. Give them time.' : 'Nothing has happened yet.'}</div>`;
     return (this.feedHtml = h);
   }
 
@@ -218,13 +231,13 @@ export class Panels {
     let h = `<div class="filters"><span class="hint" style="margin:0 4px 0 0">Sort by</span>${chip('mood', 'Mood, lowest first')}${chip('name', 'Name')}</div>`;
     const list = c.pawns.slice().sort(this.sort === 'mood' ? (a, b) => a.mood - b.mood || a.id - b.id : (a, b) => a.first.localeCompare(b.first) || a.id - b.id);
     const selId = v.sel && v.sel.k === 'pawn' ? v.sel.id : 0;
-    for (const p of list) h += this.personRow(c, p, p.id === selId);
+    for (const p of list) h += this.personRow(c, p, p.id === selId, p.id === v.me);
     return h;
   }
 
-  private personRow(c: Colony, p: Pawn, sel: boolean): string {
+  private personRow(c: Colony, p: Pawn, sel: boolean, mine: boolean): string {
     const trade = PROFS[p.prof]?.name ?? (stage(c, p) < 2 ? 'Child' : '');
-    return `<div class="row${sel ? ' sel' : ''}" data-p="${p.id}">${face(c, p, 38)}<div class="n"><b>${esc(fullName(p))}</b><small>${esc(raceName(p.race))}${trade ? ' · ' + esc(trade) : ''}</small><small class="plain">${esc(actText(c, p))}</small></div>` +
+    return `<div class="row${sel ? ' sel' : ''}" data-p="${p.id}">${face(c, p, 38)}<div class="n"><b>${esc(fullName(p))}${mine ? '<span class="tie kin">Yours</span>' : ''}</b><small>${esc(raceName(p.race))}${trade ? ' · ' + esc(trade) : ''}</small><small class="plain">${esc(actText(c, p))}</small></div>` +
       `<div class="v" title="Mood"><i class="dot" style="background:${moodColor(p)}"></i>${Math.round(p.mood)}</div></div>`;
   }
 

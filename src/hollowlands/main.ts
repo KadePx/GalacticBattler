@@ -9,9 +9,14 @@
 import { DEFAULT_MS_PER_DAY, TICKS_PER_DAY } from './config';
 import { RACES } from './sim/data/races';
 import { createColony, step, type Colony, type Id, type RaceK } from './sim/index';
-import { pawnById } from './sim/pawn';
+import { checkSpec, type PawnSpec } from './sim/create';
+import { fullName, pawnById } from './sim/pawn';
+import type { Dead, Pawn } from './sim/types';
+import { dateText } from './text';
+import { Creator, randomSpec } from './view/creator';
 import { MapView } from './view/map';
 import { Panels, type Sel } from './view/panels';
+import { causeText, esc } from './view/words';
 
 /** Real milliseconds per tick at 1x: the pace the shared world will run at. */
 const TICK_MS = DEFAULT_MS_PER_DAY / TICKS_PER_DAY;
@@ -72,6 +77,141 @@ function layout(): void {
   if (ui) map.inset = ui.insets();
 }
 
+// ---------- My colonist ----------
+// Each browser may have one colonist of its own in a colony. Until there is a server, this
+// page stands in for it: it queues the "join" input (the one write the page makes to the
+// colony) and remembers who is ours in localStorage.
+
+const store = {
+  get(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k: string, v: string): void { try { localStorage.setItem(k, v); } catch { /* private mode: live without it */ } },
+  del(k: string): void { try { localStorage.removeItem(k); } catch { /* nothing to remove */ } },
+};
+/** This browser's public id: colonists it makes carry it as `owner`. */
+const me: string = store.get('hl_me') ?? ((): string => {
+  const id = 'u' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  store.set('hl_me', id);
+  return id;
+})();
+/** Where the colonist made for this colony seed is remembered (spec, join tick, id). */
+const mineKey = `hl_mine_${opts.seed}`;
+/** A join is queued and the colonist has not walked in yet. */
+let pending = false;
+/** My colonist's id (living, or else the last one dead or gone), 0 for none. */
+let meId: Id = 0;
+/** The memorial banner the player has closed. */
+let dismissed: Id = 0;
+let mineHtml = '';
+let nextMine = 0;
+let toastTimer = 0;
+
+const myPawn = (): Pawn | null => c.pawns.find((p) => p.owner === me) ?? null;
+function myDead(): Dead | null {
+  for (let i = c.dead.length - 1; i >= 0; i--) if (c.dead[i].owner === me) return c.dead[i];
+  return null;
+}
+
+const creator = new Creator({ send: (spec) => join(spec) });
+
+/** Send a colonist in: they walk in off the road on the tick given (the next one by default). */
+function join(spec: PawnSpec, at = c.tick + 1, remember = true): void {
+  c.inq.push({ t: at, k: 'join', spec, owner: me });
+  pending = true;
+  if (remember) store.set(mineKey, JSON.stringify({ spec, t: at }));
+  syncMine();
+}
+
+function goToMine(): void {
+  const p = myPawn();
+  if (!p) return;
+  openPerson(p.id, false);
+  setFollow(p.id);
+  map.focusPawn(p.id, 1.6);
+}
+
+function toast(text: string): void {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('off');
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => el.classList.add('off'), 4500);
+}
+
+/** Keep the button, the banner and the map marker in step with what has become of my colonist. */
+function syncMine(): void {
+  const p = myPawn();
+  const d = p ? null : myDead();
+  meId = p?.id ?? d?.id ?? 0;
+  map.mineId = p?.id ?? 0;
+  const label = pending && !p ? 'On the road…' : p ? 'My colonist' : d ? 'Make a new colonist' : 'Make your colonist';
+  const banner = !p && !pending && d && dismissed !== d.id
+    ? `<span class="t"><b>${esc(fullName(d))}</b> ${d.left ? 'was lost to the colony' : 'died'} on ${dateText(d.died)}: ${esc(causeText(c, d).toLowerCase())}.</span><button class="btn sm" data-m="view">Remember them</button><button class="btn sm go" data-m="new">Make a new colonist</button><button class="icon" data-m="x" title="Close" aria-label="Close">&times;</button>`
+    : '';
+  const html = label + '|' + (p ? 'has' : '') + '|' + banner;
+  if (html === mineHtml) return;
+  mineHtml = html;
+  const btn = document.getElementById('mine');
+  if (btn) {
+    btn.textContent = label;
+    btn.className = p ? 'has' : pending ? 'wait' : '';
+  }
+  const mem = document.getElementById('memorial');
+  if (mem) {
+    mem.innerHTML = banner;
+    mem.classList.toggle('hidden', !banner);
+  }
+  ui?.touch();
+}
+
+/** After each frame: has the colonist we sent arrived (or been turned away)? */
+function watchMine(now: number): void {
+  if (pending) {
+    const p = myPawn();
+    if (p) {
+      pending = false;
+      const saved = store.get(mineKey);
+      if (saved) { try { store.set(mineKey, JSON.stringify({ ...JSON.parse(saved), id: p.id })); } catch { /* keep the old record */ } }
+      syncMine();
+      goToMine();
+      toast(`${p.first} walks in from the road`);
+    } else if (!c.inq.some((e) => e.k === 'join' && e.owner === me)) {
+      // the sim took the input and made nobody: the colony is full
+      pending = false;
+      store.del(mineKey);
+      syncMine();
+      toast('The colony had no room for them. Try again later.');
+    }
+  }
+  if (now >= nextMine) { nextMine = now + 400; syncMine(); }
+}
+
+/**
+ * The colony is rebuilt from its seed on every load, so a colonist made earlier is gone.
+ * Send the remembered one in again, on the tick they first arrived if that is still ahead.
+ */
+function rejoin(): void {
+  if (myPawn() || myDead()) return;
+  try {
+    const saved = JSON.parse(store.get(mineKey) ?? 'null') as { spec: PawnSpec; t: number } | null;
+    if (saved && checkSpec(saved.spec).ok) join(saved.spec, Math.max(c.tick + 1, saved.t || 0), false);
+  } catch { store.del(mineKey); }
+}
+
+function bindMine(): void {
+  document.getElementById('mine')?.addEventListener('click', () => {
+    if (myPawn()) goToMine();
+    else if (!pending) creator.open(c.name);
+  });
+  document.getElementById('memorial')?.addEventListener('click', (e) => {
+    const k = (e.target as HTMLElement).closest<HTMLElement>('[data-m]')?.dataset.m;
+    const d = myDead();
+    if (k === 'view' && d) setSel({ k: 'dead', id: d.id });
+    else if (k === 'new') creator.open(c.name);
+    else if (k === 'x' && d) { dismissed = d.id; syncMine(); }
+  });
+}
+
 /** Run the colony forward n game days at once (test hook, and the pre= option). */
 function days(n: number): void {
   const end = c.tick + Math.max(0, Math.round(n * TICKS_PER_DAY));
@@ -112,7 +252,9 @@ function frame(dt: number): void {
     setSel(c.dead.some((d) => d.id === id) ? { k: 'dead', id } : null);
   }
   map.render(c, c.tick - 1 + acc, dt);
-  ui?.update(c, { sel, follow, speed }, performance.now());
+  const now = performance.now();
+  watchMine(now);
+  ui?.update(c, { sel, follow, speed, me: meId }, now);
 }
 
 async function boot(): Promise<void> {
@@ -153,8 +295,14 @@ async function boot(): Promise<void> {
   };
   map.onUserMove = () => { if (follow) setFollow(0); };
 
+  bindMine();
+  rejoin();
+  syncMine();
+  document.getElementById('mine')?.classList.remove('hidden');
+
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (creator.isOpen) { if (e.key === 'Escape') creator.close(); return; }
     if (e.key === ' ') { e.preventDefault(); setSpeed(speed ? 0 : 1); }
     else if (e.key >= '1' && e.key <= '4') setSpeed(SPEEDS[Number(e.key)]);
     else if (e.key === 'Escape') setSel(null);
@@ -186,9 +334,23 @@ const hooks = {
   restart: (o: { seed: number; pop?: number; race?: RaceK }): void => {
     c = createColony(o);
     acc = 0;
+    pending = false;
     setSel(null);
     map.setColony(c);
+    syncMine();
   },
+  /** Open the character creator. */
+  creator: (): void => creator.open(c.name),
+  /** Make a random valid colonist and send them in at once. Returns the spec. */
+  rollMine: (): PawnSpec => {
+    const spec = randomSpec();
+    join(spec);
+    return spec;
+  },
+  /** My colonist, or null if there is none alive here. */
+  me: (): Pawn | null => myPawn(),
+  /** Forget the colonist remembered for this seed (they will not be sent in again on reload). */
+  forgetMine: (): void => store.del(mineKey),
   map,
 };
 (window as unknown as { __hl: typeof hooks }).__hl = hooks;
