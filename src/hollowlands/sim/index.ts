@@ -5,6 +5,7 @@ import { RACES, PLAYABLE, childRace } from './data/races';
 import { emptyStock, mouths } from './econ';
 import { BIOMES, genMap } from './mapgen';
 import { colonyName } from './names';
+import { initGov } from './gov';
 import { makePawn, mkAct, normPawn } from './pawn';
 import { assignBeds, assignProfs, build } from './planner';
 import { Rand, S, hashStr } from './rng';
@@ -25,6 +26,7 @@ function blank(seed: number): Colony {
     ter: new Uint8Array(n), feat: new Uint8Array(n), fg: new Uint8Array(n), st: new Uint8Array(n), crop: new Uint8Array(n), wear: new Uint8Array(n), sb: new Uint16Array(n),
     cx: 0, cy: 0, gx: 0, gy: 0, pawns: [], dead: [], nextId: 1, blds: [], nextBld: 1, stock: emptyStock(), log: [], logBase: 0, facts: [], nextFact: 1,
     weather: 0, temp: 9, game: 100, stats: {}, inq: [], foes: [], nextFoe: 1, alarm: 0, story: { last: 0, lastBad: 0, heat: 0, band: 0 }, mods: [], nosite: {},
+    gov: { k: 'elder', ruler: 0, since: 0, laws: { harsh: 1, tax: 0, ration: 0 }, titles: {}, next: 0, regent: 0 }, trials: [],
   };
 }
 
@@ -109,6 +111,7 @@ export function createColony(o: CreateOpts): Colony {
   }
   assignBeds(c, true);
   assignProfs(c, true);
+  initGov(c, r);
   for (const p of c.pawns) {
     p.x = c.cx + r.range(-2, 2);
     p.y = c.cy + r.range(-1, 2);

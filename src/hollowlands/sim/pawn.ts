@@ -141,7 +141,7 @@ export function normPawn(p: Pawn): Pawn {
     id: p.id, first: p.first, fam: p.fam, epi: p.epi, race: p.race, sex: p.sex, born: p.born, look: p.look, traits: p.traits, bc: p.bc, ba: p.ba, sk: p.sk, pas: p.pas, per: p.per,
     orient: p.orient, x: p.x, y: p.y,
     act: { k: a.k, t0: a.t0, ta: a.ta, t1: a.t1, sx: a.sx, sy: a.sy, tx: a.tx, ty: a.ty, path: a.path, w: a.w, b: a.b, o: a.o, d: a.d, why: a.why },
-    food: p.food, rest: p.rest, joy: p.joy, soc: p.soc, mood: p.mood, th: p.th, sit: p.sit, rel: p.rel, mo: p.mo, fa: p.fa, sp: p.sp, crush: p.crush, home: p.home, prof: p.prof,
+    food: p.food, rest: p.rest, joy: p.joy, soc: p.soc, mood: p.mood, th: p.th, sit: p.sit, rel: p.rel, mo: p.mo, fa: p.fa, sp: p.sp, crush: p.crush, home: p.home, prof: p.prof, rank: p.rank,
     faith: p.faith, dev: p.dev, goal: p.goal, hp: p.hp, brk: p.brk, low: p.low, high: p.high, drunk: p.drunk, cloth: p.cloth, lastBrk: p.lastBrk, preg: p.preg, know: p.know, bio: p.bio,
     owner: p.owner, coin: p.coin, insp: p.insp, say: p.say, inj: p.inj, perm: p.perm, ill: p.ill, booze: p.booze, gone: p.gone,
   };
@@ -246,7 +246,7 @@ export function makePawn(c: Colony, r: Rand, o: MakeOpts = {}): Pawn {
     mood: 55,
     th: [], sit: [], rel: {},
     mo: o.mo ?? 0, fa: o.fa ?? 0, sp: 0, crush: 0, home: 0,
-    prof: '',
+    prof: '', rank: 2,
     faith: r.pick(R.faiths),
     dev: piety > 1 ? 3 : piety > 0.2 ? 2 : piety > -0.8 ? 1 : 0,
     goal: r.pick(GOALS),
@@ -261,6 +261,6 @@ export function makePawn(c: Colony, r: Rand, o: MakeOpts = {}): Pawn {
 export function toDead(c: Colony, p: Pawn, cause: string, by?: Id, left = false): Dead {
   return {
     id: p.id, first: p.first, fam: p.fam, epi: p.epi, race: p.race, sex: p.sex, born: p.born, died: c.tick, cause, by,
-    look: p.look, traits: p.traits, bc: p.bc, ba: p.ba, prof: p.prof, mo: p.mo, fa: p.fa, sp: p.sp, bio: p.bio, grave: -1, left: left || undefined, owner: p.owner, faith: p.faith,
+    look: p.look, traits: p.traits, bc: p.bc, ba: p.ba, prof: p.prof, mo: p.mo, fa: p.fa, sp: p.sp, bio: p.bio, grave: -1, left: left || undefined, owner: p.owner, faith: p.faith, rank: p.rank,
   };
 }

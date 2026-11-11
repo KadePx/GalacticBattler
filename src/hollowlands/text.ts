@@ -36,7 +36,7 @@ const CAUSES: Record<string, string> = {
   beast: 'was killed by a beast',
   murder: 'was murdered',
   executed: 'was put to death',
-  accident: 'died in an accident',
+  accident: 'died in an accident', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
   bled: 'bled to death',
   taken: 'was carried off by slavers',
   foe_bandit: 'was cut down by bandits', foe_slaver: 'was killed by slavers', foe_orc: 'was butchered by orc raiders', foe_wolf: 'was torn apart by wolves',
@@ -45,6 +45,7 @@ const CAUSES: Record<string, string> = {
 };
 
 const BREAKS: Record<string, string> = {
+  murder: 'has gone very quiet, and picked up a knife',
   sulk: 'has shut themselves away and will not speak to anyone',
   bingefood: 'is eating everything in sight',
   bingedrink: 'has crawled into a barrel',
@@ -59,6 +60,9 @@ const ILL: Record<string, string> = { flux: 'the flux', fever: 'rot fever', plag
 const PART: Record<string, string> = {
   eyeL: 'eye', eyeR: 'eye', armL: 'arm', armR: 'arm', handL: 'hand', handR: 'hand', legL: 'leg', legR: 'leg', footL: 'foot', footR: 'foot',
 };
+
+const CRIME: Record<string, string> = { theft: 'theft', murder: 'murder', assault: 'attempted murder', treason: 'treason' };
+const SENTENCE = ['found not guilty', 'fined', 'put in the stocks', 'flogged', 'branded', 'had a hand cut off', 'exiled', 'hanged'];
 
 const FACTS: Record<string, string> = {
   affair: 'an affair',
@@ -79,6 +83,8 @@ export const WEIGHT: Record<string, number> = {
   death: 3, birth: 3, wedding: 3, lovers: 2, betrothed: 2, divorce: 3, breakup: 2, found_out: 3, affair: 2, bastard_plain: 3, stillbirth: 3,
   brawl: 2, break: 2, tantrum: 2, friends: 2, rivals: 2, reconciled: 2, masterwork: 2, inspired: 2, convert: 2, adult: 2, left: 3, funeral: 2,
   built: 1, plan: 0, trade: 1, harvest: 1, hunt: 1, frost: 1, mock: 2, defend: 2, refused: 2, wedding_set: 1, wedding_off: 2, feast: 2,
+  ruler: 3, election: 3, usurped: 3, regent: 2, regency_ends: 2, house_ends: 3, house_founded: 3, duel: 3, challenge: 3, coup: 3, plot_failed: 3, title: 2, raised: 2, law: 2,
+  theft: 2, theft_hushed: 1, accused: 2, trial_set: 1, trial: 3, murder: 3, attack: 3, sermon: 1, saint: 3,
   raid: 3, allclear: 1, alarm: 2, rout: 2, slew: 2, looted: 3, seized: 3, rescued: 3, hero: 3, maimed: 3, sick: 2, recovered: 1, outbreak: 3, drunkard: 2,
   joined: 3, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
@@ -136,6 +142,29 @@ export function evText(c: Colony, e: Ev): string {
     case 'funeral': return e.n ? `${e.n} gathered to bury ${full(c, e.a)}.` : `Nobody came to bury ${full(c, e.a)}.`;
     case 'feast': return `The colony feasted.`;
     case 'left': return e.s === 'taken' ? `${full(c, e.a)} was carried off in chains.` : `${full(c, e.a)} has left the colony.`;
+    case 'ruler': return `${full(c, e.a)} now rules${e.s === 'inherited' ? ', as was their birthright' : e.s === 'elected' ? ', by the colony\'s vote' : e.s === 'fought' ? ', by strength of arm' : e.s === 'coup' ? ', by force' : e.s === 'usurped' ? ', over the rightful heir' : ''}.`;
+    case 'election': return `The colony voted. ${full(c, e.a)} won with ${e.n} votes${e.b ? `, beating ${first(c, e.b)}` : ''}.`;
+    case 'usurped': return `${a} pushed ${b} aside and took the seat.`;
+    case 'regent': return `${a} will rule in ${b}'s name until the child is grown.`;
+    case 'regency_ends': return `${a} is of age and rules alone now.`;
+    case 'house_ends': return `The house of ${e.s} has no heir. Its rule is over.`;
+    case 'house_founded': return `${full(c, e.a)} has declared that the seat will pass to their children. The house of ${e.s} begins.`;
+    case 'duel': return `${a} and ${b} fought for the seat. ${a} won.`;
+    case 'challenge': return e.s === 'won' ? `${a} challenged ${b} for the seat and won.` : `${a} challenged ${b} for the seat and was beaten down.`;
+    case 'coup': return `${full(c, e.a)} has seized the colony with ${e.n} behind them. ${b} is thrown down.`;
+    case 'plot_failed': return `${a}'s plot against ${b} has come to light.`;
+    case 'title': return `${b} has named ${a} ${e.s}.`;
+    case 'raised': return `${a} is now counted among the colony's ${e.n === 4 ? 'notables' : 'betters'}.`;
+    case 'law': return e.s === 'ration_on' ? 'The stores are low: food is rationed from today.' : 'Rationing has ended.';
+    case 'theft': return `${b} caught ${a} stealing ${e.s === 'food' ? 'food' : e.s === 'ale' ? 'ale' : 'from the stores'}.`;
+    case 'theft_hushed': return `${b} saw ${a} stealing and said nothing.`;
+    case 'accused': return `${a} has accused ${b} of ${CRIME[e.s ?? ''] ?? 'a crime'}.`;
+    case 'trial_set': return `${a} will stand trial for ${CRIME[e.s ?? ''] ?? 'a crime'} at noon.`;
+    case 'trial': return `${full(c, e.a)} was tried for ${CRIME[e.s ?? ''] ?? 'a crime'} and ${SENTENCE[e.n ?? 0] ?? 'judged'}.`;
+    case 'murder': return e.b ? `${full(c, e.a)} was murdered by ${full(c, e.b)}.` : `${full(c, e.a)} was found dead. Nobody saw who did it.`;
+    case 'attack': return `${a} went for ${b} with a blade.`;
+    case 'sermon': return `${a} preached to ${e.n} of the faithful.`;
+    case 'saint': return `People have begun to pray to ${full(c, e.a)}.`;
     case 'raid': return `${e.n === 1 ? 'A' : e.n} ${e.n === 1 ? FOE_ONE[e.s ?? ''] ?? e.s : FOE_MANY[e.s ?? ''] ?? e.s} ${e.s === 'wolf' || e.s === 'boar' || e.s === 'ghoul' || e.s === 'troll' ? (e.n === 1 ? 'is' : 'are') + ' closing on the colony' : 'came up the road with weapons drawn'}.`;
     case 'alarm': return 'The alarm is raised!';
     case 'allclear': return 'It is over. The colony counts its wounds.';

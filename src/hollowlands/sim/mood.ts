@@ -134,6 +134,10 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
     if (p.race === 'halfling' && !hasThought(c, p, 'atefeast') && c.tick > TICKS_PER_DAY * 4) add('nofinefood');
     if (st === STAGE.ELDER) add('oldbones');
     if (p.coin >= 40) add('rich');
+    if (c.gov.laws.ration && p.rank < 5) add('rationed');
+    if (p.rank >= 5) add('highborn');
+    else if (p.rank <= 1) add('outcast');
+    else if (p.rank === 2 && per(p, AX.AMBITION) > 1) add('lowly');
 
     if (p.sp) {
       const o = pawnById(c, p.sp);
@@ -313,7 +317,17 @@ const BREAKS: { k: string; level: number; hours: number; w: (p: Pawn, c: Colony)
   { k: 'tantrum', level: 2, hours: 4, w: (p) => Math.max(0.5, 3 + per(p, AX.TEMPER) * 2) },
   { k: 'wander', level: 2, hours: 48, w: () => 3 },
   { k: 'sulk', level: 2, hours: 40, w: () => 3 },
+  { k: 'murder', level: 2, hours: 8, w: (p, c) => (hatesSomeone(c, p) ? 1.5 + (has(p, 'vengeful') ? 3 : 0) + (has(p, 'cruel') ? 2 : 0) + (has(p, 'bloodlust') ? 2 : 0) - per(p, AX.KIND) : 0) },
+  { k: 'murder', level: 1, hours: 8, w: (p, c) => (has(p, 'vengeful') || has(p, 'bloodlust') || has(p, 'cruel')) && hatesSomeone(c, p) ? 0.8 : 0 },
 ];
+
+function hatesSomeone(c: Colony, p: Pawn): boolean {
+  for (const key in p.rel) {
+    const o = pawnById(c, +key);
+    if (o && !o.gone && opinion(c, p, o) <= -55) return true;
+  }
+  return false;
+}
 
 export function startBreak(c: Colony, p: Pawn, level: number, r: Rand): void {
   const opts = BREAKS.filter((b) => b.level === level);
@@ -340,6 +354,7 @@ export function endBreak(c: Colony, p: Pawn): void {
   const k = p.brk?.k;
   p.brk = undefined;
   think(c, p, 'catharsis');
+  if (k === 'murder') { forget(p, 'catharsis'); endNow(c, p); return; }
   if ((k === 'tantrum' || k === 'rave') && per(p, AX.KIND) > 0.2) think(c, p, 'ashamed');
   endNow(c, p);
 }

@@ -9,6 +9,7 @@ import { foodDays, hasFood, takeMeal } from './econ';
 import { bump, log } from './events';
 import { attack, canFight, pickFoe } from './combat';
 import { isDown, needsRest } from './health';
+import { murder } from './crime';
 import { bedFor, findJob, finishWork } from './jobs';
 import { feltTemp, hasThought, think } from './mood';
 import { findPath, walkTicks } from './path';
@@ -143,6 +144,13 @@ function wantsToAttend(c: Colony, p: Pawn, st: number): boolean {
     return opinion(c, p, a) > -25 && opinion(c, p, b) > -25;
   }
   if (g.k === 'funeral') return p.rel[g.a ?? 0]?.f !== -1;
+  if (g.k === 'trial') return p.id === g.a || p.id === g.o || st >= STAGE.ADULT;
+  if (g.k === 'sermon') {
+    if (p.id === g.a) return true;
+    const priest = pawnById(c, g.a ?? 0);
+    if (!priest) return false;
+    return priest.faith === p.faith ? p.dev >= 2 || (p.dev === 1 && p.id % 2 === 0) : p.dev === 0 && p.id % 5 === 0;
+  }
   return true;
 }
 
@@ -307,6 +315,18 @@ function breakAct(c: Colony, p: Pawn, r: Rand): boolean {
       const b = r.pick(list);
       return setAct(c, p, 'tantrum', b.x + Math.floor(b.w / 2), b.y + b.h, 6, 'break', { b: b.id });
     }
+    case 'murder': {
+      let hated: Pawn | undefined;
+      let low = -50;
+      for (const o of c.pawns) {
+        if (o === p || o.gone || stage(c, o) < STAGE.ADULT) continue;
+        const op = opinion(c, p, o);
+        if (op < low) { low = op; hated = o; }
+      }
+      if (!hated) { p.brk = { k: 'rave', x: p.brk!.x }; return false; }
+      const oi = posAt(c, hated, c.tick + 2);
+      return setAct(c, p, 'stalk', oi % c.w, Math.floor(oi / c.w), 2, 'break', { adj: true, o: hated.id });
+    }
     case 'rave': {
       let best: Pawn | undefined;
       let bd = 1e9;
@@ -420,7 +440,8 @@ export function decide(c: Colony, p: Pawn): void {
   if (p.rest < 8 && goSleep(c, p, 'exhausted')) return;
   if (c.gath && t >= c.gath.t0 - 12 && t < c.gath.t1 - 4 && wantsToAttend(c, p, st) && attend(c, p, r)) return;
   if (((night && p.rest < 80) || p.rest < 22) && !p.brk && goSleep(c, p, night ? 'night' : 'tired')) return;
-  if (p.food < 42 && hasFood(c) && goEat(c, p, r, 'hungry')) return;
+  // when food is rationed, only the ruler's table eats its fill
+  if (p.food < (c.gov.laws.ration && p.rank < 5 ? 28 : 42) && hasFood(c) && goEat(c, p, r, 'hungry')) return;
 
   if (st === STAGE.CHILD) {
     const roll = r.float();
@@ -515,6 +536,7 @@ export function finish(c: Colony, p: Pawn): void {
       let had = 0;
       for (let k = 0; k < rounds && c.stock.ale >= 1; k++) {
         c.stock.ale -= 1;
+        if (p.coin >= 0.3) { p.coin -= 0.3; c.stock.silver += 0.3; }
         p.drunk += 30 / RACES[p.race].size;
         had++;
       }
@@ -585,6 +607,15 @@ export function finish(c: Colony, p: Pawn): void {
       insult(c, p, o, r, near);
       p.say = ['insult', o.id, t, 0];
       o.say = ['insult', p.id, t, 0];
+      break;
+    }
+    case 'stalk': {
+      const o = pawnById(c, a.o ?? 0);
+      if (!o || o.gone) break;
+      const oi = posAt(c, o, t);
+      if (Math.abs((oi % c.w) - p.x) > 2 || Math.abs(Math.floor(oi / c.w) - p.y) > 2) break;
+      murder(c, p, o, r);
+      if (p.brk) p.brk.x = t;
       break;
     }
     case 'tantrum': {

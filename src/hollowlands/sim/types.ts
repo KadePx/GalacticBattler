@@ -31,7 +31,7 @@ export const RAW_FOOD: readonly ResK[] = ['grain', 'veg', 'meat', 'fish', 'berri
 export type WorkK = 'farm' | 'forage' | 'hunt' | 'fish' | 'wood' | 'mine' | 'cook' | 'build' | 'craft' | 'smith' | 'brew' | 'heal' | 'teach' | 'preach' | 'guard' | 'herbs';
 
 export type ActK =
-  | 'fight' | 'flee' | 'hide' | 'tend' | 'train'
+  | 'fight' | 'flee' | 'hide' | 'tend' | 'train' | 'stalk'
   | 'idle' | 'wander' | 'sleep' | 'eat' | 'work' | 'drink' | 'relax' | 'walk' | 'pray' | 'dice' | 'hobby' | 'play' | 'visit' | 'sulk' | 'binge' | 'tantrum' | 'rave'
   | 'court' | 'wed' | 'attend' | 'mourn' | 'labour' | 'rest' | 'perform' | 'listen' | 'stargaze' | 'bathe';
 
@@ -142,6 +142,8 @@ export interface Pawn {
   /** building id where their bed is, 0 for none */
   home: number;
   prof: string;
+  /** standing in the colony: 0 thrall, 1 outcast, 2 commoner, 3 freeholder, 4 notable, 5 noble, 6 ruler */
+  rank: number;
   faith: string;
   /** devotion 0..3 */
   dev: number;
@@ -191,6 +193,9 @@ export interface Dead {
   faith: string;
   /** funeral held or planned */
   fun?: 1;
+  /** remembered as a saint */
+  saint?: 1;
+  rank?: number;
 }
 
 export interface Bld {
@@ -266,6 +271,10 @@ export interface Colony {
   alarm: number;
   /** the storyteller's bookkeeping */
   story: { last: number; lastBad: number; heat: number; band: number };
+  /** who rules and how: kind of rule, ruler, laws in force, titles held, next election, regent for a child ruler */
+  gov: { k: string; ruler: Id; since: number; laws: Record<string, number>; titles: Record<string, Id>; next: number; regent: Id };
+  /** accusations waiting for a trial */
+  trials: { a: Id; k: string; f: number; by: Id }[];
   /** building kinds the planner found no room for, and when it last looked */
   nosite: Record<string, number>;
   /** passing conditions: [kind, until tick] */

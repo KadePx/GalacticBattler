@@ -8,6 +8,8 @@ import { RACES, childRace } from './data/races';
 import { TRAITS } from './data/traits';
 import { bump, log, note } from './events';
 import { dailyHealth } from './health';
+import { maybeSaint, sermonEnd } from './faith';
+import { verdict } from './crime';
 import { getRel, think } from './mood';
 import { STAGE, ageYears, has, makePawn, mkAct, pawnById, person, posAt, rollPassions, rollTraits, stage, stat, toDead } from './pawn';
 import { Rand, S } from './rng';
@@ -183,6 +185,7 @@ export function die(c: Colony, p: Pawn, cause: string, by?: Id): void {
   log(c, 'death', p.id, by, cause);
   bump(c, 'deaths');
   bump(c, 'death_' + cause);
+  maybeSaint(c, d, p);
   const pi = posAt(c, p, c.tick);
   const px = pi % c.w;
   const py = Math.floor(pi / c.w);
@@ -386,6 +389,10 @@ export function endGathering(c: Colony): void {
   } else if (g.k === 'funeral') {
     for (const p of there) think(c, p, 'funeral');
     log(c, 'funeral', g.a, undefined, undefined, there.length);
+  } else if (g.k === 'trial') {
+    verdict(c, there);
+  } else if (g.k === 'sermon') {
+    sermonEnd(c, g.a ?? 0, there);
   } else if (g.k === 'feast') {
     for (const p of there) think(c, p, 'festival');
     log(c, 'feast', undefined, undefined, undefined, there.length);

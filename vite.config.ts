@@ -37,6 +37,7 @@ export default defineConfig({
         mobsurge: resolve(__dirname, 'mob-surge/index.html'),
         motomaze: resolve(__dirname, 'moto-maze/index.html'),
         commonworld: resolve(__dirname, 'commonworld/index.html'),
+        hollowlands: resolve(__dirname, 'hollow-lands/index.html'),
       },
     },
   },
