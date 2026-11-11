@@ -1,0 +1,218 @@
+// Thoughts: the small things that add up to a mood. Memories last for a set time; situational
+// thoughts (d: 0) are rebuilt every hour from how things are right now.
+// {o} in the text is the other person's name.
+
+export interface ThDef {
+  k: string;
+  t: string;
+  /** mood */
+  m: number;
+  /** how long it lasts, in game hours (0 = situational) */
+  d: number;
+  /** how many times it can stack */
+  st?: number;
+  /** opinion of the other person while it lasts */
+  op?: number;
+}
+
+const DAY = 24;
+const h = (k: string, t: string, m: number, d: number, x: Partial<ThDef> = {}): ThDef => ({ k, t, m, d, ...x });
+
+export const TH_LIST: ThDef[] = [
+  // Situational: body
+  h('hungry', 'Hungry', -6, 0),
+  h('ravenous', 'Ravenous', -12, 0),
+  h('starving', 'Starving', -22, 0),
+  h('tired', 'Tired', -5, 0),
+  h('exhausted', 'Exhausted', -11, 0),
+  h('bored', 'Nothing to do but work', -4, 0),
+  h('joyless', 'No joy in anything', -9, 0),
+  h('merry', 'Having a good time lately', 2, 0),
+  h('lonely', 'Lonely', -5, 0),
+  h('isolated', 'Has not spoken to anyone in days', -10, 0),
+  h('goodcompany', 'In good company', 2, 0),
+  h('freezing', 'Freezing', -8, 0),
+  h('chilly', 'Cold', -3, 0),
+  h('ragged', 'Wearing rags', -3, 0),
+  h('nobed', 'No bed of my own', -5, 0),
+  h('crowded', 'Sharing a room with strangers', -3, 0),
+  h('finehome', 'A fine home', 4, 0),
+  h('shabbyhome', 'A draughty, shabby home', -2, 0),
+  h('larderlow', 'The stores are nearly empty', -6, 0),
+  h('larderfull', 'The stores are full', 3, 0),
+  h('noale', 'Not a drop of ale in the place', -4, 0),
+  h('tipsy', 'Pleasantly drunk', 5, 0),
+  h('hungover', 'Head like a split log', -4, 14),
+  h('pregnant', 'Expecting a child', 4, 0),
+  h('inlove', 'In love', 8, 0),
+  h('married', 'Happily wed', 5, 0),
+  h('badmarriage', 'Trapped in a bad marriage', -8, 0),
+  h('rivalnear', 'Has to live alongside {o}', -3, 0),
+  h('alone', 'Not a friend in the world', -6, 0),
+  h('friends', 'Has good friends here', 4, 0),
+  h('rain', 'Soaked through', -2, 0),
+  h('sunshine', 'A fine day', 2, 0),
+  h('darkwinter', 'The long dark of winter', -2, 0),
+  h('springair', 'Spring in the air', 2, 0),
+  h('opensky', 'Too much sky', -3, 0),
+  h('nofinefood', 'It has been too long since a proper meal', -3, 0),
+  h('uglyplace', 'Nothing beautiful to look at', -3, 0),
+  h('unproven', 'Has not proved themselves in too long', -3, 0),
+  h('nohoard', 'No shinies to call my own', -3, 0),
+  h('oldbones', 'Old bones ache', -3, 0),
+  h('child', 'A child\'s easy heart', 6, 0),
+  h('sick', 'Feeling ill', -8, 0),
+  h('hurting', 'In pain', -8, 0),
+  h('agony', 'In agony', -18, 0),
+  h('inspired', 'On fire with purpose', 8, 0),
+  h('faithless', 'No place to pray', -3, 0),
+  h('poor', 'Not a coin to my name', -2, 0),
+  h('rich', 'Purse is heavy', 3, 0),
+
+  // Food and drink
+  h('atefeast', 'Ate a fine meal', 6, DAY),
+  h('ateraw', 'Ate raw food', -4, 12),
+  h('atenotable', 'Ate standing up', -2, 8),
+  h('atetogether', 'Shared a meal with {o}', 1, DAY * 2, { op: 3, st: 3 }),
+  h('hadale', 'Had a drink', 3, 8, { st: 3 }),
+  h('drankwith', 'Shared a drink with {o}', 2, DAY * 2, { op: 5, st: 3 }),
+  h('wenthungry', 'Went to bed hungry', -5, DAY),
+
+  // Sleep and home
+  h('sleptground', 'Slept on the ground', -5, DAY),
+  h('sleptcold', 'Slept in the cold', -4, DAY),
+  h('sleptwell', 'Slept soundly', 3, 16),
+  h('nightmare', 'Woke screaming', -4, 12),
+  h('newhome', 'A roof of my own at last', 6, DAY * 5),
+  h('disturbed', 'Sleep was disturbed', -2, 12, { st: 2 }),
+
+  // Fun
+  h('wondice', 'Won at dice', 4, DAY),
+  h('lostdice', 'Lost at dice', -3, DAY),
+  h('cheated', '{o} cheated me at dice', -4, DAY * 3, { op: -12 }),
+  h('goodwalk', 'A walk in the open air', 2, 12),
+  h('prayed', 'Prayed', 2, DAY),
+  h('heardtale', 'Heard a fine tale from {o}', 4, DAY, { op: 4 }),
+  h('heardmusic', 'Listened to {o} play', 4, DAY, { op: 4 }),
+  h('performed', 'Held the whole room', 5, DAY),
+  h('stargazed', 'Watched the stars', 3, DAY),
+  h('playedgames', 'Played all afternoon', 4, DAY),
+  h('bathed', 'Had a good wash', 2, DAY),
+
+  // Talk
+  h('chat', 'Good talk with {o}', 0, DAY * 3, { op: 1.6, st: 8 }),
+  h('deeptalk', 'Opened up to {o}', 3, DAY * 6, { op: 10, st: 3 }),
+  h('laughed', '{o} made me laugh', 2, DAY * 2, { op: 5, st: 3 }),
+  h('badjoke', '{o}\'s joke was in poor taste', -1, DAY, { op: -4, st: 2 }),
+  h('jokefell', 'Nobody laughed', -2, 12),
+  h('insulted', 'Insulted by {o}', -5, DAY * 3, { op: -12, st: 4 }),
+  h('slighted', 'Snubbed by {o}', -2, DAY * 2, { op: -6, st: 3 }),
+  h('ventedat', 'Gave {o} a piece of my mind', 2, 12),
+  h('argued', 'Argued with {o}', -3, DAY * 2, { op: -8, st: 3 }),
+  h('wonargument', 'Put {o} in their place', 2, DAY, { op: -3 }),
+  h('comforted', '{o} was kind when I needed it', 6, DAY * 3, { op: 12, st: 2 }),
+  h('gavecomfort', 'Was there for {o}', 2, DAY, { op: 3 }),
+  h('praised', '{o} said something kind', 2, DAY * 2, { op: 6, st: 2 }),
+  h('flattered', '{o} is laying it on thick', 0, DAY, { op: 2 }),
+  h('bored_by', '{o} would not stop talking', -1, 12, { op: -2, st: 3 }),
+  h('complainedto', '{o} did nothing but moan', -1, 12, { op: -2, st: 3 }),
+  h('taught', 'Learned something from {o}', 2, DAY * 2, { op: 5, st: 2 }),
+  h('gossiped', 'Traded gossip with {o}', 1, DAY * 2, { op: 2.5, st: 3 }),
+  h('toldsecret', '{o} trusted me with a secret', 2, DAY * 4, { op: 6 }),
+  h('betrayedsecret', '{o} told everyone my business', -8, DAY * 8, { op: -25 }),
+  h('liedto', '{o} lied to my face', -3, DAY * 4, { op: -12, st: 2 }),
+  h('threatened', 'Threatened by {o}', -6, DAY * 4, { op: -18 }),
+  h('apology', '{o} apologised', 2, DAY * 2, { op: 10 }),
+  h('forgave', 'Made peace with {o}', 4, DAY * 2, { op: 8 }),
+  h('gift', '{o} gave me a gift', 5, DAY * 4, { op: 12, st: 2 }),
+  h('gavegift', 'Gave {o} a gift', 2, DAY, { op: 2 }),
+  h('preachedat', '{o} preached at me', -2, DAY, { op: -4, st: 2 }),
+  h('faithtalk', 'Spoke of the gods with {o}', 3, DAY, { op: 5, st: 2 }),
+  h('bragged', '{o} would not stop boasting', -1, DAY, { op: -3, st: 2 }),
+  h('mocked', '{o} mocked me in front of everyone', -7, DAY * 5, { op: -18, st: 2 }),
+  h('defended', '{o} stood up for me', 6, DAY * 5, { op: 15 }),
+  h('brawl', 'Came to blows with {o}', -6, DAY * 5, { op: -20, st: 2 }),
+  h('wonbrawl', 'Knocked {o} flat', 4, DAY * 2),
+  h('sawbrawl', 'Watched a brawl', -1, DAY),
+  h('enjoyedbrawl', 'Watched a good brawl', 3, DAY),
+
+  // Kinds of people (opinion only, long-lasting)
+  h('kinslight', 'Does not trust their kind', 0, DAY * 30, { op: -6 }),
+  h('adulterer', '{o} is an adulterer', 0, DAY * 40, { op: -10 }),
+  h('thief', '{o} is a thief', 0, DAY * 40, { op: -15 }),
+  h('scenemaker', '{o} made a scene', 0, DAY * 6, { op: -6, st: 2 }),
+  h('drunkfool', '{o} made a drunken fool of themselves', 0, DAY * 5, { op: -4 }),
+  h('herodeed', '{o} is a hero', 0, DAY * 60, { op: 18 }),
+  h('kinddeed', '{o} did a kindness', 0, DAY * 20, { op: 8, st: 2 }),
+  h('cowarddeed', '{o} ran when it mattered', 0, DAY * 40, { op: -12 }),
+  h('slandered', '{o} spread lies about me', -6, DAY * 10, { op: -22 }),
+  h('heardill', 'Heard ill of {o}', 0, DAY * 15, { op: -7, st: 3 }),
+  h('heardwell', 'Heard good things about {o}', 0, DAY * 15, { op: 5, st: 2 }),
+  h('killer', '{o} has blood on their hands', 0, DAY * 120, { op: -35 }),
+
+  // Love
+  h('flirted', 'Flirted with {o}', 2, DAY * 5, { op: 6, st: 4 }),
+  h('wasflirted', '{o} has been making eyes at me', 2, DAY * 5, { op: 5, st: 4 }),
+  h('rebuffed', 'Turned down by {o}', -5, DAY * 3, { op: -5, st: 2 }),
+  h('unwanted', '{o} will not take a hint', -2, DAY * 2, { op: -6, st: 3 }),
+  h('newlove', 'Fallen for {o}', 12, DAY * 8, { op: 20 }),
+  h('lovin', 'A night with {o}', 4, DAY, { op: 6 }),
+  h('proposed', '{o} said yes', 14, DAY * 6, { op: 10 }),
+  h('proposalno', '{o} refused my hand', -12, DAY * 8, { op: -10 }),
+  h('wedding', 'Married {o}', 20, DAY * 12, { op: 20 }),
+  h('weddingguest', 'Danced at a wedding', 6, DAY * 3),
+  h('brokeup', 'It ended with {o}', -10, DAY * 10, { op: -15 }),
+  h('dumped', '{o} left me', -15, DAY * 12, { op: -25 }),
+  h('cheatedon', '{o} betrayed me', -20, DAY * 20, { op: -50 }),
+  h('homewrecker', '{o} came between us', -6, DAY * 20, { op: -40 }),
+  h('guilt', 'Carrying a guilty secret', -4, DAY * 6),
+  h('jealousy', 'Saw {o} far too friendly with my partner', -5, DAY * 4, { op: -12, st: 2 }),
+  h('missing', 'Has not seen {o} lately', -2, DAY, { st: 1 }),
+
+  // Family and death
+  h('childborn', 'A child is born', 16, DAY * 10),
+  h('birthincolony', 'A new baby in the colony', 3, DAY * 3),
+  h('gavebirth', 'Brought a child into the world', 18, DAY * 12),
+  h('stillbirth', 'Lost the baby', -25, DAY * 25),
+  h('died_spouse', 'My love, {o}, is dead', -28, DAY * 30),
+  h('died_child', 'My child {o} is dead', -32, DAY * 40),
+  h('died_parent', 'My parent {o} is dead', -16, DAY * 20),
+  h('died_sibling', 'My sibling {o} is dead', -16, DAY * 20),
+  h('died_friend', 'My friend {o} is dead', -12, DAY * 15),
+  h('died_rival', 'My rival {o} is dead', 6, DAY * 8),
+  h('died_colonist', '{o} died', -3, DAY * 5, { st: 4 }),
+  h('sawdeath', 'Watched {o} die', -8, DAY * 6, { st: 3 }),
+  h('funeral', 'Said goodbye at the graveside', 4, DAY * 5),
+  h('unburied', 'The dead lie unburied', -5, DAY * 3),
+  h('visitedgrave', 'Sat a while at {o}\'s grave', 2, DAY * 2),
+  h('comingofage', 'Came of age', 10, DAY * 6),
+
+  // Work and pride
+  h('masterwork', 'Made something to be proud of', 10, DAY * 6),
+  h('goodharvest', 'The harvest is in', 6, DAY * 4),
+  h('builtit', 'Built with my own hands', 4, DAY * 3),
+  h('lovework', 'Lost in work I love', 4, 12),
+  h('hatedwork', 'Did work that is beneath me', -3, 12),
+  h('newtrade', 'Given a trade of my own', 8, DAY * 6),
+  h('losttrade', 'Stripped of my trade', -10, DAY * 8),
+  h('praisedwork', 'Work admired by {o}', 4, DAY * 2, { op: 6 }),
+  h('idlehands', 'Nothing useful to do', -2, 12),
+  h('goodhunt', 'Brought down a fine kill', 5, DAY * 2),
+  h('taughtchild', 'Passed something on to {o}', 3, DAY),
+
+  // Mind
+  h('catharsis', 'Got it out of my system', 14, DAY * 3),
+  h('ashamed', 'Ashamed of how I behaved', -4, DAY * 3),
+  h('sawtantrum', '{o} went wild', -2, DAY, { op: -5 }),
+  h('festival', 'A day of feasting', 10, DAY * 4),
+  h('sermon', 'Moved by {o}\'s sermon', 5, DAY * 3, { op: 6 }),
+  h('dullsermon', 'Sat through {o}\'s sermon', -1, DAY, { op: -2 }),
+  h('omen_good', 'Saw a good omen', 5, DAY * 4),
+  h('omen_bad', 'Saw an ill omen', -5, DAY * 4),
+  h('arrived', 'A new start in a new place', 6, DAY * 6),
+  h('welcomed', 'Made welcome by {o}', 4, DAY * 5, { op: 10 }),
+  h('unwelcome', 'Made to feel unwelcome by {o}', -4, DAY * 5, { op: -10 }),
+  h('newcomer', 'A stranger among us: {o}', 0, DAY * 10, { op: -4 }),
+];
+
+export const TH: Record<string, ThDef> = Object.fromEntries(TH_LIST.map((x) => [x.k, x]));

@@ -1,0 +1,161 @@
+// Public face of the colony sim: make a colony, advance it, save and load it, fingerprint it.
+
+import { MAP_H, MAP_W, SIM_V, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
+import { RACES, PLAYABLE, childRace } from './data/races';
+import { emptyStock, mouths } from './econ';
+import { BIOMES, genMap } from './mapgen';
+import { colonyName } from './names';
+import { makePawn } from './pawn';
+import { assignBeds, assignProfs, build } from './planner';
+import { Rand, S, hashStr } from './rng';
+import { step } from './step';
+import type { Colony, Pawn, RaceK } from './types';
+
+export { step } from './step';
+export * from './types';
+
+export interface CreateOpts { seed: number; pop?: number; biome?: string; race?: RaceK; name?: string; id?: string }
+
+const RACE_ODDS: [RaceK, number][] = [['human', 40], ['dwarf', 15], ['elf', 10], ['halfling', 15], ['orc', 12], ['goblin', 8]];
+
+function blank(seed: number): Colony {
+  const n = MAP_W * MAP_H;
+  return {
+    v: SIM_V, seed, id: 'c' + seed.toString(36), name: '', biome: 'valley', tick: 6 * TICKS_PER_HOUR, w: MAP_W, h: MAP_H,
+    ter: new Uint8Array(n), feat: new Uint8Array(n), fg: new Uint8Array(n), st: new Uint8Array(n), crop: new Uint8Array(n), wear: new Uint8Array(n), sb: new Uint16Array(n),
+    cx: 0, cy: 0, gx: 0, gy: 0, pawns: [], dead: [], nextId: 1, blds: [], nextBld: 1, stock: emptyStock(), log: [], logBase: 0, facts: [], nextFact: 1,
+    weather: 0, temp: 9, game: 100, stats: {}, inq: [],
+  };
+}
+
+/** A settled colony with homes, fields, stores and a few families already living in it. */
+export function createColony(o: CreateOpts): Colony {
+  const seed = o.seed >>> 0;
+  const r = new Rand(seed, S.GEN, 9);
+  const c = blank(seed);
+  if (o.id) c.id = o.id;
+  c.name = o.name ?? colonyName(r);
+  c.biome = o.biome ?? r.pick(BIOMES);
+  genMap(c);
+  const pop = o.pop ?? 16;
+
+  let main = o.race;
+  if (!main) {
+    let roll = r.int(100);
+    main = 'human';
+    for (const [k, w] of RACE_ODDS) { roll -= w; if (roll < 0) { main = k; break; } }
+  }
+  const mainRace: RaceK = main;
+  const pickRace = (): RaceK => (r.chance(0.62) ? mainRace : r.pick(PLAYABLE));
+  const frac = (p: Pawn): number => {
+    const R = RACES[p.race];
+    return ((c.tick - p.born) / TICKS_PER_YEAR - R.adult) / (R.old - R.adult);
+  };
+  const households: Pawn[][] = [];
+  while (c.pawns.length < pop) {
+    const left = pop - c.pawns.length;
+    if (left >= 2 && r.chance(0.5)) {
+      const race = pickRace();
+      const a = makePawn(c, r, { race, sex: 1 });
+      const raceB = r.chance(0.85) ? race : pickRace();
+      const RB = RACES[raceB];
+      const f = Math.max(0, Math.min(0.9, frac(a) + (r.float() - 0.5) * 0.2));
+      const b = makePawn(c, r, { race: raceB, sex: 0, fam: a.fam, age: RB.adult + f * (RB.old - RB.adult) });
+      if (a.orient === 2) a.orient = 1;
+      if (b.orient === 2) b.orient = 1;
+      a.sp = b.id;
+      b.sp = a.id;
+      a.rel[b.id] = { m: [], k: 'spouse', s: c.tick - TICKS_PER_YEAR };
+      b.rel[a.id] = { m: [], k: 'spouse', s: c.tick - TICKS_PER_YEAR };
+      const house = [a, b];
+      c.pawns.push(a, b);
+      const kidRace = childRace(b.race, a.race);
+      if (kidRace && left >= 3 && r.chance(0.6)) {
+        const n = 1 + r.int(Math.min(2, left - 2));
+        const maxAge = Math.min(RACES[kidRace].adult * 0.95, (c.tick - b.born) / TICKS_PER_YEAR - RB.adult);
+        for (let k = 0; k < n && maxAge > 0.5; k++) {
+          const kid = makePawn(c, r, { race: kidRace, fam: a.fam, mo: b.id, fa: a.id, age: 0.3 + r.float() * (maxAge - 0.3) });
+          kid.faith = b.faith;
+          house.push(kid);
+          c.pawns.push(kid);
+        }
+      }
+      households.push(house);
+    } else {
+      const p = makePawn(c, r, { race: pickRace() });
+      c.pawns.push(p);
+      households.push([p]);
+    }
+  }
+
+  build(c, 'hall', true);
+  build(c, 'store', true);
+  let singles = 0;
+  for (const h of households) {
+    if (h.length >= 3) build(c, 'bighouse', true);
+    else if (h.length === 2) build(c, 'house', true);
+    else singles++;
+  }
+  for (let k = 0; k < Math.ceil(singles / 2); k++) build(c, 'house', true);
+  build(c, 'well', true);
+  const fields = Math.ceil(mouths(c) * 0.4);
+  for (let k = 0; k < fields; k++) build(c, 'field', true, k % 2 ? 'veg' : 'grain');
+
+  // households move in together, then everyone else finds a bed
+  for (const h of households) {
+    const home = c.blds.find((b) => b.beds.length >= h.length && b.beds.every((x) => !x));
+    if (!home) continue;
+    h.forEach((p, i) => { home.beds[i] = p.id; p.home = home.id; });
+  }
+  assignBeds(c, true);
+  assignProfs(c, true);
+  for (const p of c.pawns) {
+    p.x = c.cx + r.range(-2, 2);
+    p.y = c.cy + r.range(-1, 2);
+    p.act = { k: 'idle', t0: c.tick, ta: c.tick, t1: c.tick + 1 + r.int(6), sx: p.x, sy: p.y, tx: p.x, ty: p.y, why: 'new' };
+  }
+
+  const s = c.stock;
+  s.grain = pop * 16; s.veg = pop * 9; s.meal = pop * 3; s.meat = pop * 2; s.wood = 60 + pop * 4; s.stone = 24;
+  s.tools = Math.ceil(pop * 0.5); s.clothes = 2; s.ale = Math.round(pop * 1.5); s.leather = 4; s.herbs = 3; s.medicine = 2;
+  return c;
+}
+
+export function runDays(c: Colony, days: number): void {
+  const end = c.tick + days * TICKS_PER_DAY;
+  while (c.tick < end) step(c);
+}
+
+const LAYERS = ['ter', 'feat', 'fg', 'st', 'crop', 'wear'] as const;
+
+function enc(a: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < a.length; i += 8192) s += String.fromCharCode(...a.subarray(i, i + 8192));
+  return btoa(s);
+}
+function dec(s: string): Uint8Array {
+  const b = atob(s);
+  const a = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i);
+  return a;
+}
+
+export function serialize(c: Colony): string {
+  const raw: Record<string, unknown> = { ...c };
+  for (const k of LAYERS) raw[k] = enc(c[k]);
+  raw.sb = enc(new Uint8Array(c.sb.buffer, c.sb.byteOffset, c.sb.byteLength));
+  return JSON.stringify(raw);
+}
+
+export function deserialize(json: string): Colony {
+  const raw = JSON.parse(json) as Record<string, unknown>;
+  for (const k of LAYERS) raw[k] = dec(raw[k] as string);
+  const sb = dec(raw.sb as string);
+  raw.sb = new Uint16Array(sb.buffer.slice(sb.byteOffset, sb.byteOffset + sb.byteLength));
+  return raw as unknown as Colony;
+}
+
+/** Fingerprint of everything in the colony. Two copies that took the same steps always match. */
+export function colonyHash(c: Colony): string {
+  return hashStr(serialize(c)).toString(16).padStart(8, '0');
+}
