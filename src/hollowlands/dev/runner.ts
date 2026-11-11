@@ -125,14 +125,16 @@ function report(): void {
 function many(): void {
   const years = Number(args[1]) || 5;
   const n = Number(args[2]) || 10;
-  const keys = ['births', 'deaths', 'death_starved', 'death_age', 'breaks', 'brawls', 'weddings', 'romances', 'affairs', 'friendships', 'rivalries', 'buildings', 'missedMeals'];
-  console.log([pad('seed', 6), pad('colony', 16), 'pop', 'mood', ...keys.map((k) => k.replace('death_', 'd_').slice(0, 7))].map((s, i) => (i > 1 ? lpad(s, 8) : s)).join(' '));
+  const keys = ['births', 'joined', 'deaths', 'death_age', 'raids', 'foesSlain', 'taken', 'wounds', 'maimings', 'breaks', 'brawls', 'weddings', 'affairs', 'friendships', 'rivalries'];
+  const sick = (c: Colony): number => Object.keys(c.stats).filter((k) => k.startsWith('death_sick')).reduce((a, k) => a + c.stats[k], 0);
+  const slain = (c: Colony): number => Object.keys(c.stats).filter((k) => k.startsWith('death_foe') || k === 'death_bled' || k === 'death_wounds').reduce((a, k) => a + c.stats[k], 0);
+  console.log([pad('seed', 6), pad('colony', 16), 'pop', 'mood', 'd_sick', 'd_fight', ...keys.map((k) => k.replace('death_', 'd_').slice(0, 7))].map((s, i) => (i > 1 ? lpad(s, 8) : s)).join(' '));
   const t0 = performance.now();
   for (let seed = 1; seed <= n; seed++) {
     const c = createColony({ seed, pop: 16 });
     const end = c.tick + years * 60 * TICKS_PER_DAY;
     while (c.tick < end && c.pawns.length) step(c);
-    console.log([pad(seed, 6), pad(c.name, 16), c.pawns.length, avgMood(c)[0].toFixed(0), ...keys.map((k) => Math.round(c.stats[k] ?? 0))].map((s, i) => (i > 1 ? lpad(s, 8) : s)).join(' '));
+    console.log([pad(seed, 6), pad(c.name, 16), c.pawns.length, avgMood(c)[0].toFixed(0), sick(c), slain(c), ...keys.map((k) => Math.round(c.stats[k] ?? 0))].map((s, i) => (i > 1 ? lpad(s, 8) : s)).join(' '));
   }
   console.log(`${((performance.now() - t0) / (n * years)).toFixed(0)} ms per colony-year`);
 }

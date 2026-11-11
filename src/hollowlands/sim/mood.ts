@@ -6,6 +6,7 @@ import { RACES } from './data/races';
 import { TH } from './data/thoughts';
 import { foodDays, hasFood } from './econ';
 import { bump, log, note } from './events';
+import { hourlyHealth, pain } from './health';
 import { die } from './life';
 import { STAGE, has, idleAct, pawnById, per, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
@@ -162,8 +163,12 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
   if (p.cloth < 25) add('ragged');
   if (p.drunk > 30) add('tipsy');
   if (p.insp) add('inspired');
-  if (p.hp < 25) add('agony');
-  else if (p.hp < 55) add('hurting');
+  const ache = pain(p);
+  if (ache > 60) add('agony');
+  else if (ache > 22) add('hurting');
+  if (p.ill) add(p.ill.k === 'pox' ? 'pox' : 'sick');
+  else if (st >= STAGE.TEEN && c.pawns.some((o) => o.ill?.k === 'plague')) add('plaguefear');
+  if (has(p, 'drunkard') && c.stock.ale < 1 && p.drunk <= 0) add('craving');
 
   const inside = indoors(c, p);
   const felt = feltTemp(c, p, inside);
@@ -237,7 +242,9 @@ export function hourly(c: Colony, p: Pawn): void {
     p.hp -= 1.4;
     bump(c, 'starveHours');
     if (p.hp <= 0) { die(c, p, 'starved'); return; }
-  } else if (p.hp < 100 && p.food > 30) p.hp = Math.min(100, p.hp + 0.5 * stat(p, 'tough'));
+  }
+  hourlyHealth(c, p);
+  if (p.gone) return;
 
   let stale = false;
   for (const th of p.th) if (th.x <= t) { stale = true; break; }

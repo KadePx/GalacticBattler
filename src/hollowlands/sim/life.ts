@@ -7,8 +7,9 @@ import { cells } from './data/buildings';
 import { RACES, childRace } from './data/races';
 import { TRAITS } from './data/traits';
 import { bump, log, note } from './events';
+import { dailyHealth } from './health';
 import { getRel, think } from './mood';
-import { STAGE, ageYears, has, makePawn, pawnById, person, posAt, rollPassions, rollTraits, stage, stat, toDead } from './pawn';
+import { STAGE, ageYears, has, makePawn, mkAct, pawnById, person, posAt, rollPassions, rollTraits, stage, stat, toDead } from './pawn';
 import { Rand, S } from './rng';
 import { addFact, attracted, learn, opinion } from './social';
 import { B, type Bld, type Colony, type Id, type Pawn } from './types';
@@ -126,7 +127,7 @@ function birth(c: Colony, mo: Pawn, r: Rand): void {
   const mi = posAt(c, mo, c.tick);
   baby.x = mi % c.w;
   baby.y = Math.floor(mi / c.w);
-  baby.act = { k: 'idle', t0: c.tick, ta: c.tick, t1: c.tick + 1, sx: baby.x, sy: baby.y, tx: baby.x, ty: baby.y, why: 'born' };
+  baby.act = mkAct('idle', c.tick, baby.x, baby.y, 1, 'born');
   baby.food = 80; baby.rest = 80; baby.joy = 80; baby.soc = 80; baby.cloth = 100;
   const src = fa && r.chance(0.5) ? fa : mo;
   baby.look.skin = src.look.skin;
@@ -159,7 +160,8 @@ function birth(c: Colony, mo: Pawn, r: Rand): void {
       log(c, 'bastard_plain', baby.id, mo.id, undefined, husband.id);
     }
   }
-  if (r.chance(0.03 / stat(mo, 'tough'))) die(c, mo, 'childbirth');
+  const midwife = c.pawns.some((p) => p !== mo && p.sk[8] >= 6 && stage(c, p) >= STAGE.ADULT);
+  if (r.chance((midwife ? 0.012 : 0.04) / stat(mo, 'tough'))) die(c, mo, 'childbirth');
 }
 
 function comeOfAge(c: Colony, p: Pawn, r: Rand): void {
@@ -271,6 +273,7 @@ export function dailyLife(c: Colony): void {
       const chance = age >= R.max ? 0.2 : (0.0005 + f * f * 0.03) / stat(p, 'tough');
       if (new Rand(c.seed, S.DEATH, t, p.id).chance(chance)) { die(c, p, 'age'); continue; }
     }
+    dailyHealth(c, p);
     p.cloth = Math.max(0, p.cloth - (stage(c, p) <= STAGE.CHILD ? 0.2 : 0.4));
     if (p.cloth < 30 && c.stock.clothes >= 1) { c.stock.clothes -= 1; p.cloth = 100; }
   }

@@ -37,6 +37,11 @@ const CAUSES: Record<string, string> = {
   murder: 'was murdered',
   executed: 'was put to death',
   accident: 'died in an accident',
+  bled: 'bled to death',
+  taken: 'was carried off by slavers',
+  foe_bandit: 'was cut down by bandits', foe_slaver: 'was killed by slavers', foe_orc: 'was butchered by orc raiders', foe_wolf: 'was torn apart by wolves',
+  foe_ghoul: 'was dragged down by ghouls', foe_troll: 'was crushed by a troll', foe_boar: 'was gored by a boar',
+  sick_flux: 'died of the flux', sick_fever: 'died of rot fever', sick_plague: 'died of the grey plague', sick_cough: 'died of lung-cough', sick_pox: 'died of goblin pox',
 };
 
 const BREAKS: Record<string, string> = {
@@ -46,6 +51,13 @@ const BREAKS: Record<string, string> = {
   wander: 'has walked off into the wild in a daze',
   rave: 'is raging at anyone who comes near',
   tantrum: 'is smashing things',
+};
+
+const FOE_ONE: Record<string, string> = { bandit: 'bandit', slaver: 'slaver', orc: 'orc raider', wolf: 'wolf', ghoul: 'ghoul', troll: 'troll', boar: 'maddened boar' };
+const FOE_MANY: Record<string, string> = { bandit: 'bandits', slaver: 'slavers', orc: 'orc raiders', wolf: 'wolves', ghoul: 'ghouls', troll: 'trolls', boar: 'maddened boars' };
+const ILL: Record<string, string> = { flux: 'the flux', fever: 'rot fever', plague: 'the grey plague', cough: 'lung-cough', pox: 'goblin pox' };
+const PART: Record<string, string> = {
+  eyeL: 'eye', eyeR: 'eye', armL: 'arm', armR: 'arm', handL: 'hand', handR: 'hand', legL: 'leg', legR: 'leg', footL: 'foot', footR: 'foot',
 };
 
 const FACTS: Record<string, string> = {
@@ -67,6 +79,8 @@ export const WEIGHT: Record<string, number> = {
   death: 3, birth: 3, wedding: 3, lovers: 2, betrothed: 2, divorce: 3, breakup: 2, found_out: 3, affair: 2, bastard_plain: 3, stillbirth: 3,
   brawl: 2, break: 2, tantrum: 2, friends: 2, rivals: 2, reconciled: 2, masterwork: 2, inspired: 2, convert: 2, adult: 2, left: 3, funeral: 2,
   built: 1, plan: 0, trade: 1, harvest: 1, hunt: 1, frost: 1, mock: 2, defend: 2, refused: 2, wedding_set: 1, wedding_off: 2, feast: 2,
+  raid: 3, allclear: 1, alarm: 2, rout: 2, slew: 2, looted: 3, seized: 3, rescued: 3, hero: 3, maimed: 3, sick: 2, recovered: 1, outbreak: 3, drunkard: 2,
+  joined: 3, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
 
@@ -119,9 +133,37 @@ export function evText(c: Colony, e: Ev): string {
     case 'harvest': return `${a} brought in the last of the ${e.s === 'grain' ? 'barley' : e.s === 'flax' ? 'flax' : 'roots'}.`;
     case 'hunt': return `${a} came back with a fine kill.`;
     case 'frost': return 'The first hard frost. Anything still in the fields is lost.';
-    case 'funeral': return `${e.n ?? 'A few'} gathered to bury ${full(c, e.a)}.`;
+    case 'funeral': return e.n ? `${e.n} gathered to bury ${full(c, e.a)}.` : `Nobody came to bury ${full(c, e.a)}.`;
     case 'feast': return `The colony feasted.`;
-    case 'left': return `${full(c, e.a)} has left the colony.`;
+    case 'left': return e.s === 'taken' ? `${full(c, e.a)} was carried off in chains.` : `${full(c, e.a)} has left the colony.`;
+    case 'raid': return `${e.n === 1 ? 'A' : e.n} ${e.n === 1 ? FOE_ONE[e.s ?? ''] ?? e.s : FOE_MANY[e.s ?? ''] ?? e.s} ${e.s === 'wolf' || e.s === 'boar' || e.s === 'ghoul' || e.s === 'troll' ? (e.n === 1 ? 'is' : 'are') + ' closing on the colony' : 'came up the road with weapons drawn'}.`;
+    case 'alarm': return 'The alarm is raised!';
+    case 'allclear': return 'It is over. The colony counts its wounds.';
+    case 'rout': return `The ${FOE_MANY[e.s ?? ''] ?? 'attackers'} broke and ran.`;
+    case 'slew': return `${a} killed a ${FOE_ONE[e.s ?? ''] ?? 'foe'}.`;
+    case 'looted': return `${FOE_MANY[e.s ?? ''] ?? 'Raiders'} broke into the stores and carried off what they could.`.replace(/^./, (x) => x.toUpperCase());
+    case 'seized': return `${full(c, e.a)} has been seized by slavers!`;
+    case 'rescued': return `${a} cut ${b} free from the slavers.`;
+    case 'hero': return `${full(c, e.a)} killed ${e.n} of them. Nobody will forget it.`;
+    case 'maimed': { const part = PART[e.s ?? ''] ?? 'limb'; return `${a} has lost ${/^[aeiou]/.test(part) ? 'an' : 'a'} ${part}.`; }
+    case 'sick': return `${a} has come down with ${ILL[e.s ?? ''] ?? 'something'}.`;
+    case 'recovered': return `${a} has recovered from ${ILL[e.s ?? ''] ?? 'their illness'}.`;
+    case 'outbreak': return `${ILL[e.s ?? ''] ?? 'Sickness'} has broken out.`.replace(/^./, (x) => x.toUpperCase());
+    case 'drunkard': return `${a} cannot stay away from the barrel any more.`;
+    case 'joined': return e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
+    case 'trader': return 'A trader\'s caravan stopped for the day.';
+    case 'bard': return 'A wandering bard played in the hall until the fire burned low.';
+    case 'herd': return 'A great herd is passing through the hills. The hunting will be good.';
+    case 'omen': return 'A white stag was seen at the edge of the woods. The faithful take heart.';
+    case 'healer_visit': return 'A travelling healer saw to the sick and left medicine behind.';
+    case 'bumper': return 'Warm rain at the right time: the fields are thriving.';
+    case 'blight': return `Blight has taken ${e.n ? 'much of' : 'some of'} the crop.`;
+    case 'drought': return 'The rain has stopped. The fields are cracking.';
+    case 'coldsnap': return 'A killing cold has come down from the north.';
+    case 'storm': return 'A storm tore through the colony in the night.';
+    case 'fire': return `The ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'} caught fire${e.a ? `. Some say ${a} was seen nearby` : ''}.`;
+    case 'rats': return 'Rats have got into the grain.';
+    case 'eclipse': return 'The sun went dark at midday. The faithful are afraid.';
     default: return `${e.k}: ${a}${e.b ? ' and ' + b : ''}`;
   }
 }
@@ -137,7 +179,7 @@ const WHY: Record<string, string> = {
   bored: 'Needed a break', idle: 'Nothing pressing to do', free: 'Free time', love: 'Wanted to see their love', crush: 'Could not stay away', friend: 'Wanted company', family: 'Wanted family',
   child: 'Being a child', baby: 'Being a baby', wedding: 'At the wedding', funeral: 'At the funeral', feast: 'At the feast', grief: 'Grieving', new: 'Just arrived',
   drink: 'Fancied a drink', drinkbored: 'Bored, so: a drink', relax: 'Resting', walk: 'Stretching their legs', pray: 'Praying', dice: 'Feeling lucky', hobby: 'Doing what they love',
-  stargaze: 'Looking at the stars', bathe: 'Having a wash', perform: 'Had an audience', stopped: 'Interrupted', born: 'Newborn',
+  stargaze: 'Looking at the stars', bathe: 'Having a wash', perform: 'Had an audience', stopped: 'Interrupted', born: 'Newborn', alarm: 'The colony is under attack', muster: 'Standing ready with the others', hurt: 'Too hurt or sick to work', seized: 'Seized', carried: 'Carried to bed', freed: 'Freed',
 };
 
 export function whyText(why: string): string {

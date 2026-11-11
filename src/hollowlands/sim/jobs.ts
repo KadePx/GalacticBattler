@@ -1,19 +1,20 @@
 // Work: what needs doing, who is best placed to do it, and what comes of an hour's labour.
 
 import { DAYS_PER_YEAR, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
-import { ROCK_FACE, SHORE, dropFeat, featList, touch } from './cache';
+import { ROCK_FACE, SHORE, cacheOf, dropFeat, featList, touch } from './cache';
 import { BACKS } from './data/backstories';
 import { CROPS, cells, spots } from './data/buildings';
 import { PROFS } from './data/professions';
 import { foodDays, mouths, rawFood } from './econ';
 import { bump, log, note } from './events';
+import { isDown, needsTending, tend } from './health';
 import { think, workSkillOf } from './mood';
 import { advanceBuild, canBuild } from './planner';
-import { STAGE, gainXp, has, stage, stat } from './pawn';
+import { STAGE, gainXp, has, mkAct, pawnById, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
 import { F, T, type Act, type Bld, type Colony, type Pawn, type WorkK } from './types';
 
-export interface Job { w: WorkK; x: number; y: number; adj: boolean; dur: number; b?: number; d?: number; why: string }
+export interface Job { w: WorkK; x: number; y: number; adj: boolean; dur: number; b?: number; d?: number; o?: number; why: string }
 
 export function workSpeed(c: Colony, p: Pawn, skill: number): number {
   let v = stat(p, 'work') * (0.5 + 0.075 * p.sk[skill]);
@@ -121,6 +122,47 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
     opts.push({ w, s, why, make });
   };
   const job = (w: WorkK, tile: number, adj: boolean, why: string, b?: number, d?: number): Job => ({ w, x: tile % c.w, y: Math.floor(tile / c.w), adj, dur: DUR[w], b, d, why });
+
+  // The hurt and the sick come first
+  let patient: Pawn | undefined;
+  let worst = 0;
+  for (const o of c.pawns) {
+    if (o === p || o.gone || !needsTending(o, c.tick)) continue;
+    if (c.pawns.some((x) => x !== p && x.act.k === 'work' && x.act.w === 'heal' && x.act.o === o.id)) continue;
+    const need = 1 + (o.inj.some((i) => i.bleed > 0) ? 4 : 0) + (isDown(o) ? 2 : 0);
+    if (need > worst) { worst = need; patient = o; }
+  }
+  if (patient) {
+    const pt = patient;
+    offer('heal', 7 + worst * 1.5, 'heal', () => {
+      const i = posAt(c, pt, c.tick);
+      const j = job('heal', i, true, pt.first + ' needs tending');
+      j.o = pt.id;
+      j.dur = 6;
+      return j;
+    });
+  }
+  const infirmary = bldOf(c, 'infirmary');
+  if (c.stock.herbs >= 2 && c.stock.medicine < 2 + pop * 0.2 && (mine === 'heal' || p.sk[8] >= 6)) {
+    offer('heal', 1.7, 'medicine', () => {
+      const b = infirmary ?? bldOf(c, 'hall');
+      return b ? job('heal', spotTile(c, b, infirmary ? 'e' : 't', r), true, 'Making medicine', b.id, 1) : null;
+    });
+  }
+  if (mine === 'guard') {
+    offer('guard', 2.6, 'guard', () => {
+      if (r.chance(0.35)) return job('guard', c.cy * c.w + c.cx + r.range(-2, 2), false, 'Weapons practice', undefined, 1);
+      const k = cacheOf(c);
+      for (let tries = 0; tries < 12; tries++) {
+        const x = c.cx + r.range(-17, 17);
+        const y = c.cy + r.range(-17, 17);
+        if (x < 1 || y < 1 || x >= c.w - 1 || y >= c.h - 1) continue;
+        if (Math.abs(x - c.cx) + Math.abs(y - c.cy) < 14) continue;
+        if (k.reach[y * c.w + x] && k.walk[y * c.w + x] < 20) return job('guard', y * c.w + x, false, 'On watch');
+      }
+      return null;
+    });
+  }
 
   // Cooking
   const meals = c.stock.meal + c.stock.feast;
@@ -478,6 +520,37 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       }
       break;
     }
+    case 'heal': {
+      if (a.d === 1) {
+        const n = Math.min(Math.floor(c.stock.herbs / 2), Math.max(1, Math.round(speed * hours)));
+        c.stock.herbs -= n * 2;
+        c.stock.medicine += n;
+        made('medicine', n);
+        break;
+      }
+      const o = pawnById(c, a.o ?? 0);
+      if (!o || o.gone) break;
+      const oi = posAt(c, o, c.tick);
+      if (Math.abs((oi % c.w) - p.x) > 2 || Math.abs(Math.floor(oi / c.w) - p.y) > 2) break;
+      tend(c, p, o, r);
+      gainXp(p, 8, 1.5);
+      if (isDown(o)) {
+        // carry them to a bed
+        const bed = bedFor(c, o);
+        if (bed >= 0) {
+          o.x = bed % c.w;
+          o.y = Math.floor(bed / c.w);
+          o.act = mkAct('rest', c.tick, o.x, o.y, 30, 'carried');
+          o.act.b = c.sb[bed];
+        }
+      }
+      break;
+    }
+    case 'guard': {
+      if (a.d === 1) gainXp(p, p.sk[1] > p.sk[0] ? 1 : 0, hours * 1.5);
+      else gainXp(p, 0, hours * 0.3);
+      break;
+    }
     case 'teach': {
       for (const o of c.pawns) {
         const s = stage(c, o);
@@ -490,6 +563,24 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
     }
     default: break;
   }
+}
+
+/** Somewhere to lay a patient: a free sickbed, else their own bed. -1 if neither. */
+export function bedFor(c: Colony, o: Pawn): number {
+  const inf = bldOf(c, 'infirmary');
+  if (inf) {
+    for (const cell of spots(inf.k, 'o')) {
+      const x = inf.x + cell.dx;
+      const y = inf.y + cell.dy;
+      if (!c.pawns.some((q) => q !== o && q.act.tx === x && q.act.ty === y)) return y * c.w + x;
+    }
+  }
+  const home = o.home ? c.blds.find((b) => b.id === o.home) : undefined;
+  if (home) {
+    const cell = spots(home.k, 'b')[home.beds.indexOf(o.id)];
+    if (cell) return (home.y + cell.dy) * c.w + home.x + cell.dx;
+  }
+  return -1;
 }
 
 function masterwork(c: Colony, p: Pawn, r: Rand, lv: number, what: string): void {

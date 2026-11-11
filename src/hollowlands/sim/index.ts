@@ -5,7 +5,7 @@ import { RACES, PLAYABLE, childRace } from './data/races';
 import { emptyStock, mouths } from './econ';
 import { BIOMES, genMap } from './mapgen';
 import { colonyName } from './names';
-import { makePawn } from './pawn';
+import { makePawn, mkAct, normPawn } from './pawn';
 import { assignBeds, assignProfs, build } from './planner';
 import { Rand, S, hashStr } from './rng';
 import { step } from './step';
@@ -24,7 +24,7 @@ function blank(seed: number): Colony {
     v: SIM_V, seed, id: 'c' + seed.toString(36), name: '', biome: 'valley', tick: 6 * TICKS_PER_HOUR, w: MAP_W, h: MAP_H,
     ter: new Uint8Array(n), feat: new Uint8Array(n), fg: new Uint8Array(n), st: new Uint8Array(n), crop: new Uint8Array(n), wear: new Uint8Array(n), sb: new Uint16Array(n),
     cx: 0, cy: 0, gx: 0, gy: 0, pawns: [], dead: [], nextId: 1, blds: [], nextBld: 1, stock: emptyStock(), log: [], logBase: 0, facts: [], nextFact: 1,
-    weather: 0, temp: 9, game: 100, stats: {}, inq: [],
+    weather: 0, temp: 9, game: 100, stats: {}, inq: [], foes: [], nextFoe: 1, alarm: 0, story: { last: 0, lastBad: 0, heat: 0, band: 0 }, mods: [], nosite: {},
   };
 }
 
@@ -112,12 +112,12 @@ export function createColony(o: CreateOpts): Colony {
   for (const p of c.pawns) {
     p.x = c.cx + r.range(-2, 2);
     p.y = c.cy + r.range(-1, 2);
-    p.act = { k: 'idle', t0: c.tick, ta: c.tick, t1: c.tick + 1 + r.int(6), sx: p.x, sy: p.y, tx: p.x, ty: p.y, why: 'new' };
+    p.act = mkAct('idle', c.tick, p.x, p.y, 1 + r.int(6), 'new');
   }
 
   const s = c.stock;
   s.grain = pop * 16; s.veg = pop * 9; s.meal = pop * 3; s.meat = pop * 2; s.wood = 60 + pop * 4; s.stone = 24;
-  s.tools = Math.ceil(pop * 0.5); s.clothes = 2; s.ale = Math.round(pop * 1.5); s.leather = 4; s.herbs = 3; s.medicine = 2;
+  s.tools = Math.ceil(pop * 0.5); s.clothes = 2; s.ale = Math.round(pop * 1.5); s.leather = 4; s.herbs = 3; s.medicine = 2; s.weapons = Math.ceil(pop * 0.35);
   return c;
 }
 
@@ -152,7 +152,9 @@ export function deserialize(json: string): Colony {
   for (const k of LAYERS) raw[k] = dec(raw[k] as string);
   const sb = dec(raw.sb as string);
   raw.sb = new Uint16Array(sb.buffer.slice(sb.byteOffset, sb.byteOffset + sb.byteLength));
-  return raw as unknown as Colony;
+  const c = raw as unknown as Colony;
+  c.pawns = c.pawns.map(normPawn);
+  return c;
 }
 
 /** Fingerprint of everything in the colony. Two copies that took the same steps always match. */

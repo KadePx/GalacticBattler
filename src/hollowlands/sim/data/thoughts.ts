@@ -200,6 +200,22 @@ export const TH_LIST: ThDef[] = [
   h('goodhunt', 'Brought down a fine kill', 5, DAY * 2),
   h('taughtchild', 'Passed something on to {o}', 3, DAY),
 
+  // Body and battle
+  h('maimed', 'Maimed for life', -14, DAY * 20),
+  h('maimedproud', 'A wound worth boasting of', 4, DAY * 10),
+  h('recovered', 'Back on my feet', 8, DAY * 4),
+  h('tended', '{o} looked after me', 4, DAY * 4, { op: 10, st: 2 }),
+  h('slewfoe', 'Cut down an enemy', 6, DAY * 4),
+  h('killedsomeone', 'Took a life', -8, DAY * 8),
+  h('rescued', '{o} saved me', 10, DAY * 12, { op: 32 }),
+  h('raidover', 'The colony was attacked', -4, DAY * 4),
+  h('prosthetic', 'Whole again, more or less', 8, DAY * 6),
+  h('heardbard', 'A bard came through', 6, DAY * 3),
+  h('newfaces', 'Traders brought news and new faces', 3, DAY * 2),
+  h('craving', 'Needs a drink', -8, 0),
+  h('plaguefear', 'There is plague in the colony', -6, 0),
+  h('pox', 'Covered in sores', -4, 0),
+
   // Mind
   h('catharsis', 'Got it out of my system', 14, DAY * 3),
   h('ashamed', 'Ashamed of how I behaved', -4, DAY * 3),

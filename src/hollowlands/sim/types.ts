@@ -31,6 +31,7 @@ export const RAW_FOOD: readonly ResK[] = ['grain', 'veg', 'meat', 'fish', 'berri
 export type WorkK = 'farm' | 'forage' | 'hunt' | 'fish' | 'wood' | 'mine' | 'cook' | 'build' | 'craft' | 'smith' | 'brew' | 'heal' | 'teach' | 'preach' | 'guard' | 'herbs';
 
 export type ActK =
+  | 'fight' | 'flee' | 'hide' | 'tend' | 'train'
   | 'idle' | 'wander' | 'sleep' | 'eat' | 'work' | 'drink' | 'relax' | 'walk' | 'pray' | 'dice' | 'hobby' | 'play' | 'visit' | 'sulk' | 'binge' | 'tantrum' | 'rave'
   | 'court' | 'wed' | 'attend' | 'mourn' | 'labour' | 'rest' | 'perform' | 'listen' | 'stargaze' | 'bathe';
 
@@ -79,6 +80,34 @@ export interface Rel {
 }
 
 export interface Bio { t: number; k: string; o?: Id; s?: string }
+
+/** A wound. Severity falls as it heals; an untended one may bleed or fester. */
+export interface Inj { p: string; k: string; sev: number; pk: number; bleed: number; inf: number; tend: number; t: number }
+
+/** A sickness running its course: it gets worse while the body builds resistance. */
+export interface Ill { k: string; sev: number; imm: number; t: number; tend: number }
+
+/** Someone or something hostile on the map. */
+export interface Foe {
+  id: number;
+  k: string;
+  name: string;
+  x: number; y: number;
+  /** where they were a tick ago, so the view can glide them */
+  px: number; py: number;
+  hp: number; max: number;
+  /** colonist they are after, 0 for none */
+  target: Id;
+  /** 0 attacking, 1 looting, 2 leaving */
+  mode: number;
+  /** what they carry off */
+  loot: number;
+  /** a colonist they have seized */
+  held: Id;
+  band: number;
+  /** tick until which they hang back at the edge of the map */
+  wait: number;
+}
 
 export interface Pawn {
   id: Id;
@@ -140,6 +169,12 @@ export interface Pawn {
   insp?: [string, number];
   /** their latest exchange, for speech bubbles: [kind, other colonist, tick, went well] */
   say?: [string, Id, number, number];
+  inj: Inj[];
+  /** lasting marks on the body: lost limbs, scars, the aches of age */
+  perm: string[];
+  ill?: Ill;
+  /** how much they have been drinking lately */
+  booze: number;
   /** set when they die this tick; swept at the end of the tick */
   gone?: boolean;
 }
@@ -225,6 +260,16 @@ export interface Colony {
   stats: Record<string, number>;
   /** inputs waiting for their tick */
   inq: Input[];
+  foes: Foe[];
+  nextFoe: number;
+  /** tick the alarm was raised, 0 when all is quiet */
+  alarm: number;
+  /** the storyteller's bookkeeping */
+  story: { last: number; lastBad: number; heat: number; band: number };
+  /** building kinds the planner found no room for, and when it last looked */
+  nosite: Record<string, number>;
+  /** passing conditions: [kind, until tick] */
+  mods: [string, number][];
   /** planned gathering (wedding, funeral, feast) */
   gath?: { k: string; t0: number; t1: number; b: number; a?: Id; o?: Id; x: number; y: number };
 }

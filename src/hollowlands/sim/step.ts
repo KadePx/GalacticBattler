@@ -6,12 +6,15 @@ import { dailyLand } from './econ';
 import { dailyLife, endGathering } from './life';
 import { hourly } from './mood';
 import { plan } from './planner';
+import { aftermath, combatTick } from './combat';
+import { applyInputs, dailyStory } from './story';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
   dailyLand(c);
   dailyLife(c);
   plan(c);
+  dailyStory(c);
   // let go of faded memories and of people long forgotten
   for (const p of c.pawns) {
     for (const key in p.rel) {
@@ -27,7 +30,10 @@ function daily(c: Colony): void {
 export function step(c: Colony): void {
   const t = c.tick;
   if (t % TICKS_PER_DAY === 0) daily(c);
+  if (c.inq.length) applyInputs(c);
   if (c.gath && t >= c.gath.t1) endGathering(c);
+  if (c.foes.length) combatTick(c);
+  else if (c.alarm) aftermath(c);
   const list = c.pawns;
   let gone = false;
   for (let i = 0; i < list.length; i++) {

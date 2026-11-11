@@ -19,6 +19,7 @@ export const PROF_LIST: ProfDef[] = [
   p('weaver', 'Weaver', 'craft', 6, 'Makes and mends what the colony wears.'),
   p('healer', 'Healer', 'heal', 8, 'Sets bones, binds wounds, sits with the dying.'),
   p('priest', 'Priest', 'preach', 10, 'Speaks for the gods, and to them.'),
+  p('guard', 'Guard', 'guard', 0, 'Walks the edge of the colony with one hand on a weapon.'),
   p('lorekeeper', 'Lorekeeper', 'teach', 11, 'Keeps the stories and teaches the young.'),
 ];
 

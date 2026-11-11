@@ -26,7 +26,14 @@ export function mouths(c: Colony): number {
   return Math.max(1, n);
 }
 
-export const foodDays = (c: Colony): number => foodUnits(c) / (mouths(c) * 1.75);
+const mouthMemo = new WeakMap<Colony, [number, number]>();
+
+/** Days of food in the stores at the rate the colony eats. */
+export function foodDays(c: Colony): number {
+  let m = mouthMemo.get(c);
+  if (!m || m[0] !== c.tick) { m = [c.tick, mouths(c)]; mouthMemo.set(c, m); }
+  return foodUnits(c) / (m[1] * 1.75);
+}
 
 /** Take one helping of the best food going. Returns what was eaten, or '' if the stores are bare. */
 export function takeMeal(c: Colony, ironStomach: boolean): string {
@@ -36,7 +43,16 @@ export function takeMeal(c: Colony, ironStomach: boolean): string {
   for (const k of ['berries', 'veg', 'fish', 'meat', 'grain'] as const) {
     if (s[k] >= 1) { s[k] -= 1; return ironStomach || k === 'berries' ? 'meal' : 'raw'; }
   }
-  return '';
+  // scraps of this and that
+  if (foodUnits(c) < 1) return '';
+  let need = 1;
+  for (const k of ['feast', 'meal', 'berries', 'veg', 'fish', 'meat', 'grain'] as const) {
+    const n = Math.min(need, s[k]);
+    s[k] -= n;
+    need -= n;
+    if (need <= 0.0001) break;
+  }
+  return ironStomach ? 'meal' : 'raw';
 }
 
 const TEMP_CURVE: [number, number][] = [[0, 7], [15, 17], [23, 25], [30, 20], [45, 6], [52, -8], [60, 7]];
@@ -59,10 +75,12 @@ export function dailyLand(c: Colony): void {
   const season = seasonOf(c.tick);
   const r = new Rand(c.seed, S.WEATHER, day);
   const prevTemp = c.temp;
-  c.temp = Math.round(seasonTemp(doy) + (r.float() + r.float() - 1) * 5);
+  c.temp = Math.round(seasonTemp(doy) + (r.float() + r.float() - 1) * 5) - (c.mods.some((m) => m[0] === 'coldsnap' && m[1] > c.tick) ? 11 : 0);
+  const drought = c.mods.some((m) => m[0] === 'drought' && m[1] > c.tick);
   const roll = r.float();
   const wet = c.biome === 'marsh' ? 0.12 : c.biome === 'coast' ? 0.06 : 0;
   if (c.temp <= 0) c.weather = roll < 0.3 + wet ? 4 : roll < 0.55 ? 1 : 0;
+  else if (drought) c.weather = roll < 0.3 ? 1 : 0;
   else if (roll < 0.05) c.weather = 3;
   else if (roll < 0.24 + wet + (season === 2 ? 0.08 : 0)) c.weather = 2;
   else if (roll < 0.3 + wet) c.weather = 5;
@@ -76,7 +94,7 @@ export function dailyLand(c: Colony): void {
     const def = CROPS[b.crop];
     const care = 0.55 + 0.65 * ((b.tend ?? 0) / 100);
     const wx = c.weather === 2 ? 1.15 : c.weather === 3 ? 0.9 : 1;
-    const grow = season === 3 || c.temp < 2 ? 0 : (200 / def.days) * care * wx;
+    const grow = season === 3 || c.temp < 2 ? 0 : (200 / def.days) * care * wx * (drought ? 0.2 : 1);
     for (const cell of cells('field')) {
       const i = (b.y + cell.dy) * c.w + b.x + cell.dx;
       const v = c.crop[i];

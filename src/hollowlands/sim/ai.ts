@@ -7,15 +7,20 @@ import { spots } from './data/buildings';
 import { RACES } from './data/races';
 import { foodDays, hasFood, takeMeal } from './econ';
 import { bump, log } from './events';
-import { findJob, finishWork } from './jobs';
+import { attack, canFight, pickFoe } from './combat';
+import { isDown, needsRest } from './health';
+import { bedFor, findJob, finishWork } from './jobs';
 import { feltTemp, hasThought, think } from './mood';
 import { findPath, walkTicks } from './path';
-import { STAGE, gainXp, has, idleAct, pawnById, per, posAt, stage, stat } from './pawn';
+import { STAGE, gainXp, has, idleAct, mkAct, pawnById, per, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
 import { addFact, attracted, favourite, insult, interact, learn, opinion } from './social';
 import { AX, type ActK, type Bld, type Colony, type Pawn, type WorkK } from './types';
 
 interface ActOpts { adj?: boolean; b?: number; o?: number; w?: WorkK; d?: number }
+
+/** On the night watch: sleeps by day. */
+const nightShift = (p: Pawn): boolean => p.prof === 'guard' && p.id % 2 === 0;
 
 function moveMult(c: Colony, p: Pawn, st: number): number {
   let v = stat(p, 'move');
@@ -33,15 +38,11 @@ export function setAct(c: Colony, p: Pawn, k: ActK, x: number, y: number, dur: n
   const t = c.tick;
   const walk = walkTicks(found.cost, moveMult(c, p, stage(c, p)));
   const end = found.path[found.path.length - 1];
-  p.act = { k, t0: t, ta: t + walk, t1: t + walk + Math.max(1, dur), sx: p.x, sy: p.y, tx: end % c.w, ty: Math.floor(end / c.w), why };
+  p.act = { k, t0: t, ta: t + walk, t1: t + walk + Math.max(1, dur), sx: p.x, sy: p.y, tx: end % c.w, ty: Math.floor(end / c.w), path: undefined, w: o.w, b: o.b, o: o.o, d: o.d, why };
   if (found.path.length > 1) {
     p.act.path = found.path;
     for (const i of found.path) if (c.wear[i] < 250) c.wear[i] += 2;
   }
-  if (o.b !== undefined) p.act.b = o.b;
-  if (o.o !== undefined) p.act.o = o.o;
-  if (o.w !== undefined) p.act.w = o.w;
-  if (o.d !== undefined) p.act.d = o.d;
   return true;
 }
 
@@ -85,6 +86,7 @@ function randomSpot(c: Colony, r: Rand, cx: number, cy: number, min: number, max
 }
 
 function isNight(p: Pawn, hour: number): boolean {
+  if (nightShift(p)) return hour >= 8 && hour < 16;
   if (has(p, 'nightowl')) return hour >= 2 && hour < 10;
   if (has(p, 'earlybird')) return hour >= 20 || hour < 4;
   return hour >= 22 || hour < 5;
@@ -344,6 +346,75 @@ export function decide(c: Colony, p: Pawn): void {
     return;
   }
 
+  if (p.brk?.k === 'seized') { p.act = idleAct(c, p, 4, 'seized'); return; }
+
+  // Under attack: fight or hide (but nobody starves at their post)
+  if (c.alarm && c.foes.length && st >= STAGE.CHILD && !(p.food < 12 && hasFood(c)) && c.tick - c.alarm < 150) {
+    const able = canFight(c, p) && !p.brk;
+    const f = able ? pickFoe(c, p) : null;
+    if (f && !f.held && Math.max(Math.abs(f.x - c.cx), Math.abs(f.y - c.cy)) > 19) {
+      // they have not come on yet: stand together in the middle of the colony rather than run out one by one
+      const s = randomSpot(c, r, c.cx, c.cy, 0, 3);
+      if (s && setAct(c, p, 'fight', s[0], s[1], 2, 'muster')) return;
+    } else if (f) {
+      const dist = Math.max(Math.abs(f.x - p.x), Math.abs(f.y - p.y));
+      const archer = p.sk[1] >= 4 && p.sk[1] > p.sk[0] + 1;
+      if (archer && dist >= 2 && dist <= 9) {
+        p.act = mkAct('fight', t, p.x, p.y, 1, 'alarm');
+        p.act.d = f.id;
+        p.act.b = 1;
+        return;
+      }
+      if (setAct(c, p, 'fight', f.x, f.y, 1, 'alarm', { adj: true, d: f.id, b: 0 })) {
+        const a = p.act;
+        if (archer && a.path) {
+          // archers stop as soon as they have a shot
+          for (let k = 0; k < a.path.length; k++) {
+            const i = a.path[k];
+            if (Math.max(Math.abs((i % c.w) - f.x), Math.abs(Math.floor(i / c.w) - f.y)) <= 8) {
+              const cut = (k + 1) / a.path.length;
+              a.path = a.path.slice(0, k + 1);
+              a.tx = i % c.w;
+              a.ty = Math.floor(i / c.w);
+              a.ta = a.t0 + Math.max(k ? 1 : 0, Math.round((a.ta - a.t0) * cut));
+              a.t1 = a.ta + 1;
+              a.b = 1;
+              break;
+            }
+          }
+        }
+        return;
+      }
+    }
+    if (able && !f) {
+      const s = randomSpot(c, r, c.cx, c.cy, 0, 3);
+      if (s && setAct(c, p, 'fight', s[0], s[1], 2, 'muster')) return;
+    }
+    if (!isDown(p)) {
+      const hall = bldOf(c, 'hall');
+      const home = p.home ? c.blds.find((b) => b.id === p.home) : undefined;
+      const b = hall ?? home;
+      if (b) {
+        const [x, y] = seat(c, p, b, '.', r);
+        if (setAct(c, p, 'hide', x, y, 6, 'alarm', { b: b.id })) return;
+      }
+    }
+    p.act = idleAct(c, p, 4, 'alarm');
+    p.act.k = isDown(p) ? 'rest' : 'hide';
+    return;
+  }
+
+  // Too hurt or sick for anything but bed
+  if (needsRest(p)) {
+    if (p.food < 30 && hasFood(c) && setAct(c, p, 'eat', p.x, p.y, 3, 'hungry')) return;
+    if (isDown(p)) { p.act = idleAct(c, p, 20, 'hurt'); p.act.k = 'rest'; return; }
+    const bed = bedFor(c, p);
+    if (bed >= 0 && setAct(c, p, 'rest', bed % c.w, Math.floor(bed / c.w), 30, 'hurt', { b: c.sb[bed] })) return;
+    p.act = idleAct(c, p, 20, 'hurt');
+    p.act.k = 'rest';
+    return;
+  }
+
   if (p.brk && breakAct(c, p, r)) return;
   if (p.food < 18 && hasFood(c) && goEat(c, p, r, 'starving')) return;
   if (p.rest < 8 && goSleep(c, p, 'exhausted')) return;
@@ -381,11 +452,12 @@ export function decide(c: Colony, p: Pawn): void {
     if (has(p, 'industrious')) we += 2;
     if (has(p, 'lazy') || has(p, 'slothful')) { ws += 1; we -= 1; }
     if (st !== STAGE.ADULT) we -= 2;
+    if (nightShift(p)) { ws = 18; we = 6; }
     const famine = foodDays(c) < 1.5 && !night;
-    if ((hour >= ws && hour < we) || famine) {
+    if ((ws < we ? hour >= ws && hour < we : hour >= ws || hour < we) || famine) {
       if (!famine && p.joy < 16 - diligent * 5 && leisure(c, p, r, st, hour, 'bored')) return;
       const job = findJob(c, p, r);
-      if (job && setAct(c, p, 'work', job.x, job.y, job.dur, job.why, { adj: job.adj, b: job.b, w: job.w, d: job.d })) return;
+      if (job && setAct(c, p, 'work', job.x, job.y, job.dur, job.why, { adj: job.adj, b: job.b, w: job.w, d: job.d, o: job.o })) return;
       if (leisure(c, p, r, st, hour, 'idle')) return;
     } else if (leisure(c, p, r, st, hour, 'free')) return;
   }
@@ -437,6 +509,7 @@ export function finish(c: Colony, p: Pawn): void {
       break;
     }
     case 'work': finishWork(c, p, a); break;
+    case 'fight': if (a.d !== undefined) attack(c, p, a.d, a.b === 1); break;
     case 'drink': {
       const rounds = Math.max(1, Math.round(spent / 16));
       let had = 0;
@@ -445,6 +518,7 @@ export function finish(c: Colony, p: Pawn): void {
         p.drunk += 30 / RACES[p.race].size;
         had++;
       }
+      p.booze += had;
       if (!had) break;
       think(c, p, 'hadale');
       bump(c, 'ales', had);

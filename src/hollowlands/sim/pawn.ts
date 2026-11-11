@@ -6,7 +6,7 @@ import { RACES } from './data/races';
 import { TRAITS, TRAIT_LIST, traitsClash, type StatK } from './data/traits';
 import { familyName, givenName } from './names';
 import type { Rand } from './rng';
-import { AX, AX_N, SKILLS, type Act, type Colony, type Dead, type Id, type Pawn, type RaceK } from './types';
+import { AX, AX_N, SKILLS, type Act, type ActK, type Colony, type Dead, type Id, type Pawn, type RaceK } from './types';
 
 export const STAGE = { BABY: 0, CHILD: 1, TEEN: 2, ADULT: 3, ELDER: 4 } as const;
 
@@ -26,35 +26,77 @@ export const has = (p: { traits: string[] }, k: string): boolean => p.traits.inc
 
 const BASE: Record<StatK, number> = { work: 1, learn: 1, move: 1, appetite: 1, sleep: 1, moodBase: 0, breakTh: 0, charm: 0, beauty: 0, tough: 1, immune: 1, joyNeed: 1, socNeed: 1, pain: 1 };
 
-export function stat(p: Pawn, k: StatK): number {
+// The parts of stats and personality that come from traits, people, backstory and lasting
+// marks only change when those do, so they are worked out once and kept (never saved).
+interface Fixed { traits: string[]; tn: number; pn: number; bc: string; ba: string; base: number[]; st: Partial<Record<StatK, number>>; ax: number[] }
+const fixed = new WeakMap<Pawn, Fixed>();
+const STAT_KEYS = Object.keys(BASE) as StatK[];
+
+function fixedOf(p: Pawn): Fixed {
+  let f = fixed.get(p);
+  if (f && f.traits === p.traits && f.tn === p.traits.length && f.pn === p.perm.length && f.base === p.per && f.bc === p.bc && f.ba === p.ba) return f;
   const R = RACES[p.race];
-  let v = BASE[k];
-  if (k === 'move') v = R.speed;
-  else if (k === 'appetite') v = R.appetite;
-  else if (k === 'sleep') v = R.sleep;
-  else if (k === 'tough') v = R.tough;
-  for (const t of p.traits) {
-    const m = TRAITS[t]?.st?.[k];
-    if (m) v += m;
+  const st: Partial<Record<StatK, number>> = {};
+  for (const k of STAT_KEYS) {
+    let v = BASE[k];
+    if (k === 'move') v = R.speed;
+    else if (k === 'appetite') v = R.appetite;
+    else if (k === 'sleep') v = R.sleep;
+    else if (k === 'tough') v = R.tough;
+    for (const t of p.traits) {
+      const m = TRAITS[t]?.st?.[k];
+      if (m) v += m;
+    }
+    for (const m of p.perm) {
+      const e = PERM[m.replace(/[LR]$/, '')];
+      if (e && e[k]) v += e[k]!;
+    }
+    st[k] = v;
   }
+  const ax: number[] = [];
+  for (let a = 0; a < AX_N; a++) {
+    let v = p.per[a];
+    for (const t of p.traits) {
+      const list = TRAITS[t]?.per;
+      if (list) for (const [x, d] of list) if (x === a) v += d;
+    }
+    for (const [x, d] of R.per) if (x === a) v += d;
+    for (const key of [p.bc, p.ba]) {
+      const list = BACKS[key]?.per;
+      if (list) for (const [x, d] of list) if (x === a) v += d;
+    }
+    ax.push(v < -2 ? -2 : v > 2 ? 2 : v);
+  }
+  f = { traits: p.traits, tn: p.traits.length, pn: p.perm.length, bc: p.bc, ba: p.ba, base: p.per, st, ax };
+  fixed.set(p, f);
+  return f;
+}
+
+export function stat(p: Pawn, k: StatK): number {
+  let v = fixedOf(p).st[k]!;
   if (k === 'charm') v += p.sk[10] * 0.25;
+  if (k === 'work' || k === 'move') {
+    if (p.ill) v *= 1 - Math.min(0.6, p.ill.sev / 140);
+    let pain = 0;
+    for (const i of p.inj) pain += i.sev;
+    if (pain > 15) v *= 1 - Math.min(0.6, (pain - 15) / 120);
+    if (v < 0.15) v = 0.15;
+  }
   return v;
 }
 
 /** Personality on one axis, roughly -2..2. */
 export function per(p: Pawn, ax: number): number {
-  let v = p.per[ax];
-  for (const t of p.traits) {
-    const list = TRAITS[t]?.per;
-    if (list) for (const [a, d] of list) if (a === ax) v += d;
-  }
-  for (const [a, d] of RACES[p.race].per) if (a === ax) v += d;
-  for (const key of [p.bc, p.ba]) {
-    const list = BACKS[key]?.per;
-    if (list) for (const [a, d] of list) if (a === ax) v += d;
-  }
-  return v < -2 ? -2 : v > 2 ? 2 : v;
+  return fixedOf(p).ax[ax];
 }
+
+/** What lasting marks do to a body. */
+export const PERM: Record<string, Partial<Record<StatK, number>>> = {
+  lost_hand: { work: -0.25 }, hook_hand: { work: -0.1 }, lost_arm: { work: -0.4 },
+  lost_leg: { move: -0.45, work: -0.1 }, peg_leg: { move: -0.18 }, lost_foot: { move: -0.3 }, peg_foot: { move: -0.1 },
+  lost_eye: { beauty: -0.5 }, scar_face: { beauty: -0.5 }, lost_jaw: { beauty: -1, charm: -2 },
+  bad_back: { work: -0.15, move: -0.05 }, frail_bones: { tough: -0.25 }, addled: { learn: -0.35 }, cough: { work: -0.08 }, cataracts: { work: -0.08 },
+};
 
 export const fullName = (p: { first: string; fam: string; epi?: string }): string => (p.epi ? `${p.first} ${p.fam} ${p.epi}` : `${p.first} ${p.fam}`);
 
@@ -83,8 +125,26 @@ export function posAt(c: Colony, p: Pawn, t: number): number {
   return a.path[Math.min(a.path.length - 1, Math.floor(f * (a.path.length - 1)))];
 }
 
+/** An action on the spot. Every action is made with the same set of fields, in the same order, which keeps the engine fast. */
+export function mkAct(k: ActK, t: number, x: number, y: number, dur: number, why: string): Act {
+  return { k, t0: t, ta: t, t1: t + dur, sx: x, sy: y, tx: x, ty: y, path: undefined, w: undefined, b: undefined, o: undefined, d: undefined, why };
+}
+
 export function idleAct(c: Colony, p: { x: number; y: number }, ticks = 1, why = 'idle'): Act {
-  return { k: 'idle', t0: c.tick, ta: c.tick, t1: c.tick + ticks, sx: p.x, sy: p.y, tx: p.x, ty: p.y, why };
+  return mkAct('idle', c.tick, p.x, p.y, ticks, why);
+}
+
+/** Rebuild a colonist with every field present in a fixed order (after loading, or when first made). */
+export function normPawn(p: Pawn): Pawn {
+  const a = p.act;
+  return {
+    id: p.id, first: p.first, fam: p.fam, epi: p.epi, race: p.race, sex: p.sex, born: p.born, look: p.look, traits: p.traits, bc: p.bc, ba: p.ba, sk: p.sk, pas: p.pas, per: p.per,
+    orient: p.orient, x: p.x, y: p.y,
+    act: { k: a.k, t0: a.t0, ta: a.ta, t1: a.t1, sx: a.sx, sy: a.sy, tx: a.tx, ty: a.ty, path: a.path, w: a.w, b: a.b, o: a.o, d: a.d, why: a.why },
+    food: p.food, rest: p.rest, joy: p.joy, soc: p.soc, mood: p.mood, th: p.th, sit: p.sit, rel: p.rel, mo: p.mo, fa: p.fa, sp: p.sp, crush: p.crush, home: p.home, prof: p.prof,
+    faith: p.faith, dev: p.dev, goal: p.goal, hp: p.hp, brk: p.brk, low: p.low, high: p.high, drunk: p.drunk, cloth: p.cloth, lastBrk: p.lastBrk, preg: p.preg, know: p.know, bio: p.bio,
+    owner: p.owner, coin: p.coin, insp: p.insp, say: p.say, inj: p.inj, perm: p.perm, ill: p.ill, booze: p.booze, gone: p.gone,
+  };
 }
 
 export function skillLevel(p: Pawn, s: number): number {
@@ -181,7 +241,7 @@ export function makePawn(c: Colony, r: Rand, o: MakeOpts = {}): Pawn {
     per,
     orient: r.chance(0.82) ? 0 : r.chance(0.6) ? 1 : 2,
     x: c.cx, y: c.cy,
-    act: { k: 'idle', t0: c.tick, ta: c.tick, t1: c.tick + 1 + r.int(8), sx: c.cx, sy: c.cy, tx: c.cx, ty: c.cy, why: 'new' },
+    act: mkAct('idle', c.tick, c.cx, c.cy, 1 + r.int(8), 'new'),
     food: 60 + r.int(35), rest: 60 + r.int(35), joy: 50 + r.int(30), soc: 50 + r.int(30),
     mood: 55,
     th: [], sit: [], rel: {},
@@ -191,10 +251,10 @@ export function makePawn(c: Colony, r: Rand, o: MakeOpts = {}): Pawn {
     dev: piety > 1 ? 3 : piety > 0.2 ? 2 : piety > -0.8 ? 1 : 0,
     goal: r.pick(GOALS),
     hp: 100, low: 0, high: 0, drunk: 0, cloth: 60 + r.int(40), lastBrk: -99999,
-    know: [], bio: [], coin: adult ? r.int(12) : 0,
+    know: [], bio: [], coin: adult ? r.int(12) : 0, inj: [], perm: [], booze: 0,
   };
   if (r.chance(0.12) && adult) p.look.marks.push(1 + r.int(6));
-  return p;
+  return normPawn(p);
 }
 
 /** Turn a living colonist into a record of the dead (or departed). */

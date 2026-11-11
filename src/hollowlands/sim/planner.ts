@@ -96,8 +96,11 @@ export function findSite(c: Colony, k: string): [number, number] | null {
 }
 
 export function build(c: Colony, k: string, instant = false, crop?: string): Bld | null {
+  // no point measuring the same crowded ground every morning
+  if (c.nosite[k] && c.tick - c.nosite[k] < 240 * 12) return null;
   const site = findSite(c, k);
-  if (!site) return null;
+  if (!site) { c.nosite[k] = c.tick; return null; }
+  delete c.nosite[k];
   let dwarves = 0;
   for (const p of c.pawns) if (p.race === 'dwarf') dwarves++;
   const stoneLover = c.pawns.length > 0 && dwarves / c.pawns.length > 0.4;
@@ -256,6 +259,7 @@ function slots(c: Colony, adults: number, kids: number): Record<string, number> 
     smith: has('smithy') ? 1 : 0,
     weaver: has('workshop') ? 1 : 0,
     healer: adults >= 8 ? 1 : 0,
+    guard: adults >= 20 ? 2 : adults >= 10 ? 1 : 0,
     priest: has('shrine') ? 1 : 0,
     lorekeeper: kids >= 3 && adults >= 8 ? 1 : 0,
   };
