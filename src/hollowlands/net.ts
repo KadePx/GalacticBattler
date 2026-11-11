@@ -40,7 +40,7 @@ interface State { id: string; tick: number; epoch: number; msPerTick: number; si
 
 export interface Live {
   c: Colony;
-  /** the tick the colony should be at right now, by the server's clock */
+  /** the tick the colony should be at right now, by the server's clock (with the fraction of the tick under way) */
   target(): number;
   msPerTick: number;
   /** called after each of my own sim steps, to check for drift at the agreed ticks */
@@ -80,7 +80,7 @@ export async function connect(onReload: (c: Colony) => void): Promise<Live> {
     c: null as unknown as Colony,
     msPerTick: 6000,
     busy: true,
-    target: () => Math.floor((Date.now() + skew - state.epoch) / state.msPerTick),
+    target: () => (Date.now() + skew - state.epoch) / state.msPerTick,
     stepped: () => {
       const t = live.c.tick;
       if (t % 100 === 0) {

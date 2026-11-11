@@ -8,6 +8,7 @@
 
 import { DEFAULT_MS_PER_DAY, TICKS_PER_DAY } from './config';
 import { RACES } from './sim/data/races';
+import { connect, liveAvailable, myHash, type Live } from './net';
 import { createColony, step, type Colony, type Id, type RaceK } from './sim/index';
 import { checkSpec, type PawnSpec } from './sim/create';
 import { fullName, pawnById } from './sim/pawn';
@@ -32,7 +33,10 @@ const num = (k: string, d: number, lo: number, hi: number): number => {
 const raceQ = q.get('race') ?? '';
 const opts = { seed: num('seed', 1, 0, 4294967295), pop: num('pop', 16, 2, 40), race: raceQ in RACES ? (raceQ as RaceK) : undefined };
 
-let c: Colony = createColony(opts);
+/** Local play: a colony made in this browser from a seed. Otherwise the shared live colony, if there is one. */
+const wantLocal = q.has('seed') || q.has('local') || q.has('pre');
+let live: Live | null = null;
+let c: Colony = createColony(wantLocal ? opts : { seed: 1, pop: 2 });
 let speed = 1;
 /** Part of a tick already played, 0..1. The map draws at tick (c.tick - 1 + acc). */
 let acc = 0;
@@ -45,6 +49,7 @@ const loading = document.getElementById('loading');
 const loadMsg = document.getElementById('loadmsg');
 
 function setSpeed(s: number): void {
+  if (live) return;
   speed = SPEEDS.includes(s) ? s : 1;
   ui?.touch();
 }
@@ -88,7 +93,7 @@ const store = {
   del(k: string): void { try { localStorage.removeItem(k); } catch { /* nothing to remove */ } },
 };
 /** This browser's public id: colonists it makes carry it as `owner`. */
-const me: string = store.get('hl_me') ?? ((): string => {
+let me: string = store.get('hl_me') ?? ((): string => {
   const id = 'u' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   store.set('hl_me', id);
   return id;
@@ -115,6 +120,18 @@ const creator = new Creator({ send: (spec) => join(spec) });
 
 /** Send a colonist in: they walk in off the road on the tick given (the next one by default). */
 function join(spec: PawnSpec, at = c.tick + 1, remember = true): void {
+  if (live) {
+    // the server decides; the colonist reaches every browser through the sync
+    pending = true;
+    syncMine();
+    void live.join(spec).then((err) => {
+      if (!err) return;
+      pending = false;
+      toast(err);
+      syncMine();
+    });
+    return;
+  }
   c.inq.push({ t: at, k: 'join', spec, owner: me });
   pending = true;
   if (remember) store.set(mineKey, JSON.stringify({ spec, t: at }));
@@ -191,7 +208,7 @@ function watchMine(now: number): void {
  * Send the remembered one in again, on the tick they first arrived if that is still ahead.
  */
 function rejoin(): void {
-  if (myPawn() || myDead()) return;
+  if (live || myPawn() || myDead()) return;
   try {
     const saved = JSON.parse(store.get(mineKey) ?? 'null') as { spec: PawnSpec; t: number } | null;
     if (saved && checkSpec(saved.spec).ok) join(saved.spec, Math.max(c.tick + 1, saved.t || 0), false);
@@ -214,6 +231,7 @@ function bindMine(): void {
 
 /** Run the colony forward n game days at once (test hook, and the pre= option). */
 function days(n: number): void {
+  if (live) return;
   const end = c.tick + Math.max(0, Math.round(n * TICKS_PER_DAY));
   while (c.tick < end) step(c);
   acc = 0;
@@ -235,7 +253,19 @@ async function prerun(n: number): Promise<void> {
 
 function frame(dt: number): void {
   // Advance the clock. At high speeds this is many ticks a frame, cut off by a time budget.
-  if (speed > 0) {
+  if (live) {
+    // the shared colony keeps the server's time: catch up to it, then glide through the tick under way
+    if (!live.busy) {
+      const tf = live.target();
+      const t0 = performance.now();
+      while (c.tick < Math.floor(tf)) {
+        step(c);
+        live.stepped();
+        if (performance.now() - t0 > BUDGET_MS) break;
+      }
+      acc = c.tick >= Math.floor(tf) ? tf - Math.floor(tf) : 0;
+    }
+  } else if (speed > 0) {
     acc += (Math.min(250, dt) / TICK_MS) * speed;
     if (acc >= 1) {
       const t0 = performance.now();
@@ -259,7 +289,19 @@ function frame(dt: number): void {
 
 async function boot(): Promise<void> {
   await map.init(document.getElementById('map') as HTMLElement);
-  const pre = num('pre', 0, 0, 6000);
+  if (!wantLocal && (await liveAvailable())) {
+    if (loadMsg) loadMsg.textContent = 'Finding the colony';
+    me = await myHash();
+    live = await connect((fresh) => {
+      c = fresh;
+      acc = 0;
+      map.setColony(c);
+      if (sel?.k === 'pawn' && !pawnById(c, sel.id)) setSel(null);
+      ui?.touch();
+    });
+    document.body.classList.add('live');
+  } else if (!wantLocal) c = createColony(opts);
+  const pre = live ? 0 : num('pre', 0, 0, 6000);
   if (pre > 0) await prerun(pre);
 
   ui = new Panels({

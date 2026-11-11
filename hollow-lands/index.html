@@ -309,6 +309,8 @@
         .skrow { grid-template-columns: 62px minmax(0, 1fr) 34px auto 84px; gap: 5px; font-size: 12.5px; }
         .skrow .pasb { font-size: 11px; padding: 3px 2px; }
       }
+          /* The shared colony keeps its own time: no speed buttons */
+      body.live #speed { display: none; }
     </style>
   </head>
   <body>
