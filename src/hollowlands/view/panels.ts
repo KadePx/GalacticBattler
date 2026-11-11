@@ -8,6 +8,8 @@ import { CROPS, TPL } from '../sim/data/buildings';
 import { PROFS, PROF_LIST } from '../sim/data/professions';
 import { RACES } from '../sim/data/races';
 import { foodDays } from '../sim/econ';
+import { FAITHS, mainFaith } from '../sim/faith';
+import { GOVS, approval, rulerTitle } from '../sim/gov';
 import { fullName, pawnById, person, stage } from '../sim/pawn';
 import type { Colony, Dead, Id, Pawn } from '../sim/types';
 import { WEIGHT, dateText, evText, raceName } from '../text';
@@ -236,8 +238,49 @@ export class Panels {
     if (c.gath) {
       const a = person(c, c.gath.a ?? 0);
       const o = person(c, c.gath.o ?? 0);
-      const what = c.gath.k === 'wedding' ? `The wedding of ${a?.first ?? 'someone'} and ${o?.first ?? 'someone'}` : c.gath.k === 'funeral' ? `The funeral of ${a ? fullName(a) : 'someone'}` : 'A gathering';
+      const what = c.gath.k === 'wedding' ? `The wedding of ${a?.first ?? 'someone'} and ${o?.first ?? 'someone'}` : c.gath.k === 'funeral' ? `The funeral of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'trial' ? `The trial of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'sermon' ? `${a?.first ?? 'The priest'} will preach` : 'A gathering';
       h += `<div class="note">${linkNames(c, what, [c.gath.a, c.gath.o])}: ${dateText(c.gath.t0, true)}.</div>`;
+    }
+
+    // who rules, and how
+    const ruler = pawnById(c, c.gov.ruler);
+    const gov = GOVS[c.gov.k];
+    h += `<h3>Rule <span class="legend">${esc(gov?.name ?? '')}</span></h3>`;
+    if (ruler) {
+      const app = Math.round(approval(c));
+      const years = Math.max(0, Math.floor((c.tick - c.gov.since) / (TICKS_PER_DAY * 60)));
+      h += `<div class="th"><span>${esc(rulerTitle(c, ruler))}</span><b><a class="who" data-p="${ruler.id}">${esc(fullName(ruler))}</a></b></div>`;
+      h += `<div class="th"><span>Has ruled</span><b>${years < 1 ? 'under a year' : years + (years === 1 ? ' year' : ' years')}</b></div>`;
+      h += `<div class="th"><span title="Average opinion of the ruler among adults">Standing with the colony</span><b class="${app > 5 ? 'up' : app < -5 ? 'down' : ''}">${app > 0 ? '+' : ''}${app}</b></div>`;
+      const regent = pawnById(c, c.gov.regent);
+      if (regent) h += `<div class="th"><span>Regent</span><b><a class="who" data-p="${regent.id}">${esc(fullName(regent))}</a></b></div>`;
+      if (c.gov.k === 'lord') {
+        const heir = c.pawns.filter((p) => p.mo === ruler.id || p.fa === ruler.id).sort((a, b) => a.born - b.born)[0];
+        h += `<div class="th"><span>Heir</span><b>${heir ? `<a class="who" data-p="${heir.id}">${esc(heir.first)}</a>` : 'None'}</b></div>`;
+      }
+      if (c.gov.k === 'council') h += `<div class="th"><span>Next vote</span><b>${dateText(c.gov.next)}</b></div>`;
+      for (const [title, id] of Object.entries(c.gov.titles)) {
+        const who = pawnById(c, id);
+        if (who) h += `<div class="th"><span>${esc(title[0].toUpperCase() + title.slice(1))}</span><b><a class="who" data-p="${who.id}">${esc(fullName(who))}</a></b></div>`;
+      }
+      const laws: string[] = [c.gov.laws.harsh >= 2 ? 'Harsh justice' : c.gov.laws.harsh === 0 ? 'Lenient justice' : 'Even-handed justice'];
+      if (c.gov.laws.ration) laws.push('Food is rationed');
+      if (c.gov.laws.tax) laws.push('The ruler takes a cut of all wages');
+      h += `<div class="hint">${laws.join(' · ')}. ${esc(gov?.blurb ?? '')}</div>`;
+    } else h += '<div class="hint">Nobody rules here.</div>';
+    if (c.trials.length) {
+      const tr = c.trials[0];
+      const acc = pawnById(c, tr.a);
+      if (acc) h += `<div class="note"><a class="who" data-p="${acc.id}">${esc(acc.first)}</a> stands accused of ${tr.k === 'assault' ? 'attempted murder' : tr.k}${c.trials.length > 1 ? ` (and ${c.trials.length - 1} more waiting)` : ''}.</div>`;
+    }
+    const mf = FAITHS[mainFaith(c)];
+    if (mf) {
+      const faiths = new Map<string, number>();
+      for (const p of c.pawns) if (stage(c, p) >= 2) faiths.set(p.faith, (faiths.get(p.faith) ?? 0) + 1);
+      h += `<h3>Faith <span class="legend">${esc(mf.name)}</span></h3>`;
+      for (const [k, n] of [...faiths].sort((a, b) => b[1] - a[1])) h += `<div class="th"><span title="${esc(FAITHS[k]?.blurb ?? '')}">${esc(FAITHS[k]?.name ?? k)}</span><b>${n}</b></div>`;
+      const saints = c.dead.filter((d) => d.saint);
+      if (saints.length) h += `<div class="hint">Prayed to here: ${saints.map((d) => `<a class="who" data-p="${d.id}">${esc(d.first + ' ' + d.fam)}</a>`).join(', ')}.</div>`;
     }
 
     // who lives here, by people and by age

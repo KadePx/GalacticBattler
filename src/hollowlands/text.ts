@@ -74,6 +74,8 @@ const FACTS: Record<string, string> = {
   theft: 'a theft',
   killing: 'a killing',
   slander: 'a nasty rumour',
+  secret: 'a secret past',
+  attack: 'an attempted killing',
   brawl: 'a brawl',
   bastard: 'a child\'s true father',
 };
@@ -86,7 +88,7 @@ export const WEIGHT: Record<string, number> = {
   ruler: 3, election: 3, usurped: 3, regent: 2, regency_ends: 2, house_ends: 3, house_founded: 3, duel: 3, challenge: 3, coup: 3, plot_failed: 3, title: 2, raised: 2, law: 2,
   theft: 2, theft_hushed: 1, accused: 2, trial_set: 1, trial: 3, murder: 3, attack: 3, sermon: 1, saint: 3,
   raid: 3, allclear: 1, alarm: 2, rout: 2, slew: 2, looted: 3, seized: 3, rescued: 3, hero: 3, maimed: 3, sick: 2, recovered: 1, outbreak: 3, drunkard: 2,
-  joined: 3, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
+  joined: 3, blabbed: 3, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
 
@@ -179,6 +181,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'recovered': return `${a} has recovered from ${ILL[e.s ?? ''] ?? 'their illness'}.`;
     case 'outbreak': return `${ILL[e.s ?? ''] ?? 'Sickness'} has broken out.`.replace(/^./, (x) => x.toUpperCase());
     case 'drunkard': return `${a} cannot stay away from the barrel any more.`;
+    case 'blabbed': return `Drunk, ${a} let slip the secret they came here to bury. ${e.n} heard it.`;
     case 'joined': return e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
     case 'trader': return 'A trader\'s caravan stopped for the day.';
     case 'bard': return 'A wandering bard played in the hall until the fire burned low.';

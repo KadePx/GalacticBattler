@@ -13,7 +13,8 @@
     "world": "esbuild src/commonworld/dev/runner.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/world.mjs --log-level=warning && node node_modules/.cache/world.mjs",
     "world:host": "esbuild src/commonworld/dev/hostTest.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/hosttest.mjs --log-level=warning && node node_modules/.cache/hosttest.mjs",
     "world:admin": "node scripts/cwAdmin.mjs",
-    "hl": "esbuild src/hollowlands/dev/runner.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/hl.mjs --log-level=warning && node node_modules/.cache/hl.mjs"
+    "hl": "esbuild src/hollowlands/dev/runner.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/hl.mjs --log-level=warning && node node_modules/.cache/hl.mjs",
+    "hl:host": "esbuild src/hollowlands/dev/hostTest.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/hlhost.mjs --log-level=warning && node node_modules/.cache/hlhost.mjs"
   },
   "dependencies": {
     "phaser": "3.90.0",

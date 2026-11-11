@@ -2,7 +2,7 @@
 // head, face, beard, hair in front, marks) so every appearance choice combines with every
 // other. Returns an inline SVG string. Works for the living and the dead alike.
 
-import type { Colony, Dead, Pawn } from '../sim/types';
+import type { Colony, Dead, Look, Pawn, RaceK } from '../sim/types';
 import { EYES, HAIR, SHAPE, css, darken, garbOf, hairIndex, lighten, skinOf, stageOfAge, yearsAt } from './look';
 
 type Who = Pawn | Dead;
@@ -19,7 +19,14 @@ export function portraitKey(c: Colony, p: Who): string {
 }
 
 export function portraitSvg(c: Colony, p: Who, size: number): string {
-  const years = yearsOf(c, p);
+  return bustSvg(p, yearsOf(c, p), size);
+}
+
+/** What a portrait needs to know about someone. */
+export interface Bust { race: RaceK; sex: 0 | 1; look: Look }
+
+/** The portrait itself, for anyone of a given age (the creator uses this before a colonist exists). */
+export function bustSvg(p: Bust, years: number, size: number): string {
   const st = stageOfAge(p.race, years);
   const kid = st <= 1;
   const elder = st === 4;

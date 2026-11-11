@@ -177,6 +177,10 @@ export interface Pawn {
   ill?: Ill;
   /** how much they have been drinking lately */
   booze: number;
+  /** a lifelong fear, a hidden past, and a keepsake (chosen when a player makes them) */
+  phobia?: string;
+  secret?: string;
+  heirloom?: string;
   /** set when they die this tick; swept at the end of the tick */
   gone?: boolean;
 }

@@ -163,6 +163,15 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
     else if (!friends && !p.sp && c.pawns.length >= 6 && !has(p, 'loner')) add('alone');
     if (rival) add('rivalnear', rival);
   }
+  if (p.phobia) {
+    const i = posAt(c, p, c.tick);
+    const h = hourOf(c.tick);
+    if (p.phobia === 'dark') { if (!asleep && (h >= 21 || h < 5) && !c.sb[i]) add('fear_dark'); }
+    else if (p.phobia === 'dead') { const b = c.blds.find((x) => x.id === c.sb[i]); if (b?.k === 'graveyard' || (c.gath?.k === 'funeral' && p.act.k === 'attend')) add('fear_dead'); }
+    else if (p.phobia === 'fire') { const b = c.blds.find((x) => x.id === c.sb[i]); if (b?.k === 'smithy' || (p.act.k === 'work' && p.act.w === 'cook')) add('fear_fire'); }
+    else if (p.phobia === 'water') { const t = c.ter[i]; if (t === 5 || t === 6 || (p.act.k === 'work' && p.act.w === 'fish') || p.act.k === 'bathe') add('fear_water'); }
+    else if (p.phobia === 'birds' && !asleep && !c.sb[i] && (c.tick + p.id * 7) % 170 < 10) think(c, p, 'fear_birds');
+  }
   if (p.preg) add('pregnant');
   if (p.cloth < 25) add('ragged');
   if (p.drunk > 30) add('tipsy');

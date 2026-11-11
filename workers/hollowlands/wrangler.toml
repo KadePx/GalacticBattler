@@ -1,0 +1,25 @@
+# Hollow Lands: the live colony, one Durable Object that runs it in real time.
+# Deploy with: npx --yes wrangler@4.154.0 deploy -c workers/hollowlands/wrangler.toml
+# The site (Pages project "galactic-battler") reaches it through functions/api/hl/[[path]].ts.
+name = "hollowlands-colony"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+
+[vars]
+HL_MS_PER_DAY = "1440000" # one game day every 24 real minutes = one game year per real day
+
+[[durable_objects.bindings]]
+name = "COLONY"
+class_name = "ColonyDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ColonyDO"]
+
+# History (events, the dead, join records) goes in the site's existing D1 database.
+[[d1_databases]]
+binding = "DB"
+database_name = "galactic-ghosts"
+database_id = "b442a793-c782-49ca-a339-99fc2750f230"
+
+# Set the admin key once with: npx --yes wrangler@4.154.0 secret put HL_ADMIN_KEY -c workers/hollowlands/wrangler.toml

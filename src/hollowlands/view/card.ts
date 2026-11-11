@@ -8,6 +8,7 @@ import { CROPS, TPL } from '../sim/data/buildings';
 import { PROFS } from '../sim/data/professions';
 import { TH } from '../sim/data/thoughts';
 import { TRAITS } from '../sim/data/traits';
+import { RANK_NAMES, rulerTitle } from '../sim/gov';
 import { breakLine, moodTarget } from '../sim/mood';
 import { ageYears, fullName, person, posAt, stage, stat } from '../sim/pawn';
 import { opinion } from '../sim/social';
@@ -210,6 +211,10 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   h += `<div class="head">${face(c, p, 88)}<div class="hd"><div class="nm">${esc(fullName(p))}</div>`;
   h += `<div class="sub">${esc(raceName(p.race))} · ${p.sex ? 'Male' : 'Female'} · ${age} ${age === 1 ? 'year' : 'years'} · ${STAGE_NAMES[st]}</div>`;
   h += `<div class="sub">${prof ? `<span title="${esc(prof.blurb)}">${esc(prof.name)}</span>` : st < 3 ? 'Too young for a trade' : 'No trade'} · <span title="Faith: ${DEVOTION[p.dev] ?? ''}">${esc(faithName(p.faith))}</span></div>`;
+  // standing: the ruler's title, an office held, or a rank worth mentioning
+  const office = Object.entries(c.gov.titles).find(([, id]) => id === p.id)?.[0];
+  const standing = p.id === c.gov.ruler ? `${rulerTitle(c, p)} of ${c.name}` : p.id === c.gov.regent ? 'Regent' : office ? office[0].toUpperCase() + office.slice(1) : p.rank !== 2 && st >= 3 ? RANK_NAMES[p.rank] : '';
+  if (standing) h += `<div class="sub"><span class="tie kin">${esc(standing)}</span></div>`;
   h += `<div class="btns"><button class="btn sm${ui.following ? ' on' : ''}" data-act="follow">${ui.following ? 'Following' : 'Follow'}</button><button class="btn sm" data-act="find">Show on map</button></div></div></div>`;
 
   let flags = '';

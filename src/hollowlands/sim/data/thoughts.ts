@@ -200,6 +200,15 @@ export const TH_LIST: ThDef[] = [
   h('goodhunt', 'Brought down a fine kill', 5, DAY * 2),
   h('taughtchild', 'Passed something on to {o}', 3, DAY),
 
+  // Fears and secrets
+  h('fear_dark', 'Out in the dark', -5, 0),
+  h('fear_dead', 'Too close to the dead', -5, 0),
+  h('fear_water', 'Too close to deep water', -5, 0),
+  h('fear_fire', 'Too close to the fire', -4, 0),
+  h('fear_birds', 'A crow was looking at me', -4, 6),
+  h('heretic', '{o} prays to something foul', 0, DAY * 60, { op: -22 }),
+  h('blabbed', 'Said far too much while drunk', -6, DAY * 4),
+
   // Rule, rank and law
   h('rationed', 'Short rations', -4, 0),
   h('highborn', 'Born to the high table', 3, 0),

@@ -550,6 +550,16 @@ export function finish(c: Colony, p: Pawn): void {
         think(c, o, 'drankwith', p.id);
         break;
       }
+      if (p.drunk > 85 && p.secret && r.chance(0.18)) {
+        // in their cups, the thing they swore never to say
+        const sf = c.facts.find((x) => x.k === 'secret' && x.a === p.id);
+        const ears = c.pawns.filter((o) => o !== p && o.act.b === a.b && o.act.k !== 'sleep' && t >= o.act.ta);
+        if (sf && ears.length) {
+          for (const o of ears) learn(c, o, sf);
+          think(c, p, 'blabbed');
+          log(c, 'blabbed', p.id, undefined, p.secret, ears.length);
+        }
+      }
       if (p.drunk > 85) {
         think(c, p, 'hungover');
         if (r.chance(0.3)) {

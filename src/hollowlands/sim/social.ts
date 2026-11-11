@@ -100,6 +100,16 @@ export function learn(c: Colony, p: Pawn, f: Fact, from?: Pawn): void {
     case 'coward': think(c, p, 'cowarddeed', f.a); break;
     case 'theft': think(c, p, 'thief', f.a); break;
     case 'killing': think(c, p, 'killer', f.a); break;
+    case 'secret': {
+      const s = f.s;
+      if (s === 'killer') think(c, p, 'killer', f.a);
+      else if (s === 'deserter') think(c, p, 'cowarddeed', f.a);
+      else if (s === 'cultist') think(c, p, 'heretic', f.a);
+      else if (s === 'thief') think(c, p, 'thief', f.a);
+      else if (s === 'bigamist') think(c, p, 'adulterer', f.a);
+      else if (s === 'noble') think(c, p, 'heardwell', f.a);
+      break;
+    }
     case 'bastard': {
       const mother = pawnById(c, Number(f.s));
       if (!mother) break;

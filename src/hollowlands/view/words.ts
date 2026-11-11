@@ -131,7 +131,7 @@ export function bioText(c: Colony, b: Bio): string {
 export function causeText(c: Colony, d: Dead): string {
   const line = evText(c, { t: d.died, k: 'death', a: d.id, b: d.by, s: d.cause });
   const name = `${d.first} ${d.fam} `;
-  let s = (line.startsWith(name) ? line.slice(name.length) : line).replace(/.$/, '');
+  let s = (line.startsWith(name) ? line.slice(name.length) : line).replace(/\.$/, '');
   if (s === 'died' && d.left) return 'Left the colony';
   s = s.replace(/^was /, '');
   return s ? s[0].toUpperCase() + s.slice(1) : 'Died';

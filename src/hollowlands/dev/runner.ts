@@ -125,7 +125,7 @@ function report(): void {
 function many(): void {
   const years = Number(args[1]) || 5;
   const n = Number(args[2]) || 10;
-  const keys = ['births', 'joined', 'deaths', 'death_age', 'raids', 'foesSlain', 'taken', 'wounds', 'maimings', 'breaks', 'brawls', 'weddings', 'affairs', 'friendships', 'rivalries'];
+  const keys = ['births', 'joined', 'deaths', 'raids', 'taken', 'breaks', 'brawls', 'weddings', 'affairs', 'thefts', 'trials', 'convictions', 'wrongful', 'murders', 'rulers', 'elections', 'coups', 'houses', 'saints'];
   const sick = (c: Colony): number => Object.keys(c.stats).filter((k) => k.startsWith('death_sick')).reduce((a, k) => a + c.stats[k], 0);
   const slain = (c: Colony): number => Object.keys(c.stats).filter((k) => k.startsWith('death_foe') || k === 'death_bled' || k === 'death_wounds').reduce((a, k) => a + c.stats[k], 0);
   console.log([pad('seed', 6), pad('colony', 16), 'pop', 'mood', 'd_sick', 'd_fight', ...keys.map((k) => k.replace('death_', 'd_').slice(0, 7))].map((s, i) => (i > 1 ? lpad(s, 8) : s)).join(' '));

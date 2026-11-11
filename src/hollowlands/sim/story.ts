@@ -2,7 +2,9 @@
 // and the comfortable, backs off after a tragedy, and never arrives twice in quick succession.
 // Events are sparks. What they lead to is up to the colony.
 
-import { DAYS_PER_YEAR, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
+import { DAYS_PER_YEAR, HARD_CAP, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
+import { checkSpec, pawnFromSpec, type PawnSpec } from './create';
+import { addFact } from './social';
 import { cells } from './data/buildings';
 import { PLAYABLE } from './data/races';
 import { spawnRaid } from './combat';
@@ -70,6 +72,14 @@ export function applyInputs(c: Colony): void {
     if (e.t > c.tick) { i++; continue; }
     c.inq.splice(i, 1);
     if (e.k === 'raid') spawnRaid(c, String(e.kind), Number(e.n) || 1, new Rand(c.seed, S.FIGHT, c.tick, 99));
+    else if (e.k === 'join') {
+      // a player's colonist walks in off the road
+      const spec = e.spec as PawnSpec;
+      if (c.pawns.length >= HARD_CAP || !checkSpec(spec).ok) continue;
+      const p = pawnFromSpec(c, spec, String(e.owner ?? ''));
+      arrive(c, p, 'player');
+      if (p.secret) p.know.push(addFact(c, 'secret', p.id, undefined, true, p.secret).id);
+    }
   }
 }
 
