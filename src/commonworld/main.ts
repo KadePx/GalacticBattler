@@ -248,7 +248,8 @@ function updateTop(): void {
     const s = Math.max(0, Math.round((nextAt - (Date.now() + clockSkew)) / 1000));
     clock = ` · ${SEASONS[w.tick % 12]} · next month in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
-  $('wstats').textContent = `${archiveId ? `An earlier world, ended in year ${archiveYear} · ` : viewYear !== null ? 'Looking back · ' : ''}${AGES[age]} Age${climate ? ` · ${climate.name}` : ''}${clock} · ${wars ? `${wars} ${wars === 1 ? 'war' : 'wars'} · ` : ''}${civs.size} peoples · ${v.setts.length} towns · ${fmt(pop)} souls`;
+  if (nextInfo?.held) clock = '';
+  $('wstats').textContent = `${archiveId ? `An earlier world, ended in year ${archiveYear} · ` : nextInfo?.held ? `This world's story has ended · ` : viewYear !== null ? 'Looking back · ' : ''}${AGES[age]} Age${climate ? ` · ${climate.name}` : ''}${clock} · ${wars ? `${wars} ${wars === 1 ? 'war' : 'wars'} · ` : ''}${civs.size} peoples · ${v.setts.length} towns · ${fmt(pop)} souls`;
 }
 
 // ---- Timeline ----
@@ -582,7 +583,7 @@ function renderDock(): void {
     b.innerHTML = s > 0 ? `<span class="live"></span>On the road · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : '<span class="live"></span>Arriving…';
   } else {
     b.className = `btn gold ${founding ? 'on' : ''}`;
-    b.innerHTML = 'Found your people';
+    b.innerHTML = nextInfo?.held ? 'Found your people in the new world' : 'Found your people';
   }
 }
 
@@ -598,6 +599,7 @@ $('mine').onclick = () => {
     openDrawer({ k: 'mine' }, false);
   } else if (pending) map.focus(pending.tile, 4);
   else if (founding) founding.close();
+  else if (nextInfo?.held) location.href = '?next=1&found=1';
   else openFounding();
 };
 
@@ -614,7 +616,7 @@ $('toast').onclick = () => $('toast').classList.add('hidden');
 function welcome(): boolean {
   let seen = false;
   try { seen = localStorage.getItem('cw.welcomed') === '1'; } catch { /* private mode */ }
-  if (seen || !online || myCiv >= 0 || pending) return false;
+  if (seen || !online || myCiv >= 0 || pending || nextInfo?.held) return false;
   $('welcome').classList.remove('hidden');
   return true;
 }
@@ -931,6 +933,17 @@ async function syncLoop(): Promise<void> {
 async function boot(): Promise<void> {
   await Promise.race([document.fonts.load('600 14px Inter'), new Promise((r) => setTimeout(r, 2500))]);
   const loading = $('loading');
+  // /commonworld/first (?world=first): the first world, archived, or still standing before the start.
+  if (archiveId === 'first') {
+    const a = await getJson<{ archives: { id: string }[] }>('archives').catch(() => ({ archives: [] }));
+    location.replace(a.archives.length ? `?world=${encodeURIComponent(a.archives[a.archives.length - 1].id)}` : '?old=1');
+    return;
+  }
+  // While the old world holds still before a new one begins, the page opens on the new world.
+  if (online && !q.has('old') && !q.has('civ')) {
+    const n = await getJson<NextInfo>('next').catch(() => null);
+    if (n?.phase === 'prep' && n.held) { location.replace('?next=1'); return; }
+  }
   if (archiveId) {
     try {
       loading.textContent = 'OPENING AN EARLIER WORLD…';
@@ -1029,10 +1042,10 @@ async function boot(): Promise<void> {
       if (r.status === 'failed') toast('<b>Your settlers could not reach their land.</b><br>Choose a new homeland.', 8000);
     }
     lastNotified = w.logBase + w.log.length - 1;
+    await pollNext();
     renderDock();
     const greeted = showDigest() || welcome();
     saveSeen();
-    await pollNext();
     if (!greeted) maybeShowNext();
     setInterval(() => void pollNext(), 60_000);
   }
@@ -1089,7 +1102,7 @@ function markWaiting(): void {
 function renderPill(): void {
   if (archiveId) return;
   const p = $('nextpill');
-  const t = nextMode ? '‹ The living world' : pillText(nextInfo, Date.now() + clockSkew);
+  const t = nextMode ? (nextInfo?.held ? '‹ The first world' : '‹ The living world') : pillText(nextInfo, Date.now() + clockSkew);
   p.classList.toggle('hidden', !t);
   p.textContent = t;
 }
@@ -1212,6 +1225,7 @@ $('next').onclick = (e) => {
 };
 
 $('nextpill').onclick = () => {
+  if (nextMode && nextInfo?.held) { location.href = '?world=first'; return; }
   if (archiveId || nextMode) { location.href = location.pathname; return; }
   toggleNext($('next').classList.contains('hidden'));
 };

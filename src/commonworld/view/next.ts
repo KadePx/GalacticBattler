@@ -159,10 +159,9 @@ export function nextHtml(n: NextInfo, now: number, opts: { live: boolean; viewin
     : `<div class="row2"><button class="btn gold" data-n="${opts.live ? 'go' : 'found'}">Found your people in the new world</button></div>`;
   return `<div class="nh"><h2>The new world</h2><button class="icon" data-n="close" aria-label="Close">✕</button></div>
     <div class="prep"><img src="${c.img}" alt="The new world's map"><div>${start}<p class="hint">${facts(c)}</p></div></div>
-    <p class="lead">Found your people now and they arrive in its very first month, ${civs ? `alongside the ${civs} ancient peoples` : 'before anyone else: AI peoples only arrive from the second year, on land no founder has taken'}. You can change or withdraw them until it begins. Peoples in the current world carry on there until it ends.</p>
+    <p class="lead">Found your people now and they arrive in its very first month, ${civs ? `alongside the ${civs} ancient peoples` : 'before anyone else: AI peoples only arrive from the second year, on land no founder has taken'}. You can change or withdraw them until it begins. ${n.held ? 'The first world has ended its story and stays open to visit.' : 'Peoples in the current world carry on there until it ends.'}</p>
     ${act}
     ${opts.unnamed ? `<p class="hint">${civs ? 'The ancient peoples, towns and rivers are' : 'Rivers are'} named when the world begins.</p>` : ''}
-    ${n.held ? '<p class="hint">The current world now holds still until the new one begins.</p>' : ''}
     <h3>Ready to set out <span class="legend">${peoples.length}</span></h3>
     ${peoples.length ? `<div class="waiting">${peoples.map((p, i) => `<button class="wp" data-n="tile" data-v="${p.tile}"><span class="wn">${i + 1}</span>${bannerSvg(specFromNums(p.banner), 18)}<span><b>${esc(p.name ?? 'A people')}</b>${p.byName ? `<small>founded by ${esc(p.byName)}</small>` : ''}</span></button>`).join('')}</div>` : '<p class="hint">No one yet. Be the first.</p>'}`;
 }
