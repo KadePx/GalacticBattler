@@ -342,6 +342,9 @@ async function boot(): Promise<void> {
   if (sites && alive.length) {
     if (loadMsg) loadMsg.textContent = 'Finding the colony';
     // which colony: the one asked for, else the one my colonist lives in, else the biggest
+    // a remembered home from an earlier world means nothing in this one
+    const home = store.get('hl.col');
+    if (home && !sites.some((x) => x.id === home)) store.del('hl.col');
     const want = q.get('c') ?? store.get('hl.col');
     const site = alive.find((s) => s.id === want) ?? alive.slice().sort((a, b) => b.pop - a.pop)[0];
     here = site.id;
