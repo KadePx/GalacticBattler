@@ -212,5 +212,6 @@ export function deserialize(json: string): Colony {
 
 /** Fingerprint of everything in the colony. Two copies that took the same steps always match. */
 export function colonyHash(c: Colony): string {
-  return hashStr(serialize(c)).toString(16).padStart(8, '0');
+  // the outbox is the keeper's business (it empties it as it delivers), not part of the colony's state
+  return hashStr(serialize(c.out.length ? { ...c, out: [] } : c)).toString(16).padStart(8, '0');
 }

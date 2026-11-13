@@ -93,6 +93,7 @@ export async function connect(onReload: (c: Colony) => void): Promise<Live> {
     busy: true,
     target: () => (Date.now() + skew - state.epoch) / state.msPerTick,
     stepped: () => {
+      if (live.c.out.length) live.c.out = []; // only the server delivers these
       const t = live.c.tick;
       if (t % 100 === 0) {
         mine.set(t, colonyHash(live.c));

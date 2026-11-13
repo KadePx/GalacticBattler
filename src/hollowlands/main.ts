@@ -328,6 +328,7 @@ function frame(dt: number): void {
     const id = sel.id;
     setSel(c.dead.some((d) => d.id === id) ? { k: 'dead', id } : null);
   }
+  if (c.out.length) c.out = []; // a lone colony has nobody to send to
   map.render(c, c.tick - 1 + acc, dt);
   const now = performance.now();
   watchMine(now);
