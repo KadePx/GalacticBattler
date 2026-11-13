@@ -159,6 +159,9 @@ export class Creator {
   private touched = new Set<string>();
   private fresh = false;
   private colonyName = 'the colony';
+  /** a line about room in the colony (HTML), and whether it is full */
+  private room = '';
+  private full = false;
 
   constructor(private hooks: CreatorHooks) {
     const el = (this.el = document.createElement('div'));
@@ -178,8 +181,10 @@ export class Creator {
   }
 
   /** Show the creator. After a colonist has been sent, the next visit starts from a new stranger. */
-  open(colonyName?: string): void {
+  open(colonyName?: string, room = '', full = false): void {
     if (colonyName) this.colonyName = colonyName;
+    this.room = room;
+    this.full = full;
     if (this.fresh) {
       this.fresh = false;
       this.spec = randomSpec();
@@ -349,7 +354,10 @@ export class Creator {
     const left = chk.budget - chk.spent;
     const extra = Math.max(0, Math.ceil((chk.skillSpent - FREE_SKILL) / 3));
     let h = `<div class="who">${face(s, 180)}<div class="id"><div class="nm">${esc(fullOf(s))}</div><div class="sub">${esc(RACES[s.race].name)} · ${s.sex ? 'Male' : 'Female'} · ${s.age} years</div></div></div>`;
-    h += `<div class="meters"><div class="meter${over ? ' over' : ''}"><b>${chk.spent} of ${chk.budget} spent</b><span>${over ? `over by ${-left}` : `${left} to spare`}</span><div class="bar"><i style="width:${Math.max(0, Math.min(100, (chk.spent / chk.budget) * 100)).toFixed(0)}%;background:${over ? 'var(--bad)' : 'var(--accent)'}"></i></div></div>`;
+    // flaws give points back, so what is left can be more than the starting budget
+    const avail = Math.max(chk.budget, chk.budget - Math.min(0, chk.spent));
+    const bonus = chk.spent < 0 ? -chk.spent : 0;
+    h += `<div class="meters"><div class="meter${over ? ' over' : ''}"><b>${over ? `${-left} ${-left === 1 ? 'point' : 'points'} over` : `${left} ${left === 1 ? 'point' : 'points'} left`}</b><span>${over ? 'drop a strength or take a flaw' : bonus ? `${chk.budget} to start, +${bonus} from flaws` : `of ${chk.budget}: strengths cost, flaws give back`}</span><div class="bar"><i style="width:${Math.max(0, Math.min(100, (left / avail) * 100)).toFixed(0)}%;background:${over ? 'var(--bad)' : 'var(--accent)'}"></i></div></div>`;
     h += `<div class="meter"><b>${chk.skillSpent} of ${FREE_SKILL} skill points</b><span>${extra ? `the extra cost ${extra}` : chk.skillSpent < FREE_SKILL ? `${FREE_SKILL - chk.skillSpent} unused` : 'all used'}</span></div></div>`;
     const traits = [...forcedTraits(s), ...s.traits.filter((k) => !forcedTraits(s).includes(k))];
     h += `<div class="chips">${traits.map((k) => `<span class="chip">${esc(TRAITS[k]?.name ?? k)}</span>`).join('')}</div>`;
@@ -365,8 +373,9 @@ export class Creator {
   }
 
   private people(): string {
+    const roomNote = this.room ? `<div class="crroom${this.full ? ' full' : ''}">${this.room}</div>` : '';
     const s = this.spec;
-    let h = `<h2>Who are they?</h2><p class="lead">Six peoples share the Hollow Lands. Choose one, or <button class="btn sm" data-cr="roll">Roll a stranger</button> to have everything picked for you.</p><div class="opts">`;
+    let h = roomNote + `<h2>Who are they?</h2><p class="lead">Six peoples share the Hollow Lands. Choose one, or <button class="btn sm" data-cr="roll">Roll a stranger</button> to have everything picked for you.</p><div class="opts">`;
     for (const k of PLAYABLE) {
       const R = RACES[k];
       h += `<button class="opt race${k === s.race ? ' on' : ''}" data-cr="race" data-v="${k}">${face(s, 56, k)}<div><b>${esc(R.name)}</b><small>${esc(R.blurb)}</small><small class="x">Grown at ${R.adult}, old at ${R.old}, may see ${R.max}. ${esc(skillList(R.sk) || 'No special gifts')}.</small></div></button>`;
@@ -505,8 +514,9 @@ export class Creator {
     if (s.phobia) h += `<div class="th"><span>Afraid of</span><b>${esc((PHOBIAS[s.phobia] ?? s.phobia).toLowerCase())}</b></div>`;
     if (s.secret) h += `<div class="th"><span>Hiding</span><b>${esc(SECRETS[s.secret]?.name ?? s.secret)}</b></div>`;
     if (s.heirloom) h += `<div class="th"><span>Carries</span><b>${esc(s.heirloom)}</b></div>`;
-    h += `<div class="th"><span>Points</span><b class="${chk.spent > BUDGET ? 'down' : ''}">${chk.spent} of ${BUDGET} spent</b></div>`;
-    h += `<div class="sendrow"><button class="btn go big" data-cr="send"${chk.ok ? '' : ' disabled'}>Send them in to ${esc(this.colonyName)}</button></div>`;
+    h += `<div class="th"><span>Points left</span><b class="${chk.spent > BUDGET ? 'down' : ''}">${BUDGET - chk.spent}</b></div>`;
+    if (this.room) h += `<div class="hint">${this.room}</div>`;
+    h += `<div class="sendrow"><button class="btn go big" data-cr="send"${chk.ok && !this.full ? '' : ' disabled'}>Send them in to ${esc(this.colonyName)}</button></div>`;
     return h;
   }
 }

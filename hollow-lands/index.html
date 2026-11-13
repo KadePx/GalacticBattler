@@ -325,7 +325,11 @@
       .wbox { width: min(680px, 100%); max-height: calc(100vh - 24px); overflow: auto; padding: 14px 16px 16px; }
       .whead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
       .whead b { font-size: 17px; } .whead span { color: var(--dim); flex: 1; } .whead .icon { align-self: center; }
+      .wmapbox { position: relative; }
       .wmap { width: 100%; height: auto; display: block; border-radius: 12px; background: #0e1420; border: 1px solid var(--line); }
+      .wlabel { position: absolute; transform: translate(-50%, 0); padding: 1px 7px; border-radius: 6px; background: rgba(13, 17, 26, 0.72); color: var(--ink); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+      .wlabel.here { background: var(--accent); color: var(--accentInk); } .wlabel.dead { color: var(--faint); font-weight: 500; }
+      @media (max-width: 640px) { .wlabel { font-size: 10px; padding: 0 5px; } }
       .wmap .road { stroke: rgba(255, 255, 255, 0.16); stroke-width: 1.5; stroke-dasharray: 3 4; }
       .wmap .site { cursor: pointer; } .wmap .site circle { fill: #8b97b4; stroke: #0e1420; stroke-width: 2; }
       .wmap .site.here circle { fill: var(--accent); } .wmap .site.dead circle { fill: #3a4257; }
@@ -340,6 +344,9 @@
       .askbox b { font-size: 14.5px; }
       .diary { padding: 12px 14px; border-radius: 12px; background: var(--raise); border: 1px solid var(--line); font-style: italic; color: var(--dim); }
       .diary p { margin: 4px 0; } .diary .y { font-style: normal; font-size: 11.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.06em; }
+      .crroom { margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; background: var(--raise); border: 1px solid var(--line); color: var(--dim); }
+      .crroom.full { background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.45); color: var(--ink); }
+      .crroom a { color: var(--accent2); text-decoration: underline; }
       /* The shared colony keeps its own time: no speed buttons */
       body.live #speed { display: none; }
     </style>

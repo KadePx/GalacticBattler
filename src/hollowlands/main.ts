@@ -6,10 +6,10 @@
 //     seed  world seed (default 1)        pop  starting colonists (default 16)
 //     race  main people (optional)        pre  game days to fast-forward before showing
 
-import { DEFAULT_MS_PER_DAY, TICKS_PER_DAY } from './config';
+import { HARD_CAP, DEFAULT_MS_PER_DAY, TICKS_PER_DAY } from './config';
 import { RACES } from './sim/data/races';
 import { heirsOf } from './sim/player';
-import { connect, fetchRegion, myHash, useColony, type Live, type RegionSite } from './net';
+import { connect, fetchRegion, myHash, myId, regionSeed, useColony, type Live, type RegionSite } from './net';
 import { WorldView } from './view/world';
 import { createColony, step, type Colony, type Ev, type Id, type RaceK } from './sim/index';
 import { checkSpec, type PawnSpec } from './sim/create';
@@ -38,6 +38,9 @@ const opts = { seed: num('seed', 1, 0, 4294967295), pop: num('pop', 16, 2, 40), 
 /** Local play: a colony made in this browser from a seed. Otherwise the shared live colony, if there is one. */
 const wantLocal = q.has('seed') || q.has('local') || q.has('pre');
 let live: Live | null = null;
+/** when a join was sent, and whether we are already asking the server about it */
+let pendingAt = 0;
+let asking = false;
 let region: RegionSite[] = [];
 /** id of the colony on screen (live play) */
 let here = '';
@@ -128,6 +131,7 @@ function join(spec: PawnSpec, at = c.tick + 1, remember = true): void {
   if (live) {
     // the server decides; the colonist reaches every browser through the sync
     pending = true;
+    pendingAt = performance.now();
     syncMine();
     const lv = live;
     void (lv.humanKey ? humanCheck(lv.humanKey) : Promise.resolve(undefined)).then((token) => lv.join(spec, token)).then((err) => {
@@ -200,6 +204,17 @@ function watchMine(now: number): void {
       syncMine();
       goToMine();
       toast(`${p.first} walks in from the road`);
+    } else if (live) {
+      // the server accepted them; they reach this browser with the next sync. Only if they are
+      // long overdue, ask the server what became of them.
+      if (now - pendingAt > 90_000 && !asking) {
+        asking = true;
+        void fetch(`/api/hl/c/${here}/me?f=${myId()}`, { cache: 'no-store' }).then((r) => r.json()).then((s: { status?: string }) => {
+          asking = false;
+          if (s.status === 'none') { pending = false; syncMine(); toast('They never arrived. Please try again.'); }
+          else pendingAt = now;
+        }, () => { asking = false; pendingAt = now; });
+      }
     } else if (!c.inq.some((e) => e.k === 'join' && e.owner === me)) {
       // the sim took the input and made nobody: the colony is full
       pending = false;
@@ -274,18 +289,33 @@ function humanCheck(siteKey: string): Promise<string> {
   });
 }
 
+/** Open the creator, saying how much room the colony has and where else there is room if it is full. */
+function openCreator(): void {
+  const cap = HARD_CAP;
+  const n = c.pawns.length + c.inq.filter((e) => e.k === 'join').length;
+  let room = '';
+  if (live) {
+    const others = region.filter((s) => s.id !== here && !s.dead && s.pop < cap - 2).sort((a, b) => a.pop - b.pop).slice(0, 3);
+    const links = others.map((s) => `<a href="?c=${s.id}">${esc(s.name)}</a> (${s.pop} of ${cap})`).join(', ');
+    room = n >= cap
+      ? `<b>${esc(c.name)} is full.</b> ${links ? 'Colonies with room: ' + links + '.' : 'Every colony is full right now. Try again later.'}`
+      : `Joining <b>${esc(c.name)}</b>: ${n} of ${cap} places taken.${others.length ? ` Elsewhere: ${links}.` : ''}`;
+  }
+  creator.open(c.name, room, live ? n >= cap : false);
+}
+
 function bindMine(): void {
   document.getElementById('mine')?.addEventListener('click', () => {
     const home = store.get('hl.col');
     if (!myPawn() && !myDead() && live && home && home !== here) { location.search = '?c=' + home; return; }
     if (myPawn()) goToMine();
-    else if (!pending) creator.open(c.name);
+    else if (!pending) openCreator();
   });
   document.getElementById('memorial')?.addEventListener('click', (e) => {
     const k = (e.target as HTMLElement).closest<HTMLElement>('[data-m]')?.dataset.m;
     const d = myDead();
     if (k === 'view' && d) setSel({ k: 'dead', id: d.id });
-    else if (k === 'new') creator.open(c.name);
+    else if (k === 'new') openCreator();
     else if (k === 'heir') {
       const id = Number((e.target as HTMLElement).closest<HTMLElement>('[data-id]')?.dataset.id);
       if (live) void live.send('heir', { id }).then((err) => { if (err) toast(err); });
@@ -373,7 +403,7 @@ async function boot(): Promise<void> {
     const world = new WorldView((id) => { location.search = '?c=' + id; });
     const wb = document.getElementById('worldbtn');
     wb?.classList.remove('hidden');
-    wb?.addEventListener('click', () => { void fetchRegion().then((fresh) => world.open(fresh ?? region, here, store.get('hl.col') ?? '')); });
+    wb?.addEventListener('click', () => { void fetchRegion().then((fresh) => world.open(fresh ?? region, here, store.get('hl.col') ?? '', regionSeed)); });
     me = await myHash();
     live = await connect((fresh) => {
       c = fresh;
@@ -486,7 +516,7 @@ const hooks = {
     syncMine();
   },
   /** Open the character creator. */
-  creator: (): void => creator.open(c.name),
+  creator: (): void => openCreator(),
   /** Make a random valid colonist and send them in at once. Returns the spec. */
   rollMine: (): PawnSpec => {
     const spec = randomSpec();
