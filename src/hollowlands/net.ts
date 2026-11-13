@@ -129,7 +129,10 @@ export async function connect(onReload: (c: Colony) => void): Promise<Live> {
 
   async function load(): Promise<void> {
     live.busy = true;
-    const snap = await getJson<State & { colony: string }>('snapshot');
+    // the snapshot comes as gzip bytes, unpacked here (proxies may drop a content-encoding label)
+    const raw = await fetch(API + 'snapshot', { cache: 'no-store' });
+    if (!raw.ok || !raw.body) throw new Error('snapshot: ' + raw.status);
+    const snap = JSON.parse(await new Response(raw.body.pipeThrough(new DecompressionStream('gzip'))).text()) as State & { colony: string };
     state = snap;
     skew = snap.now - Date.now();
     seq = snap.seq;

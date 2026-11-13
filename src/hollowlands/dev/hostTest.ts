@@ -24,7 +24,7 @@ function check(name: string, ok: boolean, detail = ''): void {
 async function get<T>(host: ColonyHost, path: string, headers: Record<string, string> = {}): Promise<T> {
   await host.advance();
   const r = await host.handle(new Request('http://x/api/hl/' + path, { headers }));
-  if (r.headers.get('content-encoding') === 'gzip') {
+  if (r.headers.get('x-gz') === '1') {
     const text = await new Response(new Blob([await r.arrayBuffer()]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
     return JSON.parse(text) as T;
   }
@@ -146,7 +146,7 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
   const call = async <T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> => {
     await world.advance();
     const r = await world.handle(new Request('http://x/api/hl/' + path, init));
-    const text = r.headers.get('content-encoding') === 'gzip' ? await new Response(new Blob([await r.arrayBuffer()]).stream().pipeThrough(new DecompressionStream('gzip'))).text() : await r.text();
+    const text = r.headers.get('x-gz') === '1' ? await new Response(new Blob([await r.arrayBuffer()]).stream().pipeThrough(new DecompressionStream('gzip'))).text() : await r.text();
     return { status: r.status, body: JSON.parse(text) as T };
   };
   interface Region { sites: { id: string; name: string; pop: number; from?: string; founded: number }[] }

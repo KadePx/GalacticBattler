@@ -263,7 +263,7 @@ export class ColonyHost {
           if (!this.snap || this.snap.tick !== c.tick || this.snap.seq !== this.seq) {
             this.snap = { tick: c.tick, seq: this.seq, body: await gzip(JSON.stringify({ ...this.state(), colony: serialize(c) })) };
           }
-          return new Response(this.snap.body, { headers: { 'content-type': 'application/json', 'content-encoding': 'gzip', 'cache-control': 'no-store' } });
+          return new Response(this.snap.body, { headers: { 'content-type': 'application/octet-stream', 'x-gz': '1', 'cache-control': 'no-store' } });
         }
         if (path === 'sync') {
           const since = Number(url.searchParams.get('seq')) || 0;
