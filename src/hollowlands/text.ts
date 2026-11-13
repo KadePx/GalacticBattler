@@ -84,7 +84,7 @@ const FACTS: Record<string, string> = {
 export const WEIGHT: Record<string, number> = {
   death: 3, birth: 3, wedding: 3, lovers: 2, betrothed: 2, divorce: 3, breakup: 2, found_out: 3, affair: 2, bastard_plain: 3, stillbirth: 3,
   brawl: 2, break: 2, tantrum: 2, friends: 2, rivals: 2, reconciled: 2, masterwork: 2, inspired: 2, convert: 2, adult: 2, left: 3, funeral: 2,
-  built: 1, plan: 0, trade: 1, harvest: 1, hunt: 1, frost: 1, mock: 2, defend: 2, refused: 2, wedding_set: 1, wedding_off: 2, feast: 2,
+  built: 1, stonework: 2, plan: 0, trade: 1, harvest: 1, hunt: 1, frost: 1, mock: 2, defend: 2, refused: 2, wedding_set: 1, wedding_off: 2, feast: 2,
   ruler: 3, election: 3, usurped: 3, regent: 2, regency_ends: 2, house_ends: 3, house_founded: 3, duel: 3, challenge: 3, coup: 3, plot_failed: 3, title: 2, raised: 2, law: 2,
   theft: 2, theft_hushed: 1, accused: 2, trial_set: 1, trial: 3, murder: 3, attack: 3, sermon: 1, saint: 3,
   raid: 3, allclear: 1, alarm: 2, rout: 2, slew: 2, looted: 3, seized: 3, rescued: 3, hero: 3, maimed: 3, sick: 2, recovered: 1, outbreak: 3, drunkard: 2,
@@ -142,6 +142,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'inspired': return `${a} is ${e.s === 'frenzy' ? 'working like someone possessed' : e.s === 'insight' ? 'seeing everything clearly at last' : 'struck by an idea for something beautiful'}.`;
     case 'masterwork': return `${a} made ${e.s ?? 'a masterwork'}.`;
     case 'trade': return `${a} is now the colony's ${PROFS[e.s ?? '']?.name.toLowerCase() ?? e.s}.`;
+    case 'stonework': return `The ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'} stands in stone now. ${a} set the last block.`;
     case 'built': return `${a} finished the ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'}.`;
     case 'plan': return `Work begins on a ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'}.`;
     case 'harvest': return `${a} brought in the last of the ${e.s === 'grain' ? 'barley' : e.s === 'flax' ? 'flax' : 'roots'}.`;

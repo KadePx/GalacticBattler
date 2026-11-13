@@ -9,7 +9,8 @@ import { foodDays, mouths, rawFood } from './econ';
 import { bump, log, note } from './events';
 import { isDown, needsTending, tend } from './health';
 import { think, workSkillOf } from './mood';
-import { advanceBuild, canBuild } from './planner';
+import { advanceBuild, canBuild, syncTiles } from './planner';
+import { TPL } from './data/buildings';
 import { STAGE, gainXp, has, mkAct, pawnById, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
 import { F, T, type Act, type Bld, type Colony, type Pawn, type WorkK } from './types';
@@ -51,7 +52,7 @@ function fieldNeed(c: Colony, b: Bld): FieldNeed | null {
   }
   if (ripe) return { b, op: 1, n: ripe };
   if (bare && def.sow.includes(season) && doy + def.days <= 43 && c.temp >= 2) return { b, op: 0, n: bare };
-  if (growing && (b.tend ?? 0) < 70) return { b, op: 2, n: growing };
+  if (growing && (b.tend ?? 0) < 88) return { b, op: 2, n: growing };
   return null;
 }
 
@@ -231,7 +232,9 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
     });
   }
   const smithy = bldOf(c, 'smithy');
-  const stoneTarget = 12 + needStone + (pop >= 10 ? 20 : 0);
+  // a colony that has found its feet starts turning timber into stone
+  const timber = pop >= 10 ? c.blds.find((b) => b.built && !b.mat && b.k !== 'field' && b.k !== 'well' && b.k !== 'graveyard') : undefined;
+  const stoneTarget = 12 + needStone + (pop >= 10 ? 20 : 0) + (timber ? 45 : 0);
   const wantOre = !!smithy && c.stock.ore < 8 && c.stock.iron < 6;
   if (c.stock.stone < stoneTarget || wantOre) {
     offer('mine', wantOre ? 3 : 0.8 + 5 * (1 - c.stock.stone / stoneTarget), 'mine', () => {
@@ -291,8 +294,21 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
       const b = shop ?? hall!;
       return job('craft', spotTile(c, b, shop ? 'wl' : 't', r), true, 'People need clothes', b.id);
     });
-  } else if (shop && c.stock.goods < pop * 3 && (c.stock.leather >= 6 || c.stock.cloth >= 6 || c.stock.wood >= woodTarget + 20)) {
+  } else if (shop && c.stock.goods < pop * 7 && (c.stock.leather >= 6 || c.stock.cloth >= 6 || c.stock.wood >= woodTarget + 20)) {
     offer('craft', 1.5, 'craft', () => job('craft', spotTile(c, shop, 'wl', r), true, 'Making goods to trade', shop.id, 1));
+  }
+
+  // Stone lasts. One building at a time, the hall first.
+  if (timber && !site && c.stock.stone >= 20) {
+    const order = ['hall', 'store', 'shrine', 'tavern', 'smithy'];
+    let pick = timber;
+    for (const b of c.blds) {
+      if (!b.built || b.mat || b.k === 'field' || b.k === 'well' || b.k === 'graveyard') continue;
+      if (b.up) { pick = b; break; }
+      if (order.indexOf(b.k) >= 0 && (order.indexOf(pick.k) < 0 || order.indexOf(b.k) < order.indexOf(pick.k))) pick = b;
+    }
+    const sb = pick;
+    offer('build', 2.4, 'stone', () => job('build', (sb.y + sb.h - 1) * c.w + sb.x + Math.floor(sb.w / 2), true, 'Rebuilding the ' + TPL[sb.k].name.toLowerCase() + ' in stone', sb.id, 3));
   }
 
   // Making good homes better
@@ -431,7 +447,23 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
     case 'build': {
       const b = c.blds.find((x) => x.id === a.b);
       if (!b) break;
-      if (b.built && a.d === 2) {
+      if (b.built && a.d === 3 && !b.mat) {
+        const t = TPL[b.k];
+        const need = t.wood * 1.6 + 25;
+        const dp = Math.min(1 - (b.up ?? 0), (hours * speed) / (t.work * 4), c.stock.stone / need);
+        if (dp <= 0) break;
+        c.stock.stone -= need * dp;
+        b.up = (b.up ?? 0) + dp;
+        if (b.up >= 0.999) {
+          b.up = undefined;
+          b.mat = 1;
+          b.q = Math.min(100, b.q + 10);
+          b.dmg = 0;
+          syncTiles(c, b);
+          think(c, p, 'builtit');
+          log(c, 'stonework', p.id, undefined, b.k);
+        }
+      } else if (b.built && a.d === 2) {
         b.q = Math.min(92, b.q + 0.9 * speed * hours);
         c.stock.wood = Math.max(0, c.stock.wood - 0.8 * hours);
         if (c.stock.stone >= 0.3) c.stock.stone -= 0.3 * hours;

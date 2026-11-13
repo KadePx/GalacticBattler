@@ -104,7 +104,7 @@ export function dailyLand(c: Colony): void {
       const nv = v + grow * (c.ter[i] === T.SOIL ? 1.2 : 1);
       c.crop[i] = nv >= 200 ? 255 : Math.max(1, Math.floor(nv));
     }
-    b.tend = Math.max(0, (b.tend ?? 0) - 7);
+    b.tend = Math.max(0, (b.tend ?? 0) - 10);
   }
   if (firstFrost) log(c, 'frost');
 

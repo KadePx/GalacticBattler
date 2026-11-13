@@ -243,6 +243,8 @@ export interface Bld {
   name?: string;
   /** damage 0..100 */
   dmg: number;
+  /** progress 0..1 of being rebuilt in stone */
+  up?: number;
 }
 
 export interface Ev { t: number; k: string; a?: Id; b?: Id; s?: string; n?: number }
