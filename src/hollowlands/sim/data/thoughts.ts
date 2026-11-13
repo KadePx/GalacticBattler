@@ -218,6 +218,12 @@ export const TH_LIST: ThDef[] = [
   h('blabbed', 'Said far too much while drunk', -6, DAY * 4),
 
   // Rule, rank and law
+  h('thrall', 'In chains', -14, 0),
+  h('keepsthralls', 'We keep people in chains here', -3, 0),
+  h('freed', 'Free', 15, DAY * 15),
+  h('hollowpeace', 'She has filled the empty place', 4, 0),
+  h('hollowfound', 'Something answered', 8, DAY * 6),
+  h('rite', 'Stood in the dark with the others', 6, DAY * 6),
   h('rationed', 'Short rations', -4, 0),
   h('highborn', 'Born to the high table', 3, 0),
   h('outcast', 'Branded and shunned', -8, 0),

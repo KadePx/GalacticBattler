@@ -192,6 +192,10 @@ export interface Pawn {
   prev?: Id;
   /** the player's wish about leaving with settlers: 1 stay, -1 go */
   roots?: number;
+  /** held in thrall: owns nothing, chooses nothing */
+  thrall?: boolean;
+  /** secretly sworn to the Hollow Mother */
+  cult?: boolean;
   /** a question waiting for the player: kind, who it concerns, a fact id if any, and the tick it lapses */
   ask?: { k: string; o?: Id; n?: number; x: number };
   /** set when they die this tick; swept at the end of the tick */
@@ -303,6 +307,8 @@ export interface Colony {
   out: { k: string; [key: string]: unknown }[];
   /** the colony this one was founded from */
   from?: string;
+  /** a plot against the ruler: who leads it, who is in, when it began, and whether the day has come */
+  plot?: { lead: Id; mem: Id[]; t: number; ruler?: Id; go?: boolean };
   /** accusations waiting for a trial */
   trials: { a: Id; k: string; f: number; by: Id }[];
   /** building kinds the planner found no room for, and when it last looked */

@@ -224,7 +224,7 @@ export function depart(c: Colony, p: Pawn, cause: string): void {
   p.gone = true;
   c.dead.push(toDead(c, p, cause, undefined, true));
   log(c, 'left', p.id, undefined, cause);
-  if (cause === 'exiled' || cause === 'moved') c.out.push({ k: 'migrant', t: c.tick, from: c.id, fromName: c.name, why: cause, pawn: JSON.parse(JSON.stringify({ ...p, gone: undefined })) });
+  if (cause === 'exiled' || cause === 'moved' || cause === 'escaped') c.out.push({ k: 'migrant', t: c.tick, from: c.id, fromName: c.name, why: cause, pawn: JSON.parse(JSON.stringify({ ...p, gone: undefined })) });
   bump(c, 'departures');
   for (const o of c.pawns) {
     if (o === p || o.gone) continue;

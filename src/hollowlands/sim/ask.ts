@@ -8,6 +8,7 @@ import { factById, log, note } from './events';
 import { think, getRel } from './mood';
 import { pawnById, per } from './pawn';
 import { opinion } from './social';
+import { exposeCultist, exposePlot, joinCult, joinPlot } from './intrigue';
 import { AX, type Colony, type Id, type Input, type Pawn } from './types';
 
 export interface AskDef { k: string; title: string; text: string; opts: [string, string][] }
@@ -16,6 +17,8 @@ export interface AskDef { k: string; title: string; text: string; opts: [string,
 export const ASKS: Record<string, AskDef> = {
   propose: { k: 'propose', title: 'A proposal', text: '{o} has asked for their hand in marriage.', opts: [['yes', 'Say yes'], ['no', 'Refuse']] },
   report: { k: 'report', title: 'Caught in the act', text: 'They saw {o} stealing from the stores. Nobody else did.', opts: [['report', 'Turn them in'], ['hush', 'Say nothing'], ['blackmail', 'Make them pay for silence']] },
+  plot: { k: 'plot', title: 'A quiet word', text: '{o} says the ruler has to go, and asks if they are in.', opts: [['join', 'Join the plot'], ['no', 'Want no part of it'], ['warn', 'Warn the ruler']] },
+  cult: { k: 'cult', title: 'After dark', text: '{o} speaks of the Hollow Mother, who fills what is empty, and asks them to come and see.', opts: [['join', 'Go with them'], ['no', 'Refuse'], ['report', 'Tell the ruler']] },
   settle: { k: 'settle', title: 'Talk of leaving', text: 'People are talking about setting out to found a new colony.', opts: [['go', 'Go with them'], ['stay', 'Stay here'], ['see', 'Let them decide']] },
 };
 
@@ -68,6 +71,15 @@ export function settleAsk(c: Colony, p: Pawn, v: string): void {
       think(c, o, 'toldsecret', p.id);
       log(c, 'theft_hushed', o.id, p.id, f?.s);
     }
+  } else if (a.k === 'plot') {
+    const ruler = pawnById(c, c.gov.ruler);
+    const choice = v || (ruler && opinion(c, p, ruler) < 5 ? 'join' : ruler && opinion(c, p, ruler) > 25 && per(p, AX.LOYAL) > 0.3 ? 'warn' : 'no');
+    if (choice === 'join') joinPlot(c, p);
+    else if (choice === 'warn') exposePlot(c, p);
+  } else if (a.k === 'cult') {
+    const choice = v || (p.dev >= 2 ? 'no' : p.mood < 40 ? 'join' : 'no');
+    if (choice === 'join') joinCult(c, p, o);
+    else if (choice === 'report' && o && !o.gone) exposeCultist(c, p, o);
   } else if (a.k === 'settle') {
     if (v === 'go') p.roots = -1;
     else if (v === 'stay') p.roots = 1;

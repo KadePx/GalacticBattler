@@ -138,6 +138,8 @@ export function importPawns(c: Colony, msg: SettlerMsg, r: Rand): Id {
     p.prof = '';
     p.rank = 2;
     p.urge = undefined;
+    p.thrall = undefined;
+    p.ask = undefined;
     p.say = undefined;
     p.brk = undefined;
     p.prev = undefined;

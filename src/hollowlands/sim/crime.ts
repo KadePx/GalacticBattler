@@ -145,6 +145,7 @@ export function verdict(c: Colony, there: Pawn[]): void {
   for (const b of accused.bio) if (b.k === 'punished') prior++;
   let s: number;
   if (tr.k === 'murder' || tr.k === 'treason') s = harsh === 0 ? SENTENCE.EXILED : harsh === 1 ? (r.chance(0.5) ? SENTENCE.HANGED : SENTENCE.EXILED) : SENTENCE.HANGED;
+  else if (tr.k === 'heresy') s = harsh === 0 ? SENTENCE.STOCKS : harsh === 1 ? SENTENCE.FLOGGED : r.chance(0.5) ? SENTENCE.EXILED : SENTENCE.HANGED;
   else if (tr.k === 'assault') s = harsh === 0 ? SENTENCE.STOCKS : harsh === 1 ? SENTENCE.FLOGGED : prior ? SENTENCE.BRANDED : SENTENCE.FLOGGED;
   else s = harsh === 0 ? SENTENCE.FINE : harsh === 1 ? (prior ? SENTENCE.FLOGGED : SENTENCE.STOCKS) : prior ? SENTENCE.MAIMED : SENTENCE.BRANDED;
   bump(c, 'convictions');

@@ -50,7 +50,7 @@ export function abroadInput(c: Colony, e: Input): boolean {
   if (e.k === 'spoils') {
     // our raiders come home, with what they took and without those who fell
     const loot = Number(e.loot) || 0;
-    const slain = Math.min(3, Number(e.slain) || 0);
+    const slain = Math.min(2, Math.round((Number(e.slain) || 0) / 2));
     c.stock.grain += loot * 0.45;
     c.stock.meal += loot * 0.25;
     c.stock.ale += loot * 0.1;

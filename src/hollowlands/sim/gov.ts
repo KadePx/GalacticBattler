@@ -68,6 +68,8 @@ function crown(c: Colony, p: Pawn, how: string, old?: Pawn): void {
   const cruel = per(p, AX.KIND) < -0.8 || has(p, 'cruel') || c.gov.k === 'tyrant';
   c.gov.laws.harsh = cruel ? 2 : per(p, AX.KIND) > 0.8 ? 0 : 1;
   c.gov.laws.tax = per(p, AX.GREED) > 0.8 ? 1 : 0;
+  c.gov.laws.thrall = c.gov.k === 'tyrant' || per(p, AX.KIND) < -0.2 ? 1 : 0;
+  p.thrall = undefined;
   p.rank = RANK.RULER;
   think(c, p, 'crowned');
   log(c, 'ruler', p.id, old?.id, how);
@@ -97,6 +99,7 @@ export function initGov(c: Colony, r: Rand): void {
   c.gov.next = c.tick + TICKS_PER_YEAR * 2;
   c.gov.laws.harsh = per(best, AX.KIND) < -0.8 ? 2 : per(best, AX.KIND) > 0.8 ? 0 : 1;
   c.gov.laws.tax = per(best, AX.GREED) > 0.8 ? 1 : 0;
+  c.gov.laws.thrall = per(best, AX.KIND) < -0.2 ? 1 : 0;
   best.rank = RANK.RULER;
   updateRanks(c, true);
 }
@@ -110,6 +113,7 @@ export function updateRanks(c: Colony, quiet: boolean): void {
     let rank: number = RANK.COMMONER;
     const st = stage(c, p);
     if (p === ruler) rank = RANK.RULER;
+    else if (p.thrall) rank = RANK.THRALL;
     else if (p.perm.includes('brand')) rank = RANK.OUTCAST;
     else if (house && (p.sp === house.id || p.mo === house.id || p.fa === house.id || house.mo === p.id || house.fa === p.id || (!!house.mo && p.mo === house.mo))) rank = RANK.NOBLE;
     else if (st >= STAGE.ADULT) {
@@ -324,15 +328,15 @@ export function dailyGov(c: Colony): void {
   }
 
   // a hated ruler and an ambitious rival with friends: a coup
-  if (day % 6 === 0 && adults.length >= 6 && t - c.gov.since > TICKS_PER_DAY * 30) {
-    const app = approval(c);
-    if (app < -6) {
-      const plotter = adults.filter((p) => p !== ruler && per(p, AX.AMBITION) > 0.8 && opinion(c, p, ruler!) < -10).sort((a, b) => standing(c, b, adults) - standing(c, a, adults) || a.id - b.id)[0];
-      if (plotter && r.chance(0.35)) {
-        let with_ = 0;
-        for (const p of adults) if (p !== ruler && (p === plotter || opinion(c, p, plotter) > opinion(c, p, ruler!) + 8)) with_++;
+  // (the plot itself grows in intrigue.ts; here its day has come)
+  if (c.plot?.go) {
+    {
+      const plotter = pawnById(c, c.plot.lead);
+      const with_ = c.plot.mem.length;
+      c.plot = undefined;
+      if (plotter && !plotter.gone && plotter !== ruler) {
         bump(c, 'coups');
-        if (with_ >= adults.length * 0.4) {
+        if (with_ > 0) {
           const old = ruler;
           old.rank = RANK.COMMONER;
           if (k !== 'council') c.gov.k = 'tyrant';

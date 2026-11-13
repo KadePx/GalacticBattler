@@ -5,6 +5,7 @@ import { cacheOf } from './cache';
 import { RACES } from './data/races';
 import { bump, log, note } from './events';
 import { isDown, wound } from './health';
+import { capture } from './intrigue';
 import { depart, die } from './life';
 import { endNow, think } from './mood';
 import { findPath } from './path';
@@ -119,7 +120,13 @@ export function strike(c: Colony, p: Pawn, f: Foe, dmg: number): boolean {
   note(c, p, 'slew', undefined, f.k);
   log(c, 'slew', p.id, undefined, f.k);
   c.stats['kills_' + p.id] = (c.stats['kills_' + p.id] ?? 0) + 1;
-  if (!def.beast) { c.stock.weapons += 0.5; c.stock.silver += 2; }
+  if (!def.beast) {
+    c.stock.weapons += 0.5;
+    c.stock.silver += 2;
+    // some are taken alive
+    const cr = new Rand(c.seed, S.FIGHT, c.tick, f.id, 4);
+    if (cr.chance(0.18)) capture(c, f.k, cr);
+  }
   else if (f.k === 'wolf' || f.k === 'boar') { c.stock.meat += 6; c.stock.leather += 1; }
   if (f.held) {
     const cap = pawnById(c, f.held);

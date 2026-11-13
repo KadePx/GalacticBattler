@@ -36,7 +36,7 @@ const CAUSES: Record<string, string> = {
   beast: 'was killed by a beast',
   murder: 'was murdered',
   executed: 'was put to death',
-  accident: 'died in an accident', raiding: 'died raiding another colony', foe_raider: 'was killed by raiders from another colony', moved: 'left for another colony', settled: 'left to found a new colony', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
+  accident: 'died in an accident', escaped: 'escaped from thralldom', raiding: 'died raiding another colony', foe_raider: 'was killed by raiders from another colony', moved: 'left for another colony', settled: 'left to found a new colony', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
   bled: 'bled to death',
   taken: 'was carried off by slavers',
   foe_bandit: 'was cut down by bandits', foe_slaver: 'was killed by slavers', foe_orc: 'was butchered by orc raiders', foe_wolf: 'was torn apart by wolves',
@@ -61,7 +61,7 @@ const PART: Record<string, string> = {
   eyeL: 'eye', eyeR: 'eye', armL: 'arm', armR: 'arm', handL: 'hand', handR: 'hand', legL: 'leg', legR: 'leg', footL: 'foot', footR: 'foot',
 };
 
-const CRIME: Record<string, string> = { theft: 'theft', murder: 'murder', assault: 'attempted murder', treason: 'treason' };
+const CRIME: Record<string, string> = { theft: 'theft', murder: 'murder', assault: 'attempted murder', treason: 'treason', heresy: 'heresy' };
 const SENTENCE = ['found not guilty', 'fined', 'put in the stocks', 'flogged', 'branded', 'had a hand cut off', 'exiled', 'hanged'];
 
 const FACTS: Record<string, string> = {
@@ -89,7 +89,7 @@ export const WEIGHT: Record<string, number> = {
   theft: 2, theft_hushed: 1, accused: 2, trial_set: 1, trial: 3, murder: 3, attack: 3, sermon: 1, saint: 3,
   raid: 3, allclear: 1, alarm: 2, rout: 2, slew: 2, looted: 3, seized: 3, rescued: 3, hero: 3, maimed: 3, sick: 2, recovered: 1, outbreak: 3, drunkard: 2,
   settlers: 3, founded: 3, news: 2,
-  asked: 2, blackmail: 3,
+  asked: 2, blackmail: 3, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
   raidout: 3, raiders_from: 2, raidback: 3,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
@@ -146,7 +146,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'frost': return 'The first hard frost. Anything still in the fields is lost.';
     case 'funeral': return e.n ? `${e.n} gathered to bury ${full(c, e.a)}.` : `Nobody came to bury ${full(c, e.a)}.`;
     case 'feast': return `The colony feasted.`;
-    case 'left': return e.s === 'exiled' ? `${full(c, e.a)} was cast out of the colony.` : e.s === 'moved' ? `${full(c, e.a)} packed up and left for another colony.` : e.s === 'settled' ? `${full(c, e.a)} left with the settlers.` : e.s === 'taken' ? `${full(c, e.a)} was carried off in chains.` : `${full(c, e.a)} has left the colony.`;
+    case 'left': return e.s === 'escaped' ? `${full(c, e.a)} is gone, and so are the chains.` : e.s === 'exiled' ? `${full(c, e.a)} was cast out of the colony.` : e.s === 'moved' ? `${full(c, e.a)} packed up and left for another colony.` : e.s === 'settled' ? `${full(c, e.a)} left with the settlers.` : e.s === 'taken' ? `${full(c, e.a)} was carried off in chains.` : `${full(c, e.a)} has left the colony.`;
     case 'ruler': return `${full(c, e.a)} now rules${e.s === 'inherited' ? ', as was their birthright' : e.s === 'elected' ? ', by the colony\'s vote' : e.s === 'fought' ? ', by strength of arm' : e.s === 'coup' ? ', by force' : e.s === 'usurped' ? ', over the rightful heir' : ''}.`;
     case 'election': return `The colony voted. ${full(c, e.a)} won with ${e.n} votes${e.b ? `, beating ${first(c, e.b)}` : ''}.`;
     case 'usurped': return `${a} pushed ${b} aside and took the seat.`;
@@ -187,6 +187,16 @@ export function evText(c: Colony, e: Ev): string {
     case 'settlers': return `${full(c, e.a)} has led ${(e.n ?? 2) - 1} others out to found a new colony.`;
     case 'founded': return `${full(c, e.a)} and ${(e.n ?? 2) - 1} others from ${e.s} raised the first roof here.`;
     case 'news': { const [what, name] = (e.s ?? '').split(':'); const who = (e.s ?? '').split(':')[2]; return what === 'founded' ? `Word has come back: the settlers have founded ${name}.` : what === 'ruler' ? `News from ${name}: ${who || 'someone new'} rules there now.` : what === 'coup' ? `News from ${name}: the seat was taken by force.` : what === 'outbreak' ? `News from ${name}: sickness has broken out there.` : what === 'warlord' ? `Riders on the road: ${name} is on the march with a host.` : what === 'saint' ? `News from ${name}: they are praying to ${who || 'one of their dead'}.` : `News from ${name}.`; }
+    case 'captured': return `${e.s === 'orc' ? 'An' : 'A'} ${FOE_ONE[e.s ?? ''] ?? 'raider'} was taken alive and put in chains: ${full(c, e.a)}.`;
+    case 'ransomed': return 'A captured raider was ransomed back for silver.';
+    case 'freed': return e.s === 'law' ? `${full(c, e.a)} is a thrall no longer: the new rule keeps no chains.` : `${full(c, e.a)} has earned their freedom.`;
+    case 'escaped': return `${full(c, e.a)} slipped their chains in the night.`;
+    case 'plot': return `${a} has begun to speak against ${b}, quietly, to people who might listen.`;
+    case 'plot_fades': return `${a}'s plot has come to nothing.`;
+    case 'cult_whisper': return `${a} has started leaving the house after dark.`;
+    case 'cult_found': return `${b} has found out what ${a} prays to.`;
+    case 'rite': return `${e.n} people were missing from their beds last night.`;
+    case 'cult_rises': return `The Hollow Mother's ${e.n} no longer hide. They pray in the open now.`;
     case 'asked': return `${a} has a choice to make.`;
     case 'blackmail': return `${a} is making ${b} pay to keep a secret.`;
     case 'heir': return `${full(c, e.a)} takes up where ${first(c, e.b)} left off.`;
