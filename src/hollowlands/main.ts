@@ -167,7 +167,8 @@ function syncMine(): void {
   const d = p ? null : myDead();
   meId = p?.id ?? d?.id ?? 0;
   map.mineId = p?.id ?? 0;
-  const label = pending && !p ? 'On the road…' : p?.ask ? 'A choice awaits' : p ? 'My colonist' : d ? 'Make a new colonist' : 'Make your colonist';
+  const away = !p && !d && live && here && store.get('hl.col') && store.get('hl.col') !== here;
+  const label = away ? 'Go to my colonist' : pending && !p ? 'On the road…' : p?.ask ? 'A choice awaits' : p ? 'My colonist' : d ? 'Make a new colonist' : 'Make your colonist';
   const banner = !p && !pending && d && dismissed !== d.id
     ? `<span class="t"><b>${esc(fullName(d))}</b> ${d.left ? 'was lost to the colony' : 'died'} on ${dateText(d.died)}: ${esc(causeText(c, d).toLowerCase())}.</span><button class="btn sm" data-m="view">Remember them</button>${heirsOf(c, me).slice(0, 3).map((x) => `<button class="btn sm go" data-m="heir" data-id="${x.id}">Carry on as ${esc(x.first)}</button>`).join('')}<button class="btn sm" data-m="new">Make a new colonist</button><button class="icon" data-m="x" title="Close" aria-label="Close">&times;</button>`
     : '';
@@ -255,6 +256,8 @@ async function digest(): Promise<void> {
 
 function bindMine(): void {
   document.getElementById('mine')?.addEventListener('click', () => {
+    const home = store.get('hl.col');
+    if (!myPawn() && !myDead() && live && home && home !== here) { location.search = '?c=' + home; return; }
     if (myPawn()) goToMine();
     else if (!pending) creator.open(c.name);
   });

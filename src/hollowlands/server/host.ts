@@ -34,7 +34,12 @@ export interface HostOpts {
   /** part of a region: wait to be started by it rather than making a colony unasked */
   managed?: boolean;
   /** hand the region this colony's news and anything it has sent out (settler parties) */
-  deliver?: (body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name: string }) => Promise<void>;
+  deliver?: (body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name: string; owners: string[] }) => Promise<void>;
+  /** ask the region whether this player already has a colonist somewhere else: returns that colony's name, or '' */
+  claim?: (owner: string, colony: string) => Promise<string>;
+  /** a check that the one joining is a person (Cloudflare Turnstile); off when not given */
+  verifyHuman?: (token: string, ip: string) => Promise<boolean>;
+  humanKey?: string;
   now: () => number;
 }
 
@@ -184,7 +189,8 @@ export class ColonyHost {
     const ruler = c.pawns.find((p) => p.id === c.gov.ruler);
     const msgs = c.out;
     try {
-      await this.o.deliver({ from: c.id, msgs, pop: c.pawns.length, ruler: ruler ? `${ruler.first} ${ruler.fam}` : undefined, tick: c.tick, name: c.name });
+      const owners = [...c.pawns.filter((p) => p.owner).map((p) => p.owner!), ...c.inq.filter((i) => i.k === 'join').map((i) => String(i.owner))];
+      await this.o.deliver({ from: c.id, msgs, pop: c.pawns.length, ruler: ruler ? `${ruler.first} ${ruler.fam}` : undefined, tick: c.tick, name: c.name, owners });
       c.out = [];
     } catch {
       /* the region is busy: keep the messages and try again next time */
@@ -229,7 +235,7 @@ export class ColonyHost {
   private state(): Record<string, unknown> {
     const c = this.c!;
     const m = this.meta!;
-    return { id: m.id, seed: m.seed, name: c.name, tick: c.tick, epoch: m.epoch, msPerTick: m.msPerTick, simV: m.simV, seq: this.seq, pop: c.pawns.length, now: this.o.now(), checks: this.checks.slice(-3) };
+    return { id: m.id, seed: m.seed, name: c.name, tick: c.tick, epoch: m.epoch, msPerTick: m.msPerTick, simV: m.simV, seq: this.seq, pop: c.pawns.length, humanKey: this.o.humanKey, now: this.o.now(), checks: this.checks.slice(-3) };
   }
 
   async handle(req: Request, internal = false): Promise<Response> {
@@ -362,6 +368,12 @@ export class ColonyHost {
     if (last) {
       const since = (c.tick - last.died) * m.msPerTick;
       if (since < REJOIN_MS) return json({ error: 'Give it a little while before sending someone new.', wait: Math.ceil((REJOIN_MS - since) / 60_000) }, 429);
+    }
+    const ip0 = req.headers.get('cf-connecting-ip') ?? 'local';
+    if (this.o.verifyHuman && !(typeof body.token === 'string' && (await this.o.verifyHuman(body.token, ip0)))) return json({ error: 'Please complete the check that you are a person.' }, 403);
+    if (this.o.claim) {
+      const where = await this.o.claim(h, c.id).catch(() => '');
+      if (where) return json({ error: `You already have a colonist in ${where}.` }, 409);
     }
     const queued = c.inq.filter((i) => i.k === 'join').length;
     if (c.pawns.length + queued >= HARD_CAP) return json({ error: 'This colony is full.' }, 409);

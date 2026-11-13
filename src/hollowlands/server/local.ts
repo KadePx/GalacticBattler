@@ -24,6 +24,7 @@ export class LocalWorld {
     if (!h) {
       h = new ColonyHost(this.kvFor('c_' + id), this.db, {
         ...this.o.host, managed: true,
+        claim: async (owner, colony) => String(((await (await this.region.handle(new Request('http://local/api/hl/region/claim', { method: 'POST', body: JSON.stringify({ owner, colony }) }), true)).json()) as { where?: string }).where ?? ''),
         deliver: async (body) => { await this.region.handle(new Request('http://local/api/hl/region/deliver', { method: 'POST', body: JSON.stringify(body) }), true); },
       });
       this.hosts.set(id, h);

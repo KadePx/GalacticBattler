@@ -13,6 +13,17 @@ interface Env {
   DB: D1;
   HL_MS_PER_DAY?: string;
   HL_ADMIN_KEY?: string;
+  TURNSTILE_SITEKEY?: string;
+  TURNSTILE_SECRET?: string;
+}
+
+async function turnstile(secret: string, token: string, ip: string): Promise<boolean> {
+  const body = new FormData();
+  body.append('secret', secret);
+  body.append('response', token);
+  if (ip !== 'local') body.append('remoteip', ip);
+  const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body });
+  return ((await r.json()) as { success?: boolean }).success === true;
 }
 
 // Minimal shapes of the runtime types we use (avoids a types dependency).
@@ -34,6 +45,9 @@ export class ColonyDO extends DurableObject<Env> {
       env.DB,
       {
         msPerDay: Number(env.HL_MS_PER_DAY) || 1_440_000, maxStep: 3000, pop: 16, preDays: 120, adminKey: env.HL_ADMIN_KEY, now: Date.now, managed: true,
+        claim: async (owner, colony) => String(((await (await env.REGION.get(env.REGION.idFromName('region')).fetch(inside('https://hl/api/hl/region/claim', { owner, colony }))).json()) as { where?: string }).where ?? ''),
+        humanKey: env.TURNSTILE_SECRET ? env.TURNSTILE_SITEKEY : undefined,
+        verifyHuman: env.TURNSTILE_SECRET ? (t, ip) => turnstile(env.TURNSTILE_SECRET!, t, ip) : undefined,
         deliver: async (body) => { await env.REGION.get(env.REGION.idFromName('region')).fetch(inside('https://hl/api/hl/region/deliver', body)); },
       },
     );

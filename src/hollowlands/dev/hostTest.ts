@@ -158,6 +158,10 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
   const sneak = await call('region/deliver', { method: 'POST', body: JSON.stringify({ from: r0.body.sites[0].id, msgs: [], pop: 0, tick: 0 }) });
   check('outsiders cannot speak for a colony', sneak.status === 403);
 
+  const j1 = await call<{ ok?: boolean; error?: string }>(`c/${r0.body.sites[0].id}/join`, { method: 'POST', body: JSON.stringify({ f: ME, spec }) });
+  const j2 = await call<{ ok?: boolean; error?: string }>(`c/${r0.body.sites[1].id}/join`, { method: 'POST', body: JSON.stringify({ f: ME, spec }) });
+  check('one colonist per player in the whole land', j1.status === 200 && j2.status === 409, j2.body.error);
+
   // let the years pass until someone leads a party out
   let sites = r0.body.sites;
   for (let k = 0; k < 150 && sites.length === 2; k++) {

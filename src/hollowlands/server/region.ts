@@ -10,7 +10,7 @@ import { landThreat, nearLists, routeMsg, ruinFor, type Delivery } from '../sim/
 export interface RegionOpts { seed?: number; colonies: number; pop: number; preDays: number; now: () => number }
 
 /** What the region knows about a colony at a glance (kept fresh by the colony's own reports). */
-export interface SiteInfo extends Site { pop: number; ruler?: string; tick?: number }
+export interface SiteInfo extends Site { pop: number; ruler?: string; tick?: number; owners?: string[] }
 interface WorldRec { seed: number; count: number; sites: SiteInfo[]; created: number; day?: number; lastThreat?: number }
 
 /** Call a colony's keeper: path under its own API, optional JSON body (POST). */
@@ -51,13 +51,14 @@ export class RegionHost {
   }
 
   /** A colony reports in, and hands over anything it has sent out into the world. */
-  private async deliver(body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name?: string }): Promise<void> {
+  private async deliver(body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name?: string; owners?: string[] }): Promise<void> {
     const w = this.w!;
     const site = w.sites.find((s) => s.id === body.from);
     if (site) {
       site.pop = body.pop;
       site.ruler = body.ruler;
       site.tick = body.tick;
+      site.owners = body.owners ?? [];
       if (!body.pop && !site.dead) site.dead = body.tick;
     }
     const send = async (list: Delivery[]): Promise<void> => {
@@ -90,7 +91,17 @@ export class RegionHost {
   async handle(req: Request, internal: boolean): Promise<Response> {
     await this.load();
     const path = new URL(req.url).pathname.replace(/^.*\/api\/hl\/region\/?/, '');
-    if (req.method === 'GET' && path === '') return json({ seed: this.w!.seed, sites: this.w!.sites, now: this.o.now() });
+    if (req.method === 'GET' && path === '') return json({ seed: this.w!.seed, sites: this.w!.sites.map((s) => ({ ...s, owners: undefined, nearSent: undefined })), now: this.o.now() });
+    if (req.method === 'POST' && path === 'claim') {
+      // one living colonist per player in the whole land
+      if (!internal) return json({ error: 'forbidden' }, 403);
+      const b = (await req.json()) as { owner: string; colony: string };
+      const other = this.w!.sites.find((s) => s.id !== b.colony && !s.dead && s.owners?.includes(b.owner));
+      if (other) return json({ where: other.name });
+      const mine = this.w!.sites.find((s) => s.id === b.colony);
+      if (mine) { (mine.owners ??= []).push(b.owner); await this.save(); }
+      return json({ where: '' });
+    }
     if (req.method === 'POST' && path === 'deliver') {
       if (!internal) return json({ error: 'forbidden' }, 403);
       await this.deliver((await req.json()) as never);
