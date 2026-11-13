@@ -24,7 +24,7 @@ export const onRequest = async ({ request, env, params }: { request: Request; en
   }
   const title = c ? `The ${c.name} · Commonworld` : 'Commonworld';
   const desc = !c
-    ? 'One shared world where peoples rise, trade, fight and fall, a hundred years every hour.'
+    ? 'One shared world where peoples rise, trade, fight and fall, fifteen years every hour.'
     : c.alive
       ? `${c.founder ? `Founded by ${c.byName || 'a visitor'} in ${c.born} AW` : `An ancient people since ${c.born} AW`}. Now ${fmt(c.pop)} people in ${c.setts} ${c.setts === 1 ? 'settlement' : 'settlements'}, in the ${c.age} Age${c.faith ? `, keeping ${c.faith}` : ''}.${c.motto ? ` “${c.motto}”` : ''}`
       : `${c.born}–${c.died} AW. At their height they numbered ${fmt(c.peak)}. Their story is in the chronicle.`;
