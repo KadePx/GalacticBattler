@@ -20,6 +20,11 @@ export const PROF_LIST: ProfDef[] = [
   p('healer', 'Healer', 'heal', 8, 'Sets bones, binds wounds, sits with the dying.'),
   p('priest', 'Priest', 'preach', 10, 'Speaks for the gods, and to them.'),
   p('guard', 'Guard', 'guard', 0, 'Walks the edge of the colony with one hand on a weapon.'),
+  p('tavernkeeper', 'Tavern keeper', 'brew', 10, 'Pours the ale and hears everything.'),
+  p('bard', 'Bard', 'teach', 10, 'Sings the colony its own story, and teaches the children the words.'),
+  p('gravedigger', 'Gravedigger', 'build', 3, 'Digs the graves and keeps the yard. Nobody thanks them.'),
+  p('ratcatcher', 'Ratcatcher', 'hunt', 9, 'Keeps the vermin out of the grain.'),
+  p('quartermaster', 'Quartermaster', 'cook', 11, 'Counts the stores and decides who gets what.'),
   p('lorekeeper', 'Lorekeeper', 'teach', 11, 'Keeps the stories and teaches the young.'),
 ];
 

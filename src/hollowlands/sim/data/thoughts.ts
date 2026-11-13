@@ -208,6 +208,9 @@ export const TH_LIST: ThDef[] = [
   h('raidlost', 'Some of ours did not come back from the raid', -6, DAY * 8),
   h('raidnothing', 'The raid came to nothing', -2, DAY * 3),
 
+  h('foughtfire', 'We put the fire out together', 2, DAY * 4),
+  h('bigfire', 'Half the colony burned', -8, DAY * 8),
+
   // Strange days
   h('goatday', 'We are taking advice from a goat', 2, DAY * 6),
   h('folly', 'Surrounded by fools', -2, DAY * 5),

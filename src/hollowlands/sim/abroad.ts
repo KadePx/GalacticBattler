@@ -36,6 +36,32 @@ export function dailyAbroad(c: Colony): void {
   bump(c, 'raidsSent');
 }
 
+/** A ruling house sends a grown, unwed child to marry into a neighbour's. */
+export function dailyMatch(c: Colony): void {
+  const near = c.near;
+  const day = dayOf(c.tick);
+  if (!near?.length || day % 15 !== 4 || c.gov.k !== 'lord' || c.foes.length) return;
+  const ruler = pawnById(c, c.gov.ruler);
+  if (!ruler) return;
+  const kids = c.pawns.filter((p) => !p.gone && !p.owner && (p.mo === ruler.id || p.fa === ruler.id) && stage(c, p) === STAGE.ADULT && !p.sp && !has(p, 'chaste')).sort((a, b) => b.born - a.born);
+  // the heir stays home
+  const heir = c.pawns.filter((p) => p.mo === ruler.id || p.fa === ruler.id).sort((a, b) => a.born - b.born)[0];
+  const child = kids.find((p) => p !== heir);
+  const r = new Rand(c.seed, S.LOVE, day, 61);
+  if (!child || !r.chance(0.25)) return;
+  const to = r.pick(near);
+  log(c, 'match_sent', child.id, ruler.id, to.name);
+  for (const p of c.pawns) if (p.id === child.mo || p.id === child.fa) think(c, p, 'missing', child.id);
+  child.gone = true;
+  c.dead.push({
+    id: child.id, first: child.first, fam: child.fam, epi: child.epi, race: child.race, sex: child.sex, born: child.born, died: c.tick, cause: 'match', look: child.look, traits: child.traits,
+    bc: child.bc, ba: child.ba, prof: child.prof, mo: child.mo, fa: child.fa, sp: 0, bio: child.bio, grave: -1, left: true, faith: child.faith, rank: child.rank,
+  });
+  for (const b of c.blds) for (let i = 0; i < b.beds.length; i++) if (b.beds[i] === child.id) b.beds[i] = 0;
+  c.out.push({ k: 'migrant', to: to.id, why: 'match', fromName: c.name, pawn: JSON.parse(JSON.stringify({ ...child, gone: undefined })) });
+  bump(c, 'matches');
+}
+
 /** Things that arrive from the wider world. Returns true if it was one of ours. */
 export function abroadInput(c: Colony, e: Input): boolean {
   if (e.k === 'near') {

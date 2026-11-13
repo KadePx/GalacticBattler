@@ -36,7 +36,7 @@ const CAUSES: Record<string, string> = {
   beast: 'was killed by a beast',
   murder: 'was murdered',
   executed: 'was put to death',
-  accident: 'died in an accident', escaped: 'escaped from thralldom', raiding: 'died raiding another colony', foe_raider: 'was killed by raiders from another colony', moved: 'left for another colony', settled: 'left to found a new colony', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
+  accident: 'died in an accident', match: 'was sent away to be married', escaped: 'escaped from thralldom', raiding: 'died raiding another colony', foe_raider: 'was killed by raiders from another colony', moved: 'left for another colony', settled: 'left to found a new colony', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
   bled: 'bled to death',
   taken: 'was carried off by slavers',
   foe_bandit: 'was cut down by bandits', foe_slaver: 'was killed by slavers', foe_orc: 'was butchered by orc raiders', foe_wolf: 'was torn apart by wolves',
@@ -61,7 +61,7 @@ const PART: Record<string, string> = {
   eyeL: 'eye', eyeR: 'eye', armL: 'arm', armR: 'arm', handL: 'hand', handR: 'hand', legL: 'leg', legR: 'leg', footL: 'foot', footR: 'foot',
 };
 
-const CRIME: Record<string, string> = { theft: 'theft', murder: 'murder', assault: 'attempted murder', treason: 'treason', heresy: 'heresy' };
+const CRIME: Record<string, string> = { theft: 'theft', murder: 'murder', assault: 'attempted murder', treason: 'treason', heresy: 'heresy', arson: 'setting fires' };
 const SENTENCE = ['found not guilty', 'fined', 'put in the stocks', 'flogged', 'branded', 'had a hand cut off', 'exiled', 'hanged'];
 
 const FACTS: Record<string, string> = {
@@ -90,6 +90,7 @@ export const WEIGHT: Record<string, number> = {
   raid: 3, allclear: 1, alarm: 2, rout: 2, slew: 2, looted: 3, seized: 3, rescued: 3, hero: 3, maimed: 3, sick: 2, recovered: 1, outbreak: 3, drunkard: 2,
   settlers: 3, founded: 3, news: 2,
   odd_goat: 3, odd_ring: 3, odd_raven: 3, odd_ogre: 3, odd_ghost: 3, odd_mushroom: 3, odd_coat: 3, odd_oath: 3, odd_bones: 2, odd_cat: 2, odd_weep: 2,
+  schism: 3, fire_spread: 3, match_sent: 3, match: 3,
   asked: 2, blackmail: 3, prosthetic: 2, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
   raidout: 3, raiders_from: 2, raidback: 3,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
@@ -147,7 +148,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'frost': return 'The first hard frost. Anything still in the fields is lost.';
     case 'funeral': return e.n ? `${e.n} gathered to bury ${full(c, e.a)}.` : `Nobody came to bury ${full(c, e.a)}.`;
     case 'feast': return `The colony feasted.`;
-    case 'left': return e.s === 'escaped' ? `${full(c, e.a)} is gone, and so are the chains.` : e.s === 'exiled' ? `${full(c, e.a)} was cast out of the colony.` : e.s === 'moved' ? `${full(c, e.a)} packed up and left for another colony.` : e.s === 'settled' ? `${full(c, e.a)} left with the settlers.` : e.s === 'taken' ? `${full(c, e.a)} was carried off in chains.` : `${full(c, e.a)} has left the colony.`;
+    case 'left': return e.s === 'match' ? `${full(c, e.a)} has left to be married in another colony.` : e.s === 'escaped' ? `${full(c, e.a)} is gone, and so are the chains.` : e.s === 'exiled' ? `${full(c, e.a)} was cast out of the colony.` : e.s === 'moved' ? `${full(c, e.a)} packed up and left for another colony.` : e.s === 'settled' ? `${full(c, e.a)} left with the settlers.` : e.s === 'taken' ? `${full(c, e.a)} was carried off in chains.` : `${full(c, e.a)} has left the colony.`;
     case 'ruler': return `${full(c, e.a)} now rules${e.s === 'inherited' ? ', as was their birthright' : e.s === 'elected' ? ', by the colony\'s vote' : e.s === 'fought' ? ', by strength of arm' : e.s === 'coup' ? ', by force' : e.s === 'usurped' ? ', over the rightful heir' : ''}.`;
     case 'election': return `The colony voted. ${full(c, e.a)} won with ${e.n} votes${e.b ? `, beating ${first(c, e.b)}` : ''}.`;
     case 'usurped': return `${a} pushed ${b} aside and took the seat.`;
@@ -210,13 +211,17 @@ export function evText(c: Colony, e: Ev): string {
     case 'odd_cat': return 'A three-legged cat has moved in and will not be moved out.';
     case 'odd_weep': return 'The altar stone was wet this morning. It has not rained.';
     case 'prosthetic': return `${a} has been fitted with a ${e.s?.startsWith('hand') ? 'hook' : 'wooden leg'}.`;
+    case 'schism': return `${a} has broken with ${b} over the faith, and ${e.n} have followed into ${e.s === 'hearth_r' ? 'the Cold Hearth' : e.s === 'iron_r' ? 'the Unbound' : e.s === 'pale_r' ? 'the Red Lady' : e.s === 'green_r' ? 'the Deep Root' : 'the Clean Fang'}.`;
+    case 'fire_spread': return `The fire jumped to ${e.n} more ${e.n === 1 ? 'roof' : 'roofs'} before it was beaten down.`;
+    case 'match_sent': return `${b} has sent ${a} to ${e.s}, to marry into the house there.`;
+    case 'match': return `${a} of ${e.s} is to marry ${b}: a match made between two colonies.`;
     case 'asked': return `${a} has a choice to make.`;
     case 'blackmail': return `${a} is making ${b} pay to keep a secret.`;
     case 'heir': return `${full(c, e.a)} takes up where ${first(c, e.b)} left off.`;
     case 'heirloom': return `${a} now keeps ${b}'s ${e.s ?? 'keepsake'}.`;
     case 'nudge': return e.s === 'yearn' ? `${a} has begun to look at the road.` : e.s === 'stay' ? `${a} has decided this is home.` : e.s === 'focus' ? `${a} has thrown themselves into their work.` : `${a} has ${b} on their mind.`;
     case 'blabbed': return `Drunk, ${a} let slip the secret they came here to bury. ${e.n} heard it.`;
-    case 'joined': return e.s?.startsWith('exile:') ? `${full(c, e.a)} has arrived, cast out of ${e.s.slice(6)}.` : e.s?.startsWith('migrant:') ? `${full(c, e.a)} has come from ${e.s.slice(8)} to start again.` : e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
+    case 'joined': return e.s?.startsWith('match:') ? `${full(c, e.a)} has arrived from ${e.s.slice(6)}, sent to be married.` : e.s?.startsWith('exile:') ? `${full(c, e.a)} has arrived, cast out of ${e.s.slice(6)}.` : e.s?.startsWith('migrant:') ? `${full(c, e.a)} has come from ${e.s.slice(8)} to start again.` : e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
     case 'trader': return e.s ? `A caravan from ${e.s} stopped for the day.` : 'A trader\'s caravan stopped for the day.';
     case 'raidout': return `${a} has sent ${e.n} fighters to raid ${e.s}.`;
     case 'raiders_from': return `They are from ${e.s}.`;

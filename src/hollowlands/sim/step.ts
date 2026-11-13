@@ -12,7 +12,7 @@ import { dailyGov } from './gov';
 import { dailyCrime } from './crime';
 import { dailyFaith } from './faith';
 import { dailySettle } from './settle';
-import { dailyAbroad } from './abroad';
+import { dailyAbroad, dailyMatch } from './abroad';
 import { dailyIntrigue } from './intrigue';
 import type { Colony } from './types';
 
@@ -26,6 +26,7 @@ function daily(c: Colony): void {
   dailyFaith(c);
   dailySettle(c);
   dailyAbroad(c);
+  dailyMatch(c);
   dailyIntrigue(c);
   // let go of faded memories and of people long forgotten
   for (const p of c.pawns) {

@@ -262,6 +262,11 @@ function slots(c: Colony, adults: number, kids: number): Record<string, number> 
     guard: adults >= 20 ? 2 : adults >= 10 ? 1 : 0,
     priest: has('shrine') ? 1 : 0,
     lorekeeper: kids >= 3 && adults >= 8 ? 1 : 0,
+    tavernkeeper: has('tavern') ? 1 : 0,
+    bard: adults >= 16 ? 1 : 0,
+    gravedigger: has('graveyard') && adults >= 12 ? 1 : 0,
+    ratcatcher: adults >= 18 ? 1 : 0,
+    quartermaster: adults >= 20 ? 1 : 0,
   };
 }
 

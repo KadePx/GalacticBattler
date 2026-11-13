@@ -7,6 +7,7 @@ import { think } from './mood';
 import { STAGE, pawnById, stage, stat } from './pawn';
 import { Rand, S } from './rng';
 import type { Colony, Dead, Pawn } from './types';
+import { opinion } from './social';
 
 export interface FaithDef { k: string; name: string; short: string; blurb: string; priest: string; holy: number; cult?: boolean }
 
@@ -16,6 +17,11 @@ export const FAITHS: Record<string, FaithDef> = {
   pale: { k: 'pale', name: 'The Pale Lady', short: 'Pale Lady', blurb: 'She takes everyone in the end, and gently. Bury the dead well.', priest: 'Gravewarden', holy: 7 },
   green: { k: 'green', name: 'The Green Choir', short: 'Green Choir', blurb: 'Every tree is a voice. Take only what will grow back.', priest: 'Leafsinger', holy: 10 },
   teeth: { k: 'teeth', name: 'The Old Teeth', short: 'Old Teeth', blurb: 'The strong eat. Scars are prayers.', priest: 'Bone-caller', holy: 12 },
+  hearth_r: { k: 'hearth_r', name: 'The Cold Hearth', short: 'Cold Hearth', blurb: 'The fire is for those who earn it. Close the door.', priest: 'Ashkeeper', holy: 1, cult: true },
+  iron_r: { k: 'iron_r', name: 'The Unbound', short: 'Unbound', blurb: 'The dead are dead. An oath binds only the living who swore it.', priest: 'Oathbreaker', holy: 4, cult: true },
+  pale_r: { k: 'pale_r', name: 'The Red Lady', short: 'Red Lady', blurb: 'She does not come gently, and should not be met gently.', priest: 'Redwarden', holy: 8, cult: true },
+  green_r: { k: 'green_r', name: 'The Deep Root', short: 'Deep Root', blurb: 'The wood was here first and will be here last. Give back more than you take.', priest: 'Rootspeaker', holy: 11, cult: true },
+  teeth_r: { k: 'teeth_r', name: 'The Clean Fang', short: 'Clean Fang', blurb: 'Strength without honour is only hunger.', priest: 'Fang-keeper', holy: 13, cult: true },
   hollow: { k: 'hollow', name: 'The Hollow Mother', short: 'Hollow Mother', blurb: 'She is empty, and she asks to be filled.', priest: 'Mouth', holy: 14, cult: true },
 };
 
@@ -34,7 +40,35 @@ export function mainFaith(c: Colony): string {
 }
 
 /** Once a day: on a faith's holy day, its priest calls the faithful together. */
+/** A faith splits: someone devout and ambitious decides the priest has it wrong, and some follow. */
+function schism(c: Colony): void {
+  const day = dayOf(c.tick);
+  if (day % 20 !== 7) return;
+  const r = new Rand(c.seed, S.FAITH, day, 3);
+  if (!r.chance(0.12)) return;
+  for (const priest of c.pawns) {
+    if (priest.prof !== 'priest' || priest.gone || !FAITHS[priest.faith + '_r']) continue;
+    const flock = c.pawns.filter((p) => !p.gone && p.faith === priest.faith && stage(c, p) >= STAGE.ADULT);
+    const rebel = flock.filter((p) => p !== priest && p.dev >= 2 && p.sk[10] >= 4 && opinion(c, p, priest) < 0).sort((a, b) => b.sk[10] - a.sk[10] || a.id - b.id)[0];
+    if (!rebel || flock.length < 6) continue;
+    const sect = priest.faith + '_r';
+    let n = 0;
+    for (const p of flock) {
+      if (p === priest) continue;
+      if (p === rebel || opinion(c, p, rebel) > opinion(c, p, priest) + 5) { p.faith = sect; n++; if (p !== rebel) think(c, p, 'faithtalk', rebel.id); }
+    }
+    if (n < 2) { rebel.faith = priest.faith; continue; }
+    for (const p of flock) if (p.faith !== sect && p.dev >= 2) think(c, p, 'heretic', rebel.id);
+    think(c, priest, 'betrayedby', rebel.id);
+    log(c, 'schism', rebel.id, priest.id, sect, n);
+    note(c, rebel, 'schism', priest.id, sect);
+    bump(c, 'schisms');
+    return;
+  }
+}
+
 export function dailyFaith(c: Colony): void {
+  schism(c);
   if (c.gath) return;
   const dos = dayOf(c.tick) % DAYS_PER_SEASON;
   const priests = c.pawns.filter((p) => p.prof === 'priest' && !p.gone);

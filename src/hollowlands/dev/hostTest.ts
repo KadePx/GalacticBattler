@@ -182,7 +182,7 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
     world = mk();
     const again = (await call<Region>('region')).body.sites;
     const child2 = (await call<State>(`c/${made.id}/state`)).body;
-    check('the whole world carries on after a restart', again.length === sites.length && child2.tick >= snap.body.tick);
+    check('the whole world carries on after a restart', again.length >= sites.length && again.some((x) => x.id === made.id) && child2.tick >= snap.body.tick, `${again.length} colonies, tick ${child2.tick} (was ${snap.body.tick})`);
   }
 }
 

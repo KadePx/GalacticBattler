@@ -191,9 +191,41 @@ function cult(c: Colony, r: Rand): void {
   }
 }
 
+/** What certain trades bring with them. */
+function trades(c: Colony, r: Rand): void {
+  for (const p of c.pawns) {
+    if (p.gone || !p.prof) continue;
+    if (p.prof === 'tavernkeeper') {
+      // everything said over a drink reaches the one who pours it
+      const fresh = c.facts.filter((f) => c.tick - f.t < TICKS_PER_DAY * 6 && !p.know.includes(f.id) && f.a !== p.id);
+      if (fresh.length && r.chance(0.5)) learn(c, p, r.pick(fresh));
+    } else if (p.prof === 'bard' && dayOf(c.tick) % 5 === 0) {
+      for (const o of c.pawns) if (o !== p && stage(c, o) >= STAGE.CHILD && r.chance(0.5)) think(c, o, 'heardmusic', p.id);
+    } else if (p.prof === 'ratcatcher') {
+      c.stock.grain *= 1.002; // less lost to vermin
+    } else if (p.prof === 'quartermaster' && per(p, AX.GREED) > 0.6 && per(p, AX.HONEST) < 0 && r.chance(0.03)) {
+      // a thumb on the scales
+      const n = Math.min(c.stock.silver + c.stock.goods, 4);
+      if (n >= 1) {
+        const s = Math.min(c.stock.silver, n);
+        c.stock.silver -= s;
+        c.stock.goods -= n - s;
+        p.coin += n;
+        const f = addFact(c, 'theft', p.id, undefined, true, 'goods');
+        p.know.push(f.id);
+        bump(c, 'skimmed');
+        if (r.chance(0.2)) { const w = r.pick(c.pawns.filter((o) => o !== p && stage(c, o) >= STAGE.ADULT)); if (w) { learn(c, w, f); log(c, 'theft', p.id, w.id, 'goods'); accuse(c, w, p, 'theft', f); } }
+      }
+    } else if (p.prof === 'gravedigger') {
+      for (const o of c.pawns) if (o !== p && o.th.some((t) => t.k.startsWith('died_') && t.x > c.tick) && r.chance(0.05)) think(c, o, 'kinddeed', p.id);
+    }
+  }
+}
+
 /** Once a day. */
 export function dailyIntrigue(c: Colony): void {
   const r = new Rand(c.seed, S.GOV, dayOf(c.tick), 55);
+  trades(c, r);
   thralls(c, r);
   plots(c, r);
   cult(c, r);

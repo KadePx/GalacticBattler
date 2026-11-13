@@ -4,7 +4,8 @@
 
 import { DAYS_PER_YEAR, HARD_CAP, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
 import { checkSpec, pawnFromSpec, type PawnSpec } from './create';
-import { addFact } from './social';
+import { addFact, learn } from './social';
+import { accuse } from './crime';
 import { nudge, takeHeir } from './player';
 import { answer } from './ask';
 import { abroadInput } from './abroad';
@@ -106,7 +107,20 @@ export function applyInputs(c: Colony): void {
         p.act = mkAct('idle', c.tick, p.x, p.y, 1, 'new');
         p.bio.pop();
         note(c, p, 'migrated', undefined, String(e.fromName));
-        log(c, 'joined', p.id, undefined, (e.why === 'exiled' ? 'exile:' : 'migrant:') + String(e.fromName));
+        log(c, 'joined', p.id, undefined, (e.why === 'exiled' ? 'exile:' : e.why === 'match' ? 'match:' : 'migrant:') + String(e.fromName));
+        if (e.why === 'match') {
+          // sent to marry: the best-placed unwed adult of this colony takes their hand
+          p.rank = 5;
+          const o = c.pawns.filter((x) => x !== p && !x.gone && !x.sp && !x.thrall && stage(c, x) === STAGE.ADULT && x.sex !== p.sex && x.mo !== p.mo).sort((a, b) => b.rank - a.rank || a.id - b.id)[0];
+          if (o) {
+            p.sp = o.id; o.sp = p.id;
+            p.rel[o.id] = { m: [], k: 'betrothed', s: c.tick };
+            o.rel[p.id] = { ...(o.rel[p.id] ?? { m: [] }), k: 'betrothed', s: c.tick };
+            log(c, 'match', p.id, o.id, String(e.fromName));
+            note(c, p, 'match', o.id, String(e.fromName));
+            note(c, o, 'match', p.id, String(e.fromName));
+          }
+        }
         bump(c, 'migrants');
       }
     }
@@ -233,6 +247,19 @@ export function dailyStory(c: Colony): void {
       }
       const firebug = c.pawns.find((p) => has(p, 'pyro') && p.mood < 45);
       log(c, 'fire', firebug?.id, undefined, b.k);
+      // in a dry wind it jumps from roof to roof
+      let spread = 0;
+      for (const o of wooden) {
+        if (o === b || spread >= 3) continue;
+        const near = Math.abs(o.x + o.w / 2 - b.x - b.w / 2) + Math.abs(o.y + o.h / 2 - b.y - b.h / 2) < 12;
+        if (near && r.chance(c.weather >= 2 ? 0.1 : season === 1 ? 0.45 : 0.3)) { o.dmg = Math.min(80, o.dmg + 20 + r.int(25)); spread++; }
+      }
+      if (spread) log(c, 'fire_spread', undefined, undefined, undefined, spread);
+      for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, spread ? 'bigfire' : 'foughtfire');
+      if (firebug && r.chance(0.35)) {
+        const w = c.pawns.find((p) => p !== firebug && stage(c, p) >= STAGE.ADULT);
+        if (w) { const f = addFact(c, 'arson', firebug.id, undefined, true); learn(c, w, f); accuse(c, w, firebug, 'arson', f); }
+      }
       break;
     }
     case 'rats': { const lost = c.stock.grain * (0.15 + r.float() * 0.2); c.stock.grain -= lost; log(c, 'rats', undefined, undefined, undefined, Math.round(lost)); break; }

@@ -115,6 +115,12 @@ export const TRAIT_LIST: TraitDef[] = [
   t('animalfriend', 'Beast-friend', 'odd', 1, 'Animals trust them. People are less sure.', { w: 0.7 }),
   t('lucky', 'Lucky', 'odd', 3, 'The arrow always misses. The dice always land.', { no: ['jinxed'], w: 0.5 }),
   t('jinxed', 'Jinxed', 'odd', -3, 'If it can go wrong, it goes wrong for them.', { no: ['lucky'], w: 0.5 }),
+  t('stubborn', 'Stubborn', 'temper', 0, 'Has never once changed their mind.', { st: { breakTh: -3 }, per: [[A.LOYAL, 0.3], [A.TEMPER, 0.2]] }),
+  t('nosy', 'Nosy', 'social', 0, 'Reads other people\'s letters and tells you what they said.', { per: [[A.GOSSIP, 0.8], [A.CURIOUS, 0.6]], no: ['discreet'] }),
+  t('proud', 'Proud', 'social', -1, 'Would rather starve than be seen to beg.', { per: [[A.AMBITION, 0.5], [A.TEMPER, 0.3]], st: { charm: -1 } }),
+  t('softhearted', 'Soft-hearted', 'temper', 0, 'Cries at weddings, funerals and lame dogs.', { per: [[A.KIND, 0.8]], st: { breakTh: 3 }, no: ['cruel', 'bloodlust'] }),
+  t('ironwilled', 'Iron-willed', 'mind', 3, 'Decides once and does not look back.', { st: { breakTh: -6, work: 0.05 }, no: ['nervous', 'volatile'] }),
+  t('scatterbrained', 'Scatterbrained', 'mind', -1, 'Went to fetch water, came back with a hat.', { st: { work: -0.1, learn: -0.1 }, per: [[A.DILIGENT, -0.5]], no: ['perfectionist'] }),
   t('storyteller', 'Storyteller', 'odd', 1, 'Can hold a room with a tale.', { st: { charm: 1 }, per: [[A.HUMOR, 0.4]] }),
 ];
 

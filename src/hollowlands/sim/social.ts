@@ -100,6 +100,7 @@ export function learn(c: Colony, p: Pawn, f: Fact, from?: Pawn): void {
     case 'coward': think(c, p, 'cowarddeed', f.a); break;
     case 'theft': think(c, p, 'thief', f.a); break;
     case 'killing': think(c, p, 'killer', f.a); break;
+    case 'arson': think(c, p, 'thief', f.a); break;
     case 'secret': {
       const s = f.s;
       if (s === 'killer') think(c, p, 'killer', f.a);

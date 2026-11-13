@@ -18,7 +18,8 @@ export function nearest<T extends Place>(sites: T[], fromId: string): T[] {
 export function routeMsg(sites: Place[], fromId: string, fromName: string, m: Record<string, unknown>): Delivery[] {
   const near = nearest(sites, fromId);
   if (typeof m.to === 'string') {
-    return sites.some((s) => s.id === m.to && !s.dead) ? [{ to: m.to, input: { ...m, to: undefined } }] : [];
+    if (!sites.some((s) => s.id === m.to && !s.dead)) return [];
+    return [{ to: m.to, input: m.k === 'migrant' ? { k: 'migrant', pawn: m.pawn, fromName: m.fromName, why: m.why } : { ...m, to: undefined } }];
   }
   if (m.k === 'migrant') return near[0] ? [{ to: near[0].id, input: { k: 'migrant', pawn: m.pawn, fromName: m.fromName, why: m.why } }] : [];
   if (m.k === 'news') return near.slice(0, 3).map((s) => ({ to: s.id, input: { k: 'news', what: m.what, name: fromName, who: m.who } }));

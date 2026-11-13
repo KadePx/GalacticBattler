@@ -286,6 +286,8 @@ export function dailyGov(c: Colony): void {
   };
   if (adults.length >= 10) {
     give('marshal', (p) => p.sk[0] + p.sk[1] * 0.5 + per(p, AX.BRAVE) * 2, 9);
+    give('champion', (p) => p.sk[0] * 1.2 + per(p, AX.BRAVE) * 3, 11);
+    if (adults.length >= 16) give('fool', (p) => per(p, AX.HUMOR) * 5 + p.sk[10] * 0.5, 7);
     give('steward', (p) => p.sk[10] + p.sk[11] * 0.5 + per(p, AX.DILIGENT) * 2, 9);
   }
   updateRanks(c, false);
