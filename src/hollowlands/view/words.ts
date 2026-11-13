@@ -126,6 +126,7 @@ export function bioText(c: Colony, b: Bio): string {
     case 'odd_ghost': return `Saw ${o} at the window.`;
     case 'odd_mushroom': return 'Ate something from the wood and saw the shape of everything.';
     case 'odd_oath': return 'Swore a drunken oath to guard a door for life, and kept it.';
+    case 'prosthetic': return `Was fitted with a ${(b.s ?? '').startsWith('hand') ? 'hook' : 'wooden leg'}.`;
     case 'founded': return `Helped found ${b.s ?? 'a new colony'}.`;
     case 'settled': return 'Left with the settlers to found a new colony.';
     case 'moved': return 'Packed up and left for another colony.';

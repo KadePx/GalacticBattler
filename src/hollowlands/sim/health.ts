@@ -191,6 +191,15 @@ export function dailyHealth(c: Colony, p: Pawn): void {
       if (!p.perm.includes(k)) { p.perm.push(k); note(c, p, 'ailment', undefined, k); }
     }
   }
+  // A smith or a weaver can make a body nearly whole again
+  const lost = p.perm.findIndex((k) => /^lost_(leg|foot|hand)/.test(k));
+  if (lost >= 0 && !p.inj.length && c.pawns.some((o) => o.prof === 'smith' || o.prof === 'weaver') && r.chance(0.03)) {
+    const part = p.perm[lost].slice(5);
+    p.perm = p.perm.map((k, i) => (i === lost ? (part.startsWith('hand') ? 'hook_' : 'peg_') + part : k));
+    think(c, p, 'prosthetic');
+    log(c, 'prosthetic', p.id, undefined, part);
+    note(c, p, 'prosthetic', undefined, part);
+  }
   // Winter air gets into the chest
   if (c.temp < 0 && !p.ill && r.chance((st === STAGE.ELDER ? 0.006 : 0.0015) / Math.max(0.3, stat(p, 'immune')) * (p.cloth < 25 ? 2.5 : 1))) infect(c, p, 'cough');
 }
