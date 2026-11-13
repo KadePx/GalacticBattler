@@ -9,7 +9,8 @@
 import { DEFAULT_MS_PER_DAY, TICKS_PER_DAY } from './config';
 import { RACES } from './sim/data/races';
 import { heirsOf } from './sim/player';
-import { connect, liveAvailable, myHash, type Live } from './net';
+import { connect, fetchRegion, myHash, useColony, type Live, type RegionSite } from './net';
+import { WorldView } from './view/world';
 import { createColony, step, type Colony, type Id, type RaceK } from './sim/index';
 import { checkSpec, type PawnSpec } from './sim/create';
 import { fullName, pawnById } from './sim/pawn';
@@ -37,6 +38,9 @@ const opts = { seed: num('seed', 1, 0, 4294967295), pop: num('pop', 16, 2, 40), 
 /** Local play: a colony made in this browser from a seed. Otherwise the shared live colony, if there is one. */
 const wantLocal = q.has('seed') || q.has('local') || q.has('pre');
 let live: Live | null = null;
+let region: RegionSite[] = [];
+/** id of the colony on screen (live play) */
+let here = '';
 let c: Colony = createColony(wantLocal ? opts : { seed: 1, pop: 2 });
 let speed = 1;
 /** Part of a tick already played, 0..1. The map draws at tick (c.tick - 1 + acc). */
@@ -159,6 +163,7 @@ function toast(text: string): void {
 /** Keep the button, the banner and the map marker in step with what has become of my colonist. */
 function syncMine(): void {
   const p = myPawn();
+  if (p && live && here && store.get('hl.col') !== here) store.set('hl.col', here);
   const d = p ? null : myDead();
   meId = p?.id ?? d?.id ?? 0;
   map.mineId = p?.id ?? 0;
@@ -296,8 +301,20 @@ function frame(dt: number): void {
 
 async function boot(): Promise<void> {
   await map.init(document.getElementById('map') as HTMLElement);
-  if (!wantLocal && (await liveAvailable())) {
+  const sites = wantLocal ? null : await fetchRegion();
+  const alive = sites?.filter((s) => !s.dead) ?? [];
+  if (sites && alive.length) {
     if (loadMsg) loadMsg.textContent = 'Finding the colony';
+    // which colony: the one asked for, else the one my colonist lives in, else the biggest
+    const want = q.get('c') ?? store.get('hl.col');
+    const site = alive.find((s) => s.id === want) ?? alive.slice().sort((a, b) => b.pop - a.pop)[0];
+    here = site.id;
+    useColony(site.id);
+    region = sites;
+    const world = new WorldView((id) => { location.search = '?c=' + id; });
+    const wb = document.getElementById('worldbtn');
+    wb?.classList.remove('hidden');
+    wb?.addEventListener('click', () => { void fetchRegion().then((fresh) => world.open(fresh ?? region, here, store.get('hl.col') ?? '')); });
     me = await myHash();
     live = await connect((fresh) => {
       c = fresh;

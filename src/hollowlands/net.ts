@@ -6,7 +6,26 @@ import { founderHash } from '../commonworld/shared/text';
 import type { PawnSpec } from './sim/create';
 import { colonyHash, deserialize, type Colony, type Input } from './sim/index';
 
-const API = '/api/hl/';
+const ROOT = '/api/hl/';
+/** The colony being viewed: its API lives under /api/hl/c/<id>/. */
+let API = ROOT;
+export function useColony(id: string): void {
+  API = `${ROOT}c/${id}/`;
+}
+
+export interface RegionSite { id: string; name: string; x: number; y: number; founded: number; from?: string; pop: number; ruler?: string; dead?: number }
+
+/** The colonies of the live world, or null when there is no live world (a static preview, or the server is down). */
+export async function fetchRegion(): Promise<RegionSite[] | null> {
+  try {
+    const r = await fetch(ROOT + 'region', { cache: 'no-store' });
+    if (!r.ok) return null;
+    const body = (await r.json()) as { sites?: RegionSite[] };
+    return Array.isArray(body.sites) ? body.sites : null;
+  } catch {
+    return null;
+  }
+}
 const KEY = 'hl.me';
 const COOKIE = 'hl_me';
 
@@ -58,16 +77,6 @@ async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(API + path, { cache: 'no-store' });
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return (await r.json()) as T;
-}
-
-/** Is there a live colony to join? (No on a plain static preview, or when the server is down.) */
-export async function liveAvailable(): Promise<boolean> {
-  try {
-    const s = await getJson<State>('state');
-    return typeof s.tick === 'number';
-  } catch {
-    return false;
-  }
 }
 
 /** Connect to the live colony. onReload is called whenever the colony object is replaced. */

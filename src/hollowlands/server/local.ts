@@ -43,7 +43,7 @@ export class LocalWorld {
   async handle(req: Request): Promise<Response> {
     const path = new URL(req.url).pathname;
     await this.region.load();
-    if (/\/api\/hl\/region\/?$/.test(path)) return this.region.handle(req, false);
+    if (/\/api\/hl\/region(\/|$)/.test(path)) return this.region.handle(req, false);
     const m = path.match(/\/api\/hl\/c\/([a-z0-9]+)\//);
     if (!m) return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } });
     const h = this.colony(m[1]);

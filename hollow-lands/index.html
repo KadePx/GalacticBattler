@@ -315,6 +315,23 @@
       .pips i { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--line2); }
       .pips i.on { background: var(--accent); border-color: var(--accent); }
       .pips .hint { margin-left: 8px; }
+      #worldbtn { position: fixed; top: 66px; right: 12px; z-index: 2; height: 36px; padding: 0 14px; border-radius: 10px; font-weight: 600; font-size: 13px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: var(--shadow); }
+      #worldbtn:hover { border-color: var(--line2); }
+      #world { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(5, 7, 12, 0.6); padding: 12px; }
+      .wbox { width: min(680px, 100%); max-height: calc(100vh - 24px); overflow: auto; padding: 14px 16px 16px; }
+      .whead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+      .whead b { font-size: 17px; } .whead span { color: var(--dim); flex: 1; } .whead .icon { align-self: center; }
+      .wmap { width: 100%; height: auto; display: block; border-radius: 12px; background: #0e1420; border: 1px solid var(--line); }
+      .wmap .road { stroke: rgba(255, 255, 255, 0.16); stroke-width: 1.5; stroke-dasharray: 3 4; }
+      .wmap .site { cursor: pointer; } .wmap .site circle { fill: #8b97b4; stroke: #0e1420; stroke-width: 2; }
+      .wmap .site.here circle { fill: var(--accent); } .wmap .site.dead circle { fill: #3a4257; }
+      .wmap .site circle.mine { fill: none; stroke: var(--accent2); stroke-width: 1.5; }
+      .wmap text { fill: var(--dim); font-size: 11px; text-anchor: middle; font-family: var(--font); } .wmap .site.here text { fill: var(--ink); font-weight: 600; }
+      .wlist { display: grid; gap: 6px; margin-top: 10px; }
+      .wrow { display: grid; text-align: left; gap: 1px; padding: 9px 12px; border-radius: 10px; background: var(--raise); border: 1px solid var(--line); }
+      .wrow:hover { background: var(--raise2); } .wrow.here { border-color: rgba(124, 140, 255, 0.5); }
+      .wrow span { color: var(--dim); font-size: 12.5px; }
+      @media (max-width: 640px) { #worldbtn { top: auto; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); right: 8px; } }
       /* The shared colony keeps its own time: no speed buttons */
       body.live #speed { display: none; }
     </style>
@@ -350,6 +367,7 @@
       <div class="db" id="cbody"></div>
     </aside>
     <button id="mine" class="hidden">Make your colonist</button>
+    <button id="worldbtn" class="hidden">World</button>
     <div id="memorial" class="panel hidden"></div>
     <div id="toast" class="panel off" role="status"></div>
     <div id="loading">HOLLOW LANDS<small id="loadmsg"></small></div>
