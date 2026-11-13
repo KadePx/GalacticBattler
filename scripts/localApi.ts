@@ -67,15 +67,31 @@ export function localApi(): Plugin {
     setInterval(() => { world?.advance().catch((e) => console.error('[cw]', e)); }, Math.min(msPerTick, 30_000));
     return world;
   }
+  // The live Hollow Lands colony, the same way. HL_MS_PER_DAY speeds it up for testing.
+  let colony: DevWorld | null = null;
+  async function devColony(server: ViteDevServer): Promise<DevWorld> {
+    if (colony) return colony;
+    const dir = resolve(server.config.root, '.vite');
+    mkdirSync(dir, { recursive: true });
+    db ??= await fakeD1(resolve(dir, 'local-api.sqlite'));
+    const mod = (await server.ssrLoadModule('/src/hollowlands/server/local.ts')) as { LocalWorld: new (...a: unknown[]) => DevWorld };
+    const msPerDay = Number(process.env.HL_MS_PER_DAY) || 1_440_000;
+    colony = new mod.LocalWorld((name: string) => fileKV(resolve(dir, 'hl', name)), db, {
+      host: { msPerDay, maxStep: 3000, pop: 16, preDays: 120, adminKey: process.env.HL_ADMIN_KEY ?? 'dev', now: Date.now },
+      region: { colonies: 3, pop: 14, preDays: 120, now: Date.now },
+    });
+    setInterval(() => { colony?.advance().catch((e) => console.error('[hl]', e)); }, Math.min(msPerDay / 240, 30_000));
+    return colony;
+  }
   return {
     name: 'local-api',
     apply: 'serve',
     configureServer(server: ViteDevServer) {
       server.middlewares.use(async (req, res, next) => {
         const url = new URL(req.url ?? '/', 'http://localhost');
-        if (url.pathname.startsWith('/api/cw/')) {
+        if (url.pathname.startsWith('/api/cw/') || url.pathname.startsWith('/api/hl/')) {
           try {
-            const w = await devWorld(server);
+            const w = url.pathname.startsWith('/api/hl/') ? await devColony(server) : await devWorld(server);
             await w.advance();
             const chunks: Buffer[] = [];
             for await (const c of req) chunks.push(c as Buffer);
