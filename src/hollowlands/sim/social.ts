@@ -343,7 +343,7 @@ export function interact(c: Colony, p: Pawn, o: Pawn, r: Rand, near: Pawn[], for
         if (relP.m.some((m) => (m[0] === 'rebuffed' || m[0] === 'proposalno') && m[1] > t)) f *= 0.15;
       }
       w('flirt', f);
-      if (partner && relP.k === 'lover' && relO.k === 'lover' && t - (relP.s ?? t) > TICKS_PER_DAY * 6 && op >= 55) w('propose', 1.6 + per(p, AX.LOYAL) * 0.5);
+      if (partner && relP.k === 'lover' && relO.k === 'lover' && t - (relP.s ?? t) > TICKS_PER_DAY * 6 && op >= 55 && o.ask?.k !== 'propose') w('propose', 1.6 + per(p, AX.LOYAL) * 0.5);
     }
   }
 

@@ -152,10 +152,10 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
   interface Region { sites: { id: string; name: string; pop: number; from?: string; founded: number }[] }
   const r0 = await call<Region>('region');
   check('the region starts with its first colonies', r0.body.sites.length === 2 && r0.body.sites.every((s) => s.name && s.pop > 0), r0.body.sites.map((s) => `${s.name} ${s.pop}`).join(', '));
-  const st = await call<State & { name: string }>('c/c1/state');
+  const st = await call<State & { name: string }>(`c/${r0.body.sites[1].id}/state`);
   check('each colony answers under its own path', st.status === 200 && st.body.name === r0.body.sites[1].name);
   check('a colony that does not exist says so', (await call('c/zz/state')).status === 404);
-  const sneak = await call('region/deliver', { method: 'POST', body: JSON.stringify({ from: 'c0', msgs: [], pop: 0, tick: 0 }) });
+  const sneak = await call('region/deliver', { method: 'POST', body: JSON.stringify({ from: r0.body.sites[0].id, msgs: [], pop: 0, tick: 0 }) });
   check('outsiders cannot speak for a colony', sneak.status === 403);
 
   // let the years pass until someone leads a party out

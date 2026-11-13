@@ -6,6 +6,11 @@ const LOG_KEEP = 800;
 
 export function log(c: Colony, k: string, a?: Id, b?: Id, s?: string, n?: number): void {
   c.log.push({ t: c.tick, k, a, b, s, n });
+  // some things are worth telling the neighbours
+  if (k === 'ruler' || k === 'outbreak' || k === 'saint' || k === 'coup') {
+    const p = a ? c.pawns.find((x) => x.id === a) : undefined;
+    c.out.push({ k: 'news', what: k, who: k === 'outbreak' ? s ?? '' : p ? `${p.first} ${p.fam}` : '' });
+  }
   if (c.log.length > LOG_KEEP) {
     const drop = c.log.length - LOG_KEEP + 100;
     c.log.splice(0, drop);

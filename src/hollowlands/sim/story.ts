@@ -6,6 +6,8 @@ import { DAYS_PER_YEAR, HARD_CAP, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, dayOf
 import { checkSpec, pawnFromSpec, type PawnSpec } from './create';
 import { addFact } from './social';
 import { nudge, takeHeir } from './player';
+import { answer } from './ask';
+import { importPawns } from './settle';
 import { cells } from './data/buildings';
 import { PLAYABLE } from './data/races';
 import { spawnRaid } from './combat';
@@ -74,7 +76,28 @@ export function applyInputs(c: Colony): void {
     c.inq.splice(i, 1);
     if (e.k === 'raid') spawnRaid(c, String(e.kind), Number(e.n) || 1, new Rand(c.seed, S.FIGHT, c.tick, 99));
     else if (e.k === 'nudge') nudge(c, e);
-    else if (e.k === 'news') log(c, 'news', undefined, undefined, String(e.what) + ':' + String(e.name));
+    else if (e.k === 'news') {
+      log(c, 'news', undefined, undefined, String(e.what) + ':' + String(e.name) + ':' + String(e.who ?? ''));
+      // sickness travels with the news
+      if (e.what === 'outbreak' && e.who === 'plague') {
+        const r = new Rand(c.seed, S.HEALTH, c.tick, 41);
+        if (r.chance(0.25) && c.pawns.length) infect(c, r.pick(c.pawns), 'plague');
+      }
+    } else if (e.k === 'answer') answer(c, e);
+    else if (e.k === 'migrant') {
+      // someone from another colony walks in: an exile, or someone who had had enough
+      if (c.pawns.length >= HARD_CAP || !e.pawn) continue;
+      const id = importPawns(c, { k: 'settlers', t: c.tick, from: '', fromName: String(e.fromName), leader: (e.pawn as Pawn).id, pawns: [e.pawn as Pawn], stock: {} }, new Rand(c.seed, S.EVENT, c.tick, 5));
+      const p = c.pawns.find((x) => x.id === id);
+      if (p) {
+        p.x = c.gx; p.y = Math.max(1, Math.min(c.h - 2, c.gy));
+        p.act = mkAct('idle', c.tick, p.x, p.y, 1, 'new');
+        p.bio.pop();
+        note(c, p, 'migrated', undefined, String(e.fromName));
+        log(c, 'joined', p.id, undefined, (e.why === 'exiled' ? 'exile:' : 'migrant:') + String(e.fromName));
+        bump(c, 'migrants');
+      }
+    }
     else if (e.k === 'heir') takeHeir(c, e);
     else if (e.k === 'join') {
       // a player's colonist walks in off the road

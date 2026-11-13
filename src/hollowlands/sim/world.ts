@@ -72,6 +72,11 @@ export function foundFrom(w: World, msg: SettlerMsg): Colony {
   return c;
 }
 
+function dist(w: World, a: Site | undefined, id: string): number {
+  const b = w.sites.find((s) => s.id === id);
+  return a && b ? Math.abs(a.x - b.x) + Math.abs(a.y - b.y) : 99;
+}
+
 /** One tick for every living colony, then deliver whatever they sent out. */
 export function stepWorld(w: World): void {
   for (const c of w.colonies) {
@@ -88,6 +93,12 @@ export function stepWorld(w: World): void {
         const made = foundFrom(w, m as unknown as SettlerMsg);
         // the old home hears where they ended up
         c.inq.push({ t: c.tick + 1, k: 'news', what: 'founded', name: made.name });
+      } else if (m.k === 'migrant' || m.k === 'news') {
+        // to the nearest living neighbours
+        const me = w.sites.find((s) => s.id === c.id);
+        const near = w.colonies.filter((x) => x !== c && x.pawns.length).sort((a, b) => dist(w, me, a.id) - dist(w, me, b.id));
+        if (m.k === 'migrant' && near[0]) near[0].inq.push({ t: near[0].tick + 1, k: 'migrant', pawn: m.pawn, fromName: m.fromName, why: m.why });
+        if (m.k === 'news') for (const x of near.slice(0, 3)) x.inq.push({ t: x.tick + 1, k: 'news', what: m.what, name: c.name, who: m.who });
       }
     }
   }

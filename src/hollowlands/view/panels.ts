@@ -39,6 +39,8 @@ export interface Hooks {
   layout(): void;
   /** Lean on my colonist: a kind of nudge and who or what it is about. */
   nudge(k: string, v: number): void;
+  /** Answer the question my colonist has been asked. */
+  answer(v: string): void;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -152,6 +154,7 @@ export class Panels {
     else if (d.act === 'find') this.hooks.find();
     else if (d.act === 'allrel') this.ui.allRel = !this.ui.allRel;
     else if (d.act === 'nudge' && d.k) this.hooks.nudge(d.k, Number(d.v));
+    else if (d.act === 'answer' && d.v) this.hooks.answer(d.v);
     else if (d.filter === 'all' || d.filter === 'notable' || d.filter === 'mine') { this.filter = d.filter; this.feedKey = ''; }
     else if (d.sort === 'mood' || d.sort === 'name') this.sort = d.sort;
     this.dirty = true;

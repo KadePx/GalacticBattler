@@ -7,6 +7,7 @@ import { TH } from './data/thoughts';
 import { foodDays, hasFood } from './econ';
 import { bump, log, note } from './events';
 import { hourlyHealth, pain } from './health';
+import { settleAsk } from './ask';
 import { die } from './life';
 import { STAGE, has, idleAct, pawnById, per, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
@@ -270,6 +271,7 @@ export function hourly(c: Colony, p: Pawn): void {
   p.mood += d > 7 ? 7 : d < -7 ? -7 : d;
 
   if (p.brk && t >= p.brk.x) endBreak(c, p);
+  if (p.ask && t >= p.ask.x) settleAsk(c, p, '');
 
   if (st >= STAGE.TEEN && !p.brk) {
     const line = breakLine(p);

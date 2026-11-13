@@ -11,6 +11,7 @@ import { dailyHealth } from './health';
 import { maybeSaint, sermonEnd } from './faith';
 import { verdict } from './crime';
 import { passHeirloom } from './player';
+import { ask } from './ask';
 import { getRel, think } from './mood';
 import { STAGE, ageYears, has, makePawn, mkAct, pawnById, person, posAt, rollPassions, rollTraits, stage, stat, toDead } from './pawn';
 import { Rand, S } from './rng';
@@ -49,6 +50,8 @@ export function becomeLovers(c: Colony, p: Pawn, o: Pawn): void {
 }
 
 export function propose(c: Colony, p: Pawn, o: Pawn, opB: number): boolean {
+  // a player's colonist gets to think it over
+  if (o.owner) { if (!o.ask) ask(c, o, 'propose', p.id); return true; }
   if (opB >= 45) {
     getRel(p, o.id).k = 'betrothed';
     getRel(o, p.id).k = 'betrothed';
@@ -221,6 +224,7 @@ export function depart(c: Colony, p: Pawn, cause: string): void {
   p.gone = true;
   c.dead.push(toDead(c, p, cause, undefined, true));
   log(c, 'left', p.id, undefined, cause);
+  if (cause === 'exiled' || cause === 'moved') c.out.push({ k: 'migrant', t: c.tick, from: c.id, fromName: c.name, why: cause, pawn: JSON.parse(JSON.stringify({ ...p, gone: undefined })) });
   bump(c, 'departures');
   for (const o of c.pawns) {
     if (o === p || o.gone) continue;

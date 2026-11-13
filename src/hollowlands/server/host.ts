@@ -300,6 +300,12 @@ export class ColonyHost {
             const e = await this.queue({ t: 0, k: 'heir', owner: h, id: heir.id });
             return json({ ok: true, at: e.t });
           }
+          if (path === 'act' && body.k === 'answer') {
+            const mine = c.pawns.find((x) => x.owner === h);
+            if (!mine?.ask) return json({ error: 'There is nothing to answer.' }, 409);
+            const e = await this.queue({ t: 0, k: 'answer', owner: h, v: String(body.v ?? '') });
+            return json({ ok: true, at: e.t });
+          }
           const p = c.pawns.find((x) => x.owner === h);
           const def = NUDGES[String(body.k)];
           if (!p || !def) return json({ error: 'You have no colonist to nudge.' }, 409);

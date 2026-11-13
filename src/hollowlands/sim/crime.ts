@@ -6,6 +6,7 @@ import { takeMeal } from './econ';
 import { bump, factById, log, note } from './events';
 import { wound } from './health';
 import { depart, die } from './life';
+import { ask } from './ask';
 import { think } from './mood';
 import { STAGE, has, pawnById, per, stage, stat } from './pawn';
 import { Rand, S } from './rng';
@@ -54,6 +55,8 @@ function steal(c: Colony, p: Pawn, what: string, r: Rand): void {
   if (!others.length) return;
   const witness = guard && r.chance(0.5) ? guard : r.pick(others);
   learn(c, witness, f);
+  // a player's colonist decides for themselves what to do about it
+  if (witness.owner && ask(c, witness, 'report', p.id, f.id, 1)) return;
   if (isClose(witness, p) && per(witness, AX.HONEST) < 1) {
     // family and friends look the other way, and now they share a secret
     think(c, p, 'toldsecret', witness.id);

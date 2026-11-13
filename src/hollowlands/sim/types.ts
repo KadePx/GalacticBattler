@@ -192,6 +192,8 @@ export interface Pawn {
   prev?: Id;
   /** the player's wish about leaving with settlers: 1 stay, -1 go */
   roots?: number;
+  /** a question waiting for the player: kind, who it concerns, a fact id if any, and the tick it lapses */
+  ask?: { k: string; o?: Id; n?: number; x: number };
   /** set when they die this tick; swept at the end of the tick */
   gone?: boolean;
 }

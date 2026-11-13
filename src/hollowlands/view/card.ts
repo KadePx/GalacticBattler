@@ -11,6 +11,7 @@ import { TRAITS } from '../sim/data/traits';
 import { RANK_NAMES, rulerTitle } from '../sim/gov';
 import { breakLine, moodTarget } from '../sim/mood';
 import { NUDGES, RESOLVE_CAP, resolveOf, resolveWait } from '../sim/player';
+import { ASKS } from '../sim/ask';
 import { ageYears, fullName, person, posAt, stage, stat } from '../sim/pawn';
 import { opinion } from '../sim/social';
 import { SKILL_NAMES, type Bio, type Bld, type Colony, type Dead, type Id, type Pawn } from '../sim/types';
@@ -234,6 +235,13 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
 
   if (ui.mine) {
     // the player's hand: Resolve, and what they have already leaned on
+    if (p.ask && ASKS[p.ask.k]) {
+      // a question only the player can answer (or leave to the colonist)
+      const def = ASKS[p.ask.k];
+      const hours = Math.max(1, Math.round((p.ask.x - c.tick) / 10));
+      const who = p.ask.o ? person(c, p.ask.o) : undefined;
+      h += `<div class="askbox"><b>${esc(def.title)}</b><span>${esc(def.text).replace('{o}', who ? whoLink(c, who.id) : 'Someone')}</span><div class="nudges">${def.opts.map(([v, label]) => `<button class="btn sm go" data-act="answer" data-v="${v}">${esc(label)}</button>`).join('')}</div><span class="hint">If you do not choose within ${hours} game ${hours === 1 ? 'hour' : 'hours'}, ${esc(p.first)} decides alone.</span></div>`;
+    }
     const res = resolveOf(c, p);
     const wait = resolveWait(c, p);
     const mins = Math.ceil((wait * 6) / 60);
@@ -243,6 +251,7 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
     if (p.urge && p.urge[2] > c.tick) lean.push(`${esc(NUDGES[p.urge[0]]?.name ?? p.urge[0])}: ${whoLink(c, p.urge[1])}`);
     if (p.focus && p.focus[1] > c.tick) lean.push(`Focused on ${esc(SKILL_NAMES[p.focus[0]].toLowerCase())}`);
     h += `<div class="hint">${lean.length ? lean.join(' · ') + '. ' : ''}You cannot command them, only lean on them. Open someone under Relationships to reach out, court, make peace or confront; or pick work to focus on:</div>`;
+    h += `<div class="nudges"><button class="btn sm${p.roots === -1 ? ' on' : ''}" data-act="nudge" data-k="yearn" data-v="0" title="${esc(NUDGES.yearn.blurb)} Costs 1 Resolve."${res >= 1 && p.roots !== -1 ? '' : ' disabled'}>${esc(NUDGES.yearn.name)}</button><button class="btn sm${p.roots === 1 ? ' on' : ''}" data-act="nudge" data-k="stay" data-v="0" title="${esc(NUDGES.stay.blurb)} Costs 1 Resolve."${res >= 1 && p.roots !== 1 ? '' : ' disabled'}>${esc(NUDGES.stay.name)}</button></div>`;
     h += '<div class="nudges">' + SKILL_NAMES.map((n, i) => `<button class="btn sm" data-act="nudge" data-k="focus" data-v="${i}"${res >= 1 ? '' : ' disabled'}>${esc(n)}</button>`).join('') + '</div>';
   }
   h += `<h3>Mood <span class="legend">${moodWord(p)}</span></h3>`;

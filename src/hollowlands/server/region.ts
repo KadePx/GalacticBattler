@@ -37,7 +37,7 @@ export class RegionHost {
       const w: WorldRec = { seed, count: 0, sites: [], created: now };
       this.w = w;
       for (let k = 0; k < this.o.colonies; k++) {
-        const id = 'c' + w.count;
+        const id = (w.seed % 46656).toString(36) + 'c' + w.count; // unique to this world, so archives never mix
         const cs = colonySeed(seed, w.count);
         const [x, y] = pickSpot(seed, w.sites, undefined, w.count);
         const made = await this.link(id, 'init', { seed: cs, id, pop: this.o.pop + (cs % 5), preDays: this.o.preDays, avoid: w.sites.map((s) => s.name) });
@@ -59,10 +59,15 @@ export class RegionHost {
       site.tick = body.tick;
       if (!body.pop && !site.dead) site.dead = body.tick;
     }
+    const near = w.sites.filter((s) => s.id !== body.from && !s.dead && s.pop > 0)
+      .sort((a, b) => (site ? Math.abs(a.x - site.x) + Math.abs(a.y - site.y) - Math.abs(b.x - site.x) - Math.abs(b.y - site.y) : 0));
     for (const m of body.msgs ?? []) {
+      const raw = m as unknown as Record<string, unknown>;
+      if (m.k === 'migrant' && near[0]) await this.link(near[0].id, 'input', { k: 'migrant', pawn: raw.pawn, fromName: raw.fromName, why: raw.why });
+      if (m.k === 'news') for (const s of near.slice(0, 3)) await this.link(s.id, 'input', { k: 'news', what: raw.what, name: body.name ?? site?.name ?? '', who: raw.who });
       if (m.k !== 'settlers') continue;
       const msg = m as unknown as SettlerMsg;
-      const id = 'c' + w.count;
+      const id = (w.seed % 46656).toString(36) + 'c' + w.count; // unique to this world, so archives never mix
       const cs = colonySeed(w.seed, w.count);
       const [x, y] = pickSpot(w.seed, w.sites, site, w.count);
       const made = await this.link(id, 'init', { seed: cs, id, settlers: msg, avoid: w.sites.map((s) => s.name) });

@@ -11,11 +11,11 @@ import { RACES } from './sim/data/races';
 import { heirsOf } from './sim/player';
 import { connect, fetchRegion, myHash, useColony, type Live, type RegionSite } from './net';
 import { WorldView } from './view/world';
-import { createColony, step, type Colony, type Id, type RaceK } from './sim/index';
+import { createColony, step, type Colony, type Ev, type Id, type RaceK } from './sim/index';
 import { checkSpec, type PawnSpec } from './sim/create';
 import { fullName, pawnById } from './sim/pawn';
 import type { Dead, Pawn } from './sim/types';
-import { dateText } from './text';
+import { WEIGHT, dateText, evText } from './text';
 import { Creator, randomSpec } from './view/creator';
 import { MapView } from './view/map';
 import { Panels, type Sel } from './view/panels';
@@ -167,7 +167,7 @@ function syncMine(): void {
   const d = p ? null : myDead();
   meId = p?.id ?? d?.id ?? 0;
   map.mineId = p?.id ?? 0;
-  const label = pending && !p ? 'On the road…' : p ? 'My colonist' : d ? 'Make a new colonist' : 'Make your colonist';
+  const label = pending && !p ? 'On the road…' : p?.ask ? 'A choice awaits' : p ? 'My colonist' : d ? 'Make a new colonist' : 'Make your colonist';
   const banner = !p && !pending && d && dismissed !== d.id
     ? `<span class="t"><b>${esc(fullName(d))}</b> ${d.left ? 'was lost to the colony' : 'died'} on ${dateText(d.died)}: ${esc(causeText(c, d).toLowerCase())}.</span><button class="btn sm" data-m="view">Remember them</button>${heirsOf(c, me).slice(0, 3).map((x) => `<button class="btn sm go" data-m="heir" data-id="${x.id}">Carry on as ${esc(x.first)}</button>`).join('')}<button class="btn sm" data-m="new">Make a new colonist</button><button class="icon" data-m="x" title="Close" aria-label="Close">&times;</button>`
     : '';
@@ -219,6 +219,38 @@ function rejoin(): void {
     const saved = JSON.parse(store.get(mineKey) ?? 'null') as { spec: PawnSpec; t: number } | null;
     if (saved && checkSpec(saved.spec).ok) join(saved.spec, Math.max(c.tick + 1, saved.t || 0), false);
   } catch { store.del(mineKey); }
+}
+
+/**
+ * While you were away: what happened to my colonist since this browser last looked.
+ * The colony itself only remembers a few days, so older events come from the server's archive.
+ */
+async function digest(): Promise<void> {
+  const mine = myPawn();
+  if (!live || !here || !mine) return;
+  const key = 'hl.seen.' + here;
+  const seen = Number(store.get(key)) || 0;
+  store.set(key, String(c.tick));
+  if (!seen || c.tick - seen < TICKS_PER_DAY) return;
+  let events: Ev[] = c.log.filter((e) => e.a === mine.id || e.b === mine.id);
+  try {
+    const r = await fetch(`/api/hl/c/${here}/events?who=${mine.id}`, { cache: 'no-store' });
+    if (r.ok) {
+      const old = ((await r.json()) as { events?: Ev[] }).events ?? [];
+      const have = new Set(events.map((e) => e.t + e.k + (e.a ?? '') + (e.b ?? '')));
+      events = [...old.filter((e) => !have.has(e.t + e.k + (e.a ?? '') + (e.b ?? ''))), ...events];
+    }
+  } catch { /* the archive is a bonus */ }
+  const list = events.filter((e) => e.t > seen && (WEIGHT[e.k] ?? 0) >= 1).sort((x, y) => x.t - y.t);
+  if (!list.length) return;
+  const big = list.filter((e) => (WEIGHT[e.k] ?? 0) >= 2);
+  const show = (big.length >= 6 ? big : list).slice(-40);
+  const days = Math.round((c.tick - seen) / TICKS_PER_DAY);
+  const el = document.createElement('div');
+  el.id = 'world';
+  el.innerHTML = `<div class="wbox panel"><div class="whead"><b>While you were away</b><span>${days} game ${days === 1 ? 'day' : 'days'} in the life of ${esc(mine.first)}</span><button class="icon" data-x title="Close" aria-label="Close">&times;</button></div><div class="wlist">${show.map((e) => `<div class="wrow"><span>${esc(dateText(e.t))}</span><b style="font-weight:500">${esc(evText(c, e))}</b></div>`).join('')}</div></div>`;
+  el.addEventListener('click', (e) => { if (e.target === el || (e.target as HTMLElement).closest('[data-x]')) el.remove(); });
+  document.body.appendChild(el);
 }
 
 function bindMine(): void {
@@ -346,6 +378,11 @@ async function boot(): Promise<void> {
     find: () => { if (sel?.k === 'pawn') map.focusPawn(sel.id, 1.6); },
     close: () => setSel(null),
     layout,
+    answer: (v) => {
+      if (live) void live.send('act', { k: 'answer', v }).then((err) => { if (err) toast(err); });
+      else c.inq.push({ t: c.tick + 1, k: 'answer', owner: me, v });
+      ui?.touch();
+    },
     nudge: (k, v) => {
       if (live) void live.send('act', { k, o: v, v }).then((err) => toast(err || 'They will get to it soon.'));
       else c.inq.push({ t: c.tick + 1, k: 'nudge', owner: me, kind: k, o: v, v });
@@ -369,6 +406,8 @@ async function boot(): Promise<void> {
   bindMine();
   rejoin();
   syncMine();
+  void digest();
+  if (live) setInterval(() => { if (here && myPawn()) store.set('hl.seen.' + here, String(c.tick)); }, 60_000);
   document.getElementById('mine')?.classList.remove('hidden');
 
   window.addEventListener('keydown', (e) => {

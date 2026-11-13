@@ -5,6 +5,7 @@
 import { HARD_CAP, SOFT_CAP, TICKS_PER_DAY, dayOf, seasonOf } from '../config';
 import { bump, log, note } from './events';
 import { approval } from './gov';
+import { ask } from './ask';
 import { isDown } from './health';
 import { depart } from './life';
 import { think } from './mood';
@@ -49,6 +50,19 @@ export function dailySettle(c: Colony): void {
   if (pop >= 18 && approval(c) < -12) push += 0.5;
   if (pop < 20) push -= 0.6;
   c.settle = Math.max(0, (c.settle ?? 0) + push);
+  // the talk starts well before anyone packs: time to ask the players what theirs will do
+  if (c.settle > 28) for (const p of c.pawns) if (p.owner && !p.roots && stage(c, p) >= STAGE.ADULT && c.settle < 30) ask(c, p, 'settle', undefined, undefined, 3);
+  if (pop >= 8 && dayOf(c.tick) % 3 === 0) {
+    const rr = new Rand(c.seed, S.EVENT, dayOf(c.tick), 78);
+    for (const p of c.pawns) {
+      if (p.gone || p.owner || p.sp || stage(c, p) !== STAGE.ADULT || p.id === c.gov.ruler || p.brk || isDown(p)) continue;
+      if (c.pawns.some((k) => k.mo === p.id || k.fa === p.id)) continue;
+      let friends = 0;
+      for (const key in p.rel) if (p.rel[key].f === 1) friends++;
+      const wants = (p.rank <= 1 ? 0.05 : 0) + (p.mood < 30 && !friends ? 0.04 : 0) + (has(p, 'wanderlust') && !friends ? 0.01 : 0);
+      if (wants && rr.chance(wants)) { note(c, p, 'moved'); depart(c, p, 'moved'); break; }
+    }
+  }
   const forced = pop >= HARD_CAP - 1;
   if (!forced && (c.settle < 45 || pop < 24)) return;
   // nobody sets out in the snow, in the middle of a fight, or on the day of a wedding
