@@ -14,6 +14,7 @@ import { founderId, myHash } from './identity';
 import { EDICT_TEXT, councilHtml, digestHtml, type Queued } from './view/council';
 import { sound } from './view/sound';
 import { worldHtml } from './view/world';
+import { NOTES_ID, notesHtml } from './view/notes';
 import { Founding, type Pending } from './view/founding';
 import { SIM_V } from './sim/types';
 import { legendFull } from './view/legend';
@@ -49,7 +50,7 @@ let speed = 5; // years per second
 let mode: Mode = 'political';
 let selCiv = -1;
 let selTile = -1;
-type DrawerKind = { k: 'peoples' } | { k: 'civ'; civ: number } | { k: 'chron' } | { k: 'tech' } | { k: 'mine' } | { k: 'world' };
+type DrawerKind = { k: 'peoples' } | { k: 'civ'; civ: number } | { k: 'chron' } | { k: 'tech' } | { k: 'mine' } | { k: 'world' } | { k: 'notes' };
 let msPerTick = 60_000; // real ms per game month (from the server)
 let queued: Queued[] = []; // founder actions sent but not yet applied
 let naming = ''; // 'what:id' being named in the council
@@ -388,7 +389,10 @@ function renderDrawer(): void {
     body.innerHTML = myCiv >= 0 ? councilHtml(w, myCiv, msPerTick, queued, naming) : '';
   } else if (top.k === 'world') {
     $('dtitle').textContent = 'The world';
-    body.innerHTML = worldHtml(c) + archivesHtml(nextInfo?.archives ?? []);
+    body.innerHTML = `<p class="notelink"><a href="#" data-open="notes">What's new in version 7</a></p>` + worldHtml(c) + archivesHtml(nextInfo?.archives ?? []);
+  } else if (top.k === 'notes') {
+    $('dtitle').textContent = "What's new";
+    body.innerHTML = notesHtml();
   } else {
     $('dtitle').textContent = 'Chronicle';
     body.innerHTML = chronHtml(c);
@@ -682,6 +686,12 @@ function founderClick(el: HTMLElement): boolean {
   if (d.share) { void share(Number(d.share)); return true; }
   if (d.open === 'mine') { closeDigest(); openDrawer({ k: 'mine' }, false); return true; }
   if (d.open === 'world') { openDrawer({ k: 'world' }, false); return true; }
+  if (d.open === 'notes') {
+    closeDigest();
+    try { localStorage.setItem('cw.notes', NOTES_ID); } catch { /* private mode */ }
+    openDrawer({ k: 'notes' }, drawer.length > 0);
+    return true;
+  }
   return false;
 }
 
@@ -933,6 +943,8 @@ async function syncLoop(): Promise<void> {
 async function boot(): Promise<void> {
   await Promise.race([document.fonts.load('600 14px Inter'), new Promise((r) => setTimeout(r, 2500))]);
   const loading = $('loading');
+  let returning = false; // has been here before (for the what's-new notice)
+  try { returning = localStorage.getItem('cw.welcomed') === '1' || !!localStorage.getItem('cw.seen'); } catch { /* private mode */ }
   // /commonworld/first (?world=first): the first world, archived, or still standing before the start.
   if (archiveId === 'first') {
     const a = await getJson<{ archives: { id: string }[] }>('archives').catch(() => ({ archives: [] }));
@@ -1047,6 +1059,13 @@ async function boot(): Promise<void> {
     const greeted = showDigest() || welcome();
     saveSeen();
     if (!greeted) maybeShowNext();
+    // Returning players hear once what changed since the last version.
+    let notes = '';
+    try { notes = localStorage.getItem('cw.notes') ?? ''; } catch { /* private mode */ }
+    if (returning && notes !== NOTES_ID && !nextInfo?.held) {
+      try { localStorage.setItem('cw.notes', NOTES_ID); } catch { /* private mode */ }
+      setTimeout(() => toast(`<b>Commonworld version 7 is here.</b> Tributaries, golden ages, climate, royal marriages, names that mean something, and more. <a href="#" data-open="notes">See what's new</a>`, 14000), greeted ? 4000 : 1500);
+    }
     setInterval(() => void pollNext(), 60_000);
   }
   if (archiveId) {
