@@ -288,7 +288,13 @@ export interface Colony {
   /** tick the alarm was raised, 0 when all is quiet */
   alarm: number;
   /** the storyteller's bookkeeping */
-  story: { last: number; lastBad: number; heat: number; band: number };
+  story: { last: number; lastBad: number; heat: number; band: number; raid?: number };
+  /** neighbouring colonies, nearest first (told to us by the region) */
+  near?: { id: string; name: string }[];
+  /** raiders from another colony are on the map: who sent them, and the counts when they came */
+  raidFrom?: { id: string; name: string; loot0: number; slain0: number };
+  /** the abandoned colony this one was built over */
+  ruins?: string;
   /** who rules and how: kind of rule, ruler, laws in force, titles held, next election, regent for a child ruler */
   gov: { k: string; ruler: Id; since: number; laws: Record<string, number>; titles: Record<string, Id>; next: number; regent: Id };
   /** how strongly people want to leave and found a new colony */

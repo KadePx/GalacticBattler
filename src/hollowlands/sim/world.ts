@@ -9,8 +9,9 @@ import { Rand, S, hash32 } from './rng';
 import type { SettlerMsg } from './settle';
 import { step } from './step';
 import type { Colony } from './types';
+import { landThreat, nearLists, routeMsg, ruinFor, type Delivery } from './routes';
 
-export interface Site { id: string; name: string; x: number; y: number; founded: number; from?: string; seed: number; dead?: number }
+export interface Site { id: string; name: string; x: number; y: number; founded: number; from?: string; seed: number; dead?: number; nearSent?: string; ruins?: string }
 
 export interface World {
   seed: number;
@@ -19,6 +20,7 @@ export interface World {
   colonies: Colony[];
   /** colonies founded so far, for naming and seeding the next */
   count: number;
+  lastThreat?: number;
 }
 
 export const REGION_W = 48;
@@ -64,17 +66,13 @@ export function createWorld(o: { seed: number; colonies?: number; pop?: number; 
 export function foundFrom(w: World, msg: SettlerMsg): Colony {
   const seed = colonySeed(w.seed, w.count);
   const parent = w.sites.find((s) => s.id === msg.from);
-  const c = createColony({ seed, id: 'c' + w.count, settlers: msg, avoid: w.sites.map((s) => s.name) });
-  const [x, y] = pickSpot(w.seed, w.sites, parent, w.count);
-  w.sites.push({ id: c.id, name: c.name, x, y, founded: msg.t, from: msg.from, seed });
+  const ruin = ruinFor(w.seed, w.sites, parent, w.count);
+  const c = createColony({ seed: ruin?.seed ?? seed, id: 'c' + w.count, settlers: msg, avoid: w.sites.map((s) => s.name), ruinsOf: ruin?.name });
+  const [x, y] = ruin ? [ruin.x, ruin.y] : pickSpot(w.seed, w.sites, parent, w.count);
+  w.sites.push({ id: c.id, name: c.name, x, y, founded: msg.t, from: msg.from, seed: ruin?.seed ?? seed, ruins: ruin?.name });
   w.colonies.push(c);
   w.count++;
   return c;
-}
-
-function dist(w: World, a: Site | undefined, id: string): number {
-  const b = w.sites.find((s) => s.id === id);
-  return a && b ? Math.abs(a.x - b.x) + Math.abs(a.y - b.y) : 99;
 }
 
 /** One tick for every living colony, then deliver whatever they sent out. */
@@ -84,6 +82,12 @@ export function stepWorld(w: World): void {
     step(c);
   }
   w.tick++;
+  const send = (list: Delivery[]): void => {
+    for (const d of list) {
+      const to = w.colonies.find((x) => x.id === d.to);
+      if (to && to.pawns.length) to.inq.push({ t: to.tick + 1, k: String(d.input.k), ...d.input });
+    }
+  };
   for (const c of w.colonies.slice()) {
     if (!c.out.length) continue;
     const out = c.out;
@@ -93,18 +97,16 @@ export function stepWorld(w: World): void {
         const made = foundFrom(w, m as unknown as SettlerMsg);
         // the old home hears where they ended up
         c.inq.push({ t: c.tick + 1, k: 'news', what: 'founded', name: made.name });
-      } else if (m.k === 'migrant' || m.k === 'news') {
-        // to the nearest living neighbours
-        const me = w.sites.find((s) => s.id === c.id);
-        const near = w.colonies.filter((x) => x !== c && x.pawns.length).sort((a, b) => dist(w, me, a.id) - dist(w, me, b.id));
-        if (m.k === 'migrant' && near[0]) near[0].inq.push({ t: near[0].tick + 1, k: 'migrant', pawn: m.pawn, fromName: m.fromName, why: m.why });
-        if (m.k === 'news') for (const x of near.slice(0, 3)) x.inq.push({ t: x.tick + 1, k: 'news', what: m.what, name: c.name, who: m.who });
-      }
+      } else send(routeMsg(w.sites, c.id, c.name, m));
     }
   }
   for (const s of w.sites) {
     if (s.dead) continue;
     const c = w.colonies.find((x) => x.id === s.id);
     if (c && !c.pawns.length) s.dead = w.tick;
+  }
+  if (w.tick % TICKS_PER_DAY === 0) {
+    send(nearLists(w.sites));
+    send(landThreat(w.seed, Math.floor(w.tick / TICKS_PER_DAY), w.sites, w));
   }
 }

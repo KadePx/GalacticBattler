@@ -5,12 +5,13 @@
 import { colonySeed, pickSpot, type Site } from '../sim/world';
 import type { SettlerMsg } from '../sim/settle';
 import type { KV } from './host';
+import { landThreat, nearLists, routeMsg, ruinFor, type Delivery } from '../sim/routes';
 
 export interface RegionOpts { seed?: number; colonies: number; pop: number; preDays: number; now: () => number }
 
 /** What the region knows about a colony at a glance (kept fresh by the colony's own reports). */
 export interface SiteInfo extends Site { pop: number; ruler?: string; tick?: number }
-interface WorldRec { seed: number; count: number; sites: SiteInfo[]; created: number }
+interface WorldRec { seed: number; count: number; sites: SiteInfo[]; created: number; day?: number; lastThreat?: number }
 
 /** Call a colony's keeper: path under its own API, optional JSON body (POST). */
 export type Link = (id: string, path: string, body?: unknown) => Promise<Record<string, unknown>>;
@@ -59,23 +60,29 @@ export class RegionHost {
       site.tick = body.tick;
       if (!body.pop && !site.dead) site.dead = body.tick;
     }
-    const near = w.sites.filter((s) => s.id !== body.from && !s.dead && s.pop > 0)
-      .sort((a, b) => (site ? Math.abs(a.x - site.x) + Math.abs(a.y - site.y) - Math.abs(b.x - site.x) - Math.abs(b.y - site.y) : 0));
+    const send = async (list: Delivery[]): Promise<void> => {
+      for (const d of list) await this.link(d.to, 'input', d.input).catch(() => undefined);
+    };
     for (const m of body.msgs ?? []) {
-      const raw = m as unknown as Record<string, unknown>;
-      if (m.k === 'migrant' && near[0]) await this.link(near[0].id, 'input', { k: 'migrant', pawn: raw.pawn, fromName: raw.fromName, why: raw.why });
-      if (m.k === 'news') for (const s of near.slice(0, 3)) await this.link(s.id, 'input', { k: 'news', what: raw.what, name: body.name ?? site?.name ?? '', who: raw.who });
-      if (m.k !== 'settlers') continue;
+      if (m.k !== 'settlers') { await send(routeMsg(w.sites, body.from, body.name ?? site?.name ?? '', m as unknown as Record<string, unknown>)); continue; }
       const msg = m as unknown as SettlerMsg;
       const id = (w.seed % 46656).toString(36) + 'c' + w.count; // unique to this world, so archives never mix
-      const cs = colonySeed(w.seed, w.count);
-      const [x, y] = pickSpot(w.seed, w.sites, site, w.count);
-      const made = await this.link(id, 'init', { seed: cs, id, settlers: msg, avoid: w.sites.map((s) => s.name) });
+      const ruin = ruinFor(w.seed, w.sites, site, w.count);
+      const cs = ruin?.seed ?? colonySeed(w.seed, w.count);
+      const [x, y] = ruin ? [ruin.x, ruin.y] : pickSpot(w.seed, w.sites, site, w.count);
+      const made = await this.link(id, 'init', { seed: cs, id, settlers: msg, avoid: w.sites.map((s) => s.name), ruinsOf: ruin?.name });
       const name = String(made.name ?? id);
-      w.sites.push({ id, name, x, y, founded: msg.t, from: msg.from, seed: cs, pop: msg.pawns.length });
+      w.sites.push({ id, name, x, y, founded: msg.t, from: msg.from, seed: cs, pop: msg.pawns.length, ruins: ruin?.name });
       w.count++;
       await this.save();
       await this.link(msg.from, 'input', { k: 'news', what: 'founded', name });
+    }
+    // once a game day (by whichever colony reports first): neighbours, and the wider land
+    const day = Math.floor(body.tick / 240);
+    if (day > (w.day ?? 0)) {
+      w.day = day;
+      await send(nearLists(w.sites));
+      await send(landThreat(w.seed, day, w.sites, w));
     }
     await this.save();
   }

@@ -204,6 +204,10 @@ export const TH_LIST: ThDef[] = [
 
   h('friendleft', 'A friend has gone with the settlers', -5, DAY * 8),
 
+  h('plunder', 'The raiders came home loaded', 5, DAY * 5),
+  h('raidlost', 'Some of ours did not come back from the raid', -6, DAY * 8),
+  h('raidnothing', 'The raid came to nothing', -2, DAY * 3),
+
   // Fears and secrets
   h('fear_dark', 'Out in the dark', -5, 0),
   h('fear_dead', 'Too close to the dead', -5, 0),

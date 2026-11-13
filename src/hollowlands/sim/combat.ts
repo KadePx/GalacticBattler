@@ -24,6 +24,7 @@ export interface FoeDef {
 }
 
 export const FOES: Record<string, FoeDef> = {
+  raider: { k: 'raider', name: 'raider', plural: 'raiders', hp: 62, atk: 7, dmg: 14, wound: 'cut', spd: 10, goal: 'loot', nerve: 0.45 },
   bandit: { k: 'bandit', name: 'bandit', plural: 'bandits', hp: 55, atk: 6, dmg: 13, wound: 'cut', spd: 10, goal: 'loot', nerve: 0.5 },
   slaver: { k: 'slaver', name: 'slaver', plural: 'slavers', hp: 60, atk: 7, dmg: 10, wound: 'bruise', spd: 10, goal: 'slave', nerve: 0.5 },
   orc: { k: 'orc', name: 'orc raider', plural: 'orc raiders', hp: 80, atk: 9, dmg: 16, wound: 'cut', spd: 10, goal: 'kill', nerve: 0.67 },
@@ -273,6 +274,11 @@ export function aftermath(c: Colony): void {
   const began = c.alarm;
   c.alarm = 0;
   for (const k of Object.keys(c.stats)) if (k.startsWith('band')) delete c.stats[k];
+  if (c.raidFrom) {
+    // word goes back to whoever sent them: what they took, and how many will not be coming home
+    c.out.push({ k: 'spoils', to: c.raidFrom.id, name: c.name, loot: Math.max(0, (c.stats.looted ?? 0) - c.raidFrom.loot0), slain: Math.max(0, (c.stats.foesSlain ?? 0) - c.raidFrom.slain0) });
+    c.raidFrom = undefined;
+  }
   if (!began) return;
   log(c, 'allclear');
   const adults = c.pawns.filter((p) => !p.gone && stage(c, p) >= STAGE.TEEN);

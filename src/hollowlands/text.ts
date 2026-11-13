@@ -36,7 +36,7 @@ const CAUSES: Record<string, string> = {
   beast: 'was killed by a beast',
   murder: 'was murdered',
   executed: 'was put to death',
-  accident: 'died in an accident', moved: 'left for another colony', settled: 'left to found a new colony', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
+  accident: 'died in an accident', raiding: 'died raiding another colony', foe_raider: 'was killed by raiders from another colony', moved: 'left for another colony', settled: 'left to found a new colony', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
   bled: 'bled to death',
   taken: 'was carried off by slavers',
   foe_bandit: 'was cut down by bandits', foe_slaver: 'was killed by slavers', foe_orc: 'was butchered by orc raiders', foe_wolf: 'was torn apart by wolves',
@@ -54,8 +54,8 @@ const BREAKS: Record<string, string> = {
   tantrum: 'is smashing things',
 };
 
-const FOE_ONE: Record<string, string> = { bandit: 'bandit', slaver: 'slaver', orc: 'orc raider', wolf: 'wolf', ghoul: 'ghoul', troll: 'troll', boar: 'maddened boar' };
-const FOE_MANY: Record<string, string> = { bandit: 'bandits', slaver: 'slavers', orc: 'orc raiders', wolf: 'wolves', ghoul: 'ghouls', troll: 'trolls', boar: 'maddened boars' };
+const FOE_ONE: Record<string, string> = { raider: 'raider', bandit: 'bandit', slaver: 'slaver', orc: 'orc raider', wolf: 'wolf', ghoul: 'ghoul', troll: 'troll', boar: 'maddened boar' };
+const FOE_MANY: Record<string, string> = { raider: 'raiders', bandit: 'bandits', slaver: 'slavers', orc: 'orc raiders', wolf: 'wolves', ghoul: 'ghouls', troll: 'trolls', boar: 'maddened boars' };
 const ILL: Record<string, string> = { flux: 'the flux', fever: 'rot fever', plague: 'the grey plague', cough: 'lung-cough', pox: 'goblin pox' };
 const PART: Record<string, string> = {
   eyeL: 'eye', eyeR: 'eye', armL: 'arm', armR: 'arm', handL: 'hand', handR: 'hand', legL: 'leg', legR: 'leg', footL: 'foot', footR: 'foot',
@@ -90,6 +90,7 @@ export const WEIGHT: Record<string, number> = {
   raid: 3, allclear: 1, alarm: 2, rout: 2, slew: 2, looted: 3, seized: 3, rescued: 3, hero: 3, maimed: 3, sick: 2, recovered: 1, outbreak: 3, drunkard: 2,
   settlers: 3, founded: 3, news: 2,
   asked: 2, blackmail: 3,
+  raidout: 3, raiders_from: 2, raidback: 3,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
@@ -185,7 +186,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'drunkard': return `${a} cannot stay away from the barrel any more.`;
     case 'settlers': return `${full(c, e.a)} has led ${(e.n ?? 2) - 1} others out to found a new colony.`;
     case 'founded': return `${full(c, e.a)} and ${(e.n ?? 2) - 1} others from ${e.s} raised the first roof here.`;
-    case 'news': { const [what, name] = (e.s ?? '').split(':'); const who = (e.s ?? '').split(':')[2]; return what === 'founded' ? `Word has come back: the settlers have founded ${name}.` : what === 'ruler' ? `News from ${name}: ${who || 'someone new'} rules there now.` : what === 'coup' ? `News from ${name}: the seat was taken by force.` : what === 'outbreak' ? `News from ${name}: sickness has broken out there.` : what === 'saint' ? `News from ${name}: they are praying to ${who || 'one of their dead'}.` : `News from ${name}.`; }
+    case 'news': { const [what, name] = (e.s ?? '').split(':'); const who = (e.s ?? '').split(':')[2]; return what === 'founded' ? `Word has come back: the settlers have founded ${name}.` : what === 'ruler' ? `News from ${name}: ${who || 'someone new'} rules there now.` : what === 'coup' ? `News from ${name}: the seat was taken by force.` : what === 'outbreak' ? `News from ${name}: sickness has broken out there.` : what === 'warlord' ? `Riders on the road: ${name} is on the march with a host.` : what === 'saint' ? `News from ${name}: they are praying to ${who || 'one of their dead'}.` : `News from ${name}.`; }
     case 'asked': return `${a} has a choice to make.`;
     case 'blackmail': return `${a} is making ${b} pay to keep a secret.`;
     case 'heir': return `${full(c, e.a)} takes up where ${first(c, e.b)} left off.`;
@@ -193,7 +194,10 @@ export function evText(c: Colony, e: Ev): string {
     case 'nudge': return e.s === 'yearn' ? `${a} has begun to look at the road.` : e.s === 'stay' ? `${a} has decided this is home.` : e.s === 'focus' ? `${a} has thrown themselves into their work.` : `${a} has ${b} on their mind.`;
     case 'blabbed': return `Drunk, ${a} let slip the secret they came here to bury. ${e.n} heard it.`;
     case 'joined': return e.s?.startsWith('exile:') ? `${full(c, e.a)} has arrived, cast out of ${e.s.slice(6)}.` : e.s?.startsWith('migrant:') ? `${full(c, e.a)} has come from ${e.s.slice(8)} to start again.` : e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
-    case 'trader': return 'A trader\'s caravan stopped for the day.';
+    case 'trader': return e.s ? `A caravan from ${e.s} stopped for the day.` : 'A trader\'s caravan stopped for the day.';
+    case 'raidout': return `${a} has sent ${e.n} fighters to raid ${e.s}.`;
+    case 'raiders_from': return `They are from ${e.s}.`;
+    case 'raidback': { const [name, lost] = (e.s ?? '').split(':'); return `The raiders are back from ${name}${e.n ? ' with full sacks' : ' with nothing'}${Number(lost) ? `. ${lost} of them did not return` : ''}.`; }
     case 'bard': return 'A wandering bard played in the hall until the fire burned low.';
     case 'herd': return 'A great herd is passing through the hills. The hunting will be good.';
     case 'omen': return 'A white stag was seen at the edge of the woods. The faithful take heart.';

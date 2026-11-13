@@ -7,6 +7,7 @@ import { checkSpec, pawnFromSpec, type PawnSpec } from './create';
 import { addFact } from './social';
 import { nudge, takeHeir } from './player';
 import { answer } from './ask';
+import { abroadInput } from './abroad';
 import { importPawns } from './settle';
 import { cells } from './data/buildings';
 import { PLAYABLE } from './data/races';
@@ -74,7 +75,17 @@ export function applyInputs(c: Colony): void {
     const e = c.inq[i];
     if (e.t > c.tick) { i++; continue; }
     c.inq.splice(i, 1);
-    if (e.k === 'raid') spawnRaid(c, String(e.kind), Number(e.n) || 1, new Rand(c.seed, S.FIGHT, c.tick, 99));
+    if (abroadInput(c, e)) continue;
+    if (e.k === 'raid') {
+      // trouble sent from elsewhere may still be a day or two down the road
+      if (e.delay) { c.inq.push({ ...e, t: c.tick + Number(e.delay), delay: undefined }); continue; }
+      if (c.foes.length) continue;
+      spawnRaid(c, String(e.kind), Number(e.n) || 1, new Rand(c.seed, S.FIGHT, c.tick, 99));
+      if (e.fromId) {
+        c.raidFrom = { id: String(e.fromId), name: String(e.fromName), loot0: c.stats.looted ?? 0, slain0: c.stats.foesSlain ?? 0 };
+        log(c, 'raiders_from', undefined, undefined, String(e.fromName));
+      }
+    }
     else if (e.k === 'nudge') nudge(c, e);
     else if (e.k === 'news') {
       log(c, 'news', undefined, undefined, String(e.what) + ':' + String(e.name) + ':' + String(e.who ?? ''));
@@ -329,7 +340,6 @@ function trade(c: Colony, r: Rand): void {
   buy('clothes', 1 + pop * 0.15, 2.5);
   s.silver = silver;
   for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, 'newfaces');
-  log(c, 'trader', undefined, undefined, undefined, Math.round(bought));
+  log(c, 'trader', undefined, undefined, c.near?.length ? r.pick(c.near).name : undefined, Math.round(bought));
   bump(c, 'traders');
-  void r;
 }

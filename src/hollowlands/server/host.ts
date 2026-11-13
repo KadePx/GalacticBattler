@@ -117,10 +117,10 @@ export class ColonyHost {
     await this.loading;
   }
 
-  private async create(seed?: number, x: { id?: string; pop?: number; preDays?: number; settlers?: SettlerMsg; avoid?: string[] } = {}): Promise<void> {
+  private async create(seed?: number, x: { id?: string; pop?: number; preDays?: number; settlers?: SettlerMsg; avoid?: string[]; ruinsOf?: string } = {}): Promise<void> {
     const now = this.o.now();
     const s = seed ?? ((now % 2147483647) | 1);
-    const c = createColony({ seed: s, pop: x.pop ?? this.o.pop, settlers: x.settlers, avoid: x.avoid });
+    const c = createColony({ seed: s, pop: x.pop ?? this.o.pop, settlers: x.settlers, avoid: x.avoid, ruinsOf: x.ruinsOf });
     if (!x.settlers) for (let k = 0; k < (x.preDays ?? this.o.preDays) * TICKS_PER_DAY; k++) step(c);
     c.id = x.id ?? 'h' + now.toString(36) + (s % 1296).toString(36);
     c.out = [];
@@ -238,7 +238,7 @@ export class ColonyHost {
     const path = url.pathname.replace(/^.*\/api\/hl\/(c\/[^/]+\/)?/, '');
     if (internal && req.method === 'POST' && path === 'init') {
       if (!this.c) {
-        const b = (await req.json()) as { seed: number; id: string; pop?: number; preDays?: number; settlers?: SettlerMsg; avoid?: string[] };
+        const b = (await req.json()) as { seed: number; id: string; pop?: number; preDays?: number; settlers?: SettlerMsg; avoid?: string[]; ruinsOf?: string };
         await this.create(b.seed, b);
       }
       return json(this.state());

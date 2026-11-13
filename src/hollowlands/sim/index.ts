@@ -22,6 +22,8 @@ export interface CreateOpts {
   settlers?: SettlerMsg;
   /** names already taken by other colonies */
   avoid?: string[];
+  /** the abandoned colony these settlers are building over */
+  ruinsOf?: string;
 }
 
 const RACE_ODDS: [RaceK, number][] = [['human', 40], ['dwarf', 15], ['elf', 10], ['halfling', 15], ['orc', 12], ['goblin', 8]];
@@ -47,6 +49,16 @@ export function createColony(o: CreateOpts): Colony {
   for (let k = 0; k < 8 && o.avoid?.includes(c.name); k++) c.name = colonyName(r);
   c.biome = o.biome ?? r.pick(BIOMES);
   genMap(c);
+  if (o.ruinsOf) {
+    // what is left of the last people who tried to live here
+    c.ruins = o.ruinsOf;
+    for (let k = 0; k < 26; k++) {
+      const x = c.cx + r.range(-11, 11);
+      const y = c.cy + r.range(-11, 11);
+      const i = y * c.w + x;
+      if (Math.abs(x - c.cx) + Math.abs(y - c.cy) > 5 && c.ter[i] <= 2 && !c.feat[i]) c.feat[i] = 7;
+    }
+  }
   if (o.settlers) return foundColony(c, o.settlers, r);
   const pop = o.pop ?? 16;
 
