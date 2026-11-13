@@ -260,7 +260,7 @@ export class Panels {
     if (c.gath) {
       const a = person(c, c.gath.a ?? 0);
       const o = person(c, c.gath.o ?? 0);
-      const what = c.gath.k === 'wedding' ? `The wedding of ${a?.first ?? 'someone'} and ${o?.first ?? 'someone'}` : c.gath.k === 'funeral' ? `The funeral of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'trial' ? `The trial of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'sermon' ? `${a?.first ?? 'The priest'} will preach` : 'A gathering';
+      const what = c.gath.k === 'wedding' ? `The wedding of ${a?.first ?? 'someone'} and ${o?.first ?? 'someone'}` : c.gath.k === 'funeral' ? `The funeral of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'trial' ? `The trial of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'sermon' ? `${a?.first ?? 'The priest'} will preach` : c.gath.k === 'feast' ? 'A feast in the hall' : c.gath.k === 'audience' ? `${a?.first ?? 'The ruler'} will hear petitions` : 'A gathering';
       h += `<div class="note">${linkNames(c, what, [c.gath.a, c.gath.o])}: ${dateText(c.gath.t0, true)}.</div>`;
     }
 

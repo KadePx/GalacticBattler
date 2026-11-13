@@ -93,6 +93,7 @@ export const WEIGHT: Record<string, number> = {
   schism: 3, fire_spread: 3, match_sent: 3, match: 3,
   asked: 2, blackmail: 3, prosthetic: 2, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
   raidout: 3, raiders_from: 2, raidback: 3,
+  feast_set: 2, audience: 2,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
@@ -147,7 +148,9 @@ export function evText(c: Colony, e: Ev): string {
     case 'hunt': return `${a} came back with a fine kill.`;
     case 'frost': return 'The first hard frost. Anything still in the fields is lost.';
     case 'funeral': return e.n ? `${e.n} gathered to bury ${full(c, e.a)}.` : `Nobody came to bury ${full(c, e.a)}.`;
-    case 'feast': return `The colony feasted.`;
+    case 'feast': return `${e.n ?? 'The whole colony'} sat down to the feast. The hall was loud until late.`;
+    case 'feast_set': return e.s === 'harvest' ? 'The harvest is in. There will be a feast tonight.' : 'Midwinter. There will be a feast tonight, to spite the dark.';
+    case 'audience': return e.s === 'granted' ? `${b} came before ${a} with empty hands, and did not leave with them empty.` : `${b} brought a plea before ${a} and was sent away.`;
     case 'left': return e.s === 'match' ? `${full(c, e.a)} has left to be married in another colony.` : e.s === 'escaped' ? `${full(c, e.a)} is gone, and so are the chains.` : e.s === 'exiled' ? `${full(c, e.a)} was cast out of the colony.` : e.s === 'moved' ? `${full(c, e.a)} packed up and left for another colony.` : e.s === 'settled' ? `${full(c, e.a)} left with the settlers.` : e.s === 'taken' ? `${full(c, e.a)} was carried off in chains.` : `${full(c, e.a)} has left the colony.`;
     case 'ruler': return `${full(c, e.a)} now rules${e.s === 'inherited' ? ', as was their birthright' : e.s === 'elected' ? ', by the colony\'s vote' : e.s === 'fought' ? ', by strength of arm' : e.s === 'coup' ? ', by force' : e.s === 'usurped' ? ', over the rightful heir' : ''}.`;
     case 'election': return `The colony voted. ${full(c, e.a)} won with ${e.n} votes${e.b ? `, beating ${first(c, e.b)}` : ''}.`;
@@ -251,7 +254,7 @@ export function thoughtText(c: Colony, k: string, o?: Id): string {
 const WHY: Record<string, string> = {
   hungry: 'Hungry', starving: 'Starving', tired: 'Worn out', exhausted: 'Collapsed from exhaustion', night: 'Time to sleep', break: 'Not in their right mind',
   bored: 'Needed a break', idle: 'Nothing pressing to do', free: 'Free time', love: 'Wanted to see their love', urge: 'Could not put it off any longer', crush: 'Could not stay away', friend: 'Wanted company', family: 'Wanted family',
-  child: 'Being a child', baby: 'Being a baby', wedding: 'At the wedding', funeral: 'At the funeral', feast: 'At the feast', grief: 'Grieving', new: 'Just arrived',
+  child: 'Being a child', baby: 'Being a baby', wedding: 'At the wedding', audience: 'Before the seat', trial: 'At the trial', sermon: 'Hearing the sermon', funeral: 'At the funeral', feast: 'At the feast', grief: 'Grieving', new: 'Just arrived',
   drink: 'Fancied a drink', drinkbored: 'Bored, so: a drink', relax: 'Resting', walk: 'Stretching their legs', pray: 'Praying', dice: 'Feeling lucky', hobby: 'Doing what they love',
   stargaze: 'Looking at the stars', bathe: 'Having a wash', perform: 'Had an audience', stopped: 'Interrupted', born: 'Newborn', alarm: 'The colony is under attack', muster: 'Standing ready with the others', hurt: 'Too hurt or sick to work', seized: 'Seized', carried: 'Carried to bed', freed: 'Freed',
 };

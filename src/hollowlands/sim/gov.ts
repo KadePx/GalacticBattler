@@ -253,6 +253,18 @@ export function dailyGov(c: Colony): void {
   if (!ruler) return;
   const adults = adultsOf(c);
 
+  // the year's gatherings: a harvest feast and a midwinter one when the larder allows, and the ruler's audiences
+  if (!c.gath) {
+    const doy = day % 60;
+    const hall = c.blds.find((b) => b.k === 'hall' && b.built);
+    const at = hall ? { b: hall.id, x: hall.x + Math.floor(hall.w / 2), y: hall.y + Math.floor(hall.h / 2) } : { b: 0, x: c.cx, y: c.cy };
+    if ((doy === 43 || doy === 52) && foodDays(c) > 9) {
+      c.gath = { k: 'feast', t0: t + 17 * 10, t1: t + 21 * 10, ...at };
+      log(c, 'feast_set', ruler.id, undefined, doy === 43 ? 'harvest' : 'midwinter');
+    } else if (day % 10 === 6 && (c.gov.k === 'lord' || c.gov.k === 'tyrant' || c.gov.k === 'chief') && adults.length >= 8) {
+      c.gath = { k: 'audience', t0: t + 11 * 10, t1: t + 12 * 10 + 5, a: ruler.id, ...at };
+    }
+  }
   // a child ruler comes of age
   if (c.gov.regent && stage(c, ruler) >= STAGE.ADULT) { log(c, 'regency_ends', ruler.id, c.gov.regent); c.gov.regent = 0; }
   if (c.gov.regent && !pawnById(c, c.gov.regent)) c.gov.regent = 0;

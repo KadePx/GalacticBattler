@@ -149,7 +149,7 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
       return b ? job('heal', spotTile(c, b, infirmary ? 'e' : 't', r), true, 'Making medicine', b.id, 1) : null;
     });
   }
-  if (mine === 'guard') {
+  if (mine === 'guard' && (p.prof === 'guard' || p.prof === 'scout')) {
     offer('guard', 2.6, 'guard', () => {
       if (r.chance(0.35)) return job('guard', c.cy * c.w + c.cx + r.range(-2, 2), false, 'Weapons practice', undefined, 1);
       const k = cacheOf(c);

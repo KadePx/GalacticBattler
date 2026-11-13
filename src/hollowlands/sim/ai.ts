@@ -144,6 +144,7 @@ function wantsToAttend(c: Colony, p: Pawn, st: number): boolean {
     return opinion(c, p, a) > -25 && opinion(c, p, b) > -25;
   }
   if (g.k === 'funeral') return p.rel[g.a ?? 0]?.f !== -1;
+  if (g.k === 'audience') return p.id === g.a || (st >= STAGE.ADULT && (p.coin < 3 || p.mood < 40 || p.rank >= 4 || p.id % 4 === 0));
   if (g.k === 'trial') return p.id === g.a || p.id === g.o || st >= STAGE.ADULT;
   if (g.k === 'sermon') {
     if (p.id === g.a) return true;

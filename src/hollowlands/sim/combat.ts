@@ -163,7 +163,7 @@ export function combatTick(c: Colony): void {
         if (p.gone) continue;
         const i = posAt(c, p, t);
         const d = Math.max(Math.abs((i % c.w) - f.x), Math.abs(Math.floor(i / c.w) - f.y));
-        const sees = awake.includes(p) ? (p.prof === 'guard' ? 22 : 13) : 3;
+        const sees = awake.includes(p) ? (p.prof === 'guard' ? 22 : p.prof === 'scout' ? 30 : 13) : 3;
         if (d <= sees) { raise(c); break; }
       }
     }

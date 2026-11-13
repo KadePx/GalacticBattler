@@ -13,10 +13,10 @@ import { verdict } from './crime';
 import { passHeirloom } from './player';
 import { ask } from './ask';
 import { getRel, think } from './mood';
-import { STAGE, ageYears, has, makePawn, mkAct, pawnById, person, posAt, rollPassions, rollTraits, stage, stat, toDead } from './pawn';
+import { STAGE, ageYears, has, makePawn, mkAct, pawnById, per, person, posAt, rollPassions, rollTraits, stage, stat, toDead } from './pawn';
 import { Rand, S } from './rng';
 import { addFact, attracted, learn, opinion } from './social';
-import { B, type Bld, type Colony, type Id, type Pawn } from './types';
+import { AX, B, type Bld, type Colony, type Id, type Pawn } from './types';
 
 export function closeKin(c: Colony, a: Pawn, b: Pawn): boolean {
   if (a.mo === b.id || a.fa === b.id || b.mo === a.id || b.fa === a.id) return true;
@@ -400,8 +400,36 @@ export function endGathering(c: Colony): void {
   } else if (g.k === 'sermon') {
     sermonEnd(c, g.a ?? 0, there);
   } else if (g.k === 'feast') {
-    for (const p of there) think(c, p, 'festival');
+    // the best of the larder, and as much ale as will go round
+    let ale = 0;
+    for (const p of there) {
+      think(c, p, 'festival');
+      p.food = Math.min(100, p.food + 40);
+      p.joy = Math.min(100, p.joy + 30);
+      c.stock.meal = Math.max(0, c.stock.meal - 0.6);
+      if (c.stock.ale >= 1 && !has(p, 'teetotal') && stage(c, p) >= STAGE.ADULT) { c.stock.ale -= 1; p.drunk += 35; p.booze += 1; ale++; }
+    }
     log(c, 'feast', undefined, undefined, undefined, there.length);
+    void ale;
+  } else if (g.k === 'audience') {
+    // those with a grievance or a need come before the seat
+    const ruler = pawnById(c, g.a ?? 0);
+    if (!ruler || !there.includes(ruler)) return;
+    const askers = there.filter((p) => p !== ruler && stage(c, p) >= STAGE.ADULT).sort((a, b) => a.coin - b.coin || a.id - b.id);
+    const p = askers[0];
+    if (!p) return;
+    const kind = opinion(c, ruler, p) + per(ruler, AX.KIND) * 20 - per(ruler, AX.GREED) * 10;
+    if (kind > 5 && ruler.coin >= 4) {
+      ruler.coin -= 4;
+      p.coin += 4;
+      think(c, p, 'gift', ruler.id);
+      for (const o of there) if (o !== p && o !== ruler) think(c, o, 'goodrule', ruler.id);
+      log(c, 'audience', ruler.id, p.id, 'granted');
+    } else {
+      think(c, p, 'slighted', ruler.id);
+      if (kind < -20) for (const o of there) if (o !== ruler && opinion(c, o, p) > 20) think(c, o, 'badrule', ruler.id);
+      log(c, 'audience', ruler.id, p.id, 'refused');
+    }
   }
 }
 
