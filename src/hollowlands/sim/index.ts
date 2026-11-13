@@ -9,13 +9,20 @@ import { initGov } from './gov';
 import { makePawn, mkAct, normPawn } from './pawn';
 import { assignBeds, assignProfs, build } from './planner';
 import { Rand, S, hashStr } from './rng';
+import { importPawns, type SettlerMsg } from './settle';
 import { step } from './step';
 import type { Colony, Pawn, RaceK } from './types';
 
 export { step } from './step';
 export * from './types';
 
-export interface CreateOpts { seed: number; pop?: number; biome?: string; race?: RaceK; name?: string; id?: string }
+export interface CreateOpts {
+  seed: number; pop?: number; biome?: string; race?: RaceK; name?: string; id?: string;
+  /** found the colony from a settler party instead of making its people */
+  settlers?: SettlerMsg;
+  /** names already taken by other colonies */
+  avoid?: string[];
+}
 
 const RACE_ODDS: [RaceK, number][] = [['human', 40], ['dwarf', 15], ['elf', 10], ['halfling', 15], ['orc', 12], ['goblin', 8]];
 
@@ -26,7 +33,7 @@ function blank(seed: number): Colony {
     ter: new Uint8Array(n), feat: new Uint8Array(n), fg: new Uint8Array(n), st: new Uint8Array(n), crop: new Uint8Array(n), wear: new Uint8Array(n), sb: new Uint16Array(n),
     cx: 0, cy: 0, gx: 0, gy: 0, pawns: [], dead: [], nextId: 1, blds: [], nextBld: 1, stock: emptyStock(), log: [], logBase: 0, facts: [], nextFact: 1,
     weather: 0, temp: 9, game: 100, stats: {}, inq: [], foes: [], nextFoe: 1, alarm: 0, story: { last: 0, lastBad: 0, heat: 0, band: 0 }, mods: [], nosite: {},
-    gov: { k: 'elder', ruler: 0, since: 0, laws: { harsh: 1, tax: 0, ration: 0 }, titles: {}, next: 0, regent: 0 }, trials: [],
+    gov: { k: 'elder', ruler: 0, since: 0, laws: { harsh: 1, tax: 0, ration: 0 }, titles: {}, next: 0, regent: 0 }, trials: [], settle: 0, out: [],
   };
 }
 
@@ -37,8 +44,10 @@ export function createColony(o: CreateOpts): Colony {
   const c = blank(seed);
   if (o.id) c.id = o.id;
   c.name = o.name ?? colonyName(r);
+  for (let k = 0; k < 8 && o.avoid?.includes(c.name); k++) c.name = colonyName(r);
   c.biome = o.biome ?? r.pick(BIOMES);
   genMap(c);
+  if (o.settlers) return foundColony(c, o.settlers, r);
   const pop = o.pop ?? 16;
 
   let main = o.race;
@@ -121,6 +130,35 @@ export function createColony(o: CreateOpts): Colony {
   const s = c.stock;
   s.grain = pop * 16; s.veg = pop * 9; s.meal = pop * 3; s.meat = pop * 2; s.wood = 60 + pop * 4; s.stone = 24;
   s.tools = Math.ceil(pop * 0.5); s.clothes = 2; s.ale = Math.round(pop * 1.5); s.leather = 4; s.herbs = 3; s.medicine = 2; s.weapons = Math.ceil(pop * 0.35);
+  return c;
+}
+
+/** A colony begun by settlers: bare land, a hall raised in the first days, and whatever they carried. */
+function foundColony(c: Colony, msg: SettlerMsg, r: Rand): Colony {
+  c.tick = msg.t;
+  c.from = msg.from;
+  build(c, 'hall', true);
+  build(c, 'store', true);
+  const leader = importPawns(c, msg, r);
+  build(c, 'field', true, 'veg');
+  build(c, 'field', true, 'grain');
+  for (const k of Object.keys(msg.stock) as (keyof typeof msg.stock)[]) c.stock[k] += msg.stock[k] ?? 0;
+  // enough to see them through the first weeks
+  c.stock.meal += c.pawns.length * 4;
+  c.stock.wood += 40;
+  assignProfs(c, true);
+  initGov(c, r);
+  const lead = c.pawns.find((p) => p.id === leader);
+  if (lead) {
+    const old = c.pawns.find((p) => p.id === c.gov.ruler);
+    if (old && old !== lead) old.rank = 2;
+    c.gov.ruler = lead.id;
+    c.gov.since = c.tick;
+    if (c.gov.k === 'lord') c.gov.k = 'elder';
+    lead.rank = 6;
+    lead.bio.push({ t: c.tick, k: 'ruler', s: 'founded' });
+  }
+  c.log.push({ t: c.tick, k: 'founded', a: leader, s: msg.fromName, n: c.pawns.length });
   return c;
 }
 

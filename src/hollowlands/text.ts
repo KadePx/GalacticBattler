@@ -36,7 +36,7 @@ const CAUSES: Record<string, string> = {
   beast: 'was killed by a beast',
   murder: 'was murdered',
   executed: 'was put to death',
-  accident: 'died in an accident', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
+  accident: 'died in an accident', settled: 'left to found a new colony', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
   bled: 'bled to death',
   taken: 'was carried off by slavers',
   foe_bandit: 'was cut down by bandits', foe_slaver: 'was killed by slavers', foe_orc: 'was butchered by orc raiders', foe_wolf: 'was torn apart by wolves',
@@ -88,6 +88,7 @@ export const WEIGHT: Record<string, number> = {
   ruler: 3, election: 3, usurped: 3, regent: 2, regency_ends: 2, house_ends: 3, house_founded: 3, duel: 3, challenge: 3, coup: 3, plot_failed: 3, title: 2, raised: 2, law: 2,
   theft: 2, theft_hushed: 1, accused: 2, trial_set: 1, trial: 3, murder: 3, attack: 3, sermon: 1, saint: 3,
   raid: 3, allclear: 1, alarm: 2, rout: 2, slew: 2, looted: 3, seized: 3, rescued: 3, hero: 3, maimed: 3, sick: 2, recovered: 1, outbreak: 3, drunkard: 2,
+  settlers: 3, founded: 3, news: 2,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
@@ -143,7 +144,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'frost': return 'The first hard frost. Anything still in the fields is lost.';
     case 'funeral': return e.n ? `${e.n} gathered to bury ${full(c, e.a)}.` : `Nobody came to bury ${full(c, e.a)}.`;
     case 'feast': return `The colony feasted.`;
-    case 'left': return e.s === 'taken' ? `${full(c, e.a)} was carried off in chains.` : `${full(c, e.a)} has left the colony.`;
+    case 'left': return e.s === 'settled' ? `${full(c, e.a)} left with the settlers.` : e.s === 'taken' ? `${full(c, e.a)} was carried off in chains.` : `${full(c, e.a)} has left the colony.`;
     case 'ruler': return `${full(c, e.a)} now rules${e.s === 'inherited' ? ', as was their birthright' : e.s === 'elected' ? ', by the colony\'s vote' : e.s === 'fought' ? ', by strength of arm' : e.s === 'coup' ? ', by force' : e.s === 'usurped' ? ', over the rightful heir' : ''}.`;
     case 'election': return `The colony voted. ${full(c, e.a)} won with ${e.n} votes${e.b ? `, beating ${first(c, e.b)}` : ''}.`;
     case 'usurped': return `${a} pushed ${b} aside and took the seat.`;
@@ -181,9 +182,12 @@ export function evText(c: Colony, e: Ev): string {
     case 'recovered': return `${a} has recovered from ${ILL[e.s ?? ''] ?? 'their illness'}.`;
     case 'outbreak': return `${ILL[e.s ?? ''] ?? 'Sickness'} has broken out.`.replace(/^./, (x) => x.toUpperCase());
     case 'drunkard': return `${a} cannot stay away from the barrel any more.`;
+    case 'settlers': return `${full(c, e.a)} has led ${(e.n ?? 2) - 1} others out to found a new colony.`;
+    case 'founded': return `${full(c, e.a)} and ${(e.n ?? 2) - 1} others from ${e.s} raised the first roof here.`;
+    case 'news': { const [what, name] = (e.s ?? '').split(':'); return what === 'founded' ? `Word has come back: the settlers have founded ${name}.` : `News from ${name}.`; }
     case 'heir': return `${full(c, e.a)} takes up where ${first(c, e.b)} left off.`;
     case 'heirloom': return `${a} now keeps ${b}'s ${e.s ?? 'keepsake'}.`;
-    case 'nudge': return e.s === 'focus' ? `${a} has thrown themselves into their work.` : `${a} has ${b} on their mind.`;
+    case 'nudge': return e.s === 'yearn' ? `${a} has begun to look at the road.` : e.s === 'stay' ? `${a} has decided this is home.` : e.s === 'focus' ? `${a} has thrown themselves into their work.` : `${a} has ${b} on their mind.`;
     case 'blabbed': return `Drunk, ${a} let slip the secret they came here to bury. ${e.n} heard it.`;
     case 'joined': return e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
     case 'trader': return 'A trader\'s caravan stopped for the day.';

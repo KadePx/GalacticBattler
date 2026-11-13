@@ -13,12 +13,14 @@ export const RESOLVE_CAP = 6;
 export const RESOLVE_TICKS = 1800;
 export const RESOLVE_START = 2;
 
-export interface NudgeDef { k: string; name: string; blurb: string; cost: number; needs: 'person' | 'skill' }
+export interface NudgeDef { k: string; name: string; blurb: string; cost: number; needs: 'person' | 'skill' | 'self' }
 export const NUDGES: Record<string, NudgeDef> = {
   befriend: { k: 'befriend', name: 'Reach out', blurb: 'Seek them out and try to get closer.', cost: 1, needs: 'person' },
   court: { k: 'court', name: 'Court', blurb: 'Let them know how you feel.', cost: 1, needs: 'person' },
   peace: { k: 'peace', name: 'Make peace', blurb: 'Swallow your pride and try to mend things.', cost: 1, needs: 'person' },
   confront: { k: 'confront', name: 'Confront', blurb: 'Have it out with them.', cost: 1, needs: 'person' },
+  yearn: { k: 'yearn', name: 'Yearn to leave', blurb: 'When settlers next set out, go with them.', cost: 1, needs: 'self' },
+  stay: { k: 'stay', name: 'Put down roots', blurb: 'Whatever happens, this is home.', cost: 1, needs: 'self' },
   focus: { k: 'focus', name: 'Focus', blurb: 'Throw yourself into this work for a few days.', cost: 1, needs: 'skill' },
 };
 
@@ -54,6 +56,12 @@ export function nudge(c: Colony, e: Input): void {
   const p = c.pawns.find((x) => x.owner === e.owner && !x.gone);
   const def = NUDGES[String(e.kind)];
   if (!p || !def || stage(c, p) < STAGE.TEEN) return;
+  if (def.needs === 'self') {
+    if (!spend(c, p, def.cost)) return;
+    p.roots = def.k === 'stay' ? 1 : -1;
+    log(c, 'nudge', p.id, undefined, def.k);
+    return;
+  }
   if (def.needs === 'person') {
     const o = pawnById(c, Number(e.o));
     if (!o || o === p || o.gone) return;

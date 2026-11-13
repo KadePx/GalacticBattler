@@ -190,6 +190,8 @@ export interface Pawn {
   focus?: [number, number];
   /** the colonist this player lived as before */
   prev?: Id;
+  /** the player's wish about leaving with settlers: 1 stay, -1 go */
+  roots?: number;
   /** set when they die this tick; swept at the end of the tick */
   gone?: boolean;
 }
@@ -287,6 +289,12 @@ export interface Colony {
   story: { last: number; lastBad: number; heat: number; band: number };
   /** who rules and how: kind of rule, ruler, laws in force, titles held, next election, regent for a child ruler */
   gov: { k: string; ruler: Id; since: number; laws: Record<string, number>; titles: Record<string, Id>; next: number; regent: Id };
+  /** how strongly people want to leave and found a new colony */
+  settle: number;
+  /** things this colony sends to the rest of the world (settler parties, news); the host delivers them */
+  out: { k: string; [key: string]: unknown }[];
+  /** the colony this one was founded from */
+  from?: string;
   /** accusations waiting for a trial */
   trials: { a: Id; k: string; f: number; by: Id }[];
   /** building kinds the planner found no room for, and when it last looked */

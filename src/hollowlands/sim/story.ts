@@ -74,6 +74,7 @@ export function applyInputs(c: Colony): void {
     c.inq.splice(i, 1);
     if (e.k === 'raid') spawnRaid(c, String(e.kind), Number(e.n) || 1, new Rand(c.seed, S.FIGHT, c.tick, 99));
     else if (e.k === 'nudge') nudge(c, e);
+    else if (e.k === 'news') log(c, 'news', undefined, undefined, String(e.what) + ':' + String(e.name));
     else if (e.k === 'heir') takeHeir(c, e);
     else if (e.k === 'join') {
       // a player's colonist walks in off the road
