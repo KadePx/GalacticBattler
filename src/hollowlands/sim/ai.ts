@@ -167,6 +167,8 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
   const w = (k: string, n: number): void => { if (n > 0) opts.push([k, n]); };
 
   if (p.soc < 50 || r.chance(0.2)) w('visit', 2.2 + per(p, AX.SOCIABLE) + (p.sp ? 1 : 0));
+  const urged = p.urge && p.urge[2] > c.tick ? pawnById(c, p.urge[1]) : undefined;
+  if (urged && !urged.gone && urged.act.k !== 'sleep') w('urge', 7);
   if (p.crush && adult) w('woo', 2.4 + per(p, AX.FLIRT) * 0.6);
   if (pub && adult && c.stock.ale >= 1 && !has(p, 'teetotal') && p.drunk < (has(p, 'drunkard') ? 80 : 35)) w('drink', (has(p, 'drunkard') ? 5 : 1.1) * (p.race === 'dwarf' ? 1.6 : 1) * (evening ? 1.6 : 0.25));
   if (pub || home) w('relax', 2);
@@ -198,6 +200,12 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
         const oi = posAt(c, o, c.tick + 2);
         const love = o.id === p.sp || attracted(c, p, o, opinion(c, p, o));
         if (setAct(c, p, love && adult ? 'court' : 'visit', oi % c.w, Math.floor(oi / c.w), 6, o.id === p.sp ? 'love' : 'friend', { adj: true, o: o.id })) return true;
+        break;
+      }
+      case 'urge': {
+        if (!urged) break;
+        const oi = posAt(c, urged, c.tick + 2);
+        if (setAct(c, p, p.urge![0] === 'court' ? 'court' : 'visit', oi % c.w, Math.floor(oi / c.w), 6, 'urge', { adj: true, o: urged.id })) return true;
         break;
       }
       case 'woo': {
@@ -607,7 +615,14 @@ export function finish(c: Colony, p: Pawn): void {
       if (Math.abs((oi % c.w) - p.x) > 3 || Math.abs(Math.floor(oi / c.w) - p.y) > 3) break;
       const near = c.pawns.filter((x) => x !== p && x !== o && x.act.k !== 'sleep' && Math.abs(x.x - p.x) <= 4 && Math.abs(x.y - p.y) <= 4 && t >= x.act.ta);
       const flirt = a.k === 'court' && r.chance(0.6) && attracted(c, p, o, opinion(c, p, o));
-      interact(c, p, o, new Rand(c.seed, S.SOC, t, p.id, 2), near, flirt ? 'flirt' : undefined);
+      let force = flirt ? 'flirt' : undefined;
+      if (a.why === 'urge' && p.urge && p.urge[1] === o.id) {
+        // the player leaned on them: this meeting has a purpose
+        const k = p.urge[0];
+        force = k === 'court' ? (attracted(c, p, o, opinion(c, p, o)) ? 'flirt' : 'praise') : k === 'peace' ? 'apologise' : k === 'confront' ? 'insult' : r.pick(['deeptalk', 'praise', 'chat']);
+        if (--p.urge[3] <= 0) p.urge = undefined;
+      }
+      interact(c, p, o, new Rand(c.seed, S.SOC, t, p.id, 2), near, force);
       break;
     }
     case 'rave': {

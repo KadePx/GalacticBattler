@@ -10,6 +10,7 @@ import { bump, log, note } from './events';
 import { dailyHealth } from './health';
 import { maybeSaint, sermonEnd } from './faith';
 import { verdict } from './crime';
+import { passHeirloom } from './player';
 import { getRel, think } from './mood';
 import { STAGE, ageYears, has, makePawn, mkAct, pawnById, person, posAt, rollPassions, rollTraits, stage, stat, toDead } from './pawn';
 import { Rand, S } from './rng';
@@ -186,6 +187,7 @@ export function die(c: Colony, p: Pawn, cause: string, by?: Id): void {
   bump(c, 'deaths');
   bump(c, 'death_' + cause);
   maybeSaint(c, d, p);
+  passHeirloom(c, p);
   const pi = posAt(c, p, c.tick);
   const px = pi % c.w;
   const py = Math.floor(pi / c.w);

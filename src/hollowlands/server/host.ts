@@ -12,6 +12,7 @@ import { founderHash, isClean, isFounderId } from '../../commonworld/shared/text
 import type { D1 } from '../../net/db';
 import { DEFAULT_MS_PER_DAY, HARD_CAP, SIM_V, TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
 import { checkSpec, type PawnSpec } from '../sim/create';
+import { NUDGES, heirsOf, resolveOf } from '../sim/player';
 import { colonyHash, createColony, deserialize, serialize, step, type Colony, type Input } from '../sim/index';
 
 export interface KV {
@@ -255,6 +256,24 @@ export class ColonyHost {
         const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
         if (!body) return json({ error: 'bad request' }, 400);
         if (path === 'join') return await this.join(req, body);
+        if (path === 'act' || path === 'heir') {
+          if (!isFounderId(body.f)) return json({ error: 'bad id' }, 400);
+          const h = await founderHash(body.f);
+          if (path === 'heir') {
+            const heir = heirsOf(c, h).find((p) => p.id === Number(body.id));
+            if (!heir) return json({ error: 'They cannot carry on for you.' }, 409);
+            const e = await this.queue({ t: 0, k: 'heir', owner: h, id: heir.id });
+            return json({ ok: true, at: e.t });
+          }
+          const p = c.pawns.find((x) => x.owner === h);
+          const def = NUDGES[String(body.k)];
+          if (!p || !def) return json({ error: 'You have no colonist to nudge.' }, 409);
+          // count nudges already on their way, so a quick double press cannot overspend
+          const waiting = c.inq.filter((i) => i.k === 'nudge' && i.owner === h).length;
+          if (resolveOf(c, p) - waiting < def.cost) return json({ error: 'Not enough Resolve yet.' }, 409);
+          const e = await this.queue({ t: 0, k: 'nudge', owner: h, kind: def.k, o: Number(body.o) || 0, v: Number(body.v) || 0 });
+          return json({ ok: true, at: e.t });
+        }
         if (path.startsWith('admin/')) {
           if (!this.admin(req)) return json({ error: 'forbidden' }, 403);
           if (path === 'admin/wipe') {

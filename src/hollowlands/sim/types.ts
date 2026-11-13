@@ -181,6 +181,15 @@ export interface Pawn {
   phobia?: string;
   secret?: string;
   heirloom?: string;
+  /** the player's Resolve: points banked, and the tick the count runs from */
+  res?: number;
+  resT?: number;
+  /** a nudge toward someone: [kind, colonist, until tick, tries left] */
+  urge?: [string, Id, number, number];
+  /** a nudge toward a kind of work: [skill, until tick] */
+  focus?: [number, number];
+  /** the colonist this player lived as before */
+  prev?: Id;
   /** set when they die this tick; swept at the end of the tick */
   gone?: boolean;
 }
@@ -199,6 +208,7 @@ export interface Dead {
   fun?: 1;
   /** remembered as a saint */
   saint?: 1;
+  prev?: Id;
   rank?: number;
 }
 

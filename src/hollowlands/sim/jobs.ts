@@ -117,7 +117,7 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
   const offer = (w: WorkK, urgency: number, why: string, make: () => Job | null): void => {
     if (urgency <= 0 || refuses(w)) return;
     const sk = workSkillOf(w);
-    const apt = (0.55 + 0.07 * p.sk[sk]) * (p.pas[sk] === 2 ? 1.5 : p.pas[sk] === 1 ? 1.2 : 1) * (mine === w ? 1.9 : 1);
+    const apt = (0.55 + 0.07 * p.sk[sk]) * (p.pas[sk] === 2 ? 1.5 : p.pas[sk] === 1 ? 1.2 : 1) * (mine === w ? 1.9 : 1) * (p.focus && p.focus[1] > c.tick && p.focus[0] === sk ? 1.8 : 1);
     const s = (urgency * apt) / (1 + (busy[w] ?? 0) * CROWD[w]) + r.float() * 0.6;
     opts.push({ w, s, why, make });
   };

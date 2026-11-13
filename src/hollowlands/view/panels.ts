@@ -37,6 +37,8 @@ export interface Hooks {
   close(): void;
   /** Panels opened, closed or resized: the visible part of the map changed. */
   layout(): void;
+  /** Lean on my colonist: a kind of nudge and who or what it is about. */
+  nudge(k: string, v: number): void;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -149,6 +151,7 @@ export class Panels {
     else if (d.act === 'follow') this.hooks.follow();
     else if (d.act === 'find') this.hooks.find();
     else if (d.act === 'allrel') this.ui.allRel = !this.ui.allRel;
+    else if (d.act === 'nudge' && d.k) this.hooks.nudge(d.k, Number(d.v));
     else if (d.filter === 'all' || d.filter === 'notable' || d.filter === 'mine') { this.filter = d.filter; this.feedKey = ''; }
     else if (d.sort === 'mood' || d.sort === 'name') this.sort = d.sort;
     this.dirty = true;
@@ -351,7 +354,7 @@ export class Panels {
     let body = '';
     if (s?.k === 'pawn') {
       const p = pawnById(c, s.id);
-      if (p) { this.ui.following = v.follow === p.id; title = p.first; body = pawnCard(c, p, this.ui); }
+      if (p) { this.ui.following = v.follow === p.id; this.ui.mine = v.me === p.id; title = p.first; body = pawnCard(c, p, this.ui); }
     } else if (s?.k === 'dead') {
       const d = c.dead.find((x) => x.id === s.id);
       if (d) { title = d.left ? 'Gone from the colony' : 'In memory'; body = deadCard(c, d); }

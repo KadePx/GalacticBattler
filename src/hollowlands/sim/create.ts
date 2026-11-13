@@ -144,7 +144,7 @@ export function pawnFromSpec(c: Colony, spec: PawnSpec, owner: string): Pawn {
     food: 70, rest: 70, joy: 60, soc: 50, mood: 55, th: [], sit: [], rel: {}, mo: 0, fa: 0, sp: 0, crush: 0, home: 0, prof: '', rank: 2,
     faith: spec.faith, dev: spec.dev, goal: spec.goal, hp: 100, low: 0, high: 0, drunk: 0, cloth: 100, lastBrk: -99999,
     know: [], bio: [], coin: 8, inj: [], perm: [], booze: 0,
-    owner, phobia: spec.phobia || undefined, secret: spec.secret || undefined, heirloom: spec.heirloom || undefined,
+    owner, res: 2, resT: c.tick, phobia: spec.phobia || undefined, secret: spec.secret || undefined, heirloom: spec.heirloom || undefined,
   };
   return normPawn(p);
 }

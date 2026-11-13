@@ -10,6 +10,7 @@ import { TH } from '../sim/data/thoughts';
 import { TRAITS } from '../sim/data/traits';
 import { RANK_NAMES, rulerTitle } from '../sim/gov';
 import { breakLine, moodTarget } from '../sim/mood';
+import { NUDGES, RESOLVE_CAP, resolveOf, resolveWait } from '../sim/player';
 import { ageYears, fullName, person, posAt, stage, stat } from '../sim/pawn';
 import { opinion } from '../sim/social';
 import { SKILL_NAMES, type Bio, type Bld, type Colony, type Dead, type Id, type Pawn } from '../sim/types';
@@ -21,7 +22,7 @@ import { DEVOTION, ILL_NAMES, PART_NAMES, STAGE_NAMES, actText, bioText, causeTe
 type Who = Pawn | Dead;
 
 /** What the card remembers between redraws (which rows are open, and so on). */
-export interface CardUi { open: Set<string>; allRel: boolean; following: boolean }
+export interface CardUi { open: Set<string>; allRel: boolean; following: boolean; mine?: boolean }
 
 // Portrait SVG text is cached per person and size; it only changes when their looks do.
 const faces = new Map<string, { key: string; svg: string }>();
@@ -172,7 +173,12 @@ function relations(c: Colony, p: Pawn, ui: CardUi): string {
       out += '<div class="relb">';
       for (const [k, v] of parts) if (v) out += `<div class="th"><span>${esc(k)}</span><b class="${tone(v)}">${sign(v)}</b></div>`;
       const back = opinion(c, r.o, p);
-      out += `<div class="th dimrow"><span>What ${esc(r.o.first)} thinks of ${esc(p.first)}</span><b class="${tone(back)}">${sign(back)}</b></div></div>`;
+      out += `<div class="th dimrow"><span>What ${esc(r.o.first)} thinks of ${esc(p.first)}</span><b class="${tone(back)}">${sign(back)}</b></div>`;
+      if (ui.mine) {
+        const can = resolveOf(c, p) >= 1;
+        out += '<div class="nudges">' + ['befriend', 'court', 'peace', 'confront'].map((k) => `<button class="btn sm" data-act="nudge" data-k="${k}" data-v="${r.o.id}" title="${esc(NUDGES[k].blurb)} Costs 1 Resolve."${can ? '' : ' disabled'}>${esc(NUDGES[k].name)}</button>`).join('') + '</div>';
+      }
+      out += '</div>';
     }
     out += '</div>';
   }
@@ -226,6 +232,19 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   if (p.hp < 60) flags += '<span class="tie bad">Badly hurt</span>';
   if (flags) h += `<div class="flags">${flags}</div>`;
 
+  if (ui.mine) {
+    // the player's hand: Resolve, and what they have already leaned on
+    const res = resolveOf(c, p);
+    const wait = resolveWait(c, p);
+    const mins = Math.ceil((wait * 6) / 60);
+    h += `<h3>Your hand <span class="legend">Resolve ${res} of ${RESOLVE_CAP}</span></h3>`;
+    h += `<div class="pips">${'<i class="on"></i>'.repeat(res)}${'<i></i>'.repeat(RESOLVE_CAP - res)}<span class="hint">${wait ? `next in about ${mins >= 120 ? Math.round(mins / 60) + ' game hours' : mins + ' game minutes'}` : 'full'}</span></div>`;
+    const lean: string[] = [];
+    if (p.urge && p.urge[2] > c.tick) lean.push(`${esc(NUDGES[p.urge[0]]?.name ?? p.urge[0])}: ${whoLink(c, p.urge[1])}`);
+    if (p.focus && p.focus[1] > c.tick) lean.push(`Focused on ${esc(SKILL_NAMES[p.focus[0]].toLowerCase())}`);
+    h += `<div class="hint">${lean.length ? lean.join(' · ') + '. ' : ''}You cannot command them, only lean on them. Open someone under Relationships to reach out, court, make peace or confront; or pick work to focus on:</div>`;
+    h += '<div class="nudges">' + SKILL_NAMES.map((n, i) => `<button class="btn sm" data-act="nudge" data-k="focus" data-v="${i}"${res >= 1 ? '' : ' disabled'}>${esc(n)}</button>`).join('') + '</div>';
+  }
   h += `<h3>Mood <span class="legend">${moodWord(p)}</span></h3>`;
   h += `<div class="moodrow"><b style="color:${moodColor(p)}">${Math.round(p.mood)}</b>${bar(p.mood, moodColor(p), [bl.minor, bl.major, bl.extreme])}</div>`;
   h += `<div class="hint">Heading ${target > p.mood + 0.5 ? 'up' : target < p.mood - 0.5 ? 'down' : 'steady'} towards ${Math.round(target)}. Breaks below ${Math.round(bl.minor)}, worse below ${Math.round(bl.major)} and ${Math.round(bl.extreme)}.</div>`;

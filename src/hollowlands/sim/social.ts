@@ -272,6 +272,7 @@ export function maybeTalk(c: Colony, p: Pawn): void {
     const op = opinion(c, p, o);
     let w = 1 + Math.max(0, op + 30) / 40;
     if (o.id === p.sp) w += 2;
+    if (p.urge && p.urge[1] === o.id && p.urge[2] > c.tick) w += 3;
     if (p.rel[o.id]?.f === 1) w += 1;
     if (op < -25) w += 0.6 + Math.max(0, per(p, AX.TEMPER));
     if (brk === 'rave') w = 1;

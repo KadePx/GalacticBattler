@@ -200,6 +200,8 @@ export const TH_LIST: ThDef[] = [
   h('goodhunt', 'Brought down a fine kill', 5, DAY * 2),
   h('taughtchild', 'Passed something on to {o}', 3, DAY),
 
+  h('heirloom', 'Keeps something of {o}\'s', 4, DAY * 20),
+
   // Fears and secrets
   h('fear_dark', 'Out in the dark', -5, 0),
   h('fear_dead', 'Too close to the dead', -5, 0),

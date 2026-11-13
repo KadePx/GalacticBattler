@@ -8,6 +8,7 @@
 
 import { DEFAULT_MS_PER_DAY, TICKS_PER_DAY } from './config';
 import { RACES } from './sim/data/races';
+import { heirsOf } from './sim/player';
 import { connect, liveAvailable, myHash, type Live } from './net';
 import { createColony, step, type Colony, type Id, type RaceK } from './sim/index';
 import { checkSpec, type PawnSpec } from './sim/create';
@@ -163,7 +164,7 @@ function syncMine(): void {
   map.mineId = p?.id ?? 0;
   const label = pending && !p ? 'On the road…' : p ? 'My colonist' : d ? 'Make a new colonist' : 'Make your colonist';
   const banner = !p && !pending && d && dismissed !== d.id
-    ? `<span class="t"><b>${esc(fullName(d))}</b> ${d.left ? 'was lost to the colony' : 'died'} on ${dateText(d.died)}: ${esc(causeText(c, d).toLowerCase())}.</span><button class="btn sm" data-m="view">Remember them</button><button class="btn sm go" data-m="new">Make a new colonist</button><button class="icon" data-m="x" title="Close" aria-label="Close">&times;</button>`
+    ? `<span class="t"><b>${esc(fullName(d))}</b> ${d.left ? 'was lost to the colony' : 'died'} on ${dateText(d.died)}: ${esc(causeText(c, d).toLowerCase())}.</span><button class="btn sm" data-m="view">Remember them</button>${heirsOf(c, me).slice(0, 3).map((x) => `<button class="btn sm go" data-m="heir" data-id="${x.id}">Carry on as ${esc(x.first)}</button>`).join('')}<button class="btn sm" data-m="new">Make a new colonist</button><button class="icon" data-m="x" title="Close" aria-label="Close">&times;</button>`
     : '';
   const html = label + '|' + (p ? 'has' : '') + '|' + banner;
   if (html === mineHtml) return;
@@ -225,6 +226,12 @@ function bindMine(): void {
     const d = myDead();
     if (k === 'view' && d) setSel({ k: 'dead', id: d.id });
     else if (k === 'new') creator.open(c.name);
+    else if (k === 'heir') {
+      const id = Number((e.target as HTMLElement).closest<HTMLElement>('[data-id]')?.dataset.id);
+      if (live) void live.send('heir', { id }).then((err) => { if (err) toast(err); });
+      else c.inq.push({ t: c.tick + 1, k: 'heir', owner: me, id });
+      mineHtml = '';
+    }
     else if (k === 'x' && d) { dismissed = d.id; syncMine(); }
   });
 }
@@ -322,6 +329,11 @@ async function boot(): Promise<void> {
     find: () => { if (sel?.k === 'pawn') map.focusPawn(sel.id, 1.6); },
     close: () => setSel(null),
     layout,
+    nudge: (k, v) => {
+      if (live) void live.send('act', { k, o: v, v }).then((err) => toast(err || 'They will get to it soon.'));
+      else c.inq.push({ t: c.tick + 1, k: 'nudge', owner: me, kind: k, o: v, v });
+      ui?.touch();
+    },
   });
   layout();
   map.setColony(c);

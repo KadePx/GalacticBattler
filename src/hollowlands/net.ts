@@ -49,6 +49,8 @@ export interface Live {
   busy: boolean;
   /** send in a colonist; resolves with an error message, or '' when accepted */
   join(spec: PawnSpec): Promise<string>;
+  /** nudge my colonist ('act') or carry on as an heir ('heir'); resolves with an error message or '' */
+  send(path: 'act' | 'heir', body: Record<string, unknown>): Promise<string>;
   stop(): void;
 }
 
@@ -93,6 +95,17 @@ export async function connect(onReload: (c: Colony) => void): Promise<Live> {
         const r = await fetch(API + 'join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ f: myId(), spec }) });
         const body = (await r.json()) as { ok?: boolean; error?: string };
         if (!r.ok || !body.ok) return body.error ?? 'The colony would not take them.';
+        void poll();
+        return '';
+      } catch {
+        return 'Could not reach the colony. Try again in a moment.';
+      }
+    },
+    send: async (path, body) => {
+      try {
+        const r = await fetch(API + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ f: myId(), ...body }) });
+        const out = (await r.json()) as { ok?: boolean; error?: string };
+        if (!r.ok || !out.ok) return out.error ?? 'That did not work.';
         void poll();
         return '';
       } catch {
