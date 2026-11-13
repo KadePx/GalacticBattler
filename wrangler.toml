@@ -16,3 +16,15 @@ database_id = "b442a793-c782-49ca-a339-99fc2750f230"
 name = "WORLD"
 class_name = "WorldDO"
 script_name = "commonworld-world"
+
+# Hollow Lands: /api/hl/* talks to the colony and region Durable Objects in worker
+# "hollowlands-colony" (workers/hollowlands). Deploy that worker before changing these bindings.
+[[durable_objects.bindings]]
+name = "COLONY"
+class_name = "ColonyDO"
+script_name = "hollowlands-colony"
+
+[[durable_objects.bindings]]
+name = "REGION"
+class_name = "RegionDO"
+script_name = "hollowlands-colony"
