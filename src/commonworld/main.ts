@@ -689,6 +689,7 @@ function founderClick(el: HTMLElement): boolean {
   if (d.open === 'notes') {
     closeDigest();
     try { localStorage.setItem('cw.notes', NOTES_ID); } catch { /* private mode */ }
+    $('notespill').classList.remove('unread');
     openDrawer({ k: 'notes' }, drawer.length > 0);
     return true;
   }
@@ -1062,8 +1063,10 @@ async function boot(): Promise<void> {
     // Returning players hear once what changed since the last version.
     let notes = '';
     try { notes = localStorage.getItem('cw.notes') ?? ''; } catch { /* private mode */ }
+    // A "What's new" button in the top bar, marked until the notes have been opened.
+    $('notespill').classList.remove('hidden');
+    $('notespill').classList.toggle('unread', notes !== NOTES_ID);
     if (returning && notes !== NOTES_ID && !nextInfo?.held) {
-      try { localStorage.setItem('cw.notes', NOTES_ID); } catch { /* private mode */ }
       setTimeout(() => toast(`<b>Commonworld version 7 is here.</b> Tributaries, golden ages, climate, royal marriages, names that mean something, and more. <a href="#" data-open="notes">See what's new</a>`, 14000), greeted ? 4000 : 1500);
     }
     setInterval(() => void pollNext(), 60_000);
@@ -1241,6 +1244,12 @@ $('next').onclick = (e) => {
       return pollNext();
     });
   } else if (a === 'tile') map.focus(v, 4);
+};
+
+$('notespill').onclick = () => {
+  const a = document.createElement('a');
+  a.dataset.open = 'notes';
+  founderClick(a);
 };
 
 $('nextpill').onclick = () => {
