@@ -26,7 +26,7 @@ export const PROF_LIST: ProfDef[] = [
   p('ratcatcher', 'Ratcatcher', 'hunt', 9, 'Keeps the vermin out of the grain.'),
   p('quartermaster', 'Quartermaster', 'cook', 11, 'Counts the stores and decides who gets what.'),
   p('herbalist', 'Herbalist', 'herbs', 8, 'Knows which leaf heals and which kills.'),
-  p('midwife', 'Midwife', 'heal', 8, 'Brings the colony's children into the world.'),
+  p('midwife', 'Midwife', 'heal', 8, 'Brings the children of the colony into the world.'),
   p('mason', 'Mason', 'mine', 3, 'Cuts stone and raises walls meant to last.'),
   p('carpenter', 'Carpenter', 'build', 2, 'Makes the beams, the beds and the coffins.'),
   p('scout', 'Scout', 'guard', 1, 'Walks the far edge of the land and sees trouble first.'),
