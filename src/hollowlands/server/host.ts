@@ -13,6 +13,7 @@ import type { D1 } from '../../net/db';
 import { DEFAULT_MS_PER_DAY, HARD_CAP, SIM_V, TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
 import { checkSpec, type PawnSpec } from '../sim/create';
 import { NUDGES, heirsOf, resolveOf } from '../sim/player';
+import type { SettlerMsg } from '../sim/settle';
 import { colonyHash, createColony, deserialize, serialize, step, type Colony, type Input } from '../sim/index';
 
 export interface KV {
@@ -30,6 +31,10 @@ export interface HostOpts {
   preDays: number;
   seed?: number;
   adminKey?: string;
+  /** part of a region: wait to be started by it rather than making a colony unasked */
+  managed?: boolean;
+  /** hand the region this colony's news and anything it has sent out (settler parties) */
+  deliver?: (body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name: string }) => Promise<void>;
   now: () => number;
 }
 
@@ -107,17 +112,18 @@ export class ColonyHost {
         // the configured pace changed while we were away: keep the colony's clock where it is
         const want = this.o.msPerDay / TICKS_PER_DAY;
         if (this.meta.msPerTick !== want) this.retime(want);
-      } else await this.create(this.o.seed);
+      } else if (!this.o.managed) await this.create(this.o.seed);
     })();
     await this.loading;
   }
 
-  private async create(seed?: number): Promise<void> {
+  private async create(seed?: number, x: { id?: string; pop?: number; preDays?: number; settlers?: SettlerMsg; avoid?: string[] } = {}): Promise<void> {
     const now = this.o.now();
     const s = seed ?? ((now % 2147483647) | 1);
-    const c = createColony({ seed: s, pop: this.o.pop });
-    for (let k = 0; k < this.o.preDays * TICKS_PER_DAY; k++) step(c);
-    c.id = 'h' + now.toString(36) + (s % 1296).toString(36);
+    const c = createColony({ seed: s, pop: x.pop ?? this.o.pop, settlers: x.settlers, avoid: x.avoid });
+    if (!x.settlers) for (let k = 0; k < (x.preDays ?? this.o.preDays) * TICKS_PER_DAY; k++) step(c);
+    c.id = x.id ?? 'h' + now.toString(36) + (s % 1296).toString(36);
+    c.out = [];
     const msPerTick = this.o.msPerDay / TICKS_PER_DAY;
     this.c = c;
     this.meta = { id: c.id, seed: s, epoch: now - c.tick * msPerTick, created: now, msPerTick, simV: SIM_V, archived: c.logBase + c.log.length, buried: c.dead.length };
@@ -151,7 +157,8 @@ export class ColonyHost {
   /** Bring the colony up to the present (or part of the way, after a long sleep). Returns ticks still owed. */
   async advance(): Promise<number> {
     await this.load();
-    const c = this.c!;
+    if (!this.c) return 0;
+    const c = this.c;
     const want = this.target();
     const n = Math.min(this.o.maxStep, want - c.tick);
     if (n <= 0) return 0;
@@ -164,8 +171,24 @@ export class ColonyHost {
     }
     this.inputs = this.inputs.filter((i) => i.t > c.tick - TICKS_PER_DAY);
     await this.archive();
-    if (c.tick - this.savedTick >= SAVE_EVERY) await this.save();
+    const sent = c.out.length > 0;
+    if (sent || c.tick - this.savedTick >= SAVE_EVERY) await this.report();
+    if (sent || c.tick - this.savedTick >= SAVE_EVERY) await this.save();
     return want - c.tick;
+  }
+
+  /** Tell the region how this colony is doing, and hand over anything it has sent out. */
+  private async report(): Promise<void> {
+    const c = this.c!;
+    if (!this.o.deliver) { c.out = []; return; }
+    const ruler = c.pawns.find((p) => p.id === c.gov.ruler);
+    const msgs = c.out;
+    try {
+      await this.o.deliver({ from: c.id, msgs, pop: c.pawns.length, ruler: ruler ? `${ruler.first} ${ruler.fam}` : undefined, tick: c.tick, name: c.name });
+      c.out = [];
+    } catch {
+      /* the region is busy: keep the messages and try again next time */
+    }
   }
 
   /** Copy new events and newly dead colonists to D1, where they outlive the colony's short memory. */
@@ -209,11 +232,23 @@ export class ColonyHost {
     return { id: m.id, seed: m.seed, name: c.name, tick: c.tick, epoch: m.epoch, msPerTick: m.msPerTick, simV: m.simV, seq: this.seq, pop: c.pawns.length, now: this.o.now(), checks: this.checks.slice(-3) };
   }
 
-  async handle(req: Request): Promise<Response> {
+  async handle(req: Request, internal = false): Promise<Response> {
     await this.load();
     const url = new URL(req.url);
-    const path = url.pathname.replace(/^.*\/api\/hl\//, '');
-    const c = this.c!;
+    const path = url.pathname.replace(/^.*\/api\/hl\/(c\/[^/]+\/)?/, '');
+    if (internal && req.method === 'POST' && path === 'init') {
+      if (!this.c) {
+        const b = (await req.json()) as { seed: number; id: string; pop?: number; preDays?: number; settlers?: SettlerMsg; avoid?: string[] };
+        await this.create(b.seed, b);
+      }
+      return json(this.state());
+    }
+    if (!this.c) return json({ error: 'no such colony' }, 404);
+    if (internal && req.method === 'POST' && path === 'input') {
+      const e = await this.queue({ ...((await req.json()) as Input), t: 0 });
+      return json({ ok: true, at: e.t });
+    }
+    const c = this.c;
     const m = this.meta!;
     try {
       if (req.method === 'GET') {

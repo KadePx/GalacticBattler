@@ -1,4 +1,4 @@
-# Hollow Lands: the live colony, one Durable Object that runs it in real time.
+# Hollow Lands: the live world. One Durable Object per colony runs it in real time; one more keeps the region.
 # Deploy with: npx --yes wrangler@4.154.0 deploy -c workers/hollowlands/wrangler.toml
 # The site (Pages project "galactic-battler") reaches it through functions/api/hl/[[path]].ts.
 name = "hollowlands-colony"
@@ -12,9 +12,13 @@ HL_MS_PER_DAY = "1440000" # one game day every 24 real minutes = one game year p
 name = "COLONY"
 class_name = "ColonyDO"
 
+[[durable_objects.bindings]]
+name = "REGION"
+class_name = "RegionDO"
+
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["ColonyDO"]
+new_sqlite_classes = ["ColonyDO", "RegionDO"]
 
 # History (events, the dead, join records) goes in the site's existing D1 database.
 [[d1_databases]]

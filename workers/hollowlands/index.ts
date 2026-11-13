@@ -1,13 +1,15 @@
-// Cloudflare Worker hosting the live Hollow Lands colony. All the logic is in ColonyHost
-// (src/hollowlands/server/host.ts); this file only connects it to Durable Object storage,
-// alarms and the D1 binding.
+// Cloudflare Worker hosting the live Hollow Lands world: one Durable Object per colony and
+// one for the region between them. The logic is in src/hollowlands/server (host.ts, region.ts);
+// this file only connects it to Durable Object storage, alarms and the D1 binding.
 
 import { DurableObject } from 'cloudflare:workers';
 import { ColonyHost } from '../../src/hollowlands/server/host';
+import { RegionHost } from '../../src/hollowlands/server/region';
 import type { D1 } from '../../src/net/db';
 
 interface Env {
   COLONY: DurableObjectNamespace;
+  REGION: DurableObjectNamespace;
   DB: D1;
   HL_MS_PER_DAY?: string;
   HL_ADMIN_KEY?: string;
@@ -16,6 +18,10 @@ interface Env {
 // Minimal shapes of the runtime types we use (avoids a types dependency).
 interface DurableObjectNamespace { idFromName(name: string): unknown; get(id: unknown): { fetch(r: Request): Promise<Response> } }
 interface Storage { get<T>(k: string): Promise<T | undefined>; put(k: string, v: unknown): Promise<void>; getAlarm(): Promise<number | null>; setAlarm(t: number): Promise<void> }
+
+/** Marks a request as coming from another keeper. The public entry strips it from outside requests. */
+const INTERNAL = 'x-hl-internal';
+const inside = (url: string, body: unknown): Request => new Request(url, { method: 'POST', body: JSON.stringify(body ?? {}), headers: { [INTERNAL]: '1' } });
 
 export class ColonyDO extends DurableObject<Env> {
   private host: ColonyHost;
@@ -26,7 +32,10 @@ export class ColonyDO extends DurableObject<Env> {
     this.host = new ColonyHost(
       { get: (k) => storage.get<string>(k), put: (k, v) => storage.put(k, v) },
       env.DB,
-      { msPerDay: Number(env.HL_MS_PER_DAY) || 1_440_000, maxStep: 3000, pop: 16, preDays: 120, adminKey: env.HL_ADMIN_KEY, now: Date.now },
+      {
+        msPerDay: Number(env.HL_MS_PER_DAY) || 1_440_000, maxStep: 3000, pop: 16, preDays: 120, adminKey: env.HL_ADMIN_KEY, now: Date.now, managed: true,
+        deliver: async (body) => { await env.REGION.get(env.REGION.idFromName('region')).fetch(inside('https://hl/api/hl/region/deliver', body)); },
+      },
     );
   }
 
@@ -44,7 +53,10 @@ export class ColonyDO extends DurableObject<Env> {
 
   async fetch(req: Request): Promise<Response> {
     await this.tick();
-    return this.host.handle(req);
+    const res = await this.host.handle(req, req.headers.get(INTERNAL) === '1');
+    // a colony that has just been started needs its first alarm
+    if (req.headers.get(INTERNAL) === '1') await this.tick();
+    return res;
   }
 
   async alarm(): Promise<void> {
@@ -52,8 +64,38 @@ export class ColonyDO extends DurableObject<Env> {
   }
 }
 
+export class RegionDO extends DurableObject<Env> {
+  private host: RegionHost;
+
+  constructor(ctx: { storage: Storage }, env: Env) {
+    super(ctx as never, env);
+    const storage = ctx.storage;
+    this.host = new RegionHost(
+      { get: (k) => storage.get<string>(k), put: (k, v) => storage.put(k, v) },
+      { colonies: 4, pop: 14, preDays: 120, now: Date.now },
+      async (id, path, body) => (await (await env.COLONY.get(env.COLONY.idFromName(id)).fetch(inside(`https://hl/api/hl/c/${id}/${path}`, body))).json()) as Record<string, unknown>,
+    );
+  }
+
+  fetch(req: Request): Promise<Response> {
+    return this.host.handle(req, req.headers.get(INTERNAL) === '1');
+  }
+}
+
+/** Send a public request to the right keeper. Also used by the site's Pages function. */
+export function route(req: Request, env: { COLONY: DurableObjectNamespace; REGION: DurableObjectNamespace }): Promise<Response> {
+  const headers = new Headers(req.headers);
+  headers.delete(INTERNAL);
+  const clean = new Request(req, { headers });
+  const path = new URL(req.url).pathname;
+  const m = path.match(/\/api\/hl\/c\/([a-z0-9]{1,12})\//);
+  if (m) return env.COLONY.get(env.COLONY.idFromName(m[1])).fetch(clean);
+  if (/\/api\/hl\/region\/?$/.test(path)) return env.REGION.get(env.REGION.idFromName('region')).fetch(clean);
+  return Promise.resolve(new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } }));
+}
+
 export default {
   fetch(req: Request, env: Env): Promise<Response> {
-    return env.COLONY.get(env.COLONY.idFromName('main')).fetch(req);
+    return route(req, env);
   },
 };

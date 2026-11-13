@@ -74,9 +74,12 @@ export function localApi(): Plugin {
     const dir = resolve(server.config.root, '.vite');
     mkdirSync(dir, { recursive: true });
     db ??= await fakeD1(resolve(dir, 'local-api.sqlite'));
-    const mod = (await server.ssrLoadModule('/src/hollowlands/server/host.ts')) as { ColonyHost: new (...a: unknown[]) => DevWorld };
+    const mod = (await server.ssrLoadModule('/src/hollowlands/server/local.ts')) as { LocalWorld: new (...a: unknown[]) => DevWorld };
     const msPerDay = Number(process.env.HL_MS_PER_DAY) || 1_440_000;
-    colony = new mod.ColonyHost(fileKV(resolve(dir, 'hl')), db, { msPerDay, maxStep: 3000, pop: 16, preDays: 120, adminKey: process.env.HL_ADMIN_KEY ?? 'dev', now: Date.now });
+    colony = new mod.LocalWorld((name: string) => fileKV(resolve(dir, 'hl', name)), db, {
+      host: { msPerDay, maxStep: 3000, pop: 16, preDays: 120, adminKey: process.env.HL_ADMIN_KEY ?? 'dev', now: Date.now },
+      region: { colonies: 3, pop: 14, preDays: 120, now: Date.now },
+    });
     setInterval(() => { colony?.advance().catch((e) => console.error('[hl]', e)); }, Math.min(msPerDay / 240, 30_000));
     return colony;
   }

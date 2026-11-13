@@ -3,6 +3,7 @@
 
 import { TICKS_PER_DAY } from '../config';
 import { ColonyHost, LEAD, type KV } from '../server/host';
+import { LocalWorld } from '../server/local';
 import type { PawnSpec } from '../sim/create';
 import { colonyHash, deserialize, step, type Colony, type Input } from '../sim/index';
 
@@ -127,6 +128,59 @@ check('and the new pace applies from then on', after.tick === before.tick + 10, 
 const wipe = await post<State & { ok: boolean }>(host2, 'admin/wipe', { confirm: 'wipe', seed: 5 }, { 'x-admin-key': 'key' });
 check('wiping starts a new colony', wipe.body.ok && wipe.body.id !== before.id);
 mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
+
+// ---------- Several colonies and the region between them ----------
+{
+  const stores = new Map<string, Map<string, string>>();
+  const kvFor = (name: string): KV => {
+    let m = stores.get(name);
+    if (!m) { m = new Map(); stores.set(name, m); }
+    const mm = m;
+    return { get: async (k) => mm.get(k), put: async (k, v) => void mm.set(k, v) };
+  };
+  const mk = (): LocalWorld => new LocalWorld(kvFor, null, {
+    host: { msPerDay: 240, maxStep: 4000, pop: 27, preDays: 2, adminKey: 'key', now: () => now },
+    region: { seed: 21, colonies: 2, pop: 27, preDays: 2, now: () => now },
+  });
+  let world = mk();
+  const call = async <T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> => {
+    await world.advance();
+    const r = await world.handle(new Request('http://x/api/hl/' + path, init));
+    const text = r.headers.get('content-encoding') === 'gzip' ? await new Response(new Blob([await r.arrayBuffer()]).stream().pipeThrough(new DecompressionStream('gzip'))).text() : await r.text();
+    return { status: r.status, body: JSON.parse(text) as T };
+  };
+  interface Region { sites: { id: string; name: string; pop: number; from?: string; founded: number }[] }
+  const r0 = await call<Region>('region');
+  check('the region starts with its first colonies', r0.body.sites.length === 2 && r0.body.sites.every((s) => s.name && s.pop > 0), r0.body.sites.map((s) => `${s.name} ${s.pop}`).join(', '));
+  const st = await call<State & { name: string }>('c/c1/state');
+  check('each colony answers under its own path', st.status === 200 && st.body.name === r0.body.sites[1].name);
+  check('a colony that does not exist says so', (await call('c/zz/state')).status === 404);
+  const sneak = await call('region/deliver', { method: 'POST', body: JSON.stringify({ from: 'c0', msgs: [], pop: 0, tick: 0 }) });
+  check('outsiders cannot speak for a colony', sneak.status === 403);
+
+  // let the years pass until someone leads a party out
+  let sites = r0.body.sites;
+  for (let k = 0; k < 150 && sites.length === 2; k++) {
+    now += 4000;
+    sites = (await call<Region>('region')).body.sites;
+  }
+  const made = sites[2];
+  check('a crowded colony sends out settlers who found a new one', !!made && !!made.from && made.pop >= 5, made ? `${made.name}, ${made.pop} settlers from ${sites.find((s) => s.id === made.from)?.name}` : 'nobody left in 600 days');
+  if (made) {
+    const snap = await call<{ colony: string; tick: number }>(`c/${made.id}/snapshot`);
+    const child = deserialize(snap.body.colony);
+    check('the new colony is a real place with a ruler and a first roof', child.pawns.length >= 5 && child.blds.length >= 3 && child.pawns.some((p) => p.id === child.gov.ruler) && child.from === made.from);
+    const parent = deserialize((await call<{ colony: string }>(`c/${made.from}/snapshot`)).body.colony);
+    now += 20 * 1000;
+    const parent2 = deserialize((await call<{ colony: string }>(`c/${made.from}/snapshot`)).body.colony);
+    check('and word of it reaches the old home', [...parent.log, ...parent2.log].some((e) => e.k === 'news') && parent.dead.some((d) => d.cause === 'settled'));
+    // everything survives a restart
+    world = mk();
+    const again = (await call<Region>('region')).body.sites;
+    const child2 = (await call<State>(`c/${made.id}/state`)).body;
+    check('the whole world carries on after a restart', again.length === sites.length && child2.tick >= snap.body.tick);
+  }
+}
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 if (failed) process.exit(1);
