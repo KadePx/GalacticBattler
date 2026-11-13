@@ -11,6 +11,7 @@ import { FAITHS } from '../sim/faith';
 import { familyName, givenName } from '../sim/names';
 import { Rand } from '../sim/rng';
 import { SKILLS, SKILL_NAMES, type RaceK } from '../sim/types';
+import { SKILL_INFO, SKILL_LEVELS } from '../sim/data/skills';
 import { EYES, GARB, HAIR, SKIN, css } from './look';
 import { bustSvg } from './portrait';
 import { esc } from './words';
@@ -461,7 +462,7 @@ export class Creator {
     const chk = checkSpec(s);
     const extra = Math.max(0, Math.ceil((chk.skillSpent - FREE_SKILL) / 3));
     const count = s.pas.filter((x) => x > 0).length;
-    let h = `<h2>What can they do?</h2><p class="lead">Their people, past and years give the grey levels. Add up to 4 to any skill: the first ${FREE_SKILL} points are free, then every 3 more cost a budget point. <b>${chk.skillSpent} added${extra ? `, costing ${extra}` : ''}.</b></p>`;
+    let h = `<h2>What can they do?</h2><p class="lead">Their people, past and years give the grey levels. Add up to 4 to any skill: the first ${FREE_SKILL} points are free, then every 3 more cost a budget point. <b>${chk.skillSpent} added${extra ? `, costing ${extra}` : ''}.</b></p><p class="hint">${SKILL_LEVELS}</p>`;
     for (let i = 0; i < SKILLS.length; i++) {
       let pips = '';
       for (let k = 0; k < 14; k++) pips += `<i class="${k < base[i] ? 'b' : k < base[i] + s.sk[i] ? 'a' : ''}"></i>`;
@@ -470,7 +471,7 @@ export class Creator {
       const canPas = p > 0 || count < 3;
       h += `<div class="skrow"><span>${SKILL_NAMES[i]}</span><div class="pips">${pips}</div><b>${base[i] + s.sk[i]}${s.sk[i] ? `<small> +${s.sk[i]}</small>` : ''}</b>` +
         `<span class="pm"><button class="icon" data-cr="sk" data-k="${i}" data-v="-"${s.sk[i] ? '' : ' disabled'} aria-label="Less ${SKILL_NAMES[i]}">&minus;</button><button class="icon" data-cr="sk" data-k="${i}" data-v="+"${canAdd ? '' : ' disabled'} aria-label="More ${SKILL_NAMES[i]}">+</button></span>` +
-        `<button class="chip pasb${p ? ' on' : ''}" data-cr="pas" data-v="${i}"${canPas ? '' : ' disabled'} title="Passion: they learn it faster and enjoy the work">${p === 2 ? '◆◆ ' : p === 1 ? '◆ ' : ''}${PAS_NAMES[p] ?? ''}</button></div>`;
+        `<button class="chip pasb${p ? ' on' : ''}" data-cr="pas" data-v="${i}"${canPas ? '' : ' disabled'} title="Passion: they learn it faster and enjoy the work">${p === 2 ? '◆◆ ' : p === 1 ? '◆ ' : ''}${PAS_NAMES[p] ?? ''}</button><small class="skdo">${SKILL_INFO[i]}</small></div>`;
     }
     return h + '<div class="hint">Passions: up to three, and only one can burn. Tap a passion to change it. Someone with a passion learns that skill much faster.</div>';
   }

@@ -14,6 +14,7 @@ import { NUDGES, RESOLVE_CAP, resolveOf, resolveWait } from '../sim/player';
 import { ASKS } from '../sim/ask';
 import { ageYears, fullName, person, posAt, stage, stat } from '../sim/pawn';
 import { opinion } from '../sim/social';
+import { SKILL_INFO, SKILL_LEVELS } from '../sim/data/skills';
 import { SKILL_NAMES, type Bio, type Bld, type Colony, type Dead, type Id, type Pawn } from '../sim/types';
 import { dateText, raceName, thoughtText, whyText } from '../text';
 import { stageOfAge, yearsAt } from './look';
@@ -322,14 +323,15 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   h += '<h3>Traits</h3>' + chips(p.traits, ui.open);
   h += '<h3>Backstory</h3>' + backs(p);
 
-  h += '<h3>Skills <span class="legend"><span class="pas">◆</span> interested <span class="pas">◆◆</span> burning passion</span></h3><div class="skills">';
+  h += `<h3>Skills <span class="legend"><span class="pas">◆</span> interested <span class="pas">◆◆</span> burning passion · <a class="who" data-open="skillhelp">${ui.open.has('skillhelp') ? 'hide what they do' : 'what do they do?'}</a></span></h3>${ui.open.has('skillhelp') ? `<div class="hint">${esc(SKILL_LEVELS)}</div>` : ''}<div class="skills">`;
   let any = false;
   for (let s = 0; s < SKILL_NAMES.length; s++) {
     const lv = Math.floor(p.sk[s] ?? 0);
     const pas = p.pas[s] ?? 0;
     if (!lv && !pas) continue;
     any = true;
-    h += `<span>${SKILL_NAMES[s]}</span>${bar((lv / 20) * 100, pas ? 'var(--accent)' : 'var(--faint)')}<b>${lv}<span class="pas">${pas === 2 ? ' ◆◆' : pas === 1 ? ' ◆' : ''}</span></b>`;
+    h += `<span title="${esc(SKILL_INFO[s])}">${SKILL_NAMES[s]}</span>${bar((lv / 20) * 100, pas ? 'var(--accent)' : 'var(--faint)')}<b>${lv}<span class="pas">${pas === 2 ? ' ◆◆' : pas === 1 ? ' ◆' : ''}</span></b>`;
+    if (ui.open.has('skillhelp')) h += `<small class="skdo">${esc(SKILL_INFO[s])}</small>`;
   }
   h += '</div>';
   if (!any) h += '<div class="hint">No skills to speak of yet.</div>';

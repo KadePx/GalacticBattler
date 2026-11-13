@@ -180,7 +180,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'alarm': return 'The alarm is raised!';
     case 'allclear': return 'It is over. The colony counts its wounds.';
     case 'rout': return `The ${FOE_MANY[e.s ?? ''] ?? 'attackers'} broke and ran.`;
-    case 'slew': return `${a} killed a ${FOE_ONE[e.s ?? ''] ?? 'foe'}.`;
+    case 'slew': { const f = FOE_ONE[e.s ?? ''] ?? 'foe'; return `${a} killed ${/^[aeiou]/.test(f) ? 'an' : 'a'} ${f}.`; }
     case 'looted': return `${FOE_MANY[e.s ?? ''] ?? 'Raiders'} broke into the stores and carried off what they could.`.replace(/^./, (x) => x.toUpperCase());
     case 'seized': return `${full(c, e.a)} has been seized by slavers!`;
     case 'rescued': return `${a} cut ${b} free from the slavers.`;
