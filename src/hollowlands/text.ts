@@ -89,6 +89,7 @@ export const WEIGHT: Record<string, number> = {
   theft: 2, theft_hushed: 1, accused: 2, trial_set: 1, trial: 3, murder: 3, attack: 3, sermon: 1, saint: 3,
   raid: 3, allclear: 1, alarm: 2, rout: 2, slew: 2, looted: 3, seized: 3, rescued: 3, hero: 3, maimed: 3, sick: 2, recovered: 1, outbreak: 3, drunkard: 2,
   settlers: 3, founded: 3, news: 2,
+  odd_goat: 3, odd_ring: 3, odd_raven: 3, odd_ogre: 3, odd_ghost: 3, odd_mushroom: 3, odd_coat: 3, odd_oath: 3, odd_bones: 2, odd_cat: 2, odd_weep: 2,
   asked: 2, blackmail: 3, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
   raidout: 3, raiders_from: 2, raidback: 3,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
@@ -197,6 +198,17 @@ export function evText(c: Colony, e: Ev): string {
     case 'cult_found': return `${b} has found out what ${a} prays to.`;
     case 'rite': return `${e.n} people were missing from their beds last night.`;
     case 'cult_rises': return `The Hollow Mother's ${e.n} no longer hide. They pray in the open now.`;
+    case 'odd_goat': return `With the stores nearly bare, ${a} has declared the goat a sign from the gods. People are bringing it their questions.`;
+    case 'odd_ring': return `${a} dug up a ring that is always cold, and will not let anyone else hold it.`;
+    case 'odd_raven': return `A raven has been saying things it should not know, about ${a}. ${e.n} people heard.`;
+    case 'odd_ogre': return `An ogre walked in off the road and asked, politely, for work. ${a} is staying.`;
+    case 'odd_ghost': return `${a} swears ${b} was at the window last night.`;
+    case 'odd_mushroom': return `${a} ate something from the wood, lay still for a day, and got up talking about the shape of everything.`;
+    case 'odd_coat': return 'The tall trader who sold the colony its "medicine" turned out to be two goblins in a long coat. The medicine is river water.';
+    case 'odd_oath': return `Deep in his cups, ${a} swore before everyone to guard the ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'hall'} door for life. Sober, ${a} means to keep the oath.`.replace('in his cups', 'in their cups');
+    case 'odd_bones': return 'The ground gave way behind the stores: a pit, full to the brim with very old bones.';
+    case 'odd_cat': return 'A three-legged cat has moved in and will not be moved out.';
+    case 'odd_weep': return 'The altar stone was wet this morning. It has not rained.';
     case 'asked': return `${a} has a choice to make.`;
     case 'blackmail': return `${a} is making ${b} pay to keep a secret.`;
     case 'heir': return `${full(c, e.a)} takes up where ${first(c, e.b)} left off.`;

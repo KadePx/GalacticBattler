@@ -208,6 +208,22 @@ export const TH_LIST: ThDef[] = [
   h('raidlost', 'Some of ours did not come back from the raid', -6, DAY * 8),
   h('raidnothing', 'The raid came to nothing', -2, DAY * 3),
 
+  // Strange days
+  h('goatday', 'We are taking advice from a goat', 2, DAY * 6),
+  h('folly', 'Surrounded by fools', -2, DAY * 5),
+  h('cursedring', 'The ring is mine', 6, DAY * 20),
+  h('ogrefriend', '{o} is the best thing to happen here', 4, DAY * 10, { op: 15 }),
+  h('ogrefear', 'There is an ogre living here', -3, DAY * 8, { op: -8 }),
+  h('sawghost', 'Saw {o} at the window last night', 5, DAY * 8),
+  h('ghostdoubt', 'Thought I saw {o}. I did not. I did not.', -4, DAY * 6),
+  h('visions', 'Saw the shape of everything', 10, DAY * 5),
+  h('swindled', 'Swindled by two goblins in a coat', -2, DAY * 4),
+  h('coatlaugh', 'Two goblins. In a coat.', 4, DAY * 4),
+  h('oath', 'Sworn to the door', 5, DAY * 30),
+  h('bonesglad', 'A whole pit of old bones', 4, DAY * 5),
+  h('bonesuneasy', 'Something is not right here', -2, DAY * 5),
+  h('colonycat', 'The cat has decided to stay', 3, DAY * 10),
+
   // Fears and secrets
   h('fear_dark', 'Out in the dark', -5, 0),
   h('fear_dead', 'Too close to the dead', -5, 0),

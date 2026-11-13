@@ -8,6 +8,7 @@ import { addFact } from './social';
 import { nudge, takeHeir } from './player';
 import { answer } from './ask';
 import { abroadInput } from './abroad';
+import { oddThing } from './odd';
 import { importPawns } from './settle';
 import { cells } from './data/buildings';
 import { PLAYABLE } from './data/races';
@@ -137,6 +138,7 @@ export function dailyStory(c: Colony): void {
 
   // Good or neutral things happen on their own clock
   if (day >= 3 && r.chance(0.085)) goodThing(c, r, season, pop);
+  if (day >= 20 && r.chance(0.022)) oddThing(c, new Rand(c.seed, S.STORY, day, 31));
 
   if (day < 20 || c.foes.length || quiet < 7 || c.story.heat < 16) return;
   if (!r.chance(recentDeaths >= 2 ? 0.04 : recentDeaths ? 0.1 : 0.22)) return;

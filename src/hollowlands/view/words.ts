@@ -120,6 +120,12 @@ export function bioText(c: Colony, b: Bio): string {
     case 'challenge': return `Challenged ${o} for the rule and ${b.s === 'won' ? 'won' : 'lost'}.`;
     case 'plot_failed': return `Plotted against ${o} and was found out.`;
     case 'house_founded': return `Founded House ${b.s ?? ''}.`.replace(' .', '.');
+    case 'odd_goat': return 'Declared the goat a sign from the gods.';
+    case 'odd_ring': return 'Dug up a ring that is always cold.';
+    case 'odd_ogre': return `Walked in off the road and asked for work at ${b.s ?? 'the colony'}.`;
+    case 'odd_ghost': return `Saw ${o} at the window.`;
+    case 'odd_mushroom': return 'Ate something from the wood and saw the shape of everything.';
+    case 'odd_oath': return 'Swore a drunken oath to guard a door for life, and kept it.';
     case 'founded': return `Helped found ${b.s ?? 'a new colony'}.`;
     case 'settled': return 'Left with the settlers to found a new colony.';
     case 'moved': return 'Packed up and left for another colony.';
