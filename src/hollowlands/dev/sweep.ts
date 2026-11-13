@@ -7,7 +7,7 @@ import { TH } from '../sim/data/thoughts';
 import { TRAITS } from '../sim/data/traits';
 import { createWorld, stepWorld } from '../sim/world';
 import { evText } from '../text';
-import { bioText } from '../view/words';
+import { bioText, pretty } from '../view/words';
 import { RES } from '../sim/types';
 
 declare const process: { argv: string[]; exit(code: number): never };
@@ -48,7 +48,7 @@ for (let s = 1; s <= worlds; s++) {
         for (const t of p.th) { if (!TH[t.k]) flag(`unknown thought ${t.k}`); if (t.o && !known.has(t.o)) flag('thought about nobody'); }
         for (const s2 of p.sit) if (!TH[s2[0]]) flag(`unknown thought ${s2[0]}`);
         for (const key in p.rel) for (const m of p.rel[key].m) if (!TH[m[0]]) flag(`unknown memory ${m[0]}`);
-        for (const b of p.bio) if (/^[A-Z][a-z_ ]+( \(|\.$)/.test(bioText(c, b)) && bioText(c, b).toLowerCase().startsWith(b.k.replace(/_/g, ' '))) flag(`no words for life event ${b.k}`);
+        for (const b of p.bio) { const txt = bioText(c, b); if (txt === pretty(b.k) + '.' || txt.startsWith(pretty(b.k) + ' (')) flag(`no words for life event ${b.k}`); }
         for (const sk of p.sk) if (!Number.isFinite(sk)) flag('skill not a number');
       }
       for (const e of c.log) if (evText(c, e).startsWith(e.k + ':')) flag(`no words for event ${e.k}`);

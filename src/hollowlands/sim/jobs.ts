@@ -452,7 +452,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
         const need = t.wood * 1.6 + 25;
         const dp = Math.min(1 - (b.up ?? 0), (hours * speed) / (t.work * 4), c.stock.stone / need);
         if (dp <= 0) break;
-        c.stock.stone -= need * dp;
+        c.stock.stone = Math.max(0, c.stock.stone - need * dp);
         b.up = (b.up ?? 0) + dp;
         if (b.up >= 0.999) {
           b.up = undefined;
@@ -466,7 +466,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       } else if (b.built && a.d === 2) {
         b.q = Math.min(92, b.q + 0.9 * speed * hours);
         c.stock.wood = Math.max(0, c.stock.wood - 0.8 * hours);
-        if (c.stock.stone >= 0.3) c.stock.stone -= 0.3 * hours;
+        c.stock.stone = Math.max(0, c.stock.stone - 0.3 * hours);
       } else if (b.built) {
         const fix = Math.min(b.dmg, 9 * speed * hours);
         b.dmg -= fix;
