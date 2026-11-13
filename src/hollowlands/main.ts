@@ -129,7 +129,8 @@ function join(spec: PawnSpec, at = c.tick + 1, remember = true): void {
     // the server decides; the colonist reaches every browser through the sync
     pending = true;
     syncMine();
-    void live.join(spec).then((err) => {
+    const lv = live;
+    void (lv.humanKey ? humanCheck(lv.humanKey) : Promise.resolve(undefined)).then((token) => lv.join(spec, token)).then((err) => {
       if (!err) return;
       pending = false;
       toast(err);
@@ -252,6 +253,25 @@ async function digest(): Promise<void> {
   el.innerHTML = `<div class="wbox panel"><div class="whead"><b>While you were away</b><span>${days} game ${days === 1 ? 'day' : 'days'} in the life of ${esc(mine.first)}</span><button class="icon" data-x title="Close" aria-label="Close">&times;</button></div><div class="wlist">${show.map((e) => `<div class="wrow"><span>${esc(dateText(e.t))}</span><b style="font-weight:500">${esc(evText(c, e))}</b></div>`).join('')}</div></div>`;
   el.addEventListener('click', (e) => { if (e.target === el || (e.target as HTMLElement).closest('[data-x]')) el.remove(); });
   document.body.appendChild(el);
+}
+
+/** Cloudflare's are-you-a-person check, shown only when the server asks for it. Resolves with the token. */
+function humanCheck(siteKey: string): Promise<string> {
+  return new Promise((done) => {
+    const el = document.createElement('div');
+    el.id = 'world';
+    el.innerHTML = '<div class="wbox panel" style="width:auto"><div class="whead"><b>One moment</b><span>Checking you are a person</span></div><div id="human"></div></div>';
+    document.body.appendChild(el);
+    const show = (): void => {
+      (window as unknown as { turnstile: { render(sel: string, o: object): void } }).turnstile.render('#human', { sitekey: siteKey, theme: 'dark', callback: (t: string) => { el.remove(); done(t); } });
+    };
+    if ((window as unknown as { turnstile?: unknown }).turnstile) { show(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    s.onload = show;
+    s.onerror = () => { el.remove(); done(''); };
+    document.head.appendChild(s);
+  });
 }
 
 function bindMine(): void {

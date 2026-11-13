@@ -55,7 +55,7 @@ export function myHash(): Promise<string> {
 
 // ---------- The live colony ----------
 
-interface State { id: string; tick: number; epoch: number; msPerTick: number; simV: number; seq: number; now: number; checks: [number, string][]; inputs?: (Input & { seq: number })[] }
+interface State { id: string; tick: number; epoch: number; msPerTick: number; simV: number; seq: number; now: number; checks: [number, string][]; inputs?: (Input & { seq: number })[]; humanKey?: string }
 
 export interface Live {
   c: Colony;
@@ -67,7 +67,9 @@ export interface Live {
   /** true while a reload is under way (stop stepping) */
   busy: boolean;
   /** send in a colonist; resolves with an error message, or '' when accepted */
-  join(spec: PawnSpec): Promise<string>;
+  join(spec: PawnSpec, token?: string): Promise<string>;
+  /** the site key for the are-you-a-person check, when the server asks for one */
+  humanKey?: string;
   /** nudge my colonist ('act') or carry on as an heir ('heir'); resolves with an error message or '' */
   send(path: 'act' | 'heir', body: Record<string, unknown>): Promise<string>;
   stop(): void;
@@ -100,9 +102,9 @@ export async function connect(onReload: (c: Colony) => void): Promise<Live> {
         if (mine.size > 20) mine.delete(mine.keys().next().value as number);
       }
     },
-    join: async (spec) => {
+    join: async (spec, token) => {
       try {
-        const r = await fetch(API + 'join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ f: myId(), spec }) });
+        const r = await fetch(API + 'join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ f: myId(), spec, token }) });
         const body = (await r.json()) as { ok?: boolean; error?: string };
         if (!r.ok || !body.ok) return body.error ?? 'The colony would not take them.';
         void poll();
@@ -134,6 +136,7 @@ export async function connect(onReload: (c: Colony) => void): Promise<Live> {
     mine.clear();
     live.c = deserialize(snap.colony);
     live.msPerTick = snap.msPerTick;
+    live.humanKey = snap.humanKey;
     live.busy = false;
     onReload(live.c);
   }
