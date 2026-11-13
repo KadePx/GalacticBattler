@@ -20,10 +20,10 @@ export const PART_NAMES: Record<string, string> = {
 
 export interface IllDef { k: string; name: string; sev: number; imm: number; spread: number; start: number }
 export const ILLS: Record<string, IllDef> = {
-  flux: { k: 'flux', name: 'the flux', sev: 1.05, imm: 1.5, spread: 0.01, start: 8 },
+  flux: { k: 'flux', name: 'the flux', sev: 1.25, imm: 1.45, spread: 0.012, start: 8 },
   fever: { k: 'fever', name: 'rot fever', sev: 1.45, imm: 1.25, spread: 0, start: 12 },
-  plague: { k: 'plague', name: 'the grey plague', sev: 1.45, imm: 0.9, spread: 0.03, start: 5 },
-  cough: { k: 'cough', name: 'lung-cough', sev: 0.5, imm: 0.75, spread: 0.012, start: 6 },
+  plague: { k: 'plague', name: 'the grey plague', sev: 1.6, imm: 0.82, spread: 0.035, start: 8 },
+  cough: { k: 'cough', name: 'lung-cough', sev: 0.66, imm: 0.75, spread: 0.014, start: 6 },
   pox: { k: 'pox', name: 'goblin pox', sev: 0.8, imm: 1.3, spread: 0.02, start: 6 },
 };
 
@@ -115,8 +115,8 @@ export function hourlyHealth(c: Colony, p: Pawn): void {
           if (i.bleed < 0.06) i.bleed = 0;
         }
       }
-      if (!i.tend && i.k !== 'bruise' && i.k !== 'frost' && t - i.t > TICKS_PER_HOUR * 10) {
-        i.inf += 1.5 / immune;
+      if (!i.tend && i.k !== 'bruise' && i.k !== 'frost' && t - i.t > TICKS_PER_HOUR * 8) {
+        i.inf += 2.2 / immune;
         if (i.inf >= 100) { i.inf = 0; i.tend = 1; infect(c, p, 'fever'); }
       }
       i.sev -= (i.tend ? 0.45 : 0.2) * (resting ? 1.5 : 1) * Math.sqrt(tough);

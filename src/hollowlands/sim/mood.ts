@@ -206,7 +206,7 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
 }
 
 export function moodTarget(c: Colony, p: Pawn): number {
-  let m = 38 + stat(p, 'moodBase');
+  let m = 35 + stat(p, 'moodBase');
   // The same kind of thought about many people only counts for so much
   const byKey: Record<string, number> = {};
   for (const t of p.th) {
@@ -259,6 +259,11 @@ export function hourly(c: Colony, p: Pawn): void {
     p.hp -= 1.4;
     bump(c, 'starveHours');
     if (p.hp <= 0) { die(c, p, 'starved'); return; }
+  }
+  // the cold kills the ragged and the roofless
+  if (c.temp < -2 && feltTemp(c, p, indoors(c, p)) < -7) {
+    p.hp -= 0.9;
+    if (p.hp <= 0) { die(c, p, 'cold'); return; }
   }
   hourlyHealth(c, p);
   if (p.gone) return;

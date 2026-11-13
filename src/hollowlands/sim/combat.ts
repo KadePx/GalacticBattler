@@ -259,7 +259,7 @@ export function combatTick(c: Colony): void {
       note(c, target, 'seized');
       continue;
     }
-    if (r.chance(0.55 + (def.atk - defense(c, target)) * 0.035)) {
+    if (r.chance(0.6 + (def.atk - defense(c, target)) * 0.035)) {
       wound(c, target, def.wound, def.dmg * (0.6 + r.float() * 0.8), r);
       if (f.k === 'ghoul' && target.inj.length) target.inj[target.inj.length - 1].inf += 30;
       if (target.hp <= 0 && !target.gone) {

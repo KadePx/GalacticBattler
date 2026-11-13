@@ -140,12 +140,12 @@ export function dailyStory(c: Colony): void {
   if (day >= 3 && r.chance(0.085)) goodThing(c, r, season, pop);
   if (day >= 20 && r.chance(0.022)) oddThing(c, new Rand(c.seed, S.STORY, day, 31));
 
-  if (day < 20 || c.foes.length || quiet < 7 || c.story.heat < 16) return;
+  if (day < 20 || c.foes.length || quiet < 6 || c.story.heat < 14) return;
   if (!r.chance(recentDeaths >= 2 ? 0.04 : recentDeaths ? 0.1 : 0.22)) return;
 
   let able = 0;
   for (const p of c.pawns) if (stage(c, p) >= STAGE.ADULT && !has(p, 'pacifist') && !has(p, 'coward')) able++;
-  const points = Math.min(able * 16 + 12, 14 + rich * 0.26 + Math.min(100, day * 0.14)) * (0.7 + r.float() * 0.6);
+  const points = Math.min(able * 25 + 16, 22 + rich * 0.42 + Math.min(140, day * 0.18)) * (0.7 + r.float() * 0.7);
   let growing = 0;
   for (const b of c.blds) if (b.k === 'field' && b.built) for (const cell of cells('field')) { const v = c.crop[(b.y + cell.dy) * c.w + b.x + cell.dx]; if (v > 0) growing++; }
   let goblins = 0;
@@ -165,7 +165,7 @@ export function dailyStory(c: Colony): void {
     { k: 'coldsnap', w: season === 3 ? 2.6 : season === 2 ? 0.6 : 0 },
     { k: 'storm', w: season === 3 ? 0.4 : 1.1 },
     { k: 'flux', w: season === 1 ? (well ? 0.8 : 2) : 0.2 },
-    { k: 'plague', w: pop >= 10 ? 0.45 : 0 },
+    { k: 'plague', w: pop >= 10 ? 1.1 : 0 },
     { k: 'pox', w: goblins ? 0.8 : 0.25 },
     { k: 'fire', w: season === 1 || c.pawns.some((p) => has(p, 'pyro')) ? 0.9 : 0.3 },
     { k: 'rats', w: c.stock.grain > 60 ? 0.9 : 0 },
