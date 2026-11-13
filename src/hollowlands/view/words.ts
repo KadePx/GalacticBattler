@@ -120,6 +120,17 @@ export function bioText(c: Colony, b: Bio): string {
     case 'challenge': return `Challenged ${o} for the rule and ${b.s === 'won' ? 'won' : 'lost'}.`;
     case 'plot_failed': return `Plotted against ${o} and was found out.`;
     case 'house_founded': return `Founded House ${b.s ?? ''}.`.replace(' .', '.');
+    case 'founded': return `Helped found ${b.s ?? 'a new colony'}.`;
+    case 'settled': return 'Left with the settlers to found a new colony.';
+    case 'moved': return 'Packed up and left for another colony.';
+    case 'migrated': return `Arrived from ${b.s ?? 'another colony'}.`;
+    case 'heir': return `Took up where ${o} left off.`;
+    case 'heirloom': return `Was left ${o}'s ${b.s ?? 'keepsake'}.`;
+    case 'blackmail': return `Made ${o} pay to keep a secret.`;
+    case 'plotter': return b.o ? `Joined ${o}'s plot against the ruler.` : 'Began to plot against the ruler.';
+    case 'cult': return b.o ? `Was brought to the Hollow Mother by ${o}.` : 'Found the Hollow Mother.';
+    case 'enthralled': return `Was taken alive in a raid and put in chains at ${b.s ?? 'the colony'}.`;
+    case 'freed': return 'Was freed.';
     default: return pretty(b.k) + (b.o ? ` (${o})` : '') + '.';
   }
 }

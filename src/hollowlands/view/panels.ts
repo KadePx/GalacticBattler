@@ -41,6 +41,8 @@ export interface Hooks {
   nudge(k: string, v: number): void;
   /** Answer the question my colonist has been asked. */
   answer(v: string): void;
+  /** Copy a link to the person whose card is open. */
+  share(): void;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -155,6 +157,7 @@ export class Panels {
     else if (d.act === 'allrel') this.ui.allRel = !this.ui.allRel;
     else if (d.act === 'nudge' && d.k) this.hooks.nudge(d.k, Number(d.v));
     else if (d.act === 'answer' && d.v) this.hooks.answer(d.v);
+    else if (d.act === 'share') this.hooks.share();
     else if (d.filter === 'all' || d.filter === 'notable' || d.filter === 'mine') { this.filter = d.filter; this.feedKey = ''; }
     else if (d.sort === 'mood' || d.sort === 'name') this.sort = d.sort;
     this.dirty = true;
@@ -287,6 +290,19 @@ export class Panels {
       if (c.gov.laws.tax) laws.push('The ruler takes a cut of all wages');
       h += `<div class="hint">${laws.join(' · ')}. ${esc(gov?.blurb ?? '')}</div>`;
     } else h += '<div class="hint">Nobody rules here.</div>';
+    if (c.plot) {
+      const lead = pawnById(c, c.plot.lead);
+      if (lead) h += `<div class="note">Unknown to the ruler, <a class="who" data-p="${lead.id}">${esc(lead.first)}</a> is gathering people against them: ${c.plot.mem.length} so far.</div>`;
+    }
+    let chained = 0;
+    let sworn = 0;
+    for (const p of c.pawns) { if (p.thrall) chained++; if (p.cult) sworn++; }
+    const bits: string[] = [];
+    if (chained) bits.push(`${chained} held in thrall`);
+    if (sworn) bits.push(`${sworn} secretly sworn to the Hollow Mother`);
+    if (c.ruins) bits.push(`built over the ruins of ${esc(c.ruins)}`);
+    if (c.near?.length) bits.push(`neighbours: ${c.near.map((n) => esc(n.name)).join(', ')}`);
+    if (bits.length) h += `<div class="hint">${bits.join(' · ')}.</div>`;
     if (c.trials.length) {
       const tr = c.trials[0];
       const acc = pawnById(c, tr.a);

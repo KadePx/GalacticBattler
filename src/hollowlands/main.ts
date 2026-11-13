@@ -378,6 +378,12 @@ async function boot(): Promise<void> {
     find: () => { if (sel?.k === 'pawn') map.focusPawn(sel.id, 1.6); },
     close: () => setSel(null),
     layout,
+    share: () => {
+      if (!sel || sel.k === 'bld') return;
+      const u = new URL(location.href);
+      u.search = live && here ? `?c=${here}&who=${sel.id}` : `${location.search.replace(/[?&]who=\d+/, '')}${location.search ? '&' : '?'}who=${sel.id}`;
+      void navigator.clipboard?.writeText(u.toString()).then(() => toast('Link copied'), () => toast(u.toString()));
+    },
     answer: (v) => {
       if (live) void live.send('act', { k: 'answer', v }).then((err) => { if (err) toast(err); });
       else c.inq.push({ t: c.tick + 1, k: 'answer', owner: me, v });
@@ -406,7 +412,10 @@ async function boot(): Promise<void> {
   bindMine();
   rejoin();
   syncMine();
-  void digest();
+  // a shared link opens straight onto someone's card
+  const who = Number(q.get('who'));
+  if (who && (pawnById(c, who) || c.dead.some((d) => d.id === who))) openPerson(who);
+  else void digest();
   if (live) setInterval(() => { if (here && myPawn()) store.set('hl.seen.' + here, String(c.tick)); }, 60_000);
   document.getElementById('mine')?.classList.remove('hidden');
 

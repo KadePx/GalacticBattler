@@ -140,7 +140,7 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
     else if (c.gov.laws.thrall && per(p, AX.KIND) > 1 && c.pawns.some((o) => o.thrall)) add('keepsthralls');
     if (p.cult) add('hollowpeace');
     if (p.rank >= 5) add('highborn');
-    else if (p.rank <= 1) add('outcast');
+    else if (p.rank === 1) add('outcast');
     else if (p.rank === 2 && per(p, AX.AMBITION) > 1) add('lowly');
 
     if (p.sp) {

@@ -125,6 +125,30 @@ function story(c: Colony, p: Who, end?: string): string {
   return out + (end ?? '');
 }
 
+/** A few lines as they might write them tonight: built from what is on their mind. Display only. */
+function diary(c: Colony, p: Pawn, th: [string, number][]): string {
+  const st = stage(c, p);
+  if (st < 1) return '<div class="hint">Too young to have much to say.</div>';
+  const open = p.brk ? 'I am not myself. I know it and cannot stop.' : p.mood >= 75 ? 'A good day. I should remember there are days like this.' : p.mood >= 55 ? 'Things are well enough.' : p.mood >= 38 ? 'Getting by. No more than that.' : p.mood >= 22 ? 'A hard day, after a run of them.' : 'I do not know how much more of this I can take.';
+  const lines: string[] = [open];
+  // thoughts that open with someone's name keep their capital; stack counts are dropped
+  const low = (s: string): string => { const t = s.replace(/ ×\d+$/, ''); return /^[A-Z][\p{L}'-]+ (was|is|made|said|has|did|told|gave|looked|saved|stole|took|tried|accused|punished|will|would|plotted|mocked|stood|cheated|lied|came|left|spread|prays|watches|preached)/u.test(t) || /^[A-Z][\p{L}'-]+'s /u.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1); };
+  const bad = th.filter((x) => x[1] < 0).slice(0, 2);
+  const good = th.filter((x) => x[1] > 0).slice(0, 2);
+  if (bad[0]) lines.push(`I keep coming back to it: ${low(bad[0][0])}.`);
+  if (bad[1]) lines.push(`And ${low(bad[1][0])}.`);
+  if (good[0]) lines.push(`${bad.length ? 'Still' : 'I will say this'}: ${low(good[0][0])}${good[1] ? ', and ' + low(good[1][0]) : ''}.`);
+  const partner = p.sp ? person(c, p.sp) : undefined;
+  const crush = p.crush ? person(c, p.crush) : undefined;
+  if (partner && p.rel[p.sp]?.k === 'spouse' && bad.length > good.length) lines.push(`I have not told ${partner.first} how bad it is.`);
+  else if (crush && !p.sp) lines.push(`${crush.first} was there today. I said nothing worth saying.`);
+  if (p.ask) lines.push('There is a choice in front of me and I have been putting it off.');
+  if (p.cult) lines.push('She is patient. She is empty, and she waits.');
+  else if (c.plot?.mem.includes(p.id)) lines.push('We are more than we were. It will not be long now.');
+  if (p.thrall) lines.push('I count the guards. I count the days.');
+  return `<div class="diary"><span class="y">${esc(dateText(c.tick))}</span>${lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>`;
+}
+
 const BREAK_NOW: Record<string, string> = { sulk: 'shut away, speaking to no one', bingefood: 'eating everything in sight', bingedrink: 'drinking without stopping', wander: 'wandering in a daze', rave: 'raging at everyone', tantrum: 'smashing things' };
 const INSPIRED: Record<string, string> = { frenzy: 'working like someone possessed', insight: 'seeing everything clearly', create: 'struck by an idea for something beautiful' };
 const GOALS: Record<string, string> = {
@@ -228,6 +252,10 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   if (p.brk) flags += `<span class="tie bad">Broken: ${BREAK_NOW[p.brk.k] ?? p.brk.k}</span>`;
   if (p.insp && p.insp[1] > c.tick) flags += `<span class="tie kin">Inspired: ${INSPIRED[p.insp[0]] ?? p.insp[0]}</span>`;
   if (p.preg) flags += '<span class="tie love">Expecting a child</span>';
+  if (p.thrall) flags += '<span class="tie bad">In chains</span>';
+  if (c.plot?.mem.includes(p.id)) flags += `<span class="tie dim" title="Nobody in the colony is meant to know">${c.plot.lead === p.id ? 'Leading a plot' : 'In the plot'}</span>`;
+  if (p.cult) flags += '<span class="tie dim" title="Nobody in the colony is meant to know">Sworn to the Hollow Mother</span>';
+  if (p.ill) flags += '<span class="tie bad">Sick</span>';
   if (p.drunk > 60) flags += '<span class="tie dim">Drunk</span>';
   else if (p.drunk > 30) flags += '<span class="tie dim">Tipsy</span>';
   if (p.hp < 60) flags += '<span class="tie bad">Badly hurt</span>';
@@ -265,6 +293,8 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   else if (st >= 2) facts.push('Has no bed of their own');
   if (GOALS[p.goal]) facts.push(`Dreams of ${GOALS[p.goal]}`);
   if (p.coin > 0) facts.push(`${Math.round(p.coin)} silver to their name`);
+  if (p.heirloom) facts.push(`Keeps ${esc(p.heirloom)}`);
+  if (p.prev) facts.push(`Their player lived before as ${whoLink(c, p.prev)}`);
   if (facts.length) h += `<div class="hint">${facts.join(' · ')}</div>`;
 
   h += '<h3>Needs</h3><div class="needs">';
@@ -305,7 +335,9 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   if (!any) h += '<div class="hint">No skills to speak of yet.</div>';
 
   h += '<h3>Relationships</h3>' + relations(c, p, ui);
+  h += '<h3>In their own words</h3>' + diary(c, p, th);
   h += '<h3>Life story</h3>' + story(c, p);
+  h += '<div class="btns"><button class="btn sm" data-act="share">Copy a link to this page</button></div>';
   return h;
 }
 
