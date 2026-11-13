@@ -81,38 +81,54 @@ export function bakeTerrain(c: Colony, cv: HTMLCanvasElement, pal: Pal): void {
   const W = c.w;
   const H = c.h;
   const cols = new Array<number>(W * H);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const col = (cols[y * W + x] = tileColor(c, pal, x, y));
-      g.fillStyle = css(col);
-      g.fillRect(x * TS, y * TS, TS, TS);
+  for (let i = 0; i < W * H; i++) cols[i] = tileColor(c, pal, i % W, Math.floor(i / W));
+  // The ground is painted at 12 samples per tile. Each sample looks up its tile through a small
+  // smooth wobble, so borders between grass, dirt, sand and water wander like real ground
+  // instead of following the grid. Buildings and paths sit on top and hide the wobble there.
+  const SUB = 12;
+  const sw = W * SUB;
+  const sh = H * SUB;
+  const img = new ImageData(sw, sh);
+  const vn = (fx: number, fy: number, k: number): number => {
+    const x0 = Math.floor(fx);
+    const y0 = Math.floor(fy);
+    let tx = fx - x0;
+    let ty = fy - y0;
+    tx = tx * tx * (3 - 2 * tx);
+    ty = ty * ty * (3 - 2 * ty);
+    const a = hash2(x0, y0, k);
+    const b = hash2(x0 + 1, y0, k);
+    const cc = hash2(x0, y0 + 1, k);
+    const d = hash2(x0 + 1, y0 + 1, k);
+    return a + (b - a) * tx + (cc - a) * ty + (a - b - cc + d) * tx * ty;
+  };
+  const AMP = 0.42;
+  for (let sy = 0; sy < sh; sy++) {
+    for (let sx = 0; sx < sw; sx++) {
+      const fx = (sx + 0.5) / SUB;
+      const fy = (sy + 0.5) / SUB;
+      const wx = fx + (vn(fx * 1.3, fy * 1.3, 41) - 0.5) * 2 * AMP;
+      const wy = fy + (vn(fx * 1.3, fy * 1.3, 42) - 0.5) * 2 * AMP;
+      const tx = Math.max(0, Math.min(W - 1, Math.floor(wx)));
+      const ty = Math.max(0, Math.min(H - 1, Math.floor(wy)));
+      // walls of rock and the built-on ground keep their true shape
+      const own = c.ter[Math.floor(fy) * W + Math.floor(fx)];
+      const t = own === T.ROCK || own === T.PATH ? Math.floor(fy) * W + Math.floor(fx) : ty * W + tx;
+      const col = cols[t];
+      const shade = 1 + (vn(fx * 3.1, fy * 3.1, 43) - 0.5) * 0.09;
+      const o = (sy * sw + sx) * 4;
+      img.data[o] = Math.min(255, ((col >> 16) & 255) * shade);
+      img.data[o + 1] = Math.min(255, ((col >> 8) & 255) * shade);
+      img.data[o + 2] = Math.min(255, (col & 255) * shade);
+      img.data[o + 3] = 255;
     }
   }
-  // Soften the grid: where two neighbours at a corner share another ground, it rounds the corner.
-  const R = 9;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const t = c.ter[y * W + x];
-      for (let k = 0; k < 4; k++) {
-        const sx = k & 1 ? 1 : -1;
-        const sy = k & 2 ? 1 : -1;
-        const nx = x + sx;
-        const ny = y + sy;
-        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-        const a = c.ter[y * W + nx];
-        if (a === t || a !== c.ter[ny * W + x] || RANK[a] < RANK[t]) continue;
-        const cx = x * TS + (sx > 0 ? TS : 0);
-        const cy = y * TS + (sy > 0 ? TS : 0);
-        g.fillStyle = css(cols[y * W + nx]);
-        g.beginPath();
-        g.moveTo(cx - sx * R, cy);
-        g.arcTo(cx, cy, cx, cy - sy * R, R);
-        g.lineTo(cx, cy);
-        g.closePath();
-        g.fill();
-      }
-    }
-  }
+  const small = document.createElement('canvas');
+  small.width = sw;
+  small.height = sh;
+  small.getContext('2d')?.putImageData(img, 0, 0);
+  g.imageSmoothingEnabled = true;
+  g.drawImage(small, 0, 0, W * TS, H * TS);
   // Small details: tufts, pebbles, ripples, rock faces.
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -153,12 +169,6 @@ export function bakeTerrain(c: Colony, cv: HTMLCanvasElement, pal: Pal): void {
           g.arc(px + ox, py + oy + 5, 5, Math.PI * 1.2, Math.PI * 1.8);
           g.stroke();
         }
-        // a pale line where water meets land
-        g.fillStyle = 'rgba(255,255,255,0.2)';
-        if (x > 0 && !isWater(c.ter[i - 1])) g.fillRect(px, py, 2, TS);
-        if (x < W - 1 && !isWater(c.ter[i + 1])) g.fillRect(px + TS - 2, py, 2, TS);
-        if (y > 0 && !isWater(c.ter[i - W])) g.fillRect(px, py, TS, 2);
-        if (y < H - 1 && !isWater(c.ter[i + W])) g.fillRect(px, py + TS - 2, TS, 2);
       } else if (t === T.ROCK) {
         // chiselled faces: light from the top left
         g.fillStyle = 'rgba(255,255,255,0.07)';
@@ -322,12 +332,16 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
       const roofed = !!b && !OPEN_AIR.has(b.k);
       const floor = (asStone: boolean = stone): void => {
         if (asStone) {
-          g.rect(px, py, TS, TS).fill(0x8f939b);
-          g.rect(px, py + 11.5, TS, 1).rect(px + ((x + y) & 1 ? 7 : 15), py, 1, 11.5).rect(px + ((x + y) & 1 ? 15 : 7), py + 12, 1, 12).fill({ color: 0x5d6068, alpha: 0.55 });
+          // pale, warm flagstones: clearly lighter than the walls around them
+          g.rect(px, py, TS, TS).fill(0xc2b8a3);
+          g.rect(px, py + 11.5, TS, 1).rect(px + ((x + y) & 1 ? 7 : 15), py, 1, 11.5).rect(px + ((x + y) & 1 ? 15 : 7), py + 12, 1, 12).fill({ color: 0x8c8270, alpha: 0.6 });
         } else {
-          g.rect(px, py, TS, TS).fill(0xa98558);
+          g.rect(px, py, TS, TS).fill(0xb48b5a);
           g.rect(px, py + 7.5, TS, 1).rect(px, py + 15.5, TS, 1).rect(px + ((x * 7 + y * 3) % 17) + 3, py, 1, 7.5).rect(px + ((x * 5 + y * 11) % 17) + 3, py + 8, 1, 7.5).fill({ color: 0x6e5133, alpha: 0.5 });
         }
+        // walls cast a shadow into the room (light from the south-east, as on the map)
+        if (isWall(stAt(x, y - 1))) g.rect(px, py, TS, 6).fill({ color: 0x1a120a, alpha: 0.32 });
+        if (isWall(stAt(x - 1, y))) g.rect(px, py, 5, TS).fill({ color: 0x1a120a, alpha: 0.22 });
       };
       if (s >= B.BED && roofed && s !== B.GRAVE) floor();
 
@@ -338,18 +352,30 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           break;
         case B.WALL_WOOD:
         case B.WALL_STONE: {
-          const edge = s === B.WALL_WOOD ? 0x4d3524 : 0x565a62;
-          const top = s === B.WALL_WOOD ? 0x7d5a3a : 0x8f939c;
+          // walls are dark and raised: a near-black outline, a darker face on the south side,
+          // and a top that runs on into neighbouring walls so they read as one thick wall
+          const wood = s === B.WALL_WOOD;
+          const edge = wood ? 0x2e1f14 : 0x2a2c32;
+          const face = wood ? 0x5a3c26 : 0x50545d;
+          const top = wood ? 0x86603d : 0x7b808b;
           g.rect(px, py, TS, TS).fill(edge);
-          // the lighter top runs on into neighbouring walls so they read as one thick wall
-          const l = isWall(stAt(x - 1, y)) ? 0 : 3;
-          const r = isWall(stAt(x + 1, y)) ? 0 : 3;
-          const u = isWall(stAt(x, y - 1)) ? 0 : 3;
-          const d = isWall(stAt(x, y + 1)) ? 0 : 4;
+          const l = isWall(stAt(x - 1, y)) ? 0 : 2;
+          const r = isWall(stAt(x + 1, y)) ? 0 : 2;
+          const u = isWall(stAt(x, y - 1)) ? 0 : 2;
+          const d = isWall(stAt(x, y + 1)) ? 0 : 7;
+          g.rect(px + l, py + u, TS - l - r, TS - u - (d ? 2 : 0)).fill(face);
           g.rect(px + l, py + u, TS - l - r, TS - u - d).fill(top);
-          if (s === B.WALL_STONE) g.rect(px + 4, py + 11, 16, 1).rect(px + 12, py + 4, 1, 7).fill({ color: 0x565a62, alpha: 0.5 });
-          else g.rect(px + 5, py + 8, 14, 1).rect(px + 5, py + 15, 14, 1).fill({ color: 0x4d3524, alpha: 0.4 });
-          if (pal.snow > 0.5) g.rect(px + l, py + u, TS - l - r, 3).fill({ color: 0xf2f5f7, alpha: 0.5 });
+          if (wood) {
+            // log ends and grain
+            g.rect(px + l, py + 7, TS - l - r, 1).rect(px + l, py + 14, TS - l - r, 1).fill({ color: 0x3a2716, alpha: 0.55 });
+          } else {
+            // cut blocks, offset row to row
+            const off = (x + y) & 1 ? 6 : 14;
+            g.rect(px + l, py + 8, TS - l - r, 1).fill({ color: 0x3a3d44, alpha: 0.7 });
+            g.rect(px + off, py + u, 1, 8 - u).rect(px + ((off + 8) % 20) + 2, py + 9, 1, Math.max(0, TS - d - 9)).fill({ color: 0x3a3d44, alpha: 0.7 });
+            g.rect(px + l, py + u, TS - l - r, 1).fill({ color: 0xb8bcc6, alpha: 0.5 });
+          }
+          if (pal.snow > 0.5) g.rect(px + l, py + u, TS - l - r, 3).fill({ color: 0xf2f5f7, alpha: 0.55 });
           break;
         }
         case B.DOOR: {
