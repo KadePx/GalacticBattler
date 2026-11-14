@@ -240,6 +240,14 @@ export function drawFoe(g: Graphics, k: string): void {
   g.poly([-2.6, -13.5, 2.6, -13.5, 0, -10]).fill(0xef4444);
 }
 
+// ---------- Building signs ----------
+
+/** The badge each kind of building wears on its sign (same little pictures as the activity badges). */
+export const BLD_ICON: Record<string, string> = {
+  hall: 'eat', kitchen: 'w:cook', tavern: 'drink', brewery: 'w:brew', store: 'store', granary: 'w:farm', shrine: 'pray', smithy: 'w:smith',
+  workshop: 'w:craft', infirmary: 'w:heal', herbalist: 'w:herbs', school: 'study', guardhouse: 'w:guard', bathhouse: 'bathe', gamehall: 'chess',
+};
+
 // ---------- Wild animals (facing right) ----------
 
 export const WILD_SIZE: Record<string, number> = { deer: 1.25, boar: 1.1, hare: 0.8, fox: 0.95 };
@@ -447,6 +455,11 @@ export function drawActivity(g: Graphics, key: string): void {
     case 'study': // a closed book
       g.roundRect(-3.2, -3.6, 6.4, 7.2, 1).fill(0x4f6fa8);
       g.rect(-2.2, -3.6, 1, 7.2).fill(0x2f4f88);
+      break;
+    case 'store': // a crate
+      g.rect(-3.6, -3.4, 7.2, 6.8).fill(0xc9a27a);
+      line([-3.6, -3.4, 3.6, 3.4], 0x6b4c2c, 1.1);
+      line([-3.6, 0, 3.6, 0], 0x6b4c2c, 0.8);
       break;
     case 'bathe': // a drop
       g.moveTo(0, -4).quadraticCurveTo(3.4, 1, 0, 3.6).quadraticCurveTo(-3.4, 1, 0, -4).fill(0x5fb4e8);

@@ -12,7 +12,7 @@ import { FAITHS, mainFaith } from '../sim/faith';
 import { GOVS, approval, rulerTitle } from '../sim/gov';
 import { fullName, pawnById, person, stage } from '../sim/pawn';
 import type { Colony, Dead, Id, Pawn } from '../sim/types';
-import { WEIGHT, dateText, evText, raceName } from '../text';
+import { WEIGHT, clockText, dateText, evText, raceName } from '../text';
 import { bldCard, deadCard, face, linkNames, pawnCard, shortDate, type CardUi } from './card';
 import { RES_NAMES, WEATHER, actText, causeText, esc, moodColor } from './words';
 
@@ -62,10 +62,14 @@ function myCircle(c: Colony, me: Id): Set<Id> {
   return out;
 }
 
-const clock = (tick: number): string => {
-  const t = ((tick % TICKS_PER_DAY) + TICKS_PER_DAY) % TICKS_PER_DAY;
-  return `${String(Math.floor(t / 10)).padStart(2, '0')}:${String((t % 10) * 6).padStart(2, '0')}`;
-};
+const clock = (tick: number): string => clockText(tick);
+
+/** A day heading in the feed: today and yesterday by name, older days by date. */
+function dayHead(now: number, tick: number): string {
+  const ago = Math.floor(now / TICKS_PER_DAY) - Math.floor(tick / TICKS_PER_DAY);
+  const date = dateText(tick);
+  return ago === 0 ? `Today <span>· ${date}</span>` : ago === 1 ? `Yesterday <span>· ${date}</span>` : date;
+}
 
 export class Panels {
   tab: Tab = 'feed';
@@ -200,6 +204,8 @@ export class Panels {
     const fd = foodDays(c);
     this.put($('cname'), esc(c.name));
     this.put($('cdate'), dateText(c.tick, true));
+    const cd = $('cdate');
+    if (cd && !cd.title) cd.title = 'Game time. A game day passes in about 24 real minutes, so a whole game year passes in one real day.';
     // `alarm` is newer than this bar: set while raiders or beasts are in the colony
     const alarm = (c as unknown as { alarm?: number }).alarm;
     this.put($('cstats'),
@@ -215,7 +221,7 @@ export class Panels {
   private feed(c: Colony, me: Id): string {
     if (this.filter === 'mine' && !me) this.filter = 'all';
     const circle = this.filter === 'mine' ? myCircle(c, me) : null;
-    const key = `${c.log.length}|${c.logBase}|${this.filter}|${me}|${circle ? circle.size : 0}`;
+    const key = `${c.log.length}|${c.logBase}|${this.filter}|${me}|${circle ? circle.size : 0}|${Math.floor(c.tick / TICKS_PER_DAY)}`;
     if (key === this.feedKey) return this.feedHtml;
     this.feedKey = key;
     const chip = (k: string, label: string): string => `<button class="chip${this.filter === k ? ' on' : ''}" data-filter="${k}">${label}</button>`;
@@ -228,7 +234,7 @@ export class Panels {
       if (this.filter === 'notable' && w < 2) continue;
       if (circle && !circle.has(e.a ?? 0) && !circle.has(e.b ?? 0) && !(N_IS_ID.has(e.k) && circle.has(e.n ?? 0))) continue;
       const d = Math.floor(e.t / TICKS_PER_DAY);
-      if (d !== day) { day = d; h += `<div class="cen">${dateText(e.t)}</div>`; }
+      if (d !== day) { day = d; h += `<div class="cen">${dayHead(c.tick, e.t)}</div>`; }
       h += `<div class="ln w${w}" title="${dateText(e.t, true)}"><span class="y">${clock(e.t)}</span><span class="t">${linkNames(c, evText(c, e), [e.a, e.b, N_IS_ID.has(e.k) ? e.n : undefined])}</span></div>`;
       n++;
     }

@@ -5,10 +5,10 @@
 import { actText } from './words';
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
-import { cellCode, cells } from '../sim/data/buildings';
+import { CROPS, HOMES, TPL, cellCode, cells } from '../sim/data/buildings';
 import { stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
-import { WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
+import { BLD_ICON, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
 import { SHAPE, yearsAt } from './look';
 import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
 
@@ -93,6 +93,10 @@ export class MapView {
   private fog = new Graphics();
   private flashG = new Graphics();
   private labelLayer = new Container();
+  /** a sign over each building that has a purpose, and its name (names are drawn in screen space, like people's) */
+  private signLayer = new Container();
+  private signs: { g: Graphics; label: Text; x: number; y: number; field: boolean }[] = [];
+  private signKey = '';
   private chunks: Chunk[] = [];
   private views = new Map<Id, PawnView>();
   private foeViews = new Map<number, { g: Graphics; stamp: number }>();
@@ -161,6 +165,8 @@ export class MapView {
     this.foeViews.clear();
     for (const f of this.beastViews.values()) f.g.destroy();
     this.beastViews.clear();
+    for (const sg of this.signs) { sg.g.destroy(); sg.label.destroy(); }
+    this.signs = [];
     this.cam.removeChildren();
     for (const l of [this.structLayer, this.groundLayer, this.canopyLayer]) for (const ch of l.removeChildren()) ch.destroy();
     this.terCv.width = this.mw;
@@ -180,7 +186,8 @@ export class MapView {
     }
     this.night.clear().rect(0, 0, this.mw, this.mh).fill(0xffffff);
     this.overLayer.addChild(this.ring, this.mineMark);
-    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.pawnLayer, this.canopyLayer, this.night, this.lightLayer, this.overLayer);
+    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.pawnLayer, this.canopyLayer, this.night, this.lightLayer, this.signLayer, this.overLayer);
+    this.signKey = '';
     this.pal = null;
     this.selectBld(this.selBld);
     this.refreshStatic(true);
@@ -203,6 +210,7 @@ export class MapView {
     this.syncPawns(tf);
     this.syncFoes(tf);
     this.syncBeasts(tf);
+    this.syncSigns(c);
     this.stepCamera(dt);
     this.cull();
     this.lighting(tf, dt);
@@ -506,8 +514,53 @@ export class MapView {
     }
   }
 
+  /** Rebuild the signs when buildings are raised, finished or resown. */
+  private syncSigns(c: Colony): void {
+    let key = '';
+    for (const b of c.blds) if (!HOMES.includes(b.k) && b.k !== 'well' && b.k !== 'graveyard') key += `${b.id}${b.built ? 'b' : 'p'}${b.crop ?? ''},`;
+    if (key === this.signKey) return;
+    this.signKey = key;
+    for (const s of this.signs) { s.g.destroy(); s.label.destroy(); }
+    this.signs = [];
+    for (const b of c.blds) {
+      if (HOMES.includes(b.k) || b.k === 'well' || b.k === 'graveyard') continue;
+      const field = b.k === 'field';
+      const name = field ? (b.built && b.crop ? CROPS[b.crop]?.name ?? 'Field' : 'New field') : (b.name ?? TPL[b.k]?.name ?? b.k) + (b.built ? '' : ' (being built)');
+      const g = new Graphics();
+      const x = (b.x + b.w / 2) * TS;
+      const y = b.y * TS + (field ? TS * 0.5 : 2);
+      if (!field) {
+        // a hanging wooden board with the building's picture on it
+        g.moveTo(-5, -9).lineTo(-5, -3).moveTo(5, -9).lineTo(5, -3).stroke({ width: 1.2, color: 0x2a1d12 });
+        g.roundRect(-11, -4, 22, 16, 3).fill(0x8a6440).stroke({ width: 1.4, color: 0x2a1d12 });
+        const icon = new Graphics();
+        drawActivity(icon, BLD_ICON[b.k] ?? '');
+        icon.position.set(0, 4);
+        icon.scale.set(1.05);
+        g.addChild(icon);
+        g.position.set(x, y);
+        g.alpha = b.built ? 1 : 0.55;
+        this.signLayer.addChild(g);
+      }
+      const label = new Text({
+        text: name,
+        resolution: 2,
+        style: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: field ? 10 : 11, fontWeight: field ? '500' : '700', fill: field ? 0xdfe8c8 : 0xf6e7c4, stroke: { color: 0x0a0d14, width: 3, join: 'round' }, fontStyle: b.built ? 'normal' : 'italic' },
+      });
+      label.anchor.set(0.5, 0);
+      this.labelLayer.addChild(label);
+      this.signs.push({ g, label, x, y: y + (field ? 0 : 13), field });
+    }
+    this.placeLabels();
+  }
+
   private placeLabels(): void {
     const s = this.cam.scale.x;
+    // building names once the map is close enough to read them; field crops a little closer still
+    for (const sg of this.signs) {
+      sg.label.visible = s >= (sg.field ? 0.95 : 0.7);
+      if (sg.label.visible) sg.label.position.set(this.cam.x + sg.x * s, this.cam.y + sg.y * s + 1);
+    }
     for (const v of this.views.values()) {
       if (!v.label.visible) continue;
       v.label.position.set(this.cam.x + v.x * s, this.cam.y + (v.y + 7 * v.size) * s + 2);

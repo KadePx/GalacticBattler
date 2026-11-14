@@ -9,10 +9,18 @@ import { TH } from './sim/data/thoughts';
 import { person } from './sim/pawn';
 import type { Colony, Ev, Id } from './sim/types';
 
+/** "Day 13 of Autumn, Year 3", optionally with the time of day. */
 export function dateText(tick: number, withTime = false): string {
   const w = when(tick);
-  const base = `${w.day} ${SEASON_NAMES[w.season]}, Year ${w.year}`;
-  return withTime ? `${base}, ${String(w.hour).padStart(2, '0')}:${String(w.minute).padStart(2, '0')}` : base;
+  const base = `Day ${w.day} of ${SEASON_NAMES[w.season]}, Year ${w.year}`;
+  return withTime ? `${base} · ${clockText(tick)}` : base;
+}
+
+/** The time of day on a twelve-hour clock: "6:12 pm". */
+export function clockText(tick: number): string {
+  const w = when(tick);
+  const h = w.hour % 12 || 12;
+  return `${h}:${String(w.minute).padStart(2, '0')} ${w.hour < 12 ? 'am' : 'pm'}`;
 }
 
 const first = (c: Colony, id: Id | undefined): string => {

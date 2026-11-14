@@ -39,10 +39,10 @@ export function face(c: Colony, p: Who, size: number): string {
   return svg;
 }
 
-/** "3 Spr Y2": dates in lists stay short; the full date is in the tooltip. */
+/** "Spr 3 · Y2": dates in lists stay short; the full date is in the tooltip. */
 export function shortDate(tick: number): string {
   const w = when(tick);
-  return `${w.day} ${SEASON_NAMES[w.season].slice(0, 3)} Y${w.year}`;
+  return `${SEASON_NAMES[w.season].slice(0, 3)} ${w.day} · Y${w.year}`;
 }
 
 const sign = (v: number): string => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(Math.round(v));
