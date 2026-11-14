@@ -3,7 +3,7 @@
 // (sim/create.ts): this file only collects choices and shows what checkSpec says about them.
 // It never touches a colony; when the player is done it hands the finished spec to main.ts.
 
-import { BUDGET, FREE_SKILL, GOALS, LOOK_RANGE, MAX_TRAITS, MIN_TRAITS, PHOBIAS, SECRETS, baseSkills, checkSpec, type PawnSpec } from '../sim/create';
+import { BUDGET, FREE_SKILL, PT, GOALS, LOOK_RANGE, MAX_TRAITS, MIN_TRAITS, PHOBIAS, SECRETS, baseSkills, checkSpec, type PawnSpec } from '../sim/create';
 import { ADULTHOODS, BACKS, CHILDHOODS, type BackDef } from '../sim/data/backstories';
 import { PLAYABLE, RACES } from '../sim/data/races';
 import { TRAITS, TRAIT_LIST, traitsClash, type TraitDef } from '../sim/data/traits';
@@ -20,7 +20,8 @@ import { esc } from './words';
 const rnd = new Rand(Math.floor(Math.random() * 2 ** 31), Date.now() % 2 ** 31);
 const pick = <T>(list: readonly T[]): T => list[rnd.int(list.length)];
 
-const STEPS = ['People', 'Looks', 'Name', 'Past', 'Nature', 'Skills', 'Beliefs', 'Arrive'] as const;
+// everything that costs or gives points comes first; skills, where what is left gets spent, last
+const STEPS = ['People', 'Looks', 'Name', 'Past', 'Heart', 'Nature', 'Skills', 'Arrive'] as const;
 const HAIR_NAMES = ['Bald', 'Cropped', 'Fringe', 'Long', 'Bun', 'Crest', 'Ponytail', 'Braids', 'Shaggy', 'Topknot'];
 const BODY_NAMES = ['Slight', 'Lean', 'Average', 'Broad', 'Heavy'];
 const BEARD_NAMES = ['Clean-shaven', 'Stubble', 'Short beard', 'Long beard', 'Great beard'];
@@ -144,7 +145,8 @@ function skillList(sk: Partial<Record<string, number>>): string {
 /** A points tag: costs are red, flaws that give points back are green. */
 function costTag(pts: number): string {
   if (!pts) return '<span class="cost">free</span>';
-  return pts > 0 ? `<span class="cost pay">costs ${pts}</span>` : `<span class="cost gain">gives ${-pts}</span>`;
+  const n = Math.abs(pts * PT);
+  return pts > 0 ? `<span class="cost pay">costs ${n}</span>` : `<span class="cost gain">gives ${n}</span>`;
 }
 
 export interface CreatorHooks {
@@ -331,7 +333,7 @@ export class Creator {
     const body = this.part('crbody');
     const y = body.scrollTop;
     this.part('crrail').innerHTML = STEPS.map((name, i) => `<button class="${i === this.step ? 'on' : i < this.step ? 'done' : ''}" data-cr="step" data-v="${i}">${i + 1}. ${name}</button>`).join('');
-    body.innerHTML = [this.people, this.looks, this.naming, this.past, this.nature, this.skills, this.beliefs, this.arrive][this.step].call(this);
+    body.innerHTML = [this.people, this.looks, this.naming, this.past, this.beliefs, this.nature, this.skills, this.arrive][this.step].call(this);
     body.scrollTop = top ? 0 : y;
     this.drawSummary();
     this.drawFoot();
@@ -353,13 +355,13 @@ export class Creator {
     const chk = checkSpec(s);
     const over = chk.spent > chk.budget;
     const left = chk.budget - chk.spent;
-    const extra = Math.max(0, Math.ceil((chk.skillSpent - FREE_SKILL) / 3));
+    const extra = Math.max(0, chk.skillSpent - FREE_SKILL);
     let h = `<div class="who">${face(s, 180)}<div class="id"><div class="nm">${esc(fullOf(s))}</div><div class="sub">${esc(RACES[s.race].name)} · ${s.sex ? 'Male' : 'Female'} · ${s.age} years</div></div></div>`;
     // flaws give points back, so what is left can be more than the starting budget
     const avail = Math.max(chk.budget, chk.budget - Math.min(0, chk.spent));
     const bonus = chk.spent < 0 ? -chk.spent : 0;
-    h += `<div class="meters"><div class="meter${over ? ' over' : ''}"><b>${over ? `${-left} ${-left === 1 ? 'point' : 'points'} over` : `${left} ${left === 1 ? 'point' : 'points'} left`}</b><span>${over ? 'drop a strength or take a flaw' : bonus ? `${chk.budget} to start, +${bonus} from flaws` : `of ${chk.budget}: strengths cost, flaws give back`}</span><div class="bar"><i style="width:${Math.max(0, Math.min(100, (left / avail) * 100)).toFixed(0)}%;background:${over ? 'var(--bad)' : 'var(--accent)'}"></i></div></div>`;
-    h += `<div class="meter"><b>${chk.skillSpent} of ${FREE_SKILL} skill points</b><span>${extra ? `the extra cost ${extra}` : chk.skillSpent < FREE_SKILL ? `${FREE_SKILL - chk.skillSpent} unused` : 'all used'}</span></div></div>`;
+    h += `<div class="meters"><div class="meter${over ? ' over' : ''}"><b>${over ? `${-left} ${-left === 1 ? 'point' : 'points'} over` : `${left} ${left === 1 ? 'point' : 'points'} left`}</b><span>${over ? 'drop a strength or a skill point, or take a flaw' : bonus ? `${chk.budget} to start, +${bonus} from flaws` : `of ${chk.budget}. Strengths cost, flaws give back; spend what is left on skills`}</span><div class="bar"><i style="width:${Math.max(0, Math.min(100, (left / avail) * 100)).toFixed(0)}%;background:${over ? 'var(--bad)' : 'var(--accent)'}"></i></div></div>`;
+    h += `<div class="meter"><b>${Math.min(chk.skillSpent, FREE_SKILL)} of ${FREE_SKILL} free skill points</b><span>${extra ? `${extra} more bought with points` : chk.skillSpent < FREE_SKILL ? `${FREE_SKILL - chk.skillSpent} still free, on the Skills step` : 'all used'}</span></div></div>`;
     const traits = [...forcedTraits(s), ...s.traits.filter((k) => !forcedTraits(s).includes(k))];
     h += `<div class="chips">${traits.map((k) => `<span class="chip">${esc(TRAITS[k]?.name ?? k)}</span>`).join('')}</div>`;
     h += `<button class="state ${chk.ok ? 'ok' : 'bad'}" data-cr="step" data-v="${STEPS.length - 1}">${chk.ok ? 'Ready to send' : `${chk.errors.length} ${chk.errors.length === 1 ? 'thing' : 'things'} to fix`}</button>`;
@@ -441,7 +443,7 @@ export class Creator {
   private nature(): string {
     const s = this.spec;
     const forced = forcedTraits(s);
-    let h = `<h2>What are they like?</h2><p class="lead">Pick ${MIN_TRAITS} to ${MAX_TRAITS} traits. Strengths cost points; flaws give points back. <b>${s.traits.length} chosen.</b></p>`;
+    let h = `<h2>What are they like?</h2><p class="lead">Pick ${MIN_TRAITS} to ${MAX_TRAITS} traits. Strengths cost points; flaws give points back. Whatever is left goes on skills next. <b>${s.traits.length} chosen.</b></p>`;
     if (forced.length) h += `<div class="note">From their past, whatever you pick: ${forced.map((k) => `<span class="chip on" title="${esc(TRAITS[k]?.desc ?? '')}">${esc(TRAITS[k]?.name ?? k)}</span>`).join(' ')}</div>`;
     for (const [g, label] of GROUPS) {
       h += `<h3>${label}</h3><div class="opts">`;
@@ -460,9 +462,11 @@ export class Creator {
     const s = this.spec;
     const base = baseSkills(s);
     const chk = checkSpec(s);
-    const extra = Math.max(0, Math.ceil((chk.skillSpent - FREE_SKILL) / 3));
     const count = s.pas.filter((x) => x > 0).length;
-    let h = `<h2>What can they do?</h2><p class="lead">Their people, past and years give the grey levels. Add up to 4 to any skill: the first ${FREE_SKILL} points are free, then every 3 more cost a budget point. <b>${chk.skillSpent} added${extra ? `, costing ${extra}` : ''}.</b></p><p class="hint">${SKILL_LEVELS}</p>`;
+    const free = Math.max(0, FREE_SKILL - chk.skillSpent);
+    const left = chk.budget - chk.spent;
+    let h = `<h2>What can they do?</h2><p class="lead">Their people, past and years give the grey levels. Add up to 4 to any skill. The first ${FREE_SKILL} are free; after that each one costs a point.</p>`;
+    h += `<div class="note">${free ? `<b>${free} free ${free === 1 ? 'point' : 'points'}</b> to place, then ` : ''}<b class="${left < 0 ? 'down' : ''}">${left} ${Math.abs(left) === 1 ? 'point' : 'points'} left</b> to spend${left > 0 ? ': this is the place to use them' : left < 0 ? ': take some off, or go back and take a flaw' : ''}.</div><p class="hint">${SKILL_LEVELS}</p>`;
     for (let i = 0; i < SKILLS.length; i++) {
       let pips = '';
       for (let k = 0; k < 14; k++) pips += `<i class="${k < base[i] ? 'b' : k < base[i] + s.sk[i] ? 'a' : ''}"></i>`;
@@ -479,7 +483,7 @@ export class Creator {
   private beliefs(): string {
     const s = this.spec;
     const usual = RACES[s.race].faiths[0];
-    let h = '<h2>What do they believe, want and fear?</h2><p class="lead">Faith shapes who they get on with. A goal gives them something to chase. Flaws give points back.</p><h3>Faith</h3><div class="opts">';
+    let h = '<h2>What do they believe, want and fear?</h2><p class="lead">Faith shapes who they get on with. A goal gives them something to chase. A fear or a secret gives points back to spend on traits and skills in the next steps.</p><h3>Faith</h3><div class="opts">';
     for (const k of faithsOpen()) {
       const f = FAITHS[k];
       h += `<button class="opt${s.faith === k ? ' on' : ''}" data-cr="faith" data-v="${k}"><b>${esc(f.name)}</b><small>${esc(f.blurb)}</small>${k === usual ? `<small class="x">The usual faith of ${esc(RACES[s.race].plural.toLowerCase())}.</small>` : ''}</button>`;
@@ -488,7 +492,7 @@ export class Creator {
     h += '<div class="hint">The devout take comfort in prayer and think less of other faiths.</div>';
     h += '<h3>Life goal</h3><div class="chips">' + Object.entries(GOALS).map(([k, name]) => `<button class="chip${s.goal === k ? ' on' : ''}" data-cr="goal" data-v="${k}">${esc(name)}</button>`).join('') + '</div>';
     h += '<h3>Drawn to</h3><div class="seg fit">' + ORIENT_NAMES.map((name, i) => `<button class="${s.orient === i ? 'on' : ''}" data-cr="orient" data-v="${i}">${name}</button>`).join('') + '</div>';
-    h += `<h3>A fear <span class="legend">optional, gives 1 point</span></h3><div class="chips"><button class="chip${s.phobia ? '' : ' on'}" data-cr="phobia" data-v="">None</button>` + Object.entries(PHOBIAS).map(([k, name]) => `<button class="chip${s.phobia === k ? ' on' : ''}" data-cr="phobia" data-v="${k}">${esc(name)}</button>`).join('') + '</div>';
+    h += `<h3>A fear <span class="legend">optional, gives ${PT} points</span></h3><div class="chips"><button class="chip${s.phobia ? '' : ' on'}" data-cr="phobia" data-v="">None</button>` + Object.entries(PHOBIAS).map(([k, name]) => `<button class="chip${s.phobia === k ? ' on' : ''}" data-cr="phobia" data-v="${k}">${esc(name)}</button>`).join('') + '</div>';
     h += `<h3>A secret <span class="legend">optional, gives 1 point</span></h3><div class="opts"><button class="opt${s.secret ? '' : ' on'}" data-cr="secret" data-v=""><b>Nothing to hide</b><small>What you see is what there is.</small></button>`;
     for (const [k, d] of Object.entries(SECRETS)) h += `<button class="opt${s.secret === k ? ' on' : ''}" data-cr="secret" data-v="${k}"><b>${esc(d.name)}${costTag(-1)}</b><small>${esc(d.blurb)}</small></button>`;
     h += '</div><div class="hint">Nobody in the colony knows a secret at first. It can come out, and it will not be forgiven lightly.</div>';
@@ -503,8 +507,9 @@ export class Creator {
     const top = SKILLS.map((_, i) => i).sort((a, b) => base[b] + s.sk[b] - (base[a] + s.sk[a]) || s.pas[b] - s.pas[a]).slice(0, 5);
     const traits = [...new Set([...forcedTraits(s), ...s.traits])];
     let h = `<h2>Ready for the road?</h2><p class="lead">Once they walk in, they live their own life. You watch, and nudge a little.</p>`;
+    const unspent = chk.budget - chk.spent;
     h += chk.ok
-      ? '<div class="okay">Everything is in order.</div>'
+      ? `<div class="okay">Everything is in order.${unspent > 0 ? ` <button class="btn sm" data-cr="step" data-v="${STEPS.indexOf('Skills')}">${unspent} ${unspent === 1 ? 'point' : 'points'} unspent: add skills</button>` : ''}</div>`
       : `<div class="errs">${chk.errors.map((e) => `<div>${esc(e)}</div>`).join('')}</div>`;
     h += `<div class="head">${face(s, 96)}<div class="hd"><div class="nm">${esc(fullOf(s))}</div><div class="sub">${esc(RACES[s.race].name)} · ${s.sex ? 'Male' : 'Female'} · ${s.age} years</div><div class="sub">${esc(FAITHS[s.faith]?.name ?? 'No faith')}, ${DEV_NAMES[s.dev]?.toLowerCase() ?? ''}</div></div></div>`;
     h += `<h3>Past</h3><div class="note"><b>${esc(BACKS[s.bc]?.name ?? 'No childhood')}</b>, then <b>${esc(BACKS[s.ba]?.name.toLowerCase() ?? 'nothing yet')}</b>.</div>`;

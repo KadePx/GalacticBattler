@@ -28,9 +28,14 @@ export const SECRETS: Record<string, { name: string; blurb: string }> = {
   bigamist: { name: 'Left a family', blurb: 'There is a spouse and children somewhere who think they are dead.' },
 };
 
-/** Points every new colonist has to spend. Good traits and rich backstories cost; flaws give points back. */
-export const BUDGET = 5;
-/** Free skill points on top of what people and backstory give. Extra ones cost budget. */
+/**
+ * One pool of points for every new colonist. Good traits and rich backstories cost; flaws, a
+ * fear and a secret give points back; skill points past the free ones cost one each.
+ */
+export const BUDGET = 15;
+/** Each unit of a trait's or backstory's listed price is worth this many points. */
+export const PT = 3;
+/** Skill points that cost nothing. */
 export const FREE_SKILL = 6;
 export const MAX_TRAITS = 4;
 export const MIN_TRAITS = 2;
@@ -83,11 +88,11 @@ export function checkSpec(spec: PawnSpec): SpecCheck {
   if (!adult || (adult.races && !adult.races.includes(spec.race))) errors.push('Pick an adult life.');
   const traits = spec.traits ?? [];
   if (traits.length < MIN_TRAITS || traits.length > MAX_TRAITS) errors.push(`Pick ${MIN_TRAITS} to ${MAX_TRAITS} traits.`);
-  let spent = (child?.pts ?? 0) + (adult?.pts ?? 0);
+  let spent = ((child?.pts ?? 0) + (adult?.pts ?? 0)) * PT;
   traits.forEach((k, i) => {
     const t = TRAITS[k];
     if (!t) { errors.push('Unknown trait.'); return; }
-    spent += t.pts;
+    spent += t.pts * PT;
     for (let j = 0; j < i; j++) if (traitsClash(k, traits[j])) errors.push(`${t.name} cannot go with ${TRAITS[traits[j]]?.name ?? traits[j]}.`);
     for (const b of [child, adult]) if (b?.trait && b.trait !== k && traitsClash(k, b.trait)) errors.push(`${t.name} does not fit a ${b.name.toLowerCase()}.`);
   });
@@ -98,7 +103,7 @@ export function checkSpec(spec: PawnSpec): SpecCheck {
     if (!(v >= 0 && v <= 4) || Math.floor(v) !== v) errors.push('Bad skills.');
     else { skillSpent += v; if (base[i] + v > 14) errors.push('No skill can start above 14.'); }
   });
-  if (skillSpent > FREE_SKILL) spent += Math.ceil((skillSpent - FREE_SKILL) / 3);
+  if (skillSpent > FREE_SKILL) spent += skillSpent - FREE_SKILL;
   let pasN = 0;
   let burning = 0;
   if (!Array.isArray(spec.pas) || spec.pas.length !== SKILLS.length) errors.push('Bad passions.');
@@ -108,8 +113,8 @@ export function checkSpec(spec: PawnSpec): SpecCheck {
   if (!FAITHS[spec.faith] || FAITHS[spec.faith].cult) errors.push('Pick a faith.');
   if (!(spec.dev >= 0 && spec.dev <= 3)) errors.push('Bad devotion.');
   if (!GOALS[spec.goal]) errors.push('Pick a life goal.');
-  if (spec.phobia) { if (!PHOBIAS[spec.phobia]) errors.push('Unknown fear.'); else spent -= 1; }
-  if (spec.secret) { if (!SECRETS[spec.secret]) errors.push('Unknown secret.'); else spent -= 1; }
+  if (spec.phobia) { if (!PHOBIAS[spec.phobia]) errors.push('Unknown fear.'); else spent -= PT; }
+  if (spec.secret) { if (!SECRETS[spec.secret]) errors.push('Unknown secret.'); else spent -= PT; }
   const L = spec.look;
   if (!L) errors.push('Bad looks.');
   else for (const k of Object.keys(LOOK_RANGE) as (keyof typeof LOOK_RANGE)[]) if (!(L[k] >= 0 && L[k] < LOOK_RANGE[k]) || Math.floor(L[k]) !== L[k]) errors.push('Bad looks.');
@@ -119,7 +124,7 @@ export function checkSpec(spec: PawnSpec): SpecCheck {
   if (!name.test(spec.fam ?? '')) errors.push('Give them a family name (2 to 16 letters).');
   if (spec.epi && !/^[\p{L}][\p{L}' -]{2,23}$/u.test(spec.epi)) errors.push('The epithet must be 3 to 24 letters.');
   if (spec.heirloom && !/^[\p{L}][\p{L}' -]{2,31}$/u.test(spec.heirloom)) errors.push('The keepsake must be 3 to 32 letters.');
-  if (spent > BUDGET) errors.push(`Over budget by ${spent - BUDGET}. Drop a strength or take a flaw.`);
+  if (spent > BUDGET) errors.push(`${spent - BUDGET} ${spent - BUDGET === 1 ? 'point' : 'points'} over. Drop a strength or a skill point, or take a flaw.`);
   return { ok: errors.length === 0, errors: [...new Set(errors)], spent, budget: BUDGET, skillSpent };
 }
 
