@@ -195,7 +195,10 @@ function dec(s: string): Uint8Array {
 }
 
 export function serialize(c: Colony): string {
-  const raw: Record<string, unknown> = { ...c };
+  // fields in a fixed order: a field cleared and later set again must not move, or two copies
+  // of the same colony would serialise (and fingerprint) differently
+  const raw: Record<string, unknown> = {};
+  for (const k of Object.keys(c).sort()) raw[k] = (c as unknown as Record<string, unknown>)[k];
   for (const k of LAYERS) raw[k] = enc(c[k]);
   raw.sb = enc(new Uint8Array(c.sb.buffer, c.sb.byteOffset, c.sb.byteLength));
   return JSON.stringify(raw);

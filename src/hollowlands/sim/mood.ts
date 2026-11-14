@@ -337,6 +337,10 @@ const BREAKS: { k: string; level: number; hours: number; w: (p: Pawn, c: Colony)
   { k: 'wander', level: 2, hours: 48, w: () => 3 },
   { k: 'sulk', level: 2, hours: 40, w: () => 3 },
   { k: 'murder', level: 2, hours: 8, w: (p, c) => (hatesSomeone(c, p) ? 1.5 + (has(p, 'vengeful') ? 3 : 0) + (has(p, 'cruel') ? 2 : 0) + (has(p, 'bloodlust') ? 2 : 0) - per(p, AX.KIND) : 0) },
+  // pain, fever and a short fuse: lashing out at whoever is near
+  { k: 'berserk', level: 0, hours: 2, w: (p) => (p.hp < 40 || (p.ill && p.ill.sev > 55) ? 0.8 + Math.max(0, per(p, AX.TEMPER)) * 1.5 : 0) },
+  { k: 'berserk', level: 1, hours: 3, w: (p) => Math.max(0, 0.6 + per(p, AX.TEMPER) * 1.4 - per(p, AX.KIND) + (has(p, 'bloodlust') ? 2.5 : 0) + (p.hp < 45 ? 2 : 0) + (p.ill && p.ill.sev > 50 ? 1.2 : 0) + (p.race === 'orc' ? 0.6 : 0)) },
+  { k: 'berserk', level: 2, hours: 4, w: (p) => Math.max(0, 1 + per(p, AX.TEMPER) * 1.6 - per(p, AX.KIND) + (has(p, 'bloodlust') ? 3 : 0) + (p.hp < 45 ? 2.5 : 0)) },
   { k: 'murder', level: 1, hours: 8, w: (p, c) => (has(p, 'vengeful') || has(p, 'bloodlust') || has(p, 'cruel')) && hatesSomeone(c, p) ? 0.8 : 0 },
 ];
 
@@ -363,6 +367,8 @@ export function startBreak(c: Colony, p: Pawn, level: number, r: Rand): void {
   p.lastBrk = c.tick;
   p.low = 0;
   endNow(c, p);
+  // the wardens drop what they are doing
+  if (pick.k === 'berserk') for (const o of c.pawns) if (o !== p && !o.brk && (o.prof === 'guard' || c.gov.titles.marshal === o.id) && o.act.k !== 'fight') endNow(c, o);
   log(c, 'break', p.id, undefined, pick.k, level);
   note(c, p, 'break', undefined, pick.k);
   bump(c, 'breaks');
@@ -374,6 +380,6 @@ export function endBreak(c: Colony, p: Pawn): void {
   p.brk = undefined;
   think(c, p, 'catharsis');
   if (k === 'murder') { forget(p, 'catharsis'); endNow(c, p); return; }
-  if ((k === 'tantrum' || k === 'rave') && per(p, AX.KIND) > 0.2) think(c, p, 'ashamed');
+  if ((k === 'tantrum' || k === 'rave' || k === 'berserk') && per(p, AX.KIND) > 0.2) think(c, p, 'ashamed');
   endNow(c, p);
 }

@@ -71,6 +71,16 @@ export const TH_LIST: ThDef[] = [
 
   // Food and drink
   h('atefeast', 'Ate a fine meal', 6, DAY),
+  h('wardread', 'We are at war', -4, DAY * 4),
+  h('warjoy', 'At war at last', 3, DAY * 4),
+  h('peace', 'The war is over', 5, DAY * 3),
+  h('ledwarband', 'Leading the war band', 4, DAY * 2),
+  h('raisedalarm', 'Saw them coming and raised the alarm', 4, DAY),
+  h('keptpeace', 'Broke up a fight', 2, DAY),
+  h('attackedby', '{o} went for me like a madman', -8, DAY * 3, { op: -25 }),
+  h('sawberserk', 'Saw {o} go berserk', -4, DAY, { op: -6 }),
+  h('subdued', 'Was wrestled down by {o}', -3, DAY, { op: -4 }),
+  h('subduedthem', 'Stopped {o} before anyone died', 4, DAY),
   h('brokentool', 'My tool broke in my hands', -2, 12),
   h('variedfare', 'A good mix of food on the table', 3, DAY),
   h('samefare', 'The same food every day', -3, DAY),

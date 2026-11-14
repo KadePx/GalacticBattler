@@ -3,7 +3,7 @@
 
 import { HARD_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
 import { touch } from './cache';
-import { cells } from './data/buildings';
+import { cells, shapeOf } from './data/buildings';
 import { RACES, childRace } from './data/races';
 import { TRAITS } from './data/traits';
 import { bump, log, note } from './events';
@@ -243,7 +243,7 @@ export function bury(c: Colony): void {
     if (d.grave >= 0 || d.left || c.tick - d.died > TICKS_PER_DAY * 30) continue;
     for (const y of yards) {
       let placed = false;
-      for (const cell of cells(y.k)) {
+      for (const cell of cells(shapeOf(y))) {
         if (cell.ch !== ',') continue;
         // leave every other row and column free so mourners can walk between the graves
         if (cell.dx % 2 === 0 || cell.dy % 2 === 0) continue;

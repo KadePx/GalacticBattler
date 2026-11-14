@@ -3,7 +3,7 @@
 import { DAYS_PER_YEAR, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
 import { ROCK_FACE, SHORE, cacheOf, dropFeat, featList, touch } from './cache';
 import { BACKS } from './data/backstories';
-import { CROPS, DECOR, cells, isDecor, spots } from './data/buildings';
+import { CROPS, DECOR, cells, isDecor, spots, shapeOf } from './data/buildings';
 import { PROFS } from './data/professions';
 import { foodDays, mouths, rawFood } from './econ';
 import { anySowable, chooseCrop, sowable, variety } from './farm';
@@ -121,7 +121,7 @@ function bldOf(c: Colony, k: string): Bld | undefined {
 }
 
 function spotTile(c: Colony, b: Bld, chars: string, r: Rand): number {
-  const list = spots(b.k, chars);
+  const list = spots(shapeOf(b), chars);
   if (!list.length) return (b.y + Math.floor(b.h / 2)) * c.w + b.x + Math.floor(b.w / 2);
   const cell = r.pick(list);
   return (b.y + cell.dy) * c.w + b.x + cell.dx;
@@ -182,6 +182,9 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
         const gh = bldOf(c, 'guardhouse');
         return gh ? job('guard', spotTile(c, gh, 'R', r), true, 'Weapons practice', gh.id, 1) : job('guard', c.cy * c.w + c.cx + r.range(-2, 2), false, 'Weapons practice', undefined, 1);
       }
+      // the tower first, if nobody is up there
+      const tower = c.blds.find((b) => b.k === 'tower' && b.built);
+      if (tower && !c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === tower.id)) return job('guard', spotTile(c, tower, '.', r), true, 'On watch from the tower', tower.id);
       const k = cacheOf(c);
       for (let tries = 0; tries < 12; tries++) {
         const x = c.cx + r.range(-17, 17);
@@ -236,7 +239,7 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
   const site = c.blds.find((b) => canBuild(c, b));
   if (site) {
     offer('build', 5.5, 'build', () => {
-      const list = cells(site.k);
+      const list = cells(shapeOf(site));
       const cell = list[Math.min(list.length - 1, Math.floor(site.prog * list.length))];
       return job('build', (site.y + cell.dy) * c.w + site.x + cell.dx, true, 'There is building to be done', site.id);
     });
@@ -764,7 +767,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
 export function bedFor(c: Colony, o: Pawn): number {
   const inf = bldOf(c, 'infirmary');
   if (inf) {
-    for (const cell of spots(inf.k, 'o')) {
+    for (const cell of spots(shapeOf(inf), 'o')) {
       const x = inf.x + cell.dx;
       const y = inf.y + cell.dy;
       if (!c.pawns.some((q) => q !== o && q.act.tx === x && q.act.ty === y)) return y * c.w + x;
@@ -772,7 +775,7 @@ export function bedFor(c: Colony, o: Pawn): number {
   }
   const home = o.home ? c.blds.find((b) => b.id === o.home) : undefined;
   if (home) {
-    const cell = spots(home.k, 'b')[home.beds.indexOf(o.id)];
+    const cell = spots(shapeOf(home), 'b')[home.beds.indexOf(o.id)];
     if (cell) return (home.y + cell.dy) * c.w + home.x + cell.dx;
   }
   return -1;
@@ -791,7 +794,7 @@ function masterwork(c: Colony, p: Pawn, r: Rand, lv: number, what: string): void
 
 /** As a home is made finer it gains things: a rug, then a wardrobe, a lamp, a shelf of books. */
 export function furnish(c: Colony, b: Bld): void {
-  const floor = spots(b.k, '.');
+  const floor = spots(shapeOf(b), '.');
   if (!floor.length) return;
   const have: number[] = [];
   for (const cell of floor) { const s = c.st[(b.y + cell.dy) * c.w + b.x + cell.dx]; if (isDecor(s)) have.push(s); }

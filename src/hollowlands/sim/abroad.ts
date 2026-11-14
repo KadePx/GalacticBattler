@@ -11,28 +11,93 @@ import { STAGE, has, pawnById, per, stage } from './pawn';
 import { Rand, S } from './rng';
 import { AX, type Colony, type Input } from './types';
 
-/** Once a day: does the ruler send a raiding party down the road? */
+/** Slights between neighbours (the text is in text.ts, by index). */
+export const INCIDENTS = ['poachers', 'cheat', 'road', 'herd', 'insult', 'stolen'];
+
+/** Once a day: grudges cool or harden into war; war bands go out; the weary sue for peace. */
 export function dailyAbroad(c: Colony): void {
   const near = c.near;
   const day = dayOf(c.tick);
-  if (!near?.length || day % 5 !== 0) return;
-  if (c.foes.length || c.alarm || seasonOf(c.tick) === 3) return;
-  if (c.tick - (c.story.raid ?? -99999) < TICKS_PER_DAY * 25) return;
+  if (!near?.length) return;
   const ruler = pawnById(c, c.gov.ruler);
-  if (!ruler) return;
-  const hard = c.gov.k === 'chief' || c.gov.k === 'tyrant' || per(ruler, AX.KIND) < -0.8 || has(ruler, 'bloodlust');
-  const hungry = foodDays(c) < 6;
-  if (!hard && !(hungry && per(ruler, AX.KIND) < 0.3)) return;
+  const g = (c.grudge ??= {});
+  const wars = (c.wars ??= {});
+  for (const k in g) { g[k] = Math.max(0, g[k] - 0.25); if (g[k] < 0.5) delete g[k]; }
+  if (!ruler || c.foes.length || c.alarm) return;
+  const r = new Rand(c.seed, S.EVENT, day, 91);
   let fighters = 0;
   for (const p of c.pawns) if (canFight(c, p)) fighters++;
-  if (fighters < 6) return;
-  const r = new Rand(c.seed, S.EVENT, day, 91);
-  if (!r.chance(hungry ? 0.5 : per(ruler, AX.GREED) > 0.8 ? 0.25 : 0.1)) return;
-  const target = near[r.int(Math.min(2, near.length))];
-  const n = Math.min(7, Math.max(3, fighters - 3));
+  const fierce = c.gov.k === 'chief' || c.gov.k === 'tyrant' || per(ruler, AX.KIND) < -0.8 || has(ruler, 'bloodlust');
+
+  // trouble on the borders: small slights that add up
+  if (day % 6 === 3 && r.chance(0.3)) {
+    // bad blood finds the same neighbour again more often than not
+    const worst = near.slice(0, 3).sort((a, b) => (g[b.id] ?? 0) - (g[a.id] ?? 0))[0];
+    const n = worst && (g[worst.id] ?? 0) > 3 && r.chance(0.6) ? worst : near[r.int(Math.min(3, near.length))];
+    const k = r.int(INCIDENTS.length);
+    g[n.id] = (g[n.id] ?? 0) + 5 + r.int(7);
+    log(c, 'incident', undefined, undefined, n.name, k);
+  }
+
+  // a grudge deep enough becomes a war
+  if (day % 3 === 1) {
+    for (const n of near) {
+      if (wars[n.id] || (g[n.id] ?? 0) < 18 || fighters < 4) continue;
+      const temper = per(ruler, AX.TEMPER) + (fierce ? 1 : 0) - per(ruler, AX.KIND) * 0.6;
+      if (!r.chance(Math.min(0.8, 0.2 + temper * 0.2 + (g[n.id] - 20) / 60))) continue;
+      wars[n.id] = { name: n.name, since: c.tick, sent: 0, came: 0, lost: 0, slain: 0, ours: true };
+      c.out.push({ k: 'war', to: n.id, fromId: c.id, fromName: c.name });
+      log(c, 'war_declared', ruler.id, undefined, n.name);
+      bump(c, 'wars');
+      for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, has(p, 'bloodlust') || p.race === 'orc' ? 'warjoy' : 'wardread');
+      break;
+    }
+  }
+
+  // the weary sue for peace, and pay for it
+  for (const id of Object.keys(wars)) {
+    const w = wars[id];
+    const days = (c.tick - w.since) / TICKS_PER_DAY;
+    if (days < 15 || day % 4 !== 2) continue;
+    const weary = days / 30 + w.lost * 1.2 + (foodDays(c) < 6 ? 2 : 0) + (fighters < 4 ? 3 : 0) - (has(ruler, 'bloodlust') ? 2 : 0) - (fierce ? 1 : 0) + per(ruler, AX.KIND);
+    // a long war that nobody is fighting simply ends
+    if (days > 120 || r.chance(Math.max(0, Math.min(0.6, weary * 0.06)))) {
+      const tribute = days > 120 ? 0 : Math.round(Math.min(c.stock.silver * 0.3, 20 + w.lost * 8));
+      c.stock.silver -= tribute;
+      delete wars[id];
+      g[id] = 0;
+      c.out.push({ k: 'peace', to: id, fromId: c.id, fromName: c.name, tribute });
+      log(c, 'peace_sued', ruler.id, undefined, w.name, tribute);
+      for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, 'peace');
+    }
+  }
+
+  // war bands, or a hard ruler's raid
+  if (seasonOf(c.tick) === 3 || fighters < 5) return;
+  const enemy = Object.keys(wars).find((id) => near.some((n) => n.id === id));
+  const gap = enemy ? 9 : 25;
+  if (c.tick - (c.story.raid ?? -99999) < TICKS_PER_DAY * gap || day % (enemy ? 3 : 5) !== 0) return;
+  let target: { id: string; name: string } | undefined;
+  if (enemy) {
+    if (!r.chance(0.6)) return;
+    target = near.find((n) => n.id === enemy);
+  } else {
+    const hungry = foodDays(c) < 6;
+    if (!fierce && !(hungry && per(ruler, AX.KIND) < 0.3)) return;
+    if (fighters < 6 || !r.chance(hungry ? 0.5 : per(ruler, AX.GREED) > 0.8 ? 0.25 : 0.1)) return;
+    target = near[r.int(Math.min(2, near.length))];
+  }
+  if (!target) return;
+  const n = Math.min(enemy ? 8 : 7, Math.max(3, fighters - 3));
+  // the marshal leads, else the champion, else the best fighter
+  const captain = pawnById(c, c.gov.titles.marshal ?? 0) ?? pawnById(c, c.gov.titles.champion ?? 0) ?? c.pawns.filter((p) => canFight(c, p) && !p.owner).sort((a, b) => b.sk[0] - a.sk[0])[0];
   c.story.raid = c.tick;
   c.out.push({ k: 'raid', to: target.id, kind: 'raider', n, fromId: c.id, fromName: c.name });
-  log(c, 'raidout', ruler.id, undefined, target.name, n);
+  if (enemy) {
+    wars[enemy].sent++;
+    log(c, 'warband', captain?.id ?? ruler.id, undefined, target.name, n);
+    if (captain) think(c, captain, 'ledwarband');
+  } else log(c, 'raidout', ruler.id, undefined, target.name, n);
   bump(c, 'raidsSent');
 }
 
@@ -73,6 +138,26 @@ export function abroadInput(c: Colony, e: Input): boolean {
     log(c, String(e.mod));
     return true;
   }
+  if (e.k === 'war') {
+    // they have declared war on us
+    const id = String(e.fromId);
+    const wars = (c.wars ??= {});
+    if (!wars[id]) wars[id] = { name: String(e.fromName), since: c.tick, sent: 0, came: 0, lost: 0, slain: 0, ours: false };
+    (c.grudge ??= {})[id] = Math.max(c.grudge[id] ?? 0, 25);
+    log(c, 'war_on_us', undefined, undefined, String(e.fromName));
+    for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, has(p, 'bloodlust') || p.race === 'orc' ? 'warjoy' : 'wardread');
+    return true;
+  }
+  if (e.k === 'peace') {
+    const id = String(e.fromId);
+    const tribute = Number(e.tribute) || 0;
+    if (c.wars?.[id]) delete c.wars[id];
+    if (c.grudge) c.grudge[id] = 0;
+    c.stock.silver += tribute;
+    log(c, 'peace_made', undefined, undefined, String(e.fromName), tribute);
+    for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, 'peace');
+    return true;
+  }
   if (e.k === 'spoils') {
     // our raiders come home, with what they took and without those who fell
     const loot = Number(e.loot) || 0;
@@ -90,6 +175,8 @@ export function abroadInput(c: Colony, e: Input): boolean {
       lost++;
     }
     log(c, 'raidback', undefined, undefined, `${String(e.name)}:${lost}`, Math.round(loot));
+    const war = c.wars ? Object.values(c.wars).find((w) => w.name === String(e.name)) : undefined;
+    if (war) { war.lost += lost; war.slain += Number(e.slain) || 0; }
     for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, loot > 20 && !lost ? 'plunder' : lost ? 'raidlost' : 'raidnothing');
     return true;
   }

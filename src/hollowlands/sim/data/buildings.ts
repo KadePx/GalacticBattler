@@ -3,7 +3,8 @@
 // b bed  t table  c chair  h hearth  s stove  w workbench  a anvil  f forge  x crate  r barrel
 // A altar  p pew  l loom  W well  e shelf  o sickbed  S statue
 // k cauldron  v brewing vat  n grain bin  d desk  K bookshelf  R weapon rack  T bath  C chess table
-// D dartboard  m music bench  H drying rack  L lamp  u rug  O wardrobe
+// D dartboard  m music bench  H drying rack  L lamp  u rug  O wardrobe  Y brazier
+// (a space is outside the building: shapes need not be rectangles)
 
 import { B } from '../types';
 
@@ -173,6 +174,14 @@ export const TPL_LIST: Tpl[] = [
     '#.......#',
     '####+####',
   ]),
+  // a lookout over the road: wardens see trouble coming from much further, and shoot from behind its walls
+  tpl('tower', 'Watchtower', 16, 24, 30, [
+    ' ### ',
+    '#...#',
+    '#.Y.#',
+    '#...#',
+    ' #+# ',
+  ]),
   tpl('graveyard', 'Graveyard', 12, 2, 12, [
     '=======',
     '=,,,,,=',
@@ -184,6 +193,103 @@ export const TPL_LIST: Tpl[] = [
 ];
 
 export const TPL: Record<string, Tpl> = Object.fromEntries(TPL_LIST.map((x) => [x.k, x]));
+
+/**
+ * Other floor plans for some kinds of building, so a colony is not all boxes. Keys are
+ * 'kind~name'; each also comes mirrored ('~m'). Same kind, same cost, different shape.
+ */
+const OTHER_SHAPES: Record<string, string[]> = {
+  'cottage~oct': [
+    ' #### ',
+    '#b..x#',
+    '#..c.#',
+    ' #+## ',
+  ],
+  'house~l': [
+    '####   ',
+    '#b.#   ',
+    '#..####',
+    '#x...b#',
+    '#c....#',
+    '###+###',
+  ],
+  'house~t': [
+    ' ##### ',
+    '##b.b##',
+    '#.....#',
+    '#x...c#',
+    '###+###',
+  ],
+  'bighouse~l': [
+    '   #####',
+    '   #b.b#',
+    '####...#',
+    '#b.....#',
+    '#x.tc..#',
+    '####+###',
+  ],
+  'bighouse~u': [
+    '###   ###',
+    '#b#####b#',
+    '#.......#',
+    '#b..tc.x#',
+    '####+####',
+  ],
+  'hall~t': [
+    '###########',
+    '#sx.....xh#',
+    '#ctc...ctc#',
+    '#.........#',
+    '##ctc.ctc##',
+    ' #.......# ',
+    ' ####+#### ',
+  ],
+  'shrine~x': [
+    '  ###  ',
+    '###A###',
+    '#p...p#',
+    '#p...p#',
+    '###.###',
+    '  #+#  ',
+  ],
+  'tavern~l': [
+    '#######   ',
+    '#rr..h#   ',
+    '#.....####',
+    '#ctc.....#',
+    '#...ctc..#',
+    '#####+####',
+  ],
+  'store~l': [
+    '#####  ',
+    '#xxx#  ',
+    '#...###',
+    '#xx..r#',
+    '##+####',
+  ],
+  'workshop~l': [
+    '######  ',
+    '#w.l.#  ',
+    '#....###',
+    '#x.w...#',
+    '##+#####',
+  ],
+};
+
+/** Every shape a kind of building can take (its own first). */
+export const SHAPES: Record<string, string[]> = {};
+for (const [key, rows] of Object.entries(OTHER_SHAPES)) {
+  const k = key.split('~')[0];
+  const base = TPL[k];
+  const mirrored = rows.map((r) => [...r].reverse().join(''));
+  for (const [name, plan] of [[key, rows], [key + '~m', mirrored]] as const) {
+    TPL[name] = { ...base, rows: plan };
+    (SHAPES[k] ??= [k]).push(name);
+  }
+}
+
+/** The floor plan a building was laid out from. */
+export const shapeOf = (b: { k: string; s?: string }): string => b.s ?? b.k;
 
 export const HOMES = ['cottage', 'house', 'bighouse', 'longhouse'];
 
@@ -204,6 +310,7 @@ export const PURPOSE: Record<string, string> = {
   herbalist: 'Medicine is made much faster among the drying racks and the cauldron.',
   bathhouse: 'A hot bath lifts the mood and helps the sick shake off illness. The water is heated with wood.',
   gamehall: 'Chess, darts and music of an evening.',
+  tower: 'Wardens keep watch from here and see trouble coming from twice as far. Archers on the tower shoot further, safe behind its walls.',
   well: 'Fresh water.',
   graveyard: 'Where the dead are laid to rest.',
 };
@@ -243,7 +350,7 @@ export function spots(k: string, ch: string): Cell[] {
 const FURN: Record<string, number> = {
   b: B.BED, t: B.TABLE, c: B.CHAIR, h: B.HEARTH, s: B.STOVE, w: B.BENCH, a: B.ANVIL, f: B.FORGE, x: B.CRATE, r: B.BARREL,
   A: B.ALTAR, p: B.PEW, l: B.LOOM, W: B.WELL, e: B.SHELF, o: B.COT, S: B.STATUE,
-  k: B.CAULDRON, v: B.VAT, n: B.BIN, d: B.DESK, K: B.BOOKS, R: B.RACK, T: B.BATH, C: B.CHESS, D: B.DARTS, m: B.MUSIC, H: B.DRYRACK, L: B.LAMP, u: B.RUG, O: B.WARDROBE,
+  k: B.CAULDRON, v: B.VAT, n: B.BIN, d: B.DESK, K: B.BOOKS, R: B.RACK, T: B.BATH, C: B.CHESS, D: B.DARTS, m: B.MUSIC, H: B.DRYRACK, L: B.LAMP, u: B.RUG, O: B.WARDROBE, Y: B.BRAZIER,
 };
 
 /** Things a home gains as it is made finer. They sit on floor tiles and are kept when the floor is relaid. */

@@ -549,8 +549,16 @@ export function brawl(c: Colony, a: Pawn, b: Pawn, r: Rand, near: Pawn[]): void 
   const pb = power(b);
   const win = pa >= pb ? a : b;
   const lose = win === a ? b : a;
-  lose.hp -= (9 + r.int(14)) / stat(lose, 'tough');
-  win.hp -= (2 + r.int(7)) / stat(win, 'tough');
+  // a guard close by pulls them apart before it gets ugly
+  const keeper = c.pawns.find((g) => g !== a && g !== b && !g.gone && !g.brk && (g.prof === 'guard' || c.gov.titles.marshal === g.id) && g.act.k !== 'sleep' && Math.abs(g.x - a.x) <= 8 && Math.abs(g.y - a.y) <= 8);
+  const soft = keeper ? 0.4 : 1;
+  lose.hp -= ((9 + r.int(14)) / stat(lose, 'tough')) * soft;
+  win.hp -= ((2 + r.int(7)) / stat(win, 'tough')) * soft;
+  if (keeper) {
+    think(c, keeper, 'keptpeace');
+    log(c, 'brokeup', keeper.id, undefined, `${a.first} and ${b.first}`);
+    bump(c, 'brokenUp');
+  }
   think(c, a, 'brawl', b.id);
   think(c, b, 'brawl', a.id);
   think(c, win, 'wonbrawl', lose.id);

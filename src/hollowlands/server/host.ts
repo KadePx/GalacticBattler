@@ -34,7 +34,7 @@ export interface HostOpts {
   /** part of a region: wait to be started by it rather than making a colony unasked */
   managed?: boolean;
   /** hand the region this colony's news and anything it has sent out (settler parties) */
-  deliver?: (body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name: string; owners: string[] }) => Promise<void>;
+  deliver?: (body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name: string; owners: string[]; wars?: string[] }) => Promise<void>;
   /** ask the region whether this player already has a colonist somewhere else: returns that colony's name, or '' */
   claim?: (owner: string, colony: string) => Promise<string>;
   /** a check that the one joining is a person (Cloudflare Turnstile); off when not given */
@@ -192,7 +192,7 @@ export class ColonyHost {
     const msgs = c.out;
     try {
       const owners = [...c.pawns.filter((p) => p.owner).map((p) => p.owner!), ...c.inq.filter((i) => i.k === 'join').map((i) => String(i.owner))];
-      await this.o.deliver({ from: c.id, msgs, pop: c.pawns.length, ruler: ruler ? `${ruler.first} ${ruler.fam}` : undefined, tick: c.tick, name: c.name, owners });
+      await this.o.deliver({ from: c.id, msgs, pop: c.pawns.length, ruler: ruler ? `${ruler.first} ${ruler.fam}` : undefined, tick: c.tick, name: c.name, owners, wars: Object.keys(c.wars ?? {}) });
       c.out = [];
     } catch {
       /* the region is busy: keep the messages and try again next time */

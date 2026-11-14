@@ -1,7 +1,7 @@
 // Pace and calendar for Hollow Lands. The calendar shape is fixed per world; the real-time
 // pace (how long a game day lasts) is one number the server can change at any time.
 
-export const SIM_V = 2;
+export const SIM_V = 3;
 
 export const TICKS_PER_HOUR = 10; // one tick = 6 game minutes
 export const HOURS_PER_DAY = 24;

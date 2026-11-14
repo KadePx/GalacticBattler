@@ -14,7 +14,7 @@ export function useColony(id: string): void {
   API = `${ROOT}c/${id}/`;
 }
 
-export interface RegionSite { id: string; name: string; x: number; y: number; founded: number; from?: string; pop: number; ruler?: string; dead?: number; ruins?: string }
+export interface RegionSite { id: string; name: string; x: number; y: number; founded: number; from?: string; pop: number; ruler?: string; dead?: number; ruins?: string; wars?: string[] }
 
 /** The world's seed, from the last region fetch (the world map is drawn from it). */
 export let regionSeed = 1;

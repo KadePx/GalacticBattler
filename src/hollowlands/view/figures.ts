@@ -245,7 +245,7 @@ export function drawFoe(g: Graphics, k: string): void {
 /** The badge each kind of building wears on its sign (same little pictures as the activity badges). */
 export const BLD_ICON: Record<string, string> = {
   hall: 'eat', kitchen: 'w:cook', tavern: 'drink', brewery: 'w:brew', store: 'store', granary: 'w:farm', shrine: 'pray', smithy: 'w:smith',
-  workshop: 'w:craft', infirmary: 'w:heal', herbalist: 'w:herbs', school: 'study', guardhouse: 'w:guard', bathhouse: 'bathe', gamehall: 'chess',
+  workshop: 'w:craft', infirmary: 'w:heal', herbalist: 'w:herbs', school: 'study', guardhouse: 'w:guard', tower: 'w:guard', bathhouse: 'bathe', gamehall: 'chess',
 };
 
 // ---------- Wild animals (facing right) ----------
@@ -366,6 +366,7 @@ export function drawActivity(g: Graphics, key: string): void {
       line([0, -2.6, 0, 3.6], 0x8a7a5a, 0.8);
       break;
     case 'w:guard': // a shield
+    case 'subdue':
       g.poly([-3.6, -3.8, 3.6, -3.8, 3.6, 0, 0, 4.2, -3.6, 0]).fill(0x7c8cff);
       line([0, -3.8, 0, 3.4], 0xdfe4ff, 0.9);
       break;
@@ -466,6 +467,7 @@ export function drawActivity(g: Graphics, key: string): void {
       break;
     case 'tantrum':
     case 'rave':
+    case 'berserk':
     case 'stalk':
       g.star(0, 0, 7, 4.4, 2, 0).fill(0xef4444);
       break;

@@ -290,6 +290,10 @@ export class Panels {
         h += `<div class="th"><span>Heir</span><b>${heir ? `<a class="who" data-p="${heir.id}">${esc(heir.first)}</a>` : 'None'}</b></div>`;
       }
       if (c.gov.k === 'council') h += `<div class="th"><span>Next vote</span><b>${dateText(c.gov.next)}</b></div>`;
+      const wars = Object.entries(c.wars ?? {});
+      for (const [, w] of wars) h += `<div class="th" title="${w.ours ? 'We declared it' : 'They declared it'} on ${esc(dateText(w.since))}. War bands sent: ${w.sent}. Raids suffered: ${w.came}."><span class="down">At war with</span><b>${esc(w.name)} <small>(${w.lost} of ours dead, ${w.slain} of theirs)</small></b></div>`;
+      const bad = Object.entries(c.grudge ?? {}).filter(([id, n]) => n >= 8 && !c.wars?.[id]).map(([id]) => c.near?.find((x) => x.id === id)?.name).filter(Boolean);
+      if (bad.length) h += `<div class="th" title="Raids leave bad blood; enough of it and a ruler goes to war."><span>Bad blood with</span><b>${bad.map((n) => esc(n!)).join(', ')}</b></div>`;
       for (const [title, id] of Object.entries(c.gov.titles)) {
         const who = pawnById(c, id);
         if (who) h += `<div class="th"><span>${esc(title[0].toUpperCase() + title.slice(1))}</span><b><a class="who" data-p="${who.id}">${esc(fullName(who))}</a></b></div>`;

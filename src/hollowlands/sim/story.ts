@@ -84,7 +84,11 @@ export function applyInputs(c: Colony): void {
       if (c.foes.length) continue;
       spawnRaid(c, String(e.kind), Number(e.n) || 1, new Rand(c.seed, S.FIGHT, c.tick, 99));
       if (e.fromId) {
-        c.raidFrom = { id: String(e.fromId), name: String(e.fromName), loot0: c.stats.looted ?? 0, slain0: c.stats.foesSlain ?? 0 };
+        c.raidFrom = { id: String(e.fromId), name: String(e.fromName), loot0: c.stats.looted ?? 0, slain0: c.stats.foesSlain ?? 0, died0: c.stats.deaths ?? 0 };
+        const g = (c.grudge ??= {});
+        g[String(e.fromId)] = (g[String(e.fromId)] ?? 0) + 10;
+        const war = c.wars?.[String(e.fromId)];
+        if (war) war.came++;
         log(c, 'raiders_from', undefined, undefined, String(e.fromName));
       }
     }

@@ -5,7 +5,7 @@
 import { actText } from './words';
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
-import { CROPS, HOMES, TPL, cellCode, cells } from '../sim/data/buildings';
+import { CROPS, HOMES, TPL, cellCode, cells, shapeOf } from '../sim/data/buildings';
 import { stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
 import { BLD_ICON, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
@@ -241,7 +241,7 @@ export class MapView {
     for (const b of c.blds) {
       this.blds.set(b.id, b);
       if (b.built) continue;
-      const list = cells(b.k);
+      const list = cells(shapeOf(b));
       for (let k = Math.floor(b.prog * list.length); k < list.length; k++) {
         const code = cellCode(b.k, list[k].ch, b.mat);
         if (code) this.plan[(b.y + list[k].dy) * c.w + b.x + list[k].dx] = code;
@@ -527,7 +527,10 @@ export class MapView {
       const field = b.k === 'field';
       const name = field ? (b.built && b.crop ? CROPS[b.crop]?.name ?? 'Field' : 'New field') : (b.name ?? TPL[b.k]?.name ?? b.k) + (b.built ? '' : ' (being built)');
       const g = new Graphics();
-      const x = (b.x + b.w / 2) * TS;
+      const top = TPL[shapeOf(b)]?.rows[0] ?? '';
+      const l0 = top.search(/\S/);
+      const l1 = top.length - [...top].reverse().join('').search(/\S/);
+      const x = (b.x + (field || l0 < 0 ? b.w / 2 : (l0 + l1) / 2)) * TS;
       const y = b.y * TS + (field ? TS * 0.5 : 2);
       if (!field) {
         // a hanging wooden board with the building's picture on it

@@ -22,7 +22,7 @@ export const F = { NONE: 0, TREE: 1, PINE: 2, BUSH: 3, BOULDER: 4, ORE: 5, HERB:
 export const B = {
   NONE: 0, WALL_WOOD: 1, WALL_STONE: 2, DOOR: 3, FLOOR_WOOD: 4, FLOOR_STONE: 5, FENCE: 6, TILLED: 7,
   BED: 16, TABLE: 17, CHAIR: 18, HEARTH: 19, STOVE: 20, BENCH: 21, ANVIL: 22, CRATE: 23, BARREL: 24, ALTAR: 25, PEW: 26, LOOM: 27, WELL: 28, GRAVE: 29, FORGE: 30, SHELF: 31, COT: 32, STATUE: 33, TORCH: 34,
-  RUG: 35, WARDROBE: 36, LAMP: 37, BOOKS: 38, DESK: 39, RACK: 40, CAULDRON: 41, VAT: 42, BIN: 43, BATH: 44, CHESS: 45, DARTS: 46, MUSIC: 47, DRYRACK: 48,
+  RUG: 35, WARDROBE: 36, LAMP: 37, BOOKS: 38, DESK: 39, RACK: 40, CAULDRON: 41, VAT: 42, BIN: 43, BATH: 44, CHESS: 45, DARTS: 46, MUSIC: 47, DRYRACK: 48, BRAZIER: 49,
 } as const;
 
 export const RES = ['grain', 'veg', 'meat', 'fish', 'berries', 'meal', 'feast', 'ale', 'wood', 'stone', 'ore', 'iron', 'leather', 'cloth', 'herbs', 'medicine', 'tools', 'clothes', 'weapons', 'silver', 'goods', 'hops', 'mushrooms'] as const;
@@ -35,7 +35,7 @@ export type ActK =
   | 'fight' | 'flee' | 'hide' | 'tend' | 'train' | 'stalk'
   | 'idle' | 'wander' | 'sleep' | 'eat' | 'work' | 'drink' | 'relax' | 'walk' | 'pray' | 'dice' | 'hobby' | 'play' | 'visit' | 'sulk' | 'binge' | 'tantrum' | 'rave'
   | 'court' | 'wed' | 'attend' | 'mourn' | 'labour' | 'rest' | 'perform' | 'listen' | 'stargaze' | 'bathe'
-  | 'chess' | 'darts' | 'music' | 'read' | 'study';
+  | 'chess' | 'darts' | 'music' | 'read' | 'study' | 'berserk' | 'subdue';
 
 export interface Act {
   k: ActK;
@@ -111,6 +111,9 @@ export interface Foe {
   wait: number;
 }
 
+/** A war with another colony: since when, and how it is going. */
+export interface War { name: string; since: number; sent: number; came: number; lost: number; slain: number; ours: boolean }
+
 /** A wild animal wandering the map. */
 export interface Beast { id: number; k: string; x: number; y: number; px: number; py: number }
 
@@ -155,7 +158,7 @@ export interface Pawn {
   goal: string;
   hp: number;
   /** mental break in progress */
-  brk?: { k: string; x: number };
+  brk?: { k: string; x: number; /** someone they hurt while it lasted, and the fact of it */ o?: Id; f?: number };
   /** hours in a row spent under a break threshold */
   low: number;
   /** hours in a row in high spirits */
@@ -252,6 +255,8 @@ export interface Bld {
   dmg: number;
   /** progress 0..1 of being rebuilt in stone */
   up?: number;
+  /** the floor plan, when it is not the kind's usual one (see SHAPES) */
+  s?: string;
 }
 
 export interface Ev { t: number; k: string; a?: Id; b?: Id; s?: string; n?: number }
@@ -305,7 +310,10 @@ export interface Colony {
   /** neighbouring colonies, nearest first (told to us by the region) */
   near?: { id: string; name: string }[];
   /** raiders from another colony are on the map: who sent them, and the counts when they came */
-  raidFrom?: { id: string; name: string; loot0: number; slain0: number };
+  raidFrom?: { id: string; name: string; loot0: number; slain0: number; died0?: number };
+  /** bad blood with other colonies (id -> grudge), and the wars it has come to */
+  grudge?: Record<string, number>;
+  wars?: Record<string, War>;
   /** the abandoned colony this one was built over */
   ruins?: string;
   /** who rules and how: kind of rule, ruler, laws in force, titles held, next election, regent for a child ruler */

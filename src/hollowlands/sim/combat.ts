@@ -80,9 +80,26 @@ export function canFight(c: Colony, p: Pawn): boolean {
   return p.sk[0] >= 4 || p.sk[1] >= 4 || per(p, AX.BRAVE) > 0.3 || p.prof === 'hunter' || p.prof === 'guard' || has(p, 'bloodlust');
 }
 
-function raise(c: Colony): void {
+/** Guards, scouts and the marshal: the ones whose job this is. */
+export function isWarden(c: Colony, p: Pawn): boolean {
+  return p.prof === 'guard' || p.prof === 'scout' || c.gov.titles.marshal === p.id;
+}
+
+/** Is this colonist up on the watchtower? */
+export function onTower(c: Colony, p: Pawn): boolean {
+  const b = c.sb[p.y * c.w + p.x];
+  return !!b && c.blds.some((x) => x.id === b && x.k === 'tower' && x.built);
+}
+
+function raise(c: Colony, by?: Pawn, f?: Foe): void {
   if (c.alarm) return;
   c.alarm = c.tick;
+  if (by && f) {
+    let n = 0;
+    for (const x of c.foes) if (x.band === f.band) n++;
+    log(c, 'spotted', by.id, undefined, f.k, n);
+    think(c, by, 'raisedalarm');
+  }
   log(c, 'alarm');
   for (const p of c.pawns) if (!p.gone && p.brk?.k !== 'seized') endNow(c, p);
 }
@@ -98,7 +115,8 @@ function stepToward(c: Colony, f: Foe, tx: number, ty: number, adj: boolean, spd
 }
 
 function defense(c: Colony, p: Pawn): number {
-  return p.sk[0] * 0.6 + (c.stock.weapons >= 1 ? 1.5 : 0) + (p.act.k === 'fight' ? 1.5 : 0) + (p.act.k === 'hide' ? 2 : 0) - (isDown(p) ? 4 : 0);
+  // wardens wear what armour the colony has; walls are better still
+  return p.sk[0] * 0.6 + (isWarden(c, p) ? 3 : 0) + (onTower(c, p) ? 3 : 0) + (c.stock.weapons >= 1 ? 1.5 : 0) + (p.act.k === 'fight' ? 1.5 : 0) + (p.act.k === 'hide' ? 2 : 0) - (isDown(p) ? 4 : 0);
 }
 
 function rout(c: Colony, band: number): void {
@@ -163,8 +181,9 @@ export function combatTick(c: Colony): void {
         if (p.gone) continue;
         const i = posAt(c, p, t);
         const d = Math.max(Math.abs((i % c.w) - f.x), Math.abs(Math.floor(i / c.w) - f.y));
-        const sees = awake.includes(p) ? (p.prof === 'guard' ? 22 : p.prof === 'scout' ? 30 : 13) : 3;
-        if (d <= sees) { raise(c); break; }
+        const watch = awake.includes(p) ? (p.prof === 'guard' ? 22 : p.prof === 'scout' ? 30 : 13) : 3;
+        const sees = awake.includes(p) && onTower(c, p) ? Math.max(watch, 34) : watch;
+        if (d <= sees) { raise(c, isWarden(c, p) || onTower(c, p) ? p : undefined, f); break; }
       }
     }
 
@@ -282,6 +301,13 @@ export function aftermath(c: Colony): void {
   c.alarm = 0;
   for (const k of Object.keys(c.stats)) if (k.startsWith('band')) delete c.stats[k];
   if (c.raidFrom) {
+    // what they did here is remembered
+    const died = Math.max(0, (c.stats.deaths ?? 0) - (c.raidFrom.died0 ?? c.stats.deaths ?? 0));
+    const took = Math.max(0, (c.stats.looted ?? 0) - c.raidFrom.loot0);
+    const g = (c.grudge ??= {});
+    g[c.raidFrom.id] = (g[c.raidFrom.id] ?? 0) + died * 9 + took / 25;
+    const war = c.wars?.[c.raidFrom.id];
+    if (war) { war.lost += died; war.slain += Math.max(0, (c.stats.foesSlain ?? 0) - c.raidFrom.slain0); }
     // word goes back to whoever sent them: what they took, and how many will not be coming home
     c.out.push({ k: 'spoils', to: c.raidFrom.id, name: c.name, loot: Math.max(0, (c.stats.looted ?? 0) - c.raidFrom.loot0), slain: Math.max(0, (c.stats.foesSlain ?? 0) - c.raidFrom.slain0) });
     c.raidFrom = undefined;
@@ -332,17 +358,20 @@ export function attack(c: Colony, p: Pawn, foeId: number, ranged: boolean): void
   const dist = Math.max(Math.abs(f.x - p.x), Math.abs(f.y - p.y));
   let fighters = 0;
   for (const o of c.pawns) if (o.act.k === 'fight') fighters++;
-  const armed = Math.min(1, c.stock.weapons / Math.max(1, fighters));
-  const lucky = has(p, 'lucky') ? 0.08 : has(p, 'jinxed') ? -0.08 : 0;
+  const warden = isWarden(c, p);
+  // wardens keep their own weapons; everyone else shares what is in the stores
+  const armed = warden ? 1 : Math.min(1, c.stock.weapons / Math.max(1, fighters));
+  const lucky = (has(p, 'lucky') ? 0.08 : has(p, 'jinxed') ? -0.08 : 0) + (warden ? 0.08 : 0);
   if (ranged) {
-    if (dist > 10) return;
+    const tower = onTower(c, p);
+    if (dist > (tower ? 14 : 10)) return;
     p.sk[1] = Math.min(20, p.sk[1] + 0.01);
-    if (r.chance(0.3 + p.sk[1] * 0.04 - dist * 0.02 + lucky)) strike(c, p, f, 9 + r.int(8));
+    if (r.chance(0.3 + p.sk[1] * 0.04 - dist * 0.02 + lucky + (tower ? 0.12 : 0))) strike(c, p, f, 9 + r.int(8));
     return;
   }
   if (dist > 1) return;
   p.sk[0] = Math.min(20, p.sk[0] + 0.012);
   if (r.chance(0.5 + (p.sk[0] - def.atk) * 0.035 + lucky + (p.drunk > 50 ? -0.1 : 0))) {
-    strike(c, p, f, (8 + 9 * armed) * RACES[p.race].size * (0.6 + r.float() * 0.8) * (has(p, 'bloodlust') ? 1.15 : 1));
+    strike(c, p, f, (8 + 9 * armed) * RACES[p.race].size * (0.6 + r.float() * 0.8) * (has(p, 'bloodlust') ? 1.15 : 1) * (warden ? 1.2 : 1));
   }
 }

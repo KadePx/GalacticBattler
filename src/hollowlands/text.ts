@@ -43,6 +43,7 @@ const CAUSES: Record<string, string> = {
   raid: 'was killed in a raid',
   beast: 'was killed by a beast',
   murder: 'was murdered',
+  berserk: 'was killed by someone gone berserk',
   executed: 'was put to death',
   accident: 'died in an accident', match: 'was sent away to be married', escaped: 'escaped from thralldom', raiding: 'died raiding another colony', foe_raider: 'was killed by raiders from another colony', moved: 'left for another colony', settled: 'left to found a new colony', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
   bled: 'bled to death',
@@ -60,6 +61,7 @@ const BREAKS: Record<string, string> = {
   wander: 'has walked off into the wild in a daze',
   rave: 'is raging at anyone who comes near',
   tantrum: 'is smashing things',
+  berserk: 'has gone berserk and is attacking anyone near',
 };
 
 const FOE_ONE: Record<string, string> = { raider: 'raider', bandit: 'bandit', slaver: 'slaver', orc: 'orc raider', wolf: 'wolf', ghoul: 'ghoul', troll: 'troll', boar: 'maddened boar' };
@@ -100,7 +102,7 @@ export const WEIGHT: Record<string, number> = {
   odd_goat: 3, odd_ring: 3, odd_raven: 3, odd_ogre: 3, odd_ghost: 3, odd_mushroom: 3, odd_coat: 3, odd_oath: 3, odd_bones: 2, odd_cat: 2, odd_weep: 2,
   schism: 3, fire_spread: 3, match_sent: 3, match: 3,
   asked: 2, blackmail: 3, prosthetic: 2, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
-  raidout: 3, raiders_from: 2, raidback: 3,
+  raidout: 3, raiders_from: 2, raidback: 3, war_declared: 3, war_on_us: 3, incident: 2, warband: 3, peace_sued: 3, peace_made: 3, spotted: 2, brokeup: 1, berserk_hit: 3, subdued: 3, subdue_failed: 2,
   feast_set: 2, audience: 2,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
@@ -235,6 +237,17 @@ export function evText(c: Colony, e: Ev): string {
     case 'blabbed': return `Drunk, ${a} let slip the secret they came here to bury. ${e.n} heard it.`;
     case 'joined': return e.s?.startsWith('match:') ? `${full(c, e.a)} has arrived from ${e.s.slice(6)}, sent to be married.` : e.s?.startsWith('exile:') ? `${full(c, e.a)} has arrived, cast out of ${e.s.slice(6)}.` : e.s?.startsWith('migrant:') ? `${full(c, e.a)} has come from ${e.s.slice(8)} to start again.` : e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
     case 'trader': return e.s ? `A caravan from ${e.s} stopped for the day.` : 'A trader\'s caravan stopped for the day.';
+    case 'spotted': { const many = (e.n ?? 1) > 1; const f = many ? FOE_MANY[e.s ?? ''] ?? e.s : FOE_ONE[e.s ?? ''] ?? e.s; return `${a} saw ${many ? e.n + ' ' + f : (/^[aeiou]/.test(f ?? '') ? 'an ' : 'a ') + f} coming and raised the alarm.`; }
+    case 'brokeup': return `${a} broke up a fight between ${e.s}.`;
+    case 'berserk_hit': return `${a} has gone berserk and attacked ${b}.`;
+    case 'subdued': return `${a} wrestled ${b} to the ground and ended the rampage.`;
+    case 'subdue_failed': return `${a} tried to stop ${b} and was thrown off.`;
+    case 'incident': return [`Hunters from ${e.s} were caught poaching on our land.`, `A trader from ${e.s} cheated us and was gone before anyone noticed.`, `Our people were turned back on the road by men from ${e.s}.`, `${e.s} drove off a herd that strayed onto their land, and kept half of it.`, `Word came that ${e.s} has been mocking us in their tavern.`, `Things went missing after visitors from ${e.s} left.`][e.n ?? 0] ?? `Trouble with ${e.s}.`;
+    case 'war_declared': return `${a} has declared war on ${e.s}. There has been too much blood between us.`;
+    case 'war_on_us': return `${e.s} has declared war on us.`;
+    case 'warband': return `${a} led ${e.n} fighters out against ${e.s}.`;
+    case 'peace_sued': return `${a} has sued ${e.s} for peace${e.n ? `, and paid ${e.n} silver for it` : ''}. The war is over.`;
+    case 'peace_made': return `${e.s} has asked for peace${e.n ? ` and sent ${e.n} silver` : ''}. The war is over.`;
     case 'raidout': return `${a} has sent ${e.n} fighters to raid ${e.s}.`;
     case 'raiders_from': return `They are from ${e.s}.`;
     case 'raidback': { const [name, lost] = (e.s ?? '').split(':'); return `The raiders are back from ${name}${e.n ? ' with full sacks' : ' with nothing'}${Number(lost) ? `. ${lost} of them did not return` : ''}.`; }
@@ -265,7 +278,7 @@ const WHY: Record<string, string> = {
   bored: 'Needed a break', idle: 'Nothing pressing to do', free: 'Free time', love: 'Wanted to see their love', urge: 'Could not put it off any longer', crush: 'Could not stay away', friend: 'Wanted company', family: 'Wanted family',
   child: 'Being a child', baby: 'Being a baby', wedding: 'At the wedding', audience: 'Before the seat', trial: 'At the trial', sermon: 'Hearing the sermon', funeral: 'At the funeral', feast: 'At the feast', grief: 'Grieving', new: 'Just arrived',
   drink: 'Fancied a drink', drinkbored: 'Bored, so: a drink', relax: 'Resting', walk: 'Stretching their legs', pray: 'Praying', dice: 'Feeling lucky', hobby: 'Doing what they love',
-  stargaze: 'Looking at the stars', bathe: 'Having a wash', hotbath: 'Wanted a hot bath', chess: 'Fancied a game of chess', darts: 'Fancied a game of darts', music: 'Wanted to play', read: 'Wanted to read', school: 'Lessons at the schoolhouse', perform: 'Had an audience', stopped: 'Interrupted', born: 'Newborn', alarm: 'The colony is under attack', muster: 'Standing ready with the others', hurt: 'Too hurt or sick to work', seized: 'Seized', carried: 'Carried to bed', freed: 'Freed',
+  stargaze: 'Looking at the stars', bathe: 'Having a wash', subdue: 'Someone has gone berserk', subdued: 'Being held down', hotbath: 'Wanted a hot bath', chess: 'Fancied a game of chess', darts: 'Fancied a game of darts', music: 'Wanted to play', read: 'Wanted to read', school: 'Lessons at the schoolhouse', perform: 'Had an audience', stopped: 'Interrupted', born: 'Newborn', alarm: 'The colony is under attack', muster: 'Standing ready with the others', hurt: 'Too hurt or sick to work', seized: 'Seized', carried: 'Carried to bed', freed: 'Freed',
 };
 
 export function whyText(why: string): string {

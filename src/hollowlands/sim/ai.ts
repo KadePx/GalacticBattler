@@ -3,16 +3,17 @@
 
 import { TICKS_PER_DAY, TICKS_PER_HOUR, hourOf, seasonOf } from '../config';
 import { SHORE, cacheOf, featList } from './cache';
-import { spots } from './data/buildings';
+import { spots, shapeOf } from './data/buildings';
 import { RACES } from './data/races';
 import { foodDays, hasFood, takeMeal } from './econ';
 import { variety } from './farm';
 import { bump, log } from './events';
-import { attack, canFight, pickFoe } from './combat';
-import { isDown, needsRest } from './health';
-import { murder } from './crime';
+import { attack, canFight, isWarden, onTower, pickFoe } from './combat';
+import { isDown, needsRest, wound } from './health';
+import { accuse, murder } from './crime';
+import { die } from './life';
 import { bedFor, equip, findJob, finishWork } from './jobs';
-import { feltTemp, hasThought, think } from './mood';
+import { endBreak, feltTemp, hasThought, think } from './mood';
 import { findPath, walkTicks } from './path';
 import { STAGE, gainXp, has, idleAct, mkAct, pawnById, per, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
@@ -57,13 +58,13 @@ function taken(c: Colony, self: Pawn, x: number, y: number): boolean {
 
 /** A free seat (or other furniture) in a building, else any floor tile inside. */
 function seat(c: Colony, p: Pawn, b: Bld, chars: string, r: Rand): [number, number] {
-  const list = spots(b.k, chars);
+  const list = spots(shapeOf(b), chars);
   const start = list.length ? r.int(list.length) : 0;
   for (let k = 0; k < list.length; k++) {
     const cell = list[(start + k) % list.length];
     if (!taken(c, p, b.x + cell.dx, b.y + cell.dy)) return [b.x + cell.dx, b.y + cell.dy];
   }
-  const floor = spots(b.k, '.');
+  const floor = spots(shapeOf(b), '.');
   if (floor.length) {
     const cell = r.pick(floor);
     return [b.x + cell.dx, b.y + cell.dy];
@@ -108,12 +109,12 @@ function goSleep(c: Colony, p: Pawn, why: string): boolean {
   const dur = Math.max(20, Math.min(120, Math.ceil(((100 - p.rest) / (11.5 / sl)) * TICKS_PER_HOUR) + 4));
   const home = p.home ? c.blds.find((b) => b.id === p.home) : undefined;
   if (home) {
-    const cell = spots(home.k, 'b')[home.beds.indexOf(p.id)];
+    const cell = spots(shapeOf(home), 'b')[home.beds.indexOf(p.id)];
     if (cell && setAct(c, p, 'sleep', home.x + cell.dx, home.y + cell.dy, dur, why, { b: home.id })) return true;
   }
   const hall = bldOf(c, 'hall');
   if (hall && p.rest > 6) {
-    const cell = spots(hall.k, '.');
+    const cell = spots(shapeOf(hall), '.');
     const pick = cell[(p.id * 7) % cell.length];
     if (setAct(c, p, 'sleep', hall.x + pick.dx, hall.y + pick.dy, dur, why)) return true;
   }
@@ -288,7 +289,7 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
       }
       case 'chess': {
         // sit across from someone already at the board if there is anyone
-        const chairs = spots(games!.k, 'c');
+        const chairs = spots(shapeOf(games!), 'c');
         let pick: [number, number] | null = null;
         for (const ch of chairs) {
           const x = games!.x + ch.dx;
@@ -338,7 +339,7 @@ function breakAct(c: Colony, p: Pawn, r: Rand): boolean {
     case 'sulk': {
       const home = p.home ? c.blds.find((b) => b.id === p.home) : undefined;
       if (home) {
-        const cell = spots(home.k, 'b')[home.beds.indexOf(p.id)];
+        const cell = spots(shapeOf(home), 'b')[home.beds.indexOf(p.id)];
         if (cell && setAct(c, p, 'sulk', home.x + cell.dx, home.y + cell.dy, Math.min(left, 20), 'break')) return true;
       }
       const s = randomSpot(c, r, c.cx, c.cy, 10, 18);
@@ -382,6 +383,19 @@ function breakAct(c: Colony, p: Pawn, r: Rand): boolean {
       const oi = posAt(c, hated, c.tick + 2);
       return setAct(c, p, 'stalk', oi % c.w, Math.floor(oi / c.w), 2, 'break', { adj: true, o: hated.id });
     }
+    case 'berserk': {
+      // goes for whoever is nearest, the hated first
+      let best: Pawn | undefined;
+      let bd = 1e9;
+      for (const o of c.pawns) {
+        if (o === p || o.gone || o.act.k === 'sleep' || stage(c, o) < STAGE.CHILD) continue;
+        const d = Math.abs(o.x - p.x) + Math.abs(o.y - p.y) - (opinion(c, p, o) < -40 ? 8 : 0) + r.int(4);
+        if (d < bd && d < 30) { bd = d; best = o; }
+      }
+      if (!best) return false;
+      const oi = posAt(c, best, c.tick + 1);
+      return setAct(c, p, 'berserk', oi % c.w, Math.floor(oi / c.w), 2, 'break', { adj: true, o: best.id });
+    }
     case 'rave': {
       let best: Pawn | undefined;
       let bd = 1e9;
@@ -412,7 +426,7 @@ export function decide(c: Colony, p: Pawn): void {
     const mo = pawnById(c, p.mo);
     const home = p.home ? c.blds.find((b) => b.id === p.home) : undefined;
     if (home) {
-      const cell = spots(home.k, '.');
+      const cell = spots(shapeOf(home), '.');
       const pick = r.pick(cell);
       if (setAct(c, p, 'play', home.x + pick.dx, home.y + pick.dy, 20 + r.int(10), 'baby')) return;
     }
@@ -434,7 +448,8 @@ export function decide(c: Colony, p: Pawn): void {
     } else if (f) {
       const dist = Math.max(Math.abs(f.x - p.x), Math.abs(f.y - p.y));
       const archer = p.sk[1] >= 4 && p.sk[1] > p.sk[0] + 1;
-      if (archer && dist >= 2 && dist <= 9) {
+      const high = onTower(c, p);
+      if (archer && dist >= 2 && dist <= (high ? 13 : 9)) {
         p.act = mkAct('fight', t, p.x, p.y, 1, 'alarm');
         p.act.d = f.id;
         p.act.b = 1;
@@ -491,6 +506,13 @@ export function decide(c: Colony, p: Pawn): void {
   }
 
   if (p.brk && breakAct(c, p, r)) return;
+  if (!p.brk && st >= STAGE.ADULT && !isDown(p)) {
+    const mad = c.pawns.find((o) => o !== p && o.brk?.k === 'berserk' && !o.gone && Math.abs(o.x - p.x) + Math.abs(o.y - p.y) < (isWarden(c, p) ? 40 : 12));
+    if (mad && (isWarden(c, p) || (canFight(c, p) && (p.sk[0] >= 7 || p.sp === mad.id)))) {
+      const oi = posAt(c, mad, t + 1);
+      if (setAct(c, p, 'subdue', oi % c.w, Math.floor(oi / c.w), 2, 'subdue', { adj: true, o: mad.id })) return;
+    }
+  }
   if (p.food < 18 && hasFood(c) && goEat(c, p, r, 'starving')) return;
   if (p.rest < 8 && goSleep(c, p, 'exhausted')) return;
   if (c.gath && t >= c.gath.t0 - 12 && t < c.gath.t1 - 4 && wantsToAttend(c, p, st) && attend(c, p, r)) return;
@@ -743,6 +765,64 @@ export function finish(c: Colony, p: Pawn): void {
       insult(c, p, o, r, near);
       p.say = ['insult', o.id, t, 0];
       o.say = ['insult', p.id, t, 0];
+      break;
+    }
+    case 'berserk': {
+      const o = pawnById(c, a.o ?? 0);
+      if (!o || o.gone || !p.brk) break;
+      const oi = posAt(c, o, t);
+      if (Math.abs((oi % c.w) - p.x) > 1 || Math.abs(Math.floor(oi / c.w) - p.y) > 1) break;
+      const witnesses = c.pawns.filter((x) => x !== p && x !== o && x.act.k !== 'sleep' && Math.abs(x.x - p.x) <= 6 && Math.abs(x.y - p.y) <= 6);
+      p.say = ['brawl', o.id, t, 0];
+      o.say = ['brawl', p.id, t, 0];
+      if (!r.chance(0.55 + (p.sk[0] - o.sk[0]) * 0.03)) { think(c, o, 'attackedby', p.id); break; }
+      const blade = c.stock.weapons >= 1 || p.prof === 'hunter' || p.prof === 'butcher';
+      wound(c, o, blade ? 'cut' : 'bruise', (6 + r.int(10)) * RACES[p.race].size * (blade ? 1.4 : 1), r);
+      think(c, o, 'attackedby', p.id);
+      for (const x of witnesses) think(c, x, 'sawberserk', p.id);
+      if (!p.brk.f) {
+        const f = addFact(c, 'attack', p.id, o.id, true);
+        p.brk.o = o.id;
+        p.brk.f = f.id;
+        for (const x of witnesses) learn(c, x, f);
+        log(c, 'berserk_hit', p.id, o.id);
+      }
+      bump(c, 'berserkHits');
+      if (o.hp <= 0 && !o.gone) {
+        die(c, o, 'berserk', p.id);
+        const k = addFact(c, 'killing', p.id, o.id, true);
+        for (const x of witnesses) learn(c, x, k);
+      } else if (canFight(c, o) && r.chance(0.45)) {
+        // they hit back
+        wound(c, p, 'bruise', (4 + r.int(8)) * RACES[o.race].size, r);
+      }
+      break;
+    }
+    case 'subdue': {
+      const o = pawnById(c, a.o ?? 0);
+      if (!o || o.gone || o.brk?.k !== 'berserk') break;
+      const oi = posAt(c, o, t);
+      if (Math.abs((oi % c.w) - p.x) > 1 || Math.abs(Math.floor(oi / c.w) - p.y) > 1) break;
+      const us = p.sk[0] + RACES[p.race].size * 4 + (isWarden(c, p) ? 4 : 0) + r.float() * 8;
+      const them = o.sk[0] + RACES[o.race].size * 4 + 3 + r.float() * 8 - (o.hp < 50 ? 3 : 0);
+      if (us >= them) {
+        const hurt = o.brk.o;
+        const fid = o.brk.f;
+        endBreak(c, o);
+        o.act = idleAct(c, o, 15, 'subdued');
+        think(c, o, 'subdued', p.id);
+        think(c, p, 'subduedthem', o.id);
+        log(c, 'subdued', p.id, o.id);
+        bump(c, 'subdued');
+        // whoever they hurt may want to see them answer for it
+        const victim = hurt ? pawnById(c, hurt) : undefined;
+        const f = fid ? c.facts.find((x) => x.id === fid) : undefined;
+        if (victim && f && !victim.gone && opinion(c, victim, o) < 20) accuse(c, victim, o, 'assault', f);
+      } else {
+        wound(c, p, 'bruise', 5 + r.int(8), r);
+        think(c, p, 'attackedby', o.id);
+        log(c, 'subdue_failed', p.id, o.id);
+      }
       break;
     }
     case 'stalk': {

@@ -6,7 +6,7 @@ import { TICKS_PER_DAY } from '../config';
 import { hash32 } from '../sim/rng';
 import { esc } from './words';
 
-export interface WorldSite { id: string; name: string; x: number; y: number; founded: number; from?: string; pop: number; ruler?: string; dead?: number; ruins?: string }
+export interface WorldSite { id: string; name: string; x: number; y: number; founded: number; from?: string; pop: number; ruler?: string; dead?: number; ruins?: string; wars?: string[] }
 
 // Region size in cells (must match sim/world.ts), and canvas pixels per cell.
 const W = 48;
@@ -124,6 +124,27 @@ function drawLand(ctx: CanvasRenderingContext2D, seed: number, land: Land[], sit
   }
 }
 
+/** Two colonies at war: a red dashed line, crossed swords at the middle. */
+function warLine(ctx: CanvasRenderingContext2D, a: WorldSite, b: WorldSite): void {
+  const ax = a.x * CELL + CELL / 2;
+  const ay = a.y * CELL + CELL / 2;
+  const bx = b.x * CELL + CELL / 2;
+  const by = b.y * CELL + CELL / 2;
+  ctx.strokeStyle = 'rgba(239,68,68,0.85)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([10, 6]);
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.setLineDash([]);
+  const mx = (ax + bx) / 2;
+  const my = (ay + by) / 2;
+  ctx.fillStyle = 'rgba(20,12,10,0.85)';
+  ctx.beginPath(); ctx.arc(mx, my, 11, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#f3d0c8';
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(mx - 6, my + 6); ctx.lineTo(mx + 6, my - 6); ctx.moveTo(mx + 6, my + 6); ctx.lineTo(mx - 6, my - 6); ctx.stroke();
+}
+
 /** A dirt road that wanders a little between two places. */
 function road(ctx: CanvasRenderingContext2D, seed: number, a: WorldSite, b: WorldSite): void {
   const ax = a.x * CELL + CELL / 2;
@@ -210,7 +231,8 @@ export class WorldView {
     const year = (t: number): number => Math.floor(t / (TICKS_PER_DAY * 60)) + 1;
     const rows = sites.slice().sort((a, b) => (a.dead ? 1 : 0) - (b.dead ? 1 : 0) || b.pop - a.pop).map((s) => {
       const p = s.from ? by.get(s.from) : undefined;
-      const sub = s.dead ? 'Abandoned' : `${s.pop} people${s.ruler ? ' · ruled by ' + esc(s.ruler) : ''}`;
+      const foes = (s.wars ?? []).map((id) => by.get(id)?.name).filter(Boolean);
+      const sub = s.dead ? 'Abandoned' : `${s.pop} people${s.ruler ? ' · ruled by ' + esc(s.ruler) : ''}${foes.length ? ` · <span class="down">at war with ${foes.map((n) => esc(n!)).join(' and ')}</span>` : ''}`;
       const origin = p ? `Founded from ${esc(p.name)} in year ${year(s.founded)}${s.ruins ? `, on the ruins of ${esc(s.ruins)}` : ''}` : 'One of the first colonies';
       return `<button class="wrow${s.id === here ? ' here' : ''}" data-c="${s.id}"><b>${esc(s.name)}${s.id === mine ? ' <span class="tie kin">Yours</span>' : ''}${s.id === here ? ' <span class="tie dim">Viewing</span>' : ''}</b><span>${sub}</span><span>${origin}</span></button>`;
     }).join('');
@@ -228,6 +250,8 @@ export class WorldView {
         const b = first.filter((o) => o !== a).sort((x, y) => Math.abs(x.x - a.x) + Math.abs(x.y - a.y) - Math.abs(y.x - a.x) - Math.abs(y.y - a.y))[0];
         if (b && a.id < b.id) road(ctx, seed, a, b);
       }
+      // wars: a red line of crossed blades between the two
+      for (const s of sites) for (const id of s.wars ?? []) { const o = by.get(id); if (o && !o.dead && !s.dead && (s.id < o.id || !(o.wars ?? []).includes(s.id))) warLine(ctx, s, o); }
       for (const s of sites) settlement(ctx, s, s.id === here, s.id === mine);
       // a dark edge, like an old map
       const g = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.height * 0.35, canvas.width / 2, canvas.height / 2, canvas.width * 0.62);

@@ -35,6 +35,7 @@ const ACT: Record<string, string> = {
   dice: 'Playing dice', hobby: 'Busy with a hobby', play: 'Playing', visit: 'Visiting {o}', sulk: 'Sulking', binge: 'Bingeing', tantrum: 'Smashing things', rave: 'Raging',
   court: 'Courting {o}', wed: 'Getting married', attend: 'At the gathering', mourn: 'Mourning', labour: 'In labour', rest: 'Resting in bed', perform: 'Performing',
   listen: 'Listening', stargaze: 'Watching the stars', bathe: 'Washing', work: 'Working',
+  berserk: 'Attacking {o}', subdue: 'Stopping {o}',
   chess: 'Playing chess', darts: 'Throwing darts', music: 'Playing music', read: 'Reading', study: 'At school',
   fight: 'Fighting', flee: 'Running for it', hide: 'Hiding', tend: 'Tending the hurt', train: 'Training',
 };

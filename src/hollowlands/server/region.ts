@@ -10,7 +10,7 @@ import { landThreat, nearLists, routeMsg, ruinFor, type Delivery } from '../sim/
 export interface RegionOpts { seed?: number; colonies: number; pop: number; preDays: number; now: () => number; adminKey?: string }
 
 /** What the region knows about a colony at a glance (kept fresh by the colony's own reports). */
-export interface SiteInfo extends Site { pop: number; ruler?: string; tick?: number; owners?: string[] }
+export interface SiteInfo extends Site { pop: number; ruler?: string; tick?: number; owners?: string[]; /** colonies this one is at war with */ wars?: string[] }
 interface WorldRec { seed: number; count: number; sites: SiteInfo[]; created: number; day?: number; lastThreat?: number }
 
 /** Call a colony's keeper: path under its own API, optional JSON body (POST). */
@@ -51,7 +51,7 @@ export class RegionHost {
   }
 
   /** A colony reports in, and hands over anything it has sent out into the world. */
-  private async deliver(body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name?: string; owners?: string[] }): Promise<void> {
+  private async deliver(body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name?: string; owners?: string[]; wars?: string[] }): Promise<void> {
     const w = this.w!;
     const site = w.sites.find((s) => s.id === body.from);
     if (site) {
@@ -59,6 +59,7 @@ export class RegionHost {
       site.ruler = body.ruler;
       site.tick = body.tick;
       site.owners = body.owners ?? [];
+      site.wars = body.wars ?? [];
       if (!body.pop && !site.dead) site.dead = body.tick;
     }
     const send = async (list: Delivery[]): Promise<void> => {

@@ -340,7 +340,7 @@ const OPEN_AIR = new Set(['well', 'field', 'graveyard']);
 
 /** A tile where firelight comes from, for the night lighting. 0 if none, else the radius in tiles. */
 export function lightOf(st: number): number {
-  return st === B.HEARTH ? 4.2 : st === B.FORGE ? 3.2 : st === B.TORCH ? 3 : st === B.STOVE ? 2 : st === B.LAMP ? 2.4 : st === B.CAULDRON ? 1.6 : 0;
+  return st === B.HEARTH ? 4.2 : st === B.FORGE ? 3.2 : st === B.TORCH ? 3 : st === B.STOVE ? 2 : st === B.LAMP ? 2.4 : st === B.BRAZIER ? 3.6 : st === B.CAULDRON ? 1.6 : 0;
 }
 
 /**
@@ -419,6 +419,21 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
             g.rect(px + l, py + u, TS - l - r, 1).fill({ color: 0xb8bcc6, alpha: 0.5 });
           }
           if (pal.snow > 0.5) g.rect(px + l, py + u, TS - l - r, 3).fill({ color: 0xf2f5f7, alpha: 0.55 });
+          // a wall that steps diagonally (round towers, cut corners) is joined by a slanted piece
+          // drawn over the empty corner between the two
+          for (const dy of [-1, 1]) {
+            if (!isWall(stAt(x + 1, y + dy)) || isWall(stAt(x + 1, y)) || isWall(stAt(x, y + dy))) continue;
+            const side = stAt(x + 1, y) === 0; // the gap is beside us (else above or below us)
+            if (!side && stAt(x, y + dy) !== 0) continue;
+            const kx = px + TS;
+            const ky = dy > 0 ? py + TS : py;
+            const tri = side ? [kx, ky, kx, dy > 0 ? py : py + TS, kx + TS, ky] : [kx, ky, px, ky, kx, ky + dy * TS];
+            g.poly(tri).fill(edge);
+            // inset a little so the dark edge shows round the slanted top
+            const mx = (tri[0] + tri[2] + tri[4]) / 3;
+            const my = (tri[1] + tri[3] + tri[5]) / 3;
+            g.poly(tri.map((v, i) => (i % 2 ? my + (v - my) * 0.8 : mx + (v - mx) * 0.8))).fill(top);
+          }
           break;
         }
         case B.DOOR: {
@@ -697,6 +712,12 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           g.moveTo(px + 11, py + 12).lineTo(px + 18, py + 7).stroke({ width: 1.4, color: 0x7a5232 });
           g.circle(px + 8, py + 13, 1).fill(0x2a1d12);
           g.circle(px + 17, py + 14, 3).fill(0xb84a4a).stroke({ width: 0.8, color: 0xe9e3d5 });
+          break;
+        case B.BRAZIER:
+          g.circle(cx, cy, 13).fill({ color: 0xff9a3a, alpha: 0.14 });
+          g.circle(cx, cy, 6.5).fill(0x3a3d45).stroke({ width: 1.2, color: 0x15171b });
+          g.circle(cx, cy, 4.4).fill(0xe8662a);
+          g.circle(cx - 0.8, cy - 0.6, 2.4).fill(0xffc24a);
           break;
         case B.DRYRACK:
           // herbs hung up to dry

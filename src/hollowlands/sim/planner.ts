@@ -4,7 +4,7 @@
 import { DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
 import { dropFeat, touch } from './cache';
 import { BACKS } from './data/backstories';
-import { CROPS, HOMES, TPL, cellCode, cells, isDecor, spots } from './data/buildings';
+import { CROPS, HOMES, SHAPES, TPL, cellCode, cells, isDecor, shapeOf, spots } from './data/buildings';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
 import { chooseCrop } from './farm';
@@ -17,7 +17,7 @@ import { B, F, T, type Bld, type Colony, type Pawn } from './types';
 
 /** Lay out a template's tiles as far as it has been built. */
 export function syncTiles(c: Colony, b: Bld): void {
-  const list = cells(b.k);
+  const list = cells(shapeOf(b));
   const n = b.built ? list.length : Math.floor(b.prog * list.length);
   for (let i = 0; i < n; i++) {
     const cell = list[i];
@@ -29,20 +29,22 @@ export function syncTiles(c: Colony, b: Bld): void {
   touch(c);
 }
 
-export function placeBuilding(c: Colony, k: string, x: number, y: number, instant: boolean, mat = 0): Bld {
-  const t = TPL[k];
+export function placeBuilding(c: Colony, k: string, x: number, y: number, instant: boolean, mat = 0, shape = k): Bld {
+  const t = TPL[shape];
+  const cost = TPL[k];
   const w = t.rows[0].length;
   const h = t.rows.length;
-  const wood = mat ? Math.round(t.wood * 0.3) : t.wood;
-  const stone = mat ? Math.round(t.stone + t.wood * 0.7) : t.stone;
+  const wood = mat ? Math.round(cost.wood * 0.3) : cost.wood;
+  const stone = mat ? Math.round(cost.stone + cost.wood * 0.7) : cost.stone;
   const b: Bld = {
     id: c.nextBld++, k, x, y, w, h, prog: instant ? 1 : 0, built: instant, q: instant ? 42 : 0, mat,
-    beds: spots(k, 'b').map(() => 0), need: { wood: instant ? 0 : wood, stone: instant ? 0 : stone }, made: c.tick, dmg: 0,
+    beds: spots(shape, 'b').map(() => 0), need: { wood: instant ? 0 : wood, stone: instant ? 0 : stone }, made: c.tick, dmg: 0,
   };
   for (let dy = 0; dy < h; dy++) {
     for (let dx = 0; dx < w; dx++) {
       const i = (y + dy) * c.w + x + dx;
-      c.sb[i] = b.id;
+      // a space in the plan is outside: the land there stays the colony's, not the building's
+      if (t.rows[dy][dx] !== ' ') c.sb[i] = b.id;
       const f = c.feat[i];
       if (f === F.TREE || f === F.PINE) c.stock.wood += 4;
       else if (f === F.BOULDER) c.stock.stone += 4;
@@ -51,6 +53,7 @@ export function placeBuilding(c: Colony, k: string, x: number, y: number, instan
       if (c.ter[i] === T.MARSH) c.ter[i] = T.DIRT;
     }
   }
+  if (shape !== k) b.s = shape;
   c.blds.push(b);
   syncTiles(c, b);
   return b;
@@ -59,12 +62,12 @@ export function placeBuilding(c: Colony, k: string, x: number, y: number, instan
 const OPEN = new Set<number>([T.GRASS, T.DIRT, T.SOIL, T.SAND, T.STONE, T.MARSH]);
 
 /** Best free plot for a building, or null if the land is full. */
-export function findSite(c: Colony, k: string): [number, number] | null {
-  const t = TPL[k];
+export function findSite(c: Colony, k: string, shape = k): [number, number] | null {
+  const t = TPL[shape];
   const w = t.rows[0].length;
   const h = t.rows.length;
   const field = k === 'field';
-  const minR = field ? 8 : k === 'graveyard' ? 14 : k === 'hall' ? 0 : 3;
+  const minR = field ? 8 : k === 'graveyard' ? 14 : k === 'tower' ? 11 : k === 'hall' ? 0 : 3;
   const maxR = field ? 31 : 28;
   let best: [number, number] | null = null;
   let bestScore = -1e9;
@@ -88,7 +91,9 @@ export function findSite(c: Colony, k: string): [number, number] | null {
         }
       }
       if (!ok) continue;
-      let score = field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - 17) : -d;
+      // a tower stands out along the road, where trouble comes from
+      const road = k === 'tower' ? Math.hypot(x + w / 2 - (c.cx + (c.gx - c.cx) * 0.45), y + h / 2 - (c.cy + (c.gy - c.cy) * 0.45)) : 0;
+      let score = field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - 17) : k === 'tower' ? -road : -d;
       score += (hash32(c.seed, S.PLAN, x, y, c.nextBld) / 4294967296) * 1.6;
       if (score > bestScore) { bestScore = score; best = [x, y]; }
     }
@@ -99,14 +104,19 @@ export function findSite(c: Colony, k: string): [number, number] | null {
 export function build(c: Colony, k: string, instant = false, crop?: string): Bld | null {
   // no point measuring the same crowded ground every morning
   if (c.nosite[k] && c.tick - c.nosite[k] < 240 * 12) return null;
-  const site = findSite(c, k);
+  // a new building may take one of its kind's other shapes; an instant one (a new colony's first) keeps the plain plan
+  const opts = SHAPES[k];
+  const shape = opts && !instant ? opts[hash32(c.seed, S.PLAN, 77, c.nextBld) % opts.length] : k;
+  let use = shape;
+  let site = findSite(c, k, shape);
+  if (!site && shape !== k) { use = k; site = findSite(c, k); }
   if (!site) { c.nosite[k] = c.tick; return null; }
   delete c.nosite[k];
   let dwarves = 0;
   for (const p of c.pawns) if (p.race === 'dwarf') dwarves++;
   const stoneLover = c.pawns.length > 0 && dwarves / c.pawns.length > 0.4;
   const mat = k !== 'field' && k !== 'well' && k !== 'graveyard' && (stoneLover || (k === 'shrine' && c.stock.stone > 60)) ? 1 : 0;
-  const b = placeBuilding(c, k, site[0], site[1], instant, mat);
+  const b = placeBuilding(c, k, site[0], site[1], instant, mat, use);
   if (k === 'field') { b.crop = crop ?? 'veg'; b.tend = 40; }
   if (!instant) log(c, 'plan', undefined, undefined, k, b.id);
   return b;
@@ -366,6 +376,8 @@ export function plan(c: Colony): void {
     ['guardhouse', pop >= 18],
     ['gamehall', pop >= 19],
     ['bathhouse', pop >= 21],
+    // after the first real fight, or once the colony is big enough to be worth robbing
+    ['tower', pop >= 18 || (pop >= 12 && (c.stats.raids ?? 0) >= 2)],
   ];
   for (const [k, ok] of want) if (ok && !count(k)) { if (build(c, k)) return; }
 
