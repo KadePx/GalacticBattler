@@ -2,12 +2,13 @@
 // features are vector Graphics per 8x8 chunk, redrawn only when that chunk changes; colonists
 // are small reusable figures moved every frame. The view only ever reads the colony.
 
+import { actText } from './words';
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
 import { cellCode, cells } from '../sim/data/buildings';
 import { stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
-import { FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey } from './figures';
+import { FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
 import { SHAPE, yearsAt } from './look';
 import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
 
@@ -30,6 +31,9 @@ interface PawnView {
   over: Container;
   /** a dot that keeps its size on screen, for spotting people when zoomed far out */
   pin: Graphics;
+  /** what they are doing, as a small badge */
+  act: Graphics;
+  actKey: string;
   bubble: Graphics;
   mark: Graphics;
   label: Text;
@@ -294,13 +298,15 @@ export class MapView {
     blanket.visible = false;
     root.addChild(fig, blanket);
     const over = new Container();
+    const act = new Graphics();
+    act.visible = false;
     const pin = new Graphics().circle(0, 0, 4.2).fill(0x120c08).circle(0, 0, 3).fill(0xf4efe4);
     pin.visible = false;
     const bubble = new Graphics();
     const mark = new Graphics();
     bubble.visible = false;
     mark.visible = false;
-    over.addChild(pin, mark, bubble);
+    over.addChild(pin, act, mark, bubble);
     const label = new Text({
       text: p.first,
       resolution: 2,
@@ -310,7 +316,7 @@ export class MapView {
     this.pawnLayer.addChild(root);
     this.overLayer.addChild(over);
     this.labelLayer.addChild(label);
-    const v: PawnView = { id: p.id, root, fig, blanket, over, pin, bubble, mark, label, key: '', keyTick: -1, bubbleKey: '', markKey: '', blanketKey: -1, x: 0, y: 0, tile: 0, size: 1, asleep: false, stamp: 0 };
+    const v: PawnView = { id: p.id, root, fig, blanket, over, pin, act, actKey: '', bubble, mark, label, key: '', keyTick: -1, bubbleKey: '', markKey: '', blanketKey: -1, x: 0, y: 0, tile: 0, size: 1, asleep: false, stamp: 0 };
     this.views.set(p.id, v);
     return v;
   }
@@ -401,6 +407,17 @@ export class MapView {
         v.bubble.position.set(0, markKey && markKey !== 'z' ? -12 : 0);
       }
       v.bubble.visible = talking;
+      // what they are up to: shown beside them, faded while they walk there
+      const ak = asleep || p.brk?.k === 'seized' ? '' : activityKey(p.act.k, p.act.w);
+      if (ak !== v.actKey) { v.actKey = ak; drawActivity(v.act, ak); }
+      v.act.visible = !!ak && s >= 0.6;
+      if (v.act.visible) {
+        v.act.alpha = moving ? 0.55 : 1;
+        v.act.position.set(11, talking ? 5 : 2);
+        v.act.scale.set(1.45);
+        // a tool in use swings a little
+        v.act.rotation = !moving && SWINGS.has(ak) ? Math.sin(this.time * 0.012 + p.id) * 0.45 : 0;
+      }
       v.over.position.set(v.x, v.y - (asleep ? 6 : 10 * v.size * boost + 2));
       v.over.scale.set(overScale);
       // far out, a small dot marks each person; your own colonist and the selected one stand out
@@ -411,6 +428,9 @@ export class MapView {
       if (isSel) sel = v;
       if (p.id === this.mineId) mine = v;
       v.label.visible = showNames || isSel || p.id === this.followId || p.id === this.mineId;
+      // the one you are looking at also says what they are doing
+      const want = isSel || p.id === this.followId ? `${p.first} · ${actText(c, p).toLowerCase()}` : p.first;
+      if (v.label.text !== want) v.label.text = want;
     }
     for (const [id, v] of this.views) {
       if (v.stamp !== stamp) { this.dropView(v); this.views.delete(id); }

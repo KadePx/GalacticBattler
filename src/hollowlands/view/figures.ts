@@ -239,3 +239,158 @@ export function drawFoe(g: Graphics, k: string): void {
   }
   g.poly([-2.6, -13.5, 2.6, -13.5, 0, -10]).fill(0xef4444);
 }
+
+// ---------- What someone is doing, as a small badge beside them ----------
+
+const BADGE_INK = 0xe9edf6;
+
+/** The badge key for an action: the kind of work when working, otherwise the action itself. */
+export function activityKey(k: string, w: string | undefined): string {
+  if (k === 'work') return w ? 'w:' + w : '';
+  if (k === 'idle' || k === 'wander' || k === 'walk' || k === 'sleep') return '';
+  return k;
+}
+
+/** Things done with a tool get a little swing on the map. */
+export const SWINGS = new Set(['w:wood', 'w:mine', 'w:build', 'w:smith', 'w:farm', 'fight']);
+
+export function drawActivity(g: Graphics, key: string): void {
+  g.clear();
+  if (!key) return;
+  g.circle(0, 0, 6.6).fill({ color: 0x141821, alpha: 0.88 }).stroke({ width: 1, color: 0xffffff, alpha: 0.18 });
+  const line = (pts: number[], col = BADGE_INK, w = 1.3): void => {
+    g.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+    g.stroke({ width: w, color: col, cap: 'round', join: 'round' });
+  };
+  switch (key) {
+    case 'w:farm': // a stalk of barley
+      line([0, 4, 0, -3], 0xd9b85a);
+      g.ellipse(-1.6, -1.5, 1.1, 1.8).ellipse(1.6, -1.5, 1.1, 1.8).ellipse(0, -3.8, 1.1, 1.8).fill(0xe8c766);
+      break;
+    case 'w:wood': // an axe
+      line([-3, 4, 2.5, -2.5], 0xb9875a, 1.5);
+      g.poly([1, -4.2, 4.6, -1.6, 2.8, 0.4, 0.2, -2]).fill(0xc9ced8);
+      break;
+    case 'w:mine': // a pick
+      line([-3.2, 4, 2, -1.4], 0xb9875a, 1.5);
+      g.moveTo(-1.8, -3.8).quadraticCurveTo(2.6, -4.4, 4.4, 0.6).stroke({ width: 1.6, color: 0xc9ced8, cap: 'round' });
+      break;
+    case 'w:build': // a hammer
+      line([-2.8, 4, 1.4, -1.2], 0xb9875a, 1.5);
+      g.roundRect(-0.6, -4.6, 5.4, 3, 0.8).fill(0xc9ced8);
+      break;
+    case 'w:cook': // a pot with steam
+      g.roundRect(-3.6, -0.6, 7.2, 4.2, 1.2).fill(0x8a9099);
+      line([-1.5, -2, -0.8, -3.4, -1.5, -4.8], BADGE_INK, 1);
+      line([1.5, -2, 2.2, -3.4, 1.5, -4.8], BADGE_INK, 1);
+      break;
+    case 'w:brew': // a mug of ale
+    case 'drink':
+      g.roundRect(-3, -2.2, 5, 6, 1).fill(0xe0a84a);
+      g.roundRect(-3.3, -3.8, 5.6, 2.2, 1).fill(0xf6f1e4);
+      g.moveTo(2, -1).arc(2, 1, 2, -Math.PI / 2, Math.PI / 2).stroke({ width: 1.1, color: 0xe0a84a });
+      break;
+    case 'w:craft': // needle and thread
+      line([-3.5, 3.5, 3, -3], 0xc9ced8, 1.2);
+      g.moveTo(2.2, -2.2).bezierCurveTo(5, 0, 0, 3.5, -1, 1).stroke({ width: 1, color: 0xe86a6a });
+      break;
+    case 'w:smith': // anvil and a spark
+      g.poly([-4, -0.5, 3.4, -0.5, 4.6, -2, -2.8, -2]).fill(0xaab0bb);
+      g.rect(-1.4, -0.5, 2.6, 3.2).fill(0xaab0bb);
+      g.star(2.6, -4.4, 4, 2, 0.8, 0).fill(0xffb347);
+      break;
+    case 'w:heal':
+    case 'rest': // a red cross
+      g.rect(-1.2, -3.8, 2.4, 7.6).rect(-3.8, -1.2, 7.6, 2.4).fill(0xef5a5a);
+      break;
+    case 'w:teach':
+    case 'w:preach': // an open book
+      g.poly([0, -2.6, -4.2, -3.6, -4.2, 2.8, 0, 3.6]).fill(0xf1ead8);
+      g.poly([0, -2.6, 4.2, -3.6, 4.2, 2.8, 0, 3.6]).fill(0xe2d9c2);
+      line([0, -2.6, 0, 3.6], 0x8a7a5a, 0.8);
+      break;
+    case 'w:guard': // a shield
+      g.poly([-3.6, -3.8, 3.6, -3.8, 3.6, 0, 0, 4.2, -3.6, 0]).fill(0x7c8cff);
+      line([0, -3.8, 0, 3.4], 0xdfe4ff, 0.9);
+      break;
+    case 'w:hunt': // a bow
+      g.moveTo(-2, -4.4).quadraticCurveTo(4.2, 0, -2, 4.4).stroke({ width: 1.4, color: 0xb9875a });
+      line([-2, -4.4, -2, 4.4], BADGE_INK, 0.7);
+      break;
+    case 'w:fish': // a hook
+      g.moveTo(0.8, -4.4).lineTo(0.8, 1.4).arc(-0.8, 1.4, 1.6, 0, Math.PI).stroke({ width: 1.3, color: 0xc9ced8, cap: 'round' });
+      break;
+    case 'w:forage': // berries
+    case 'binge':
+      g.circle(-1.8, 0.8, 1.8).circle(1.8, 0.8, 1.8).circle(0, -1.8, 1.8).fill(0xd2445a);
+      break;
+    case 'w:herbs': // a leaf
+      g.ellipse(0, 0, 2.2, 4).fill(0x6fbf5a);
+      line([0, -3.6, 0, 3.8], 0x2f6a2a, 0.7);
+      break;
+    case 'eat': // a bowl and spoon
+      g.moveTo(-4, -0.4).arc(0, -0.4, 4, 0, Math.PI).closePath().fill(0xd9b98a);
+      line([2, -1, 4, -4.4], BADGE_INK, 1.1);
+      break;
+    case 'pray':
+    case 'attend': // a candle flame
+      g.rect(-1.2, -0.4, 2.4, 4.4).fill(0xf1ead8);
+      g.ellipse(0, -2.4, 1.4, 2.2).fill(0xffc24a);
+      break;
+    case 'relax': // a cup of something warm
+      g.roundRect(-2.8, -1, 5, 4.4, 1.2).fill(0xc9a27a);
+      line([-0.8, -2.2, -0.3, -3.4, -0.8, -4.6], BADGE_INK, 0.9);
+      break;
+    case 'hobby':
+    case 'stargaze': // a little spark of interest
+      g.star(0, 0, 4, 4.2, 1.6, 0).fill(0xffd95e);
+      break;
+    case 'dice':
+      g.roundRect(-3.4, -3.4, 6.8, 6.8, 1.4).fill(0xf1ead8);
+      g.circle(-1.5, -1.5, 0.8).circle(1.5, 1.5, 0.8).circle(0, 0, 0.8).fill(0x202430);
+      break;
+    case 'play': // a ball
+      g.circle(0, 0, 3.6).fill(0xe86a6a);
+      line([-3.4, 0, 3.4, 0], 0xffffff, 0.8);
+      break;
+    case 'court': // a heart
+      g.circle(-1.6, -1, 1.9).circle(1.6, -1, 1.9).fill(0xf06a96);
+      g.poly([-3.4, -0.4, 3.4, -0.4, 0, 3.6]).fill(0xf06a96);
+      break;
+    case 'visit': // two people
+      g.circle(-1.8, -1, 1.6).circle(1.8, -1, 1.6).fill(BADGE_INK);
+      g.ellipse(-1.8, 2.4, 2, 1.4).ellipse(1.8, 2.4, 2, 1.4).fill(BADGE_INK);
+      break;
+    case 'mourn': // a tear
+      g.moveTo(0, -4).quadraticCurveTo(3.4, 1, 0, 3.6).quadraticCurveTo(-3.4, 1, 0, -4).fill(0x7fb4f0);
+      break;
+    case 'fight': // crossed swords
+      line([-3.6, 3.6, 3.6, -3.6], 0xdfe3ea, 1.4);
+      line([3.6, 3.6, -3.6, -3.6], 0xdfe3ea, 1.4);
+      break;
+    case 'hide':
+      g.rect(-0.9, -3.8, 1.8, 4.8).fill(0xffd95e);
+      g.circle(0, 3, 1).fill(0xffd95e);
+      break;
+    case 'sulk': // a raincloud
+      g.circle(-1.6, -0.6, 2).circle(1.4, -1, 2.3).fill(0x9aa3b4);
+      line([-1.5, 2, -2, 3.6], 0x7fb4f0, 0.9);
+      line([1, 2, 0.5, 3.6], 0x7fb4f0, 0.9);
+      break;
+    case 'perform': // a note
+      g.circle(-1.4, 2.2, 1.7).fill(BADGE_INK);
+      line([0.2, 2, 0.2, -3.8, 3, -2.6], BADGE_INK, 1.2);
+      break;
+    case 'bathe': // a drop
+      g.moveTo(0, -4).quadraticCurveTo(3.4, 1, 0, 3.6).quadraticCurveTo(-3.4, 1, 0, -4).fill(0x5fb4e8);
+      break;
+    case 'tantrum':
+    case 'rave':
+    case 'stalk':
+      g.star(0, 0, 7, 4.4, 2, 0).fill(0xef4444);
+      break;
+    default:
+      g.circle(0, 0, 1.6).fill(BADGE_INK);
+  }
+}
