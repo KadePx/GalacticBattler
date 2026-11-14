@@ -17,13 +17,17 @@ export interface RegionSite { id: string; name: string; x: number; y: number; fo
 
 /** The world's seed, from the last region fetch (the world map is drawn from it). */
 export let regionSeed = 1;
+/** The colony my colonist lives in, from the last region fetch ('' if none or unknown). */
+export let regionMine = '';
 
 /** The colonies of the live world, or null when there is no live world (a static preview, or the server is down). */
 export async function fetchRegion(): Promise<RegionSite[] | null> {
   try {
-    const r = await fetch(ROOT + 'region', { cache: 'no-store' });
+    const me = await myHash().catch(() => '');
+    const r = await fetch(ROOT + 'region' + (me ? '?me=' + me : ''), { cache: 'no-store' });
     if (!r.ok) return null;
-    const body = (await r.json()) as { sites?: RegionSite[]; seed?: number };
+    const body = (await r.json()) as { sites?: RegionSite[]; seed?: number; mine?: string };
+    regionMine = body.mine ?? '';
     if (typeof body.seed === 'number') regionSeed = body.seed;
     return Array.isArray(body.sites) ? body.sites : null;
   } catch {

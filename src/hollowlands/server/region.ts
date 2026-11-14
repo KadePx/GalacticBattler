@@ -91,7 +91,12 @@ export class RegionHost {
   async handle(req: Request, internal: boolean): Promise<Response> {
     await this.load();
     const path = new URL(req.url).pathname.replace(/^.*\/api\/hl\/region\/?/, '');
-    if (req.method === 'GET' && path === '') return json({ seed: this.w!.seed, sites: this.w!.sites.map((s) => ({ ...s, owners: undefined, nearSent: undefined })), now: this.o.now() });
+    if (req.method === 'GET' && path === '') {
+      // with ?me=<public hash>, also say which colony that player's colonist lives in
+      const me = new URL(req.url).searchParams.get('me') ?? '';
+      const mine = me ? this.w!.sites.find((s) => !s.dead && s.owners?.includes(me))?.id : undefined;
+      return json({ seed: this.w!.seed, sites: this.w!.sites.map((s) => ({ ...s, owners: undefined, nearSent: undefined })), mine, now: this.o.now() });
+    }
     if (req.method === 'POST' && path === 'claim') {
       // one living colonist per player in the whole land
       if (!internal) return json({ error: 'forbidden' }, 403);

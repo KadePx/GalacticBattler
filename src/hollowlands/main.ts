@@ -9,7 +9,7 @@
 import { HARD_CAP, DEFAULT_MS_PER_DAY, TICKS_PER_DAY } from './config';
 import { RACES } from './sim/data/races';
 import { heirsOf } from './sim/player';
-import { connect, fetchRegion, myHash, myId, regionSeed, useColony, type Live, type RegionSite } from './net';
+import { connect, fetchRegion, myHash, myId, regionMine, regionSeed, useColony, type Live, type RegionSite } from './net';
 import { WorldView } from './view/world';
 import { createColony, step, type Colony, type Ev, type Id, type RaceK } from './sim/index';
 import { checkSpec, type PawnSpec } from './sim/create';
@@ -242,30 +242,35 @@ function rejoin(): void {
  * While you were away: what happened to my colonist since this browser last looked.
  * The colony itself only remembers a few days, so older events come from the server's archive.
  */
-async function digest(): Promise<void> {
+async function digest(force = false): Promise<void> {
   const mine = myPawn();
-  if (!live || !here || !mine) return;
+  if (!mine || (!live && !force)) return;
   const key = 'hl.seen.' + here;
-  const seen = Number(store.get(key)) || 0;
+  // first visit on this browser: look back over the last few days of their life (from arrival at most)
+  let seen = force ? 0 : Number(store.get(key)) || 0;
+  if (!seen) {
+    const arrived = mine.bio.find((b) => b.k === 'arrived' || b.k === 'heir')?.t ?? 0;
+    seen = Math.max(arrived - 1, c.tick - TICKS_PER_DAY * 5);
+  }
   store.set(key, String(c.tick));
-  if (!seen || c.tick - seen < TICKS_PER_DAY) return;
+  if (!force && c.tick - seen < TICKS_PER_DAY) return;
   let events: Ev[] = c.log.filter((e) => e.a === mine.id || e.b === mine.id);
   try {
-    const r = await fetch(`/api/hl/c/${here}/events?who=${mine.id}`, { cache: 'no-store' });
-    if (r.ok) {
+    const r = live ? await fetch(`/api/hl/c/${here}/events?who=${mine.id}`, { cache: 'no-store' }) : null;
+    if (r?.ok) {
       const old = ((await r.json()) as { events?: Ev[] }).events ?? [];
       const have = new Set(events.map((e) => e.t + e.k + (e.a ?? '') + (e.b ?? '')));
       events = [...old.filter((e) => !have.has(e.t + e.k + (e.a ?? '') + (e.b ?? ''))), ...events];
     }
   } catch { /* the archive is a bonus */ }
   const list = events.filter((e) => e.t > seen && (WEIGHT[e.k] ?? 0) >= 1).sort((x, y) => x.t - y.t);
-  if (!list.length) return;
+  if (!list.length) { if (force) toast('Nothing much has happened to them lately.'); return; }
   const big = list.filter((e) => (WEIGHT[e.k] ?? 0) >= 2);
   const show = (big.length >= 6 ? big : list).slice(-40);
   const days = Math.round((c.tick - seen) / TICKS_PER_DAY);
   const el = document.createElement('div');
   el.id = 'world';
-  el.innerHTML = `<div class="wbox panel"><div class="whead"><b>While you were away</b><span>${days} game ${days === 1 ? 'day' : 'days'} in the life of ${esc(mine.first)}</span><button class="icon" data-x title="Close" aria-label="Close">&times;</button></div><div class="wlist">${show.map((e) => `<div class="wrow"><span>${esc(dateText(e.t))}</span><b style="font-weight:500">${esc(evText(c, e))}</b></div>`).join('')}</div></div>`;
+  el.innerHTML = `<div class="wbox panel"><div class="whead"><b>${force ? 'Lately' : 'While you were away'}</b><span>${days >= 1 ? `${days} game ${days === 1 ? 'day' : 'days'}` : 'The last few hours'} in the life of ${esc(mine.first)}</span><button class="icon" data-x title="Close" aria-label="Close">&times;</button></div><div class="wlist">${show.map((e) => `<div class="wrow"><span>${esc(dateText(e.t))}</span><b style="font-weight:500">${esc(evText(c, e))}</b></div>`).join('')}</div></div>`;
   el.addEventListener('click', (e) => { if (e.target === el || (e.target as HTMLElement).closest('[data-x]')) el.remove(); });
   document.body.appendChild(el);
 }
@@ -395,6 +400,8 @@ async function boot(): Promise<void> {
     // a remembered home from an earlier world means nothing in this one
     const home = store.get('hl.col');
     if (home && !sites.some((x) => x.id === home)) store.del('hl.col');
+    // the server knows where my colonist lives, even if this browser has never shown it
+    if (regionMine) store.set('hl.col', regionMine);
     const want = q.get('c') ?? store.get('hl.col');
     const site = alive.find((s) => s.id === want) ?? alive.slice().sort((a, b) => b.pop - a.pop)[0];
     here = site.id;
@@ -435,6 +442,7 @@ async function boot(): Promise<void> {
     find: () => { if (sel?.k === 'pawn') map.focusPawn(sel.id, 1.6); },
     close: () => setSel(null),
     layout,
+    recap: () => { void digest(true); },
     share: () => {
       if (!sel || sel.k === 'bld') return;
       const u = new URL(location.href);

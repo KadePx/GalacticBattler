@@ -43,6 +43,8 @@ export interface Hooks {
   answer(v: string): void;
   /** Copy a link to the person whose card is open. */
   share(): void;
+  /** Show what has happened to my colonist lately. */
+  recap(): void;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -158,6 +160,7 @@ export class Panels {
     else if (d.act === 'nudge' && d.k) this.hooks.nudge(d.k, Number(d.v));
     else if (d.act === 'answer' && d.v) this.hooks.answer(d.v);
     else if (d.act === 'share') this.hooks.share();
+    else if (d.act === 'recap') this.hooks.recap();
     else if (d.filter === 'all' || d.filter === 'notable' || d.filter === 'mine') { this.filter = d.filter; this.feedKey = ''; }
     else if (d.sort === 'mood' || d.sort === 'name') this.sort = d.sort;
     this.dirty = true;

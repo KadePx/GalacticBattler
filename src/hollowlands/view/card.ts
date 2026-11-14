@@ -274,7 +274,7 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
     const res = resolveOf(c, p);
     const wait = resolveWait(c, p);
     const mins = Math.ceil((wait * 6) / 60);
-    h += `<h3>Your hand <span class="legend">Resolve ${res} of ${RESOLVE_CAP}</span></h3>`;
+    h += `<h3>Your hand <span class="legend">Resolve ${res} of ${RESOLVE_CAP} · <a class="who" data-act="recap">what happened lately?</a></span></h3>`;
     h += `<div class="pips">${'<i class="on"></i>'.repeat(res)}${'<i></i>'.repeat(RESOLVE_CAP - res)}<span class="hint">${wait ? `next in about ${mins >= 120 ? Math.round(mins / 60) + ' game hours' : mins + ' game minutes'}` : 'full'}</span></div>`;
     const lean: string[] = [];
     if (p.urge && p.urge[2] > c.tick) lean.push(`${esc(NUDGES[p.urge[0]]?.name ?? p.urge[0])}: ${whoLink(c, p.urge[1])}`);
