@@ -257,7 +257,7 @@ const WHY: Record<string, string> = {
   bored: 'Needed a break', idle: 'Nothing pressing to do', free: 'Free time', love: 'Wanted to see their love', urge: 'Could not put it off any longer', crush: 'Could not stay away', friend: 'Wanted company', family: 'Wanted family',
   child: 'Being a child', baby: 'Being a baby', wedding: 'At the wedding', audience: 'Before the seat', trial: 'At the trial', sermon: 'Hearing the sermon', funeral: 'At the funeral', feast: 'At the feast', grief: 'Grieving', new: 'Just arrived',
   drink: 'Fancied a drink', drinkbored: 'Bored, so: a drink', relax: 'Resting', walk: 'Stretching their legs', pray: 'Praying', dice: 'Feeling lucky', hobby: 'Doing what they love',
-  stargaze: 'Looking at the stars', bathe: 'Having a wash', perform: 'Had an audience', stopped: 'Interrupted', born: 'Newborn', alarm: 'The colony is under attack', muster: 'Standing ready with the others', hurt: 'Too hurt or sick to work', seized: 'Seized', carried: 'Carried to bed', freed: 'Freed',
+  stargaze: 'Looking at the stars', bathe: 'Having a wash', hotbath: 'Wanted a hot bath', chess: 'Fancied a game of chess', darts: 'Fancied a game of darts', music: 'Wanted to play', read: 'Wanted to read', school: 'Lessons at the schoolhouse', perform: 'Had an audience', stopped: 'Interrupted', born: 'Newborn', alarm: 'The colony is under attack', muster: 'Standing ready with the others', hurt: 'Too hurt or sick to work', seized: 'Seized', carried: 'Carried to bed', freed: 'Freed',
 };
 
 export function whyText(why: string): string {

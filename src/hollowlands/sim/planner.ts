@@ -4,9 +4,10 @@
 import { DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
 import { dropFeat, touch } from './cache';
 import { BACKS } from './data/backstories';
-import { CROPS, HOMES, TPL, cellCode, cells, spots } from './data/buildings';
+import { CROPS, HOMES, TPL, cellCode, cells, isDecor, spots } from './data/buildings';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
+import { chooseCrop } from './farm';
 import { bump, log, note } from './events';
 import { bury } from './life';
 import { think } from './mood';
@@ -23,7 +24,7 @@ export function syncTiles(c: Colony, b: Bld): void {
     const code = cellCode(b.k, cell.ch, b.mat);
     if (code === B.NONE) continue;
     const ti = (b.y + cell.dy) * c.w + b.x + cell.dx;
-    if (c.st[ti] !== code && c.st[ti] !== B.GRAVE) c.st[ti] = code;
+    if (c.st[ti] !== code && c.st[ti] !== B.GRAVE && !(cell.ch === '.' && isDecor(c.st[ti]))) c.st[ti] = code;
   }
   touch(c);
 }
@@ -64,7 +65,7 @@ export function findSite(c: Colony, k: string): [number, number] | null {
   const h = t.rows.length;
   const field = k === 'field';
   const minR = field ? 8 : k === 'graveyard' ? 14 : k === 'hall' ? 0 : 3;
-  const maxR = field ? 27 : 23;
+  const maxR = field ? 31 : 28;
   let best: [number, number] | null = null;
   let bestScore = -1e9;
   for (let y = 3; y < c.h - h - 3; y++) {
@@ -311,6 +312,13 @@ export function plan(c: Colony): void {
   const pop = c.pawns.length;
   if (!pop) return;
   const pending = c.blds.filter((b) => !b.built);
+  // no stone to be had for weeks: build it in timber instead
+  for (const b of pending) {
+    if (b.need.stone > 0.01 && c.stock.stone < 1 && c.tick - b.made > 240 * 12) {
+      b.need.wood += b.need.stone * 1.5;
+      b.need.stone = 0;
+    }
+  }
   const pendingFields = pending.filter((b) => b.k === 'field').length;
   if (pending.length - pendingFields >= (pop >= 14 ? 2 : 1)) return;
   const count = (k: string): number => c.blds.filter((b) => b.k === k).length;
@@ -319,13 +327,9 @@ export function plan(c: Colony): void {
 
   // Fields first, while there is still time to plant
   const fields = c.blds.filter((b) => b.k === 'field');
-  const wantFields = Math.ceil(mouths(c) * 0.4);
+  const wantFields = Math.ceil(mouths(c) * 0.34);
   if (fields.length < wantFields && pendingFields === 0 && (season === 0 || season === 3 || (season === 1 && doy < 22))) {
-    const grain = fields.filter((b) => b.crop === 'grain').length;
-    const veg = fields.filter((b) => b.crop === 'veg').length;
-    const flax = fields.filter((b) => b.crop === 'flax').length;
-    const crop = pop >= 8 && !flax && fields.length >= 3 ? 'flax' : grain <= veg ? 'grain' : 'veg';
-    if (build(c, 'field', false, crop)) return;
+    if (build(c, 'field', false, chooseCrop(c, null))) return;
   }
   if (pending.length - pendingFields >= 1 && pop < 14) return;
 
@@ -350,6 +354,20 @@ export function plan(c: Colony): void {
   if (pop >= 10 && !count('smithy')) { if (build(c, 'smithy')) return; }
   if (pop >= 12 && !count('infirmary')) { if (build(c, 'infirmary')) return; }
   if (pop >= 24 && count('store') < 2) { if (build(c, 'store')) return; }
+  // as the colony grows, work moves into buildings made for it
+  let kids = 0;
+  for (const p of c.pawns) if (stage(c, p) < STAGE.ADULT && stage(c, p) > STAGE.BABY) kids++;
+  const want: [string, boolean][] = [
+    ['kitchen', pop >= 12],
+    ['granary', pop >= 14],
+    ['brewery', pop >= 15 && count('tavern') > 0],
+    ['school', pop >= 14 && kids >= 4],
+    ['herbalist', pop >= 16],
+    ['guardhouse', pop >= 18],
+    ['gamehall', pop >= 19],
+    ['bathhouse', pop >= 21],
+  ];
+  for (const [k, ok] of want) if (ok && !count(k)) { if (build(c, k)) return; }
 
   // With the needs met, people want homes of their own
   if (!pending.length && c.stock.wood >= 30) {

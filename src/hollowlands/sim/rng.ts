@@ -92,4 +92,5 @@ export const S = {
   FIGHT: 18,
   STORY: 19,
   CRIME: 20,
+  WILD: 21,
 } as const;

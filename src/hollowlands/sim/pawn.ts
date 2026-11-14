@@ -143,7 +143,7 @@ export function normPawn(p: Pawn): Pawn {
     act: { k: a.k, t0: a.t0, ta: a.ta, t1: a.t1, sx: a.sx, sy: a.sy, tx: a.tx, ty: a.ty, path: a.path, w: a.w, b: a.b, o: a.o, d: a.d, why: a.why },
     food: p.food, rest: p.rest, joy: p.joy, soc: p.soc, mood: p.mood, th: p.th, sit: p.sit, rel: p.rel, mo: p.mo, fa: p.fa, sp: p.sp, crush: p.crush, home: p.home, prof: p.prof, rank: p.rank,
     faith: p.faith, dev: p.dev, goal: p.goal, hp: p.hp, brk: p.brk, low: p.low, high: p.high, drunk: p.drunk, cloth: p.cloth, lastBrk: p.lastBrk, preg: p.preg, know: p.know, bio: p.bio,
-    owner: p.owner, coin: p.coin, insp: p.insp, say: p.say, inj: p.inj, perm: p.perm, ill: p.ill, booze: p.booze, phobia: p.phobia, secret: p.secret, heirloom: p.heirloom, res: p.res, resT: p.resT, urge: p.urge, focus: p.focus, prev: p.prev, roots: p.roots, ask: p.ask, thrall: p.thrall, cult: p.cult, gone: p.gone,
+    owner: p.owner, coin: p.coin, insp: p.insp, say: p.say, inj: p.inj, perm: p.perm, ill: p.ill, booze: p.booze, phobia: p.phobia, secret: p.secret, heirloom: p.heirloom, res: p.res, resT: p.resT, urge: p.urge, focus: p.focus, prev: p.prev, roots: p.roots, ask: p.ask, thrall: p.thrall, cult: p.cult, tool: p.tool, gone: p.gone,
   };
 }
 

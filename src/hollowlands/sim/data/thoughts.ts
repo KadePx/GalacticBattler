@@ -71,6 +71,9 @@ export const TH_LIST: ThDef[] = [
 
   // Food and drink
   h('atefeast', 'Ate a fine meal', 6, DAY),
+  h('brokentool', 'My tool broke in my hands', -2, 12),
+  h('variedfare', 'A good mix of food on the table', 3, DAY),
+  h('samefare', 'The same food every day', -3, DAY),
   h('ateraw', 'Ate raw food', -4, 12),
   h('atenotable', 'Ate standing up', -2, 8),
   h('atetogether', 'Shared a meal with {o}', 1, DAY * 2, { op: 3, st: 3 }),
@@ -98,6 +101,17 @@ export const TH_LIST: ThDef[] = [
   h('stargazed', 'Watched the stars', 3, DAY),
   h('playedgames', 'Played all afternoon', 4, DAY),
   h('bathed', 'Had a good wash', 2, DAY),
+  h('hotbath', 'Soaked in a hot bath', 4, DAY),
+  h('wonchess', 'Won a game of chess against {o}', 3, 12),
+  h('lostchess', 'Lost at chess to {o}', -1, 8),
+  h('chessalone', 'Worked through a chess puzzle', 1, 8),
+  h('playedwith', 'Spent the evening at a game with {o}', 1, DAY, { op: 4 }),
+  h('playeddarts', 'Threw some darts', 2, 12),
+  h('heardmusic', 'Heard {o} play', 3, 12, { op: 3 }),
+  h('playedmusic', 'Played for a crowd', 4, DAY),
+  h('practised', 'Practised an instrument', 1, 8),
+  h('readbook', 'Lost in a good book', 3, DAY),
+  h('learnedsomething', 'Learned something new at school', 2, DAY),
 
   // Talk
   h('chat', 'Good talk with {o}', 0, DAY * 3, { op: 1.6, st: 8 }),

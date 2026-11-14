@@ -14,10 +14,12 @@ import { dailyFaith } from './faith';
 import { dailySettle } from './settle';
 import { dailyAbroad, dailyMatch } from './abroad';
 import { dailyIntrigue } from './intrigue';
+import { dailyWild, stepWild } from './wild';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
   dailyLand(c);
+  dailyWild(c);
   dailyLife(c);
   plan(c);
   dailyStory(c);
@@ -45,6 +47,7 @@ export function step(c: Colony): void {
   if (t % TICKS_PER_DAY === 0) daily(c);
   if (c.inq.length) applyInputs(c);
   if (c.gath && t >= c.gath.t1) endGathering(c);
+  if (c.beasts?.length) stepWild(c);
   if (c.foes.length) combatTick(c);
   else if (c.alarm) aftermath(c);
   const list = c.pawns;

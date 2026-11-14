@@ -354,7 +354,7 @@ function trade(c: Colony, r: Rand): void {
   sell('ale', pop * 1.5, 0.25);
   sell('cloth', 8, 0.5);
   let bought = 0;
-  const buy = (k: 'tools' | 'medicine' | 'iron' | 'clothes' | 'weapons' | 'grain', want: number, price: number): void => {
+  const buy = (k: 'tools' | 'medicine' | 'iron' | 'clothes' | 'weapons' | 'grain' | 'stone' | 'wood', want: number, price: number): void => {
     const n = Math.min(Math.max(0, want - s[k]), silver / price);
     if (n <= 0.2) return;
     s[k] += n;
@@ -362,10 +362,12 @@ function trade(c: Colony, r: Rand): void {
     bought += n;
   };
   buy('medicine', 2 + pop * 0.15, 3);
-  buy('tools', pop * 0.4, 3);
+  buy('tools', 2 + pop * 0.2, 3);
   if (s.grain + s.veg + s.meal < pop * 8) buy('grain', pop * 14, 0.3);
   buy('weapons', pop * 0.25, 5);
   buy('iron', 4, 2);
+  if (s.stone < 10) buy('stone', 30, 0.4);
+  if (s.wood < pop * 4) buy('wood', pop * 8, 0.2);
   buy('clothes', 1 + pop * 0.15, 2.5);
   s.silver = silver;
   for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, 'newfaces');

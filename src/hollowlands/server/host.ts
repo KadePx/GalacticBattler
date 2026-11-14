@@ -110,6 +110,8 @@ export class ColonyHost {
       if (meta && state) {
         this.meta = JSON.parse(meta) as Meta;
         this.c = deserialize(state);
+        // a colony saved by older rules carries on under the new ones (deserialize fills in what is new)
+        if (this.meta.simV !== SIM_V) this.meta.simV = SIM_V;
         const extra = JSON.parse((await this.kv.get('extra')) ?? '{}') as { seq?: number; inputs?: SeqInput[] };
         this.seq = extra.seq ?? 0;
         this.inputs = extra.inputs ?? [];

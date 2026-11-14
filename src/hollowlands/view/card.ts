@@ -4,7 +4,8 @@
 
 import { SEASON_NAMES, when } from '../config';
 import { BACKS } from '../sim/data/backstories';
-import { CROPS, TPL } from '../sim/data/buildings';
+import { CROPS, PURPOSE, TPL } from '../sim/data/buildings';
+import { TOOL_FOR, TOOL_NAMES } from '../sim/jobs';
 import { PROFS } from '../sim/data/professions';
 import { TH } from '../sim/data/thoughts';
 import { TRAITS } from '../sim/data/traits';
@@ -247,6 +248,10 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   const office = Object.entries(c.gov.titles).find(([, id]) => id === p.id)?.[0];
   const standing = p.id === c.gov.ruler ? `${rulerTitle(c, p)} of ${c.name}` : p.id === c.gov.regent ? 'Regent' : office ? office[0].toUpperCase() + office.slice(1) : p.rank !== 2 && st >= 3 ? RANK_NAMES[p.rank] : '';
   if (standing) h += `<div class="sub"><span class="tie kin">${esc(standing)}</span></div>`;
+  if (p.tool) {
+    const fit = p.act.k === 'work' && p.act.w && TOOL_FOR[p.act.w] ? (TOOL_FOR[p.act.w] === p.tool[0] ? '' : ' (not the right tool for this work)') : '';
+    h += `<div class="sub" title="The right tool makes work go faster; without one it goes slower. Tools wear out with use.">Carries ${esc(TOOL_NAMES[p.tool[0]] ?? p.tool[0])}, ${p.tool[1] > 66 ? 'in good shape' : p.tool[1] > 33 ? 'well used' : 'nearly worn out'}${fit}</div>`;
+  }
   h += `<div class="btns"><button class="btn sm${ui.following ? ' on' : ''}" data-act="follow">${ui.following ? 'Following' : 'Follow'}</button><button class="btn sm" data-act="find">Show on map</button></div></div></div>`;
 
   let flags = '';
@@ -389,6 +394,7 @@ export function bldCard(c: Colony, b: Bld): string {
     h += `<span>Damage</span>${bar(b.dmg, b.dmg > 40 ? 'var(--bad)' : '#fbbf24')}<b>${Math.round(b.dmg)}</b></div>`;
     h += `<div class="hint">${qualityWord(b.q)} work${b.dmg > 60 ? ', and falling apart' : b.dmg > 25 ? ', in need of repair' : ''}.</div>`;
   }
+  if (PURPOSE[b.k]) h += `<div class="hint">${esc(PURPOSE[b.k])}</div>`;
 
   if (b.k === 'field') {
     const crop = CROPS[b.crop ?? ''];
@@ -406,6 +412,7 @@ export function bldCard(c: Colony, b: Bld): string {
     h += '<div class="needs">';
     h += `<span>Growth</span>${bar(n ? (sum / n) * 100 : 0, '#4ade80')}<b>${Math.round(n ? (sum / n) * 100 : 0)}%</b>`;
     h += `<span>Care</span>${bar(b.tend ?? 0, needColor(b.tend ?? 0))}<b>${Math.round(b.tend ?? 0)}</b></div>`;
+    if (crop) h += `<div class="hint">${esc(crop.note)} Ripens in about ${crop.days} days.${crop.hardy ? ' Hardy.' : ''} When it is in, the farmers choose what to sow next.</div>`;
   }
 
   if (b.beds.length) {

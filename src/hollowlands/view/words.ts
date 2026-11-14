@@ -20,9 +20,9 @@ export const DEVOTION = ['in name only', 'lightly held', 'devout', 'zealous'];
 
 // Keyed by plain strings so new resources, work and actions in the sim fall back to their code.
 export const RES_NAMES: Record<string, string> = {
-  grain: 'Barley', veg: 'Roots and greens', meat: 'Meat', fish: 'Fish', berries: 'Berries', meal: 'Meals', feast: 'Feast dishes', ale: 'Ale',
+  grain: 'Grain', veg: 'Vegetables', meat: 'Meat', fish: 'Fish', berries: 'Berries', meal: 'Meals', feast: 'Feast dishes', ale: 'Ale',
   wood: 'Wood', stone: 'Stone', ore: 'Ore', iron: 'Iron', leather: 'Leather', cloth: 'Cloth', herbs: 'Herbs', medicine: 'Medicine',
-  tools: 'Tools', clothes: 'Clothes', weapons: 'Weapons', silver: 'Silver', goods: 'Goods',
+  tools: 'Tools', clothes: 'Clothes', weapons: 'Weapons', silver: 'Silver', goods: 'Goods', hops: 'Hops', mushrooms: 'Mushrooms',
 };
 
 const WORK: Record<string, string> = {
@@ -35,6 +35,7 @@ const ACT: Record<string, string> = {
   dice: 'Playing dice', hobby: 'Busy with a hobby', play: 'Playing', visit: 'Visiting {o}', sulk: 'Sulking', binge: 'Bingeing', tantrum: 'Smashing things', rave: 'Raging',
   court: 'Courting {o}', wed: 'Getting married', attend: 'At the gathering', mourn: 'Mourning', labour: 'In labour', rest: 'Resting in bed', perform: 'Performing',
   listen: 'Listening', stargaze: 'Watching the stars', bathe: 'Washing', work: 'Working',
+  chess: 'Playing chess', darts: 'Throwing darts', music: 'Playing music', read: 'Reading', study: 'At school',
   fight: 'Fighting', flee: 'Running for it', hide: 'Hiding', tend: 'Tending the hurt', train: 'Training',
 };
 

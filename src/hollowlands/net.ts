@@ -5,6 +5,7 @@
 import { founderHash } from '../commonworld/shared/text';
 import type { PawnSpec } from './sim/create';
 import { colonyHash, deserialize, type Colony, type Input } from './sim/index';
+import { SIM_V } from './config';
 
 const ROOT = '/api/hl/';
 /** The colony being viewed: its API lives under /api/hl/c/<id>/. */
@@ -156,6 +157,8 @@ export async function connect(onReload: (c: Colony) => void): Promise<Live> {
     if (stopped || live.busy) return;
     try {
       const s = await getJson<State>('sync?seq=' + seq);
+      // the server runs newer rules than this page: only a fresh page can follow it
+      if (s.simV > SIM_V) { location.reload(); return; }
       if (s.id !== state.id || s.simV !== state.simV) { await load(); return; }
       state = { ...state, epoch: s.epoch, msPerTick: s.msPerTick };
       live.msPerTick = s.msPerTick;

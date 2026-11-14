@@ -29,11 +29,13 @@ export function tileCost(c: Colony, i: number): number {
   if (f === F.BOULDER || f === F.ORE || f === F.RUIN) return 0;
   if (s === B.DOOR) return 9;
   if (s === B.FLOOR_WOOD || s === B.FLOOR_STONE) return 8;
+  if (s === B.RUG) return 8;
   if (s >= B.BED) return 26;
   let cost = t === T.PATH ? 7 : t === T.SAND ? 12 : t === T.MARSH ? 18 : t === T.SHALLOW ? 26 : 10;
   if (s === B.TILLED) cost = 13;
   if (f === F.TREE || f === F.PINE) cost += 8;
   else if (f === F.BUSH || f === F.SAPLING) cost += 4;
+  else if (f === F.LOG) cost += 10;
   return cost;
 }
 

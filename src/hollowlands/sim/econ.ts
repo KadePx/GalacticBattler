@@ -15,7 +15,7 @@ export function emptyStock(): Record<ResK, number> {
   return s;
 }
 
-export const rawFood = (c: Colony): number => c.stock.grain + c.stock.veg + c.stock.meat + c.stock.fish + c.stock.berries;
+export const rawFood = (c: Colony): number => c.stock.grain + c.stock.veg + c.stock.meat + c.stock.fish + c.stock.berries + c.stock.mushrooms;
 export const foodUnits = (c: Colony): number => rawFood(c) + c.stock.meal + c.stock.feast;
 export const hasFood = (c: Colony): boolean => foodUnits(c) >= 1;
 
@@ -40,13 +40,13 @@ export function takeMeal(c: Colony, ironStomach: boolean): string {
   const s = c.stock;
   if (s.feast >= 1) { s.feast -= 1; return 'feast'; }
   if (s.meal >= 1) { s.meal -= 1; return 'meal'; }
-  for (const k of ['berries', 'veg', 'fish', 'meat', 'grain'] as const) {
+  for (const k of ['berries', 'mushrooms', 'veg', 'fish', 'meat', 'grain'] as const) {
     if (s[k] >= 1) { s[k] -= 1; return ironStomach || k === 'berries' ? 'meal' : 'raw'; }
   }
   // scraps of this and that
   if (foodUnits(c) < 1) return '';
   let need = 1;
-  for (const k of ['feast', 'meal', 'berries', 'veg', 'fish', 'meat', 'grain'] as const) {
+  for (const k of ['feast', 'meal', 'berries', 'mushrooms', 'veg', 'fish', 'meat', 'grain'] as const) {
     const n = Math.min(need, s[k]);
     s[k] -= n;
     need -= n;
@@ -94,13 +94,16 @@ export function dailyLand(c: Colony): void {
     const def = CROPS[b.crop];
     const care = 0.55 + 0.65 * ((b.tend ?? 0) / 100);
     const wx = c.weather === 2 ? 1.15 : c.weather === 3 ? 0.9 : 1;
-    const grow = season === 3 || c.temp < 2 ? 0 : (200 / def.days) * care * wx * (drought ? 0.2 : 1);
+    // hardy crops keep growing, slowly, into the cold
+    const chill = def.hardy ? (c.temp < -3 ? 0 : season === 3 || c.temp < 2 ? 0.5 : 1) : season === 3 || c.temp < 2 ? 0 : 1;
+    const grow = chill * (200 / def.days) * care * wx * (drought ? 0.2 : 1);
     for (const cell of cells('field')) {
       const i = (b.y + cell.dy) * c.w + b.x + cell.dx;
       const v = c.crop[i];
       if (v === 0) continue;
-      if (v === 255) { if (firstFrost && r.chance(0.5)) c.crop[i] = 0; continue; }
-      if (firstFrost) { c.crop[i] = 0; continue; }
+      if (v === 255) { if (firstFrost && !def.hardy && r.chance(0.5)) c.crop[i] = 0; continue; }
+      if (firstFrost && !def.hardy) { c.crop[i] = 0; continue; }
+      if (def.hardy && c.temp < -9) { c.crop[i] = 0; continue; }
       const nv = v + grow * (c.ter[i] === T.SOIL ? 1.2 : 1);
       c.crop[i] = nv >= 200 ? 255 : Math.max(1, Math.floor(nv));
     }
@@ -119,7 +122,7 @@ export function dailyLand(c: Colony): void {
     } else if (f === F.HERB) {
       if (c.fg[i] < 100 && season < 3) c.fg[i] = Math.min(100, c.fg[i] + 5);
     } else if (f === F.SAPLING) {
-      if (season < 3 && (day + i) % 6 !== 0) c.fg[i]++;
+      if (season < 3) c.fg[i] = Math.min(100, c.fg[i] + 3);
       if (c.fg[i] >= 100) { c.feat[i] = F.TREE; changed = true; }
     }
   }
@@ -143,8 +146,10 @@ export function dailyLand(c: Colony): void {
 
   // Rot. Cold keeps things.
   const cold = c.temp < 3;
+  const granary = c.blds.some((b) => b.k === 'granary' && b.built);
+  const kept: ResK[] = ['grain', 'veg', 'hops', 'mushrooms', 'berries'];
   const rot = (k: ResK, warm: number, chill: number): void => {
-    const lost = c.stock[k] * (cold ? chill : warm);
+    const lost = c.stock[k] * (cold ? chill : warm) * (granary && kept.includes(k) ? 0.45 : 1);
     if (lost > 0.01) { c.stock[k] -= lost; bump(c, 'rotted', lost); }
   };
   rot('meat', 0.1, 0.01);
@@ -152,9 +157,10 @@ export function dailyLand(c: Colony): void {
   rot('berries', 0.07, 0.02);
   rot('veg', 0.018, 0.008);
   rot('grain', 0.003, 0.003);
+  rot('mushrooms', 0.06, 0.02);
+  rot('hops', 0.004, 0.002);
   rot('meal', 0.08, 0.02);
   rot('feast', 0.1, 0.02);
-  c.stock.tools = Math.max(0, c.stock.tools - c.pawns.length * 0.004);
 
   // Hearths burn through wood when it is cold
   if (c.temp < 6) {

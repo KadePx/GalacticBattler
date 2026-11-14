@@ -8,7 +8,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
 import { cellCode, cells } from '../sim/data/buildings';
 import { stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
-import { FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
+import { WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
 import { SHAPE, yearsAt } from './look';
 import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
 
@@ -96,6 +96,7 @@ export class MapView {
   private chunks: Chunk[] = [];
   private views = new Map<Id, PawnView>();
   private foeViews = new Map<number, { g: Graphics; stamp: number }>();
+  private beastViews = new Map<number, { g: Graphics; stamp: number; face: number }>();
   private blds = new Map<number, Bld>();
   private plan = new Uint8Array(0);
   private fires: { x: number; y: number; r: number }[] = [];
@@ -158,6 +159,8 @@ export class MapView {
     this.views.clear();
     for (const f of this.foeViews.values()) f.g.destroy();
     this.foeViews.clear();
+    for (const f of this.beastViews.values()) f.g.destroy();
+    this.beastViews.clear();
     this.cam.removeChildren();
     for (const l of [this.structLayer, this.groundLayer, this.canopyLayer]) for (const ch of l.removeChildren()) ch.destroy();
     this.terCv.width = this.mw;
@@ -199,6 +202,7 @@ export class MapView {
     this.refreshStatic(false);
     this.syncPawns(tf);
     this.syncFoes(tf);
+    this.syncBeasts(tf);
     this.stepCamera(dt);
     this.cull();
     this.lighting(tf, dt);
@@ -470,6 +474,35 @@ export class MapView {
     }
     for (const [id, v] of this.foeViews) {
       if (v.stamp !== stamp) { v.g.destroy(); this.foeViews.delete(id); }
+    }
+  }
+
+  /** Deer, boar, hares and foxes out in the wild. They hop from tile to tile and face where they go. */
+  private syncBeasts(tf: number): void {
+    const list = (this.c as unknown as { beasts?: FoeLike[] }).beasts;
+    if (!list?.length && !this.beastViews.size) return;
+    const stamp = this.stamp;
+    const u = Math.max(0, Math.min(1, tf - Math.floor(tf)));
+    for (const b of list ?? []) {
+      let v = this.beastViews.get(b.id);
+      if (!v) {
+        v = { g: new Graphics(), stamp, face: 1 };
+        drawBeast(v.g, b.k);
+        this.pawnLayer.addChild(v.g);
+        this.beastViews.set(b.id, v);
+      }
+      v.stamp = stamp;
+      if (b.x !== b.px) v.face = b.x > b.px ? 1 : -1;
+      const s = (WILD_SIZE[b.k] ?? 1) * FIG;
+      v.g.scale.set(s * v.face, s);
+      const hop = b.x !== b.px || b.y !== b.py ? Math.sin(u * Math.PI) * 2 : 0;
+      const x = (b.px + (b.x - b.px) * u + 0.5) * TS;
+      const y = (b.py + (b.y - b.py) * u + 0.5) * TS;
+      v.g.position.set(x, y - hop);
+      v.g.zIndex = y;
+    }
+    for (const [id, v] of this.beastViews) {
+      if (v.stamp !== stamp) { v.g.destroy(); this.beastViews.delete(id); }
     }
   }
 

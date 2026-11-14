@@ -89,7 +89,7 @@ export function feltTemp(c: Colony, p: Pawn, inside: boolean): number {
   return t + RACES[p.race].cold + (p.cloth > 25 ? 6 : 0);
 }
 
-const JOY_ACTS = new Set(['drink', 'relax', 'walk', 'pray', 'dice', 'hobby', 'play', 'visit', 'court', 'perform', 'listen', 'stargaze', 'bathe', 'wed']);
+const JOY_ACTS = new Set(['drink', 'relax', 'walk', 'pray', 'dice', 'hobby', 'play', 'visit', 'court', 'perform', 'listen', 'stargaze', 'bathe', 'wed', 'chess', 'darts', 'music', 'read']);
 
 function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
   const out: [string, number, number?][] = [];

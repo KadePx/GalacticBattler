@@ -11,7 +11,7 @@ import { assignBeds, assignProfs, build } from './planner';
 import { Rand, S, hashStr } from './rng';
 import { importPawns, type SettlerMsg } from './settle';
 import { step } from './step';
-import type { Colony, Pawn, RaceK } from './types';
+import { RES, type Colony, type Pawn, type RaceK } from './types';
 
 export { step } from './step';
 export * from './types';
@@ -33,7 +33,7 @@ function blank(seed: number): Colony {
   return {
     v: SIM_V, seed, id: 'c' + seed.toString(36), name: '', biome: 'valley', tick: 6 * TICKS_PER_HOUR, w: MAP_W, h: MAP_H,
     ter: new Uint8Array(n), feat: new Uint8Array(n), fg: new Uint8Array(n), st: new Uint8Array(n), crop: new Uint8Array(n), wear: new Uint8Array(n), sb: new Uint16Array(n),
-    cx: 0, cy: 0, gx: 0, gy: 0, pawns: [], dead: [], nextId: 1, blds: [], nextBld: 1, stock: emptyStock(), log: [], logBase: 0, facts: [], nextFact: 1,
+    cx: 0, cy: 0, gx: 0, gy: 0, beasts: [], pawns: [], dead: [], nextId: 1, blds: [], nextBld: 1, stock: emptyStock(), log: [], logBase: 0, facts: [], nextFact: 1,
     weather: 0, temp: 9, game: 100, stats: {}, inq: [], foes: [], nextFoe: 1, alarm: 0, story: { last: 0, lastBad: 0, heat: 0, band: 0 }, mods: [], nosite: {},
     gov: { k: 'elder', ruler: 0, since: 0, laws: { harsh: 1, tax: 0, ration: 0 }, titles: {}, next: 0, regent: 0 }, trials: [], settle: 0, out: [],
   };
@@ -122,7 +122,8 @@ export function createColony(o: CreateOpts): Colony {
   for (let k = 0; k < Math.ceil(singles / 2); k++) build(c, 'house', true);
   build(c, 'well', true);
   const fields = Math.ceil(mouths(c) * 0.4);
-  for (let k = 0; k < fields; k++) build(c, 'field', true, k % 2 ? 'veg' : 'grain');
+  const first = ['wheat', 'potato', 'grain', 'beans', 'oats', 'onion', 'cabbage', 'turnip'];
+  for (let k = 0; k < fields; k++) build(c, 'field', true, first[k % first.length]);
 
   // households move in together, then everyone else finds a bed
   for (const h of households) {
@@ -152,7 +153,7 @@ function foundColony(c: Colony, msg: SettlerMsg, r: Rand): Colony {
   build(c, 'hall', true);
   build(c, 'store', true);
   const leader = importPawns(c, msg, r);
-  build(c, 'field', true, 'veg');
+  build(c, 'field', true, 'potato');
   build(c, 'field', true, 'grain');
   for (const k of Object.keys(msg.stock) as (keyof typeof msg.stock)[]) c.stock[k] += msg.stock[k] ?? 0;
   // enough to see them through the first weeks
@@ -207,6 +208,7 @@ export function deserialize(json: string): Colony {
   raw.sb = new Uint16Array(sb.buffer.slice(sb.byteOffset, sb.byteOffset + sb.byteLength));
   const c = raw as unknown as Colony;
   c.pawns = c.pawns.map(normPawn);
+  upgrade(c);
   return c;
 }
 
@@ -214,4 +216,10 @@ export function deserialize(json: string): Colony {
 export function colonyHash(c: Colony): string {
   // the outbox is the keeper's business (it empties it as it delivers), not part of the colony's state
   return hashStr(serialize(c.out.length ? { ...c, out: [] } : c)).toString(16).padStart(8, '0');
+}
+
+/** Bring a colony saved by an older version up to date: new stores start empty, new state starts blank. */
+function upgrade(c: Colony): void {
+  for (const k of RES) if (typeof c.stock[k] !== 'number') c.stock[k] = 0;
+  c.beasts ??= [];
 }

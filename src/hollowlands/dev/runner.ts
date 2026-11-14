@@ -59,7 +59,7 @@ function report(): void {
   let samples = 0;
   let last: Record<string, number> = {};
   const diff = (k: string): number => (c.stats[k] ?? 0) - (last[k] ?? 0);
-  console.log('\n' + [pad('season', 16), 'pop', 'kids', 'food d', 'meals', 'wood', 'stone', 'ale', 'mood', 'low', 'brk', 'brawl', 'born', 'died', 'blds', 'ms'].map((s, i) => (i ? lpad(s, 6) : s)).join(' '));
+  console.log('\n' + [pad('season', 16), 'pop', 'kids', 'food d', 'meals', 'wood', 'stone', 'ale', 'mood', 'low', 'brk', 'brawl', 'born', 'died', 'blds', 'trees', 'ms'].map((s, i) => (i ? lpad(s, 6) : s)).join(' '));
   const total = years * 4;
   let slowest = 0;
   for (let q = 0; q < total; q++) {
@@ -87,7 +87,7 @@ function report(): void {
     const kids = c.pawns.filter((p) => stage(c, p) < STAGE.ADULT).length;
     console.log([
       pad(`${SEASON_NAMES[w.season]} Y${w.year}`, 16), c.pawns.length, kids, foodDays(c).toFixed(1), Math.round(c.stock.meal + c.stock.feast), Math.round(c.stock.wood), Math.round(c.stock.stone),
-      Math.round(c.stock.ale), mood.toFixed(0), low.toFixed(0), diff('breaks'), diff('brawls'), diff('births'), diff('deaths'), `${c.blds.filter((b) => b.built).length}/${c.blds.length}`, ms.toFixed(0),
+      Math.round(c.stock.ale), mood.toFixed(0), low.toFixed(0), diff('breaks'), diff('brawls'), diff('births'), diff('deaths'), `${c.blds.filter((b) => b.built).length}/${c.blds.length}`, c.feat.filter((f) => f === 1 || f === 2).length + '/' + c.feat.filter((f) => f === 8).length, ms.toFixed(0),
     ].map((s, i) => (i ? lpad(s, 6) : s)).join(' '));
     last = { ...c.stats };
     if (!c.pawns.length) { console.log('The colony is dead.'); break; }
@@ -102,7 +102,8 @@ function report(): void {
   console.log('  ' + Object.entries(thoughts).sort((a, b) => b[1] - a[1]).slice(0, 28).map(([k, n]) => `${k}(${TH[k]?.m ?? '?'}) ${n}`).join(', '));
   console.log('\nBuildings:');
   console.log('  ' + c.blds.map((b) => `${b.k}${b.crop ? ':' + b.crop : ''}${b.built ? '' : ' (' + Math.round(b.prog * 100) + '%)'}`).join(', '));
-  console.log('\nStores: ' + Object.entries(c.stock).filter(([, n]) => n >= 0.5).map(([k, n]) => `${k} ${Math.round(n)}`).join(', '));
+  console.log('  no room for: ' + Object.keys(c.nosite).join(', '));
+  console.log('\nStores: ' +Object.entries(c.stock).filter(([, n]) => n >= 0.5).map(([k, n]) => `${k} ${Math.round(n)}`).join(', '));
 
   let friends = 0;
   let rivals = 0;
@@ -130,7 +131,8 @@ function many(): void {
   const slain = (c: Colony): number => Object.keys(c.stats).filter((k) => k.startsWith('death_foe') || k === 'death_bled' || k === 'death_wounds').reduce((a, k) => a + c.stats[k], 0);
   console.log([pad('seed', 6), pad('colony', 16), 'pop', 'mood', 'd_sick', 'd_fight', ...keys.map((k) => k.replace('death_', 'd_').slice(0, 7))].map((s, i) => (i > 1 ? lpad(s, 8) : s)).join(' '));
   const t0 = performance.now();
-  for (let seed = 1; seed <= n; seed++) {
+  const from = Number(args[3]) || 1;
+  for (let seed = from; seed < from + n; seed++) {
     const c = createColony({ seed, pop: 16 });
     const end = c.tick + years * 60 * TICKS_PER_DAY;
     while (c.tick < end && c.pawns.length) step(c);

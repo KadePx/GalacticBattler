@@ -6,11 +6,12 @@ import { SHORE, cacheOf, featList } from './cache';
 import { spots } from './data/buildings';
 import { RACES } from './data/races';
 import { foodDays, hasFood, takeMeal } from './econ';
+import { variety } from './farm';
 import { bump, log } from './events';
 import { attack, canFight, pickFoe } from './combat';
 import { isDown, needsRest } from './health';
 import { murder } from './crime';
-import { bedFor, findJob, finishWork } from './jobs';
+import { bedFor, equip, findJob, finishWork } from './jobs';
 import { feltTemp, hasThought, think } from './mood';
 import { findPath, walkTicks } from './path';
 import { STAGE, gainXp, has, idleAct, mkAct, pawnById, per, posAt, stage, stat } from './pawn';
@@ -180,6 +181,16 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
   if ((hour >= 20 || hour < 4) && c.weather === 0) w('stargaze', 0.5 + Math.max(0, per(p, AX.CURIOUS)) + (p.race === 'elf' ? 0.8 : 0));
   if (fair && seasonOf(c.tick) === 1 && hour >= 8 && hour < 19 && featList(c, SHORE).length) w('bathe', 0.6);
   if (pub && adult && evening && (has(p, 'storyteller') || p.sk[10] >= 9)) w('perform', 1.6);
+  const games = bldOf(c, 'gamehall');
+  const baths = bldOf(c, 'bathhouse');
+  const school = bldOf(c, 'school');
+  if (games && adult) {
+    w('chess', 0.8 + Math.max(0, per(p, AX.CURIOUS)) * 0.8 + p.sk[11] * 0.05);
+    w('darts', 0.8 + (evening ? 0.6 : 0) + p.sk[1] * 0.05);
+    if (p.prof === 'bard' || p.pas[10] > 0 || has(p, 'storyteller')) w('music', p.prof === 'bard' ? 2.6 : 0.8);
+  }
+  if (baths && c.stock.wood >= 30 && st >= STAGE.CHILD) w('hotbath', 1 + (c.temp < 8 ? 0.9 : 0) + (p.inj.length || p.ill ? 1 : 0));
+  if (school && adult && (p.sk[11] >= 4 || per(p, AX.CURIOUS) > 0.2)) w('read', 0.5 + Math.max(0, per(p, AX.CURIOUS)) * 1.2 + (p.pas[11] > 0 ? 1 : 0));
   const grief = p.th.find((t) => t.o && t.x > c.tick && (t.k === 'died_spouse' || t.k === 'died_child' || t.k === 'died_parent' || t.k === 'died_friend' || t.k === 'died_sibling'));
   const grave = grief ? c.dead.find((d) => d.id === grief.o && d.grave >= 0) : undefined;
   if (grave && hour >= 6 && hour < 21) w('mourn', 1.6);
@@ -273,6 +284,41 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
         if (crowd < 3) break;
         const [x, y] = seat(c, p, pub!, '.', r);
         if (setAct(c, p, 'perform', x, y, 10, 'perform', { b: pub!.id })) return true;
+        break;
+      }
+      case 'chess': {
+        // sit across from someone already at the board if there is anyone
+        const chairs = spots(games!.k, 'c');
+        let pick: [number, number] | null = null;
+        for (const ch of chairs) {
+          const x = games!.x + ch.dx;
+          const y = games!.y + ch.dy;
+          if (taken(c, p, x, y)) continue;
+          const across = c.pawns.some((o) => o !== p && o.act.k === 'chess' && o.act.ty === y && Math.abs(o.act.tx - x) === 2);
+          if (across) { pick = [x, y]; break; }
+          if (!pick) pick = [x, y];
+        }
+        if (pick && setAct(c, p, 'chess', pick[0], pick[1], dur + 6, 'chess', { b: games!.id })) return true;
+        break;
+      }
+      case 'darts': {
+        const [x, y] = seat(c, p, games!, 'D', r);
+        if (setAct(c, p, 'darts', x, y + 1, dur, 'darts', { b: games!.id })) return true;
+        break;
+      }
+      case 'music': {
+        const [x, y] = seat(c, p, games!, 'm', r);
+        if (setAct(c, p, 'music', x, y, dur + 4, 'music', { b: games!.id })) return true;
+        break;
+      }
+      case 'hotbath': {
+        const [x, y] = seat(c, p, baths!, 'T', r);
+        if (setAct(c, p, 'bathe', x, y, 10, 'hotbath', { b: baths!.id })) return true;
+        break;
+      }
+      case 'read': {
+        const [x, y] = seat(c, p, school!, 'c', r);
+        if (setAct(c, p, 'read', x, y, dur, 'read', { b: school!.id })) return true;
         break;
       }
       case 'mourn': {
@@ -453,6 +499,11 @@ export function decide(c: Colony, p: Pawn): void {
   if (p.food < (c.gov.laws.ration && p.rank < 5 ? 28 : 42) && hasFood(c) && goEat(c, p, r, 'hungry')) return;
 
   if (st === STAGE.CHILD) {
+    const school = bldOf(c, 'school');
+    if (school && hour >= 8 && hour < 13 && r.chance(0.8)) {
+      const [x, y] = seat(c, p, school, 'c', r);
+      if (setAct(c, p, 'study', x, y, 14 + r.int(6), 'school', { b: school.id })) return;
+    }
     const roll = r.float();
     if (roll < 0.6) {
       const s = randomSpot(c, r, c.cx, c.cy, 2, 9);
@@ -487,7 +538,7 @@ export function decide(c: Colony, p: Pawn): void {
     if ((ws < we ? hour >= ws && hour < we : hour >= ws || hour < we) || famine) {
       if (!famine && p.joy < 16 - diligent * 5 && leisure(c, p, r, st, hour, 'bored')) return;
       const job = findJob(c, p, r);
-      if (job && setAct(c, p, 'work', job.x, job.y, job.dur, job.why, { adj: job.adj, b: job.b, w: job.w, d: job.d, o: job.o })) return;
+      if (job && setAct(c, p, 'work', job.x, job.y, job.dur, job.why, { adj: job.adj, b: job.b, w: job.w, d: job.d, o: job.o })) { equip(c, p, job.w); return; }
       if (leisure(c, p, r, st, hour, 'idle')) return;
     } else if (leisure(c, p, r, st, hour, 'free')) return;
   }
@@ -517,6 +568,11 @@ export function finish(c: Colony, p: Pawn): void {
       if (st <= STAGE.BABY) break;
       if (kind === 'feast') think(c, p, 'atefeast');
       else if (kind === 'raw') think(c, p, 'ateraw');
+      if (kind !== 'raw') {
+        const v = variety(c);
+        if (v >= 5) think(c, p, 'variedfare');
+        else if (v <= 2 && !has(p, 'ironstomach')) think(c, p, 'samefare');
+      }
       if (!a.b) think(c, p, 'atenotable');
       else {
         for (const o of c.pawns) {
@@ -582,7 +638,61 @@ export function finish(c: Colony, p: Pawn): void {
     case 'walk': think(c, p, 'goodwalk'); break;
     case 'pray': if (spent >= 6) think(c, p, 'prayed'); break;
     case 'stargaze': think(c, p, 'stargazed'); break;
-    case 'bathe': think(c, p, 'bathed'); break;
+    case 'bathe': {
+      if (a.b) {
+        // a hot bath in the bathhouse: the water is heated with wood
+        c.stock.wood = Math.max(0, c.stock.wood - 0.15);
+        think(c, p, 'hotbath');
+        if (p.ill) p.ill.imm = Math.min(100, p.ill.imm + 3);
+      } else think(c, p, 'bathed');
+      break;
+    }
+    case 'chess': {
+      const o = c.pawns.find((x) => x !== p && x.act.k === 'chess' && x.act.b === a.b && x.act.ty === a.ty && Math.abs(x.act.tx - a.tx) === 2 && t >= x.act.ta);
+      gainXp(p, 11, spent / TICKS_PER_HOUR * 0.5);
+      if (!o) { think(c, p, 'chessalone'); break; }
+      // both players see the same game: the roll is shared
+      const g = new Rand(c.seed, S.AI, Math.max(o.act.t0, a.t0), Math.min(p.id, o.id), Math.max(p.id, o.id));
+      const lo = p.id < o.id ? p : o;
+      const hi = p.id < o.id ? o : p;
+      const loWins = lo.sk[11] + lo.sk[10] * 0.3 + g.float() * 8 > hi.sk[11] + hi.sk[10] * 0.3 + g.float() * 8;
+      const won = (p === lo) === loWins;
+      think(c, p, won ? 'wonchess' : 'lostchess', o.id);
+      think(c, p, 'playedwith', o.id);
+      p.soc = Math.min(100, p.soc + 6);
+      break;
+    }
+    case 'darts': {
+      gainXp(p, 1, spent / TICKS_PER_HOUR * 0.4);
+      think(c, p, 'playeddarts');
+      break;
+    }
+    case 'music': {
+      gainXp(p, 10, spent / TICKS_PER_HOUR * 0.5);
+      let n = 0;
+      for (const o of c.pawns) {
+        if (o === p || o.act.b !== a.b || t < o.act.ta || o.act.k === 'sleep') continue;
+        think(c, o, 'heardmusic', p.id);
+        o.joy = Math.min(100, o.joy + 8);
+        n++;
+      }
+      think(c, p, n ? 'playedmusic' : 'practised');
+      break;
+    }
+    case 'read': {
+      gainXp(p, 11, spent / TICKS_PER_HOUR);
+      think(c, p, 'readbook');
+      break;
+    }
+    case 'study': {
+      // lessons go further with a teacher in the room
+      const taught = c.pawns.some((o) => o.act.k === 'work' && o.act.w === 'teach' && o.act.b === a.b && t >= o.act.ta);
+      const hrs = (spent / TICKS_PER_HOUR) * (taught ? 1.6 : 0.8);
+      gainXp(p, 11, hrs * 0.8);
+      gainXp(p, r.int(11), hrs * 0.3);
+      if (taught && r.chance(0.2)) think(c, p, 'learnedsomething');
+      break;
+    }
     case 'play': if (stage(c, p) === STAGE.CHILD && r.chance(0.3)) think(c, p, 'playedgames'); break;
     case 'dice': {
       const win = r.chance(has(p, 'lucky') ? 0.68 : has(p, 'jinxed') ? 0.3 : 0.48);

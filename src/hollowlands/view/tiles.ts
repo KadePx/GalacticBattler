@@ -277,6 +277,24 @@ export function drawFeatures(c: Colony, ground: Graphics, canopy: Graphics, x0: 
           ground.rect(rx, top, 1.3, 11).fill(0x6f8f4a);
           ground.roundRect(rx - 0.6, top - 2.4, 2.5, 4, 1).fill(0x6b4c2c);
         }
+      } else if (f === F.LOG) {
+        // a tree the storm brought down: a trunk on its side with the root plate up
+        const ang = (hash2(x, y, 8) - 0.5) * 1.2;
+        const dx = Math.cos(ang) * 9;
+        const dy = Math.sin(ang) * 9;
+        ground.moveTo(cx - dx + 1.5, cy - dy + 3).lineTo(cx + dx + 1.5, cy + dy + 3).stroke({ width: 6, color: 0x0b1220, alpha: 0.22, cap: 'round' });
+        ground.moveTo(cx - dx, cy - dy).lineTo(cx + dx, cy + dy).stroke({ width: 5.4, color: 0x6b5138, cap: 'round' });
+        ground.moveTo(cx - dx * 0.8, cy - dy * 0.8 - 1).lineTo(cx + dx * 0.8, cy + dy * 0.8 - 1).stroke({ width: 1.2, color: 0x8f6e4c, cap: 'round' });
+        ground.circle(cx - dx, cy - dy, 4.4).fill(0x5a4636);
+        ground.circle(cx + dx + Math.cos(ang) * 2, cy + dy + Math.sin(ang) * 2, 4.2).fill({ color: pal.leaf[1], alpha: 0.85 });
+      } else if (f === F.MUSHROOM) {
+        for (let n = 0; n < 3; n++) {
+          const mx = cx + (hash2(x, y, 80 + n) - 0.5) * 12;
+          const my = cy + (hash2(x, y, 90 + n) - 0.5) * 10;
+          ground.rect(mx - 0.6, my, 1.2, 2.6).fill(0xefe6d2);
+          ground.ellipse(mx, my, 2.6, 1.7).fill(n === 1 ? 0xb84a3a : 0xc9a27a);
+          if (n === 1) ground.circle(mx - 0.8, my - 0.4, 0.5).circle(mx + 0.9, my - 0.2, 0.5).fill(0xf6f1e4);
+        }
       } else if (f === F.RUIN) {
         const px = x * TS;
         const py = y * TS;
@@ -286,6 +304,28 @@ export function drawFeatures(c: Colony, ground: Graphics, canopy: Graphics, x0: 
         if (k < 0.6) ground.circle(px + 16, py + 12, 3 + k * 2).fill({ color: 0x5f8a55, alpha: 0.75 });
       }
     }
+  }
+}
+
+// ---------- Crops ----------
+
+const CROP_LEAF: Record<string, number> = { cabbage: 0x7fb069, onion: 0x6f9a4a, hops: 0x3f7a3a, herb: 0x5f8a55, beans: 0x3f8a3a };
+
+/** One ripe plant of a crop, centred on (x, y). */
+function drawCrop(g: Graphics, kind: string, x: number, y: number): void {
+  switch (kind) {
+    case 'grain': g.ellipse(x, y, 2.6, 3.4).fill(0xe2b84a); g.ellipse(x - 0.6, y - 1, 1.2, 1.8).fill(0xf4d87a); break;
+    case 'wheat': g.ellipse(x, y, 2.2, 3.8).fill(0xd9a03a); g.ellipse(x, y - 1.2, 1.1, 2).fill(0xf0c060); g.moveTo(x, y - 3.6).lineTo(x + 1.6, y - 5.4).stroke({ width: 0.7, color: 0xf0c060 }); break;
+    case 'oats': g.circle(x - 1.2, y, 1.5).circle(x + 1.2, y - 1, 1.5).circle(x, y + 1.6, 1.5).fill(0xd9cf8a); break;
+    case 'potato': g.circle(x, y, 3.2).fill(0x4f8a3e); g.circle(x - 1, y - 0.8, 1.1).circle(x + 1.3, y + 0.6, 1).fill(0xf2f2f2); break;
+    case 'cabbage': g.circle(x, y, 3.4).fill(0x8fc47a); g.circle(x, y, 2).fill(0xc8e6a8); break;
+    case 'turnip': g.circle(x, y + 0.6, 2.6).fill(0xf0e6f0); g.circle(x, y + 1.2, 1.6).fill(0xb06ab0); g.ellipse(x, y - 2, 1.4, 2).fill(0x4f9a3e); break;
+    case 'beans': g.circle(x, y, 3).fill(0x3f8a3a); g.ellipse(x - 1, y + 0.4, 0.8, 1.8).ellipse(x + 1.2, y - 0.4, 0.8, 1.8).fill(0xa8d46a); break;
+    case 'onion': g.circle(x, y + 0.8, 2.4).fill(0xc9845a); g.moveTo(x, y - 1).lineTo(x - 1, y - 4.5).moveTo(x, y - 1).lineTo(x + 1, y - 4.5).stroke({ width: 0.9, color: 0x6f9a4a }); break;
+    case 'hops': g.circle(x, y, 3.2).fill(0x3f7a3a); g.ellipse(x - 1, y, 1.2, 1.6).ellipse(x + 1.3, y + 0.8, 1.2, 1.6).fill(0xb8d86a); break;
+    case 'herb': g.circle(x, y, 2.8).fill(0x5f8a55); g.circle(x - 0.8, y - 0.8, 1).circle(x + 1, y + 0.6, 1).fill(0xd9c9f2); break;
+    case 'flax': g.circle(x, y, 2.8).fill(0xc9b458); g.circle(x - 0.6, y - 0.8, 1.3).fill(0x8fb4f0); break;
+    default: g.circle(x, y, 3.1).fill(0x4f9a3e); g.circle(x + 0.8, y + 0.6, 1.5).fill(0xe2933a); break;
   }
 }
 
@@ -300,7 +340,7 @@ const OPEN_AIR = new Set(['well', 'field', 'graveyard']);
 
 /** A tile where firelight comes from, for the night lighting. 0 if none, else the radius in tiles. */
 export function lightOf(st: number): number {
-  return st === B.HEARTH ? 4.2 : st === B.FORGE ? 3.2 : st === B.TORCH ? 3 : st === B.STOVE ? 2 : 0;
+  return st === B.HEARTH ? 4.2 : st === B.FORGE ? 3.2 : st === B.TORCH ? 3 : st === B.STOVE ? 2 : st === B.LAMP ? 2.4 : st === B.CAULDRON ? 1.6 : 0;
 }
 
 /**
@@ -431,13 +471,8 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
             for (let n = 0; n < 3; n++) {
               const qx = px + 4 + n * 8 + (hash2(x * 3 + n, y * 3 + row, 11) - 0.5) * 2;
               const qy = py + 4 + row * 8;
-              if (ripe) {
-                if (kind === 'veg') { g.circle(qx, qy, 3.1).fill(0x4f9a3e); g.circle(qx + 0.8, qy + 0.6, 1.5).fill(0xe2933a); }
-                else if (kind === 'flax') { g.circle(qx, qy, 2.8).fill(0xc9b458); g.circle(qx - 0.6, qy - 0.8, 1.3).fill(0x8fb4f0); }
-                else { g.ellipse(qx, qy, 2.6, 3.4).fill(0xe2b84a); g.ellipse(qx - 0.6, qy - 1, 1.2, 1.8).fill(0xf4d87a); }
-              } else {
-                g.circle(qx, qy, 0.9 + gr * 2.2).fill(mix(0x86c466, 0x4f9a3e, gr));
-              }
+              if (ripe) drawCrop(g, kind, qx, qy);
+              else g.circle(qx, qy, 0.9 + gr * 2.2).fill(mix(0x86c466, CROP_LEAF[kind] ?? 0x4f9a3e, gr));
             }
           }
           break;
@@ -559,6 +594,118 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           g.circle(cx, cy, 9).fill({ color: 0xff9a3a, alpha: 0.16 });
           g.circle(cx, cy, 2.6).fill(0x5a3d28);
           g.circle(cx, cy, 1.9).fill(0xffc24a);
+          break;
+        case B.RUG: {
+          // a woven rug: a coloured field with a border and a stripe
+          const col = BLANKET[(x * 3 + y * 5) % BLANKET.length];
+          g.roundRect(px + 1.5, py + 3, 21, 18, 2).fill(col);
+          g.roundRect(px + 3.5, py + 5, 17, 14, 1.5).stroke({ width: 1.2, color: 0xf2e6c8, alpha: 0.55 });
+          g.rect(px + 1.5, cy - 1, 21, 2).fill({ color: 0x000000, alpha: 0.18 });
+          break;
+        }
+        case B.WARDROBE:
+          shade(px + 3, py + 2, 18, 12, 1.5);
+          g.roundRect(px + 3, py + 2, 18, 12, 1.5).fill(0x7a5232).stroke({ width: 1.2, color: 0x2a1d12 });
+          g.rect(cx - 0.5, py + 3, 1, 10).fill(0x2a1d12);
+          g.circle(cx - 2.5, py + 8, 0.9).circle(cx + 2.5, py + 8, 0.9).fill(0xd9b85a);
+          break;
+        case B.LAMP:
+          g.circle(cx, cy, 10).fill({ color: 0xffd27a, alpha: 0.14 });
+          shade(cx - 4, cy - 4, 8, 8, 4);
+          g.circle(cx, cy, 4.2).fill(0x5a3d28).stroke({ width: 1, color: 0x2a1d12 });
+          g.circle(cx, cy, 2.6).fill(0xffd27a);
+          g.circle(cx - 0.6, cy - 0.6, 1).fill(0xfff6d8);
+          break;
+        case B.BOOKS: {
+          // a bookcase: rows of coloured spines
+          shade(px + 2, py + 2, 20, 10, 1.5);
+          g.roundRect(px + 2, py + 2, 20, 10, 1.5).fill(0x5d4028).stroke({ width: 1.1, color: 0x2a1d12 });
+          const spines = [0xb84a4a, 0x4f6fa8, 0x4f8a62, 0xd9b85a, 0x7a5a9a, 0xa8763f];
+          for (let n = 0; n < 6; n++) g.rect(px + 3.5 + n * 3, py + 3.5 + (n % 2), 2.4, 7 - (n % 2)).fill(spines[(n + x) % spines.length]);
+          break;
+        }
+        case B.DESK:
+          shade(px + 2, py + 5, 20, 13, 1.5);
+          g.roundRect(px + 2, py + 5, 20, 13, 1.5).fill(0xa87a4a).stroke({ width: 1.1, color: 0x2a1d12 });
+          g.rect(px + 5, py + 8, 8, 6).fill(0xf2ead6);
+          g.rect(px + 6, py + 9.5, 6, 0.8).rect(px + 6, py + 11.5, 5, 0.8).fill({ color: 0x4b4f58, alpha: 0.6 });
+          g.moveTo(px + 15, py + 14).lineTo(px + 19, py + 8).stroke({ width: 1, color: 0x3a2a1c });
+          break;
+        case B.RACK:
+          // a rack of spears and a shield
+          shade(px + 2, py + 2, 20, 6, 1);
+          g.rect(px + 2, py + 3, 20, 3).fill(0x5d4028);
+          for (let n = 0; n < 3; n++) {
+            g.moveTo(px + 5 + n * 5, py + 2).lineTo(px + 5 + n * 5, py + 20).stroke({ width: 1.4, color: 0x8a6440 });
+            g.poly([px + 5 + n * 5, py + 0.5, px + 6.6 + n * 5, py + 3.5, px + 3.4 + n * 5, py + 3.5]).fill(0xc9ccd4);
+          }
+          g.circle(px + 19, py + 13, 4).fill(0x8a3a3a).stroke({ width: 1, color: 0xc9ccd4 });
+          break;
+        case B.CAULDRON:
+          g.circle(cx, cy, 11).fill({ color: 0xff9a3a, alpha: 0.1 });
+          shade(cx - 8, cy - 7, 16, 15, 7.5);
+          g.circle(cx, cy + 1, 8).fill(0x2c2f36).stroke({ width: 1.2, color: 0x15171b });
+          g.circle(cx, cy + 1, 6).fill(0x6e8a4a);
+          g.circle(cx - 2, cy, 1.4).circle(cx + 2.4, cy + 2, 1).fill(0xa8c46a);
+          g.roundRect(cx - 4, cy + 8.5, 8, 2.5, 1).fill(0xe8662a);
+          break;
+        case B.VAT:
+          shade(cx - 10, cy - 10, 20, 20, 10);
+          g.circle(cx, cy, 10).fill(0x8a5a32).stroke({ width: 1.3, color: 0x2a1d12 });
+          g.circle(cx, cy, 8).stroke({ width: 1.4, color: 0x4b4f58 });
+          g.circle(cx, cy, 6.4).fill(0xc98a3a);
+          g.circle(cx - 2, cy - 2, 1.6).circle(cx + 2.4, cy + 1, 1.2).fill({ color: 0xf6f1e4, alpha: 0.8 });
+          break;
+        case B.BIN:
+          // a grain bin: a lidded box with sacks spilling grain
+          shade(px + 2.5, py + 3, 19, 18, 1.5);
+          g.roundRect(px + 2.5, py + 3, 19, 18, 1.5).fill(0x9a744a).stroke({ width: 1.2, color: 0x2a1d12 });
+          g.roundRect(px + 4.5, py + 5, 15, 9, 1).fill(0xe2c46a);
+          for (let n = 0; n < 5; n++) g.circle(px + 6 + n * 3, py + 8 + (n % 2) * 2.5, 0.9).fill(0xc9a24a);
+          g.rect(px + 2.5, py + 15, 19, 1).fill({ color: 0x2a1d12, alpha: 0.6 });
+          break;
+        case B.BATH:
+          shade(px + 1.5, py + 3, 21, 18, 8);
+          g.roundRect(px + 1.5, py + 3, 21, 18, 8).fill(0x8a6440).stroke({ width: 1.3, color: 0x2a1d12 });
+          g.roundRect(px + 4, py + 5.5, 16, 13, 6).fill(0x6fa8c9);
+          g.ellipse(cx - 2, cy - 1.5, 4, 2).fill({ color: 0xffffff, alpha: 0.35 });
+          g.moveTo(cx - 3, py + 2).quadraticCurveTo(cx - 5, py - 1, cx - 3, py - 4).stroke({ width: 1, color: 0xffffff, alpha: 0.35 });
+          g.moveTo(cx + 3, py + 2).quadraticCurveTo(cx + 1, py - 1, cx + 3, py - 4).stroke({ width: 1, color: 0xffffff, alpha: 0.35 });
+          break;
+        case B.CHESS: {
+          shade(px + 2, py + 2, 20, 20, 2);
+          g.roundRect(px + 2, py + 2, 20, 20, 2).fill(0x7a5232).stroke({ width: 1.2, color: 0x2a1d12 });
+          for (let a = 0; a < 4; a++) for (let b2 = 0; b2 < 4; b2++) g.rect(px + 4 + a * 4, py + 4 + b2 * 4, 4, 4).fill((a + b2) & 1 ? 0x2a2422 : 0xe9e3d5);
+          g.circle(px + 6, py + 6, 1.4).circle(px + 10, py + 6, 1.4).fill(0xf6f1e4).stroke({ width: 0.6, color: 0x2a2422 });
+          g.circle(px + 14, py + 18, 1.4).circle(px + 18, py + 14, 1.4).fill(0x2a2422).stroke({ width: 0.6, color: 0xf6f1e4 });
+          break;
+        }
+        case B.DARTS:
+          // a dartboard on the wall
+          g.circle(cx, py + 6, 7).fill(0x2a2422);
+          g.circle(cx, py + 6, 5.6).fill(0xe9e3d5);
+          g.circle(cx, py + 6, 3.8).fill(0xb84a4a);
+          g.circle(cx, py + 6, 2).fill(0x4f8a62);
+          g.circle(cx, py + 6, 0.8).fill(0xb84a4a);
+          g.moveTo(cx + 1, py + 5).lineTo(cx + 4, py + 9).stroke({ width: 0.9, color: 0xd9b85a });
+          break;
+        case B.MUSIC:
+          // a bench with a lute and a drum
+          shade(px + 2, py + 8, 20, 10, 2);
+          g.roundRect(px + 2, py + 8, 20, 10, 2).fill(0xa47a4c).stroke({ width: 1.1, color: 0x2a1d12 });
+          g.ellipse(px + 8, py + 13, 4, 3.4).fill(0xd9a85a).stroke({ width: 0.8, color: 0x2a1d12 });
+          g.moveTo(px + 11, py + 12).lineTo(px + 18, py + 7).stroke({ width: 1.4, color: 0x7a5232 });
+          g.circle(px + 8, py + 13, 1).fill(0x2a1d12);
+          g.circle(px + 17, py + 14, 3).fill(0xb84a4a).stroke({ width: 0.8, color: 0xe9e3d5 });
+          break;
+        case B.DRYRACK:
+          // herbs hung up to dry
+          g.rect(px + 2, py + 3, 20, 2).fill(0x7a5232);
+          for (let n = 0; n < 4; n++) {
+            g.moveTo(px + 4.5 + n * 5, py + 5).lineTo(px + 4.5 + n * 5, py + 9).stroke({ width: 0.8, color: 0x7a5232 });
+            g.ellipse(px + 4.5 + n * 5, py + 12, 2.2, 3.6).fill(n % 2 ? 0x6f9a4a : 0x8aa85a);
+            g.circle(px + 4.5 + n * 5, py + 15, 1).fill(n % 2 ? 0xd9c9f2 : 0xf2e08a);
+          }
           break;
         default:
           break;

@@ -240,6 +240,53 @@ export function drawFoe(g: Graphics, k: string): void {
   g.poly([-2.6, -13.5, 2.6, -13.5, 0, -10]).fill(0xef4444);
 }
 
+// ---------- Wild animals (facing right) ----------
+
+export const WILD_SIZE: Record<string, number> = { deer: 1.25, boar: 1.1, hare: 0.8, fox: 0.95 };
+
+export function drawBeast(g: Graphics, k: string): void {
+  g.clear();
+  g.ellipse(0.6, 4.4, 7.6, 2.6).fill({ color: 0x0b1220, alpha: 0.24 });
+  const legs = (col: number, xs: number[], top: number, len: number): void => {
+    for (const x of xs) g.moveTo(x, top).lineTo(x, top + len).stroke({ width: 1.4, color: col, cap: 'round' });
+  };
+  if (k === 'deer') {
+    legs(0x6b4a2e, [-4.6, -2.6, 3, 5], 1, 4.4);
+    g.ellipse(0, 0, 7, 3.8).fill(0xa8764a);
+    g.ellipse(-0.6, 1.4, 5, 1.8).fill(0xd9b88a);
+    g.poly([-7.2, -1.2, -8.8, -2.6, -7.6, 0.2]).fill(0xf2e6d0);
+    g.poly([4.6, -1.6, 6.2, -6, 8.4, -5.6, 7.4, -1]).fill(0xa8764a);
+    g.ellipse(8.6, -6, 2.6, 1.8).fill(0xa8764a);
+    g.circle(9.2, -6.4, 0.6).fill(0x1b1b1b);
+    g.moveTo(7.6, -7.4).lineTo(6.4, -11).moveTo(6.9, -9.4).lineTo(5.2, -10.2).moveTo(8.6, -7.4).lineTo(9.6, -11).moveTo(9.2, -9.4).lineTo(10.8, -10.2).stroke({ width: 0.9, color: 0xe9dcc0, cap: 'round' });
+  } else if (k === 'boar') {
+    legs(0x2e241c, [-4, -2, 2.6, 4.4], 1.6, 3.4);
+    g.ellipse(0, 0.4, 7, 4.4).fill(0x5a4636);
+    g.poly([-5, -3.4, 4, -4.4, 2, -2.4]).fill(0x3e3026);
+    g.ellipse(6.6, 0.8, 3.2, 2.8).fill(0x5a4636);
+    g.ellipse(9.2, 1.2, 1.4, 1.2).fill(0x8a6a5a);
+    g.poly([8.2, 2, 10.2, 0.4, 9, 2.6]).fill(0xf3efe2);
+    g.circle(7.2, -0.4, 0.6).fill(0x1b1b1b);
+  } else if (k === 'hare') {
+    g.ellipse(0, 1, 5.4, 3.8).fill(0x9a8a78);
+    g.circle(-5.2, 0.4, 1.8).fill(0xf2eee6);
+    g.circle(4.4, -1.2, 2.8).fill(0x9a8a78);
+    g.ellipse(3.4, -5.6, 1.1, 3.4).ellipse(5.2, -5.4, 1.1, 3.4).fill(0x8a7a68);
+    g.ellipse(3.4, -5.6, 0.5, 2.4).fill(0xd9a8a0);
+    g.circle(5.6, -1.6, 0.6).fill(0x1b1b1b);
+  } else {
+    // fox
+    legs(0x2a1d12, [-3.4, -1.6, 2.4, 4], 1.2, 3.6);
+    g.ellipse(0, 0, 6, 3.2).fill(0xd9733a);
+    g.moveTo(-5, -0.6).quadraticCurveTo(-10, -3, -11, 1.4).quadraticCurveTo(-8, 2.4, -5, 0.8).fill(0xd9733a);
+    g.circle(-10.4, 0.8, 1.4).fill(0xf6f1e4);
+    g.poly([4, -2, 7.6, -2.6, 10.6, 0.4, 6, 1.8]).fill(0xd9733a);
+    g.poly([5, -2.2, 5.8, -5.4, 7, -2.6]).fill(0xb85a2a);
+    g.poly([6.8, 0.4, 10.6, 0.4, 7.4, 1.8]).fill(0xf6f1e4);
+    g.circle(7.4, -0.8, 0.6).fill(0x1b1b1b);
+  }
+}
+
 // ---------- What someone is doing, as a small badge beside them ----------
 
 const BADGE_INK = 0xe9edf6;
@@ -381,6 +428,25 @@ export function drawActivity(g: Graphics, key: string): void {
     case 'perform': // a note
       g.circle(-1.4, 2.2, 1.7).fill(BADGE_INK);
       line([0.2, 2, 0.2, -3.8, 3, -2.6], BADGE_INK, 1.2);
+      break;
+    case 'chess': // a pawn piece
+      g.circle(0, -2.4, 1.8).fill(BADGE_INK);
+      g.poly([-1.4, -1, 1.4, -1, 2.4, 3, -2.4, 3]).fill(BADGE_INK);
+      g.rect(-3, 3, 6, 1.2).fill(BADGE_INK);
+      break;
+    case 'darts': // a target
+      g.circle(0, 0, 4).fill(0xe9e3d5);
+      g.circle(0, 0, 2.6).fill(0xd2445a);
+      g.circle(0, 0, 1).fill(0xe9e3d5);
+      break;
+    case 'music': // a lute
+      g.ellipse(-1, 1.6, 2.6, 2.2).fill(0xd9a85a);
+      line([0.6, 0.4, 3.6, -3.8], 0x8a6440, 1.2);
+      break;
+    case 'read':
+    case 'study': // a closed book
+      g.roundRect(-3.2, -3.6, 6.4, 7.2, 1).fill(0x4f6fa8);
+      g.rect(-2.2, -3.6, 1, 7.2).fill(0x2f4f88);
       break;
     case 'bathe': // a drop
       g.moveTo(0, -4).quadraticCurveTo(3.4, 1, 0, 3.6).quadraticCurveTo(-3.4, 1, 0, -4).fill(0x5fb4e8);
