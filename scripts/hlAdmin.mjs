@@ -3,6 +3,7 @@
 //   npm run hl:admin -- status <colony>             a colony's state
 //   npm run hl:admin -- raid <colony> <kind> [n]    send trouble (bandit, slaver, orc, wolf, ghoul, troll, boar)
 //   npm run hl:admin -- pace <colony> <msPerDay>    change how long a game day lasts (1440000 = one year per real day)
+//   npm run hl:admin -- wipe --confirm [seed]       end this world and start a new one (every colony and colonist is lost)
 // Add --local to talk to the dev server (http://localhost:5173, key "dev"), or --url <base>.
 // The key comes from HL_ADMIN_KEY or the git-ignored file .hl-admin-key.
 
@@ -11,6 +12,7 @@ import { existsSync, readFileSync } from 'node:fs';
 const args = process.argv.slice(2);
 const flag = (k) => { const i = args.indexOf(k); if (i < 0) return undefined; const v = args[i + 1]; args.splice(i, 2); return v; };
 const local = args.includes('--local');
+if (args.includes('--confirm')) args.splice(args.indexOf('--confirm'), 1);
 if (local) args.splice(args.indexOf('--local'), 1);
 const base = flag('--url') ?? (local ? 'http://localhost:5173' : 'https://itskade.space');
 const key = local ? (process.env.HL_ADMIN_KEY ?? 'dev') : (process.env.HL_ADMIN_KEY ?? (existsSync('.hl-admin-key') ? readFileSync('.hl-admin-key', 'utf8').trim() : ''));
@@ -28,4 +30,9 @@ if (cmd === 'region') {
 } else if (cmd === 'status' && colony) console.log(await call(`c/${colony}/admin/status`));
 else if (cmd === 'raid' && colony && a) console.log(await call(`c/${colony}/admin/raid`, { kind: a, n: Number(b) || 3 }));
 else if (cmd === 'pace' && colony && a) console.log(await call(`c/${colony}/admin/pace`, { msPerDay: Number(a) }));
+else if (cmd === 'wipe') {
+  if (!process.argv.includes('--confirm')) { console.log('This ends the whole world. Run again with --confirm.'); process.exit(1); }
+  const seed = Number(args.find((a) => /^\d+$/.test(a)));
+  console.log(await call('region/wipe', { confirm: 'wipe', seed: seed || undefined }));
+}
 else console.log('usage: region | status <colony> | raid <colony> <kind> [n] | pace <colony> <msPerDay>   [--local | --url <base>]');

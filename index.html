@@ -69,6 +69,10 @@
       .mm { --accent: #ff7a3d; --shotbg: linear-gradient(135deg, #ff7a3d, #40357f 60%, #20142a); }
       .ms { --accent: #6c9bff; --shotbg: linear-gradient(135deg, #2a5cf0, #1b2236 60%, #3a0d0a); }
       .rw { --accent: #8fe07a; --shotbg: linear-gradient(135deg, #3a4a2c, #2b313b 60%, #1a1d22); }
+      .group { margin-top: 44px; }
+      .group .games { margin-top: 16px; }
+      .gh2 { font-size: 15px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--dim); margin: 0; font-weight: 600; }
+      .gsub { color: var(--dim); margin: 6px 0 0; max-width: 640px; font-size: 15px; }
       footer { margin-top: 56px; color: var(--dim); font-size: 14px; }
       @media (prefers-reduced-motion: reduce) { .game { transition: none; } .game:hover { transform: none; } }
     </style>
@@ -80,10 +84,12 @@
         <h1>itskade<span>.space</span></h1>
       </header>
 
-      <section class="games">
-        <!-- Hollow Lands card: hidden until launch
+      <section class="group">
+        <h2 class="gh2">Living worlds</h2>
+        <p class="gsub">Shared simulations that keep running while you are away. You do not play them so much as leave something in them and come back to see what became of it.</p>
+        <div class="games">
         <div class="game hl">
-          <a class="shot" href="/hollow-lands/" style="background-image: url(/thumbs/hollow-lands.svg), var(--shotbg)" aria-label="Visit Hollow Lands"><span class="badge">NEW · SHARED WORLD</span></a>
+          <a class="shot" href="/hollow-lands/" style="background-image: url(/thumbs/hollow-lands.svg), var(--shotbg)" aria-label="Visit Hollow Lands"><span class="badge">NEW · LIVING WORLD</span></a>
           <div class="body">
             <h2 class="title">Hollow Lands</h2>
             <p class="desc">A harsh fantasy land of small colonies that live on their own, a year every day. Make one colonist, send them in, and come back to see who they loved, who they crossed and whether they are still alive.</p>
@@ -94,7 +100,6 @@
             </div>
           </div>
         </div>
-        -->
         <div class="game cw">
           <a class="shot" href="/commonworld/" style="background-image: url(/thumbs/commonworld.jpg), var(--shotbg)" aria-label="Visit Commonworld"><span class="badge">NEW · LIVE WORLD</span></a>
           <div class="body">
@@ -108,6 +113,12 @@
           </div>
         </div>
 
+        </div>
+      </section>
+
+      <section class="group">
+        <h2 class="gh2">Games</h2>
+        <div class="games">
         <div class="game mm">
           <a class="shot" href="/moto-maze/" style="background-image: url(/thumbs/moto-maze.jpg), var(--shotbg)" aria-label="Play Moto Maze"><span class="badge">DAILY</span></a>
           <div class="body">
@@ -171,6 +182,7 @@
               <span class="extra">Best on desktop</span>
             </div>
           </div>
+        </div>
         </div>
       </section>
 

@@ -38,6 +38,8 @@ export class LocalWorld {
     const list = (await (await this.region.handle(new Request('http://local/api/hl/region'), false)).json()) as { sites: { id: string }[] };
     let owed = 0;
     for (const s of list.sites) owed = Math.max(owed, await this.colony(s.id).advance());
+    // forget keepers of colonies that are no longer in the world
+    for (const id of [...this.hosts.keys()]) if (!list.sites.some((s) => s.id === id)) this.hosts.delete(id);
     return owed;
   }
 

@@ -218,6 +218,11 @@ export class ColonyHost {
   }
 
   /** When the Durable Object should next wake: no need to wake every tick when nobody is asking. */
+  /** Is there a colony here to keep running? A retired or never-started one needs no alarms. */
+  active(): boolean {
+    return !!this.c;
+  }
+
   nextWakeAt(): number {
     return this.o.now() + Math.max(this.msPerTick, 60_000);
   }
@@ -242,6 +247,18 @@ export class ColonyHost {
     await this.load();
     const url = new URL(req.url);
     const path = url.pathname.replace(/^.*\/api\/hl\/(c\/[^/]+\/)?/, '');
+    if (internal && req.method === 'POST' && path === 'retire') {
+      // the world is starting over: this colony is gone for good
+      this.c = null;
+      this.meta = null;
+      this.snap = null;
+      this.inputs = [];
+      this.checks = [];
+      await this.kv.put('meta', '');
+      await this.kv.put('state', '');
+      await this.kv.put('extra', '');
+      return json({ ok: true });
+    }
     if (internal && req.method === 'POST' && path === 'init') {
       if (!this.c) {
         const b = (await req.json()) as { seed: number; id: string; pop?: number; preDays?: number; settlers?: SettlerMsg; avoid?: string[]; ruinsOf?: string };

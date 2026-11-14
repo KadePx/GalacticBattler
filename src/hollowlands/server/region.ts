@@ -7,7 +7,7 @@ import type { SettlerMsg } from '../sim/settle';
 import type { KV } from './host';
 import { landThreat, nearLists, routeMsg, ruinFor, type Delivery } from '../sim/routes';
 
-export interface RegionOpts { seed?: number; colonies: number; pop: number; preDays: number; now: () => number }
+export interface RegionOpts { seed?: number; colonies: number; pop: number; preDays: number; now: () => number; adminKey?: string }
 
 /** What the region knows about a colony at a glance (kept fresh by the colony's own reports). */
 export interface SiteInfo extends Site { pop: number; ruler?: string; tick?: number; owners?: string[] }
@@ -96,6 +96,21 @@ export class RegionHost {
       const me = new URL(req.url).searchParams.get('me') ?? '';
       const mine = me ? this.w!.sites.find((s) => !s.dead && s.owners?.includes(me))?.id : undefined;
       return json({ seed: this.w!.seed, sites: this.w!.sites.map((s) => ({ ...s, owners: undefined, nearSent: undefined })), mine, now: this.o.now() });
+    }
+    if (req.method === 'POST' && path === 'wipe') {
+      // owner only: retire every colony, then begin a new world with new colonies
+      if (!this.o.adminKey || req.headers.get('x-admin-key') !== this.o.adminKey) return json({ error: 'forbidden' }, 403);
+      const b = (await req.json().catch(() => ({}))) as { confirm?: string; seed?: number };
+      if (b.confirm !== 'wipe') return json({ error: 'confirm with {"confirm":"wipe"}' }, 400);
+      const old = this.w!.sites.map((s) => s.id);
+      for (const id of old) await this.link(id, 'retire').catch(() => undefined);
+      await this.kv.put('world', '');
+      this.w = null;
+      this.loading = null;
+      if (typeof b.seed === 'number') this.o = { ...this.o, seed: b.seed };
+      else this.o = { ...this.o, seed: undefined };
+      await this.load();
+      return json({ ok: true, retired: old.length, seed: this.w!.seed, sites: this.w!.sites.map((s) => ({ id: s.id, name: s.name, pop: s.pop })) });
     }
     if (req.method === 'POST' && path === 'claim') {
       // one living colonist per player in the whole land

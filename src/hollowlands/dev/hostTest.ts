@@ -186,5 +186,33 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
   }
 }
 
+// ---------- Starting the whole world over ----------
+{
+  const stores = new Map<string, Map<string, string>>();
+  const kvFor = (name: string): KV => {
+    let m = stores.get(name);
+    if (!m) { m = new Map(); stores.set(name, m); }
+    const mm = m;
+    return { get: async (k) => mm.get(k), put: async (k, v) => void mm.set(k, v) };
+  };
+  const world = new LocalWorld(kvFor, null, {
+    host: { msPerDay: 240_000, maxStep: 4000, pop: 14, preDays: 1, adminKey: 'key', now: () => now },
+    region: { seed: 31, colonies: 2, pop: 14, preDays: 1, now: () => now, adminKey: 'key' },
+  });
+  const call = async <T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> => {
+    await world.advance();
+    const r = await world.handle(new Request('http://x/api/hl/' + path, init));
+    return { status: r.status, body: (await r.json()) as T };
+  };
+  interface Region { seed: number; sites: { id: string; name: string }[] }
+  const before = (await call<Region>('region')).body;
+  const deny = await call('region/wipe', { method: 'POST', body: JSON.stringify({ confirm: 'wipe' }) });
+  check('only the owner can start the world over', deny.status === 403);
+  const wipe = await call<{ ok: boolean; retired: number }>('region/wipe', { method: 'POST', body: JSON.stringify({ confirm: 'wipe', seed: 99 }), headers: { 'x-admin-key': 'key' } });
+  const after = (await call<Region>('region')).body;
+  const gone = await call(`c/${before.sites[0].id}/state`);
+  check('starting over retires the old colonies and makes new ones', wipe.body.ok && wipe.body.retired === 2 && after.seed === 99 && after.sites.length === 2 && !after.sites.some((s) => before.sites.some((b) => b.id === s.id)) && gone.status === 404, after.sites.map((s) => s.name).join(', '));
+}
+
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 if (failed) process.exit(1);

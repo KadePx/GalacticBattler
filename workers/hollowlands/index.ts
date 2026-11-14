@@ -60,6 +60,7 @@ export class ColonyDO extends DurableObject<Env> {
   /** Catch up, then make sure an alarm will wake us again. */
   private async tick(): Promise<void> {
     const owed = await this.host.advance();
+    if (!this.host.active()) return; // retired, or never started: sleep until spoken to
     const next = owed > 0 ? Date.now() + 1000 : this.host.nextWakeAt();
     const cur = await this.store.getAlarm();
     if (cur === null || cur > next || cur < Date.now()) await this.store.setAlarm(next);
@@ -86,7 +87,7 @@ export class RegionDO extends DurableObject<Env> {
     const storage = ctx.storage;
     this.host = new RegionHost(
       { get: (k) => storage.get<string>(k), put: (k, v) => storage.put(k, v) },
-      { colonies: 4, pop: 14, preDays: 120, now: Date.now },
+      { colonies: 4, pop: 14, preDays: 120, now: Date.now, adminKey: env.HL_ADMIN_KEY },
       async (id, path, body) => (await (await env.COLONY.get(env.COLONY.idFromName(id)).fetch(inside(`https://hl/api/hl/c/${id}/${path}`, body))).json()) as Record<string, unknown>,
     );
   }
@@ -104,7 +105,7 @@ export function route(req: Request, env: { COLONY: DurableObjectNamespace; REGIO
   const path = new URL(req.url).pathname;
   const m = path.match(/\/api\/hl\/c\/([a-z0-9]{1,12})\//);
   if (m) return env.COLONY.get(env.COLONY.idFromName(m[1])).fetch(clean);
-  if (/\/api\/hl\/region\/?$/.test(path)) return env.REGION.get(env.REGION.idFromName('region')).fetch(clean);
+  if (/\/api\/hl\/region(\/[a-z]+)?\/?$/.test(path)) return env.REGION.get(env.REGION.idFromName('region')).fetch(clean);
   return Promise.resolve(new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } }));
 }
 

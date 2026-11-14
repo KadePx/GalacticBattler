@@ -78,7 +78,7 @@ export function localApi(): Plugin {
     const msPerDay = Number(process.env.HL_MS_PER_DAY) || 1_440_000;
     colony = new mod.LocalWorld((name: string) => fileKV(resolve(dir, 'hl', name)), db, {
       host: { msPerDay, maxStep: 3000, pop: 16, preDays: 120, adminKey: process.env.HL_ADMIN_KEY ?? 'dev', now: Date.now },
-      region: { colonies: 3, pop: 14, preDays: 120, now: Date.now },
+      region: { colonies: 3, pop: 14, preDays: 120, now: Date.now, adminKey: process.env.HL_ADMIN_KEY ?? 'dev' },
     });
     setInterval(() => { colony?.advance().catch((e) => console.error('[hl]', e)); }, Math.min(msPerDay / 240, 30_000));
     return colony;

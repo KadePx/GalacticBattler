@@ -15,6 +15,6 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   const path = new URL(request.url).pathname;
   const m = path.match(/\/api\/hl\/c\/([a-z0-9]{1,12})\//);
   if (m) return env.COLONY.get(env.COLONY.idFromName(m[1])).fetch(clean);
-  if (/\/api\/hl\/region\/?$/.test(path)) return env.REGION.get(env.REGION.idFromName('region')).fetch(clean);
+  if (/\/api\/hl\/region(\/[a-z]+)?\/?$/.test(path)) return env.REGION.get(env.REGION.idFromName('region')).fetch(clean);
   return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } });
 };
