@@ -34,6 +34,9 @@ export function drawFigure(g: Graphics, f: FigureSpec): void {
 
   // shadow, then the body seen from above: shoulders with a darker lower edge and two hands
   g.ellipse(0.8, 5.4, 6.6 * w, 3).fill({ color: 0x0b1220, alpha: 0.28 });
+  // a dark outline round body and head, so a colonist stands out on any ground
+  g.ellipse(0, 2.9, 5.7 * w + 1.3, 5.6).fill({ color: 0x120c08, alpha: 0.85 });
+  g.circle(0, hy, hr + 1.3).fill({ color: 0x120c08, alpha: 0.85 });
   g.ellipse(0, 3.4, 5.7 * w, 4.5).fill(darken(garb, 0.3));
   g.ellipse(0, 2.5, 5.7 * w, 4.3).fill(garb);
   g.ellipse(0, 1.6, 3.6 * w, 2.2).fill(lighten(garb, 0.12));

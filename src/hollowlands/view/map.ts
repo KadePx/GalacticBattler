@@ -28,6 +28,8 @@ interface PawnView {
   fig: Graphics;
   blanket: Graphics;
   over: Container;
+  /** a dot that keeps its size on screen, for spotting people when zoomed far out */
+  pin: Graphics;
   bubble: Graphics;
   mark: Graphics;
   label: Text;
@@ -292,11 +294,13 @@ export class MapView {
     blanket.visible = false;
     root.addChild(fig, blanket);
     const over = new Container();
+    const pin = new Graphics().circle(0, 0, 4.2).fill(0x120c08).circle(0, 0, 3).fill(0xf4efe4);
+    pin.visible = false;
     const bubble = new Graphics();
     const mark = new Graphics();
     bubble.visible = false;
     mark.visible = false;
-    over.addChild(mark, bubble);
+    over.addChild(pin, mark, bubble);
     const label = new Text({
       text: p.first,
       resolution: 2,
@@ -306,7 +310,7 @@ export class MapView {
     this.pawnLayer.addChild(root);
     this.overLayer.addChild(over);
     this.labelLayer.addChild(label);
-    const v: PawnView = { id: p.id, root, fig, blanket, over, bubble, mark, label, key: '', keyTick: -1, bubbleKey: '', markKey: '', blanketKey: -1, x: 0, y: 0, tile: 0, size: 1, asleep: false, stamp: 0 };
+    const v: PawnView = { id: p.id, root, fig, blanket, over, pin, bubble, mark, label, key: '', keyTick: -1, bubbleKey: '', markKey: '', blanketKey: -1, x: 0, y: 0, tile: 0, size: 1, asleep: false, stamp: 0 };
     this.views.set(p.id, v);
     return v;
   }
@@ -323,6 +327,8 @@ export class MapView {
     const s = this.cam.scale.x;
     const overScale = Math.max(0.7, Math.min(2.2, 0.95 / s));
     const showNames = s >= 1.15;
+    // zoomed out, people grow a little so they do not vanish into the ground
+    const boost = s < 1 ? Math.min(1.75, Math.pow(1 / s, 0.75)) : 1;
     let sel: PawnView | undefined;
     let mine: PawnView | undefined;
     for (const p of c.pawns) {
@@ -339,9 +345,9 @@ export class MapView {
           v.key = key;
           v.size = Math.max(0.55, (SHAPE[p.race]?.size ?? 1) * STAGE_SIZE[st] * FIG);
           drawFigure(v.fig, spec);
-          v.fig.scale.set(v.size);
         }
       }
+      v.fig.scale.set(v.size * boost);
 
       this.place(p, tf);
       const moving = this.pos.moving;
@@ -395,8 +401,11 @@ export class MapView {
         v.bubble.position.set(0, markKey && markKey !== 'z' ? -12 : 0);
       }
       v.bubble.visible = talking;
-      v.over.position.set(v.x, v.y - (asleep ? 6 : 10 * v.size + 2));
+      v.over.position.set(v.x, v.y - (asleep ? 6 : 10 * v.size * boost + 2));
       v.over.scale.set(overScale);
+      // far out, a small dot marks each person; your own colonist and the selected one stand out
+      v.pin.visible = s < 0.75 && !v.bubble.visible;
+      if (v.pin.visible) v.pin.tint = p.id === this.mineId ? 0xa5b0ff : p.id === this.selected ? 0xffd36a : p.brk ? 0xf87171 : 0xffffff;
 
       const isSel = p.id === this.selected;
       if (isSel) sel = v;

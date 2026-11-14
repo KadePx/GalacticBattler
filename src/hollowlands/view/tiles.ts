@@ -343,6 +343,9 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
         if (isWall(stAt(x, y - 1))) g.rect(px, py, TS, 6).fill({ color: 0x1a120a, alpha: 0.32 });
         if (isWall(stAt(x - 1, y))) g.rect(px, py, 5, TS).fill({ color: 0x1a120a, alpha: 0.22 });
       };
+      const shade = (sx: number, sy: number, w: number, h: number, r: number): void => {
+        g.roundRect(sx + 1.5, sy + 2, w, h, r).fill({ color: 0x140c06, alpha: 0.28 });
+      };
       if (s >= B.BED && roofed && s !== B.GRAVE) floor();
 
       switch (s) {
@@ -384,16 +387,24 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
             g.circle(px + 2.5, cy, 3).circle(px + 21.5, cy, 3).fill(0x5a4030);
             break;
           }
+          // a gap in the wall: dark frame posts, a worn threshold stone, and the door swung open
           floor();
           const across = isWall(stAt(x - 1, y)) || isWall(stAt(x + 1, y));
+          const post = stone ? 0x2a2c32 : 0x2e1f14;
           if (across) {
-            g.rect(px, py + 7, TS, 10).fill(0x4d3524);
-            g.roundRect(px + 2, py + 8.5, 20, 7, 1.5).fill(0xb98a52);
-            g.circle(px + 18, py + 12, 1.3).fill(0x3a2a1c);
+            g.rect(px + 3, py + 6, 18, 12).fill(0x9a8f7c);
+            g.rect(px + 3, py + 6, 18, 2).fill({ color: 0x000000, alpha: 0.18 });
+            g.rect(px, py + 4, 4, 16).rect(px + TS - 4, py + 4, 4, 16).fill(post);
+            g.moveTo(px + 4, py + 17).arc(px + 4, py + 17, 13, -Math.PI / 2, 0).stroke({ width: 1, color: 0xf2e6c8, alpha: 0.45 });
+            g.roundRect(px + 3, py + 3, 3.5, 14, 1).fill(0x6a4426).stroke({ width: 1, color: 0x2a1d12 });
+            g.rect(px + 3, py + 6, 3.5, 1.2).rect(px + 3, py + 13, 3.5, 1.2).fill(0x2c2f36);
           } else {
-            g.rect(px + 7, py, 10, TS).fill(0x4d3524);
-            g.roundRect(px + 8.5, py + 2, 7, 20, 1.5).fill(0xb98a52);
-            g.circle(px + 12, py + 18, 1.3).fill(0x3a2a1c);
+            g.rect(px + 6, py + 3, 12, 18).fill(0x9a8f7c);
+            g.rect(px + 6, py + 3, 2, 18).fill({ color: 0x000000, alpha: 0.18 });
+            g.rect(px + 4, py, 16, 4).rect(px + 4, py + TS - 4, 16, 4).fill(post);
+            g.moveTo(px + 7, py + 4).arc(px + 7, py + 4, 13, 0, Math.PI / 2).stroke({ width: 1, color: 0xf2e6c8, alpha: 0.45 });
+            g.roundRect(px + 3, py + 3, 14, 3.5, 1).fill(0x6a4426).stroke({ width: 1, color: 0x2a1d12 });
+            g.rect(px + 6, py + 3, 1.2, 3.5).rect(px + 13, py + 3, 1.2, 3.5).fill(0x2c2f36);
           }
           break;
         }
@@ -434,22 +445,25 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
         case B.BED:
         case B.COT: {
           const cot = s === B.COT;
-          g.roundRect(px + 3, py + 1, 18, 22, 2.5).fill(cot ? 0x8f8a80 : 0x6e4b2f);
+          shade(px + 3, py + 1, 18, 22, 2.5);
+          g.roundRect(px + 3, py + 1, 18, 22, 2.5).fill(cot ? 0x8f8a80 : 0x6e4b2f).stroke({ width: 1.2, color: 0x2a1d12 });
           g.roundRect(px + 4.5, py + 2.5, 15, 19, 1.5).fill(0xe9e3d5);
-          g.roundRect(px + 6.5, py + 3.5, 11, 5, 2).fill(0xffffff);
+          g.roundRect(px + 6.5, py + 3.5, 11, 5, 2).fill(0xffffff).stroke({ width: 0.8, color: 0xb9b1a0 });
           g.roundRect(px + 4.5, py + 10.5, 15, 11, 1.5).fill(cot ? 0xb9c7d6 : blanketColor(i));
-          g.rect(px + 4.5, py + 10.5, 15, 2).fill({ color: 0xffffff, alpha: 0.25 });
+          g.rect(px + 4.5, py + 10.5, 15, 2).fill({ color: 0xffffff, alpha: 0.3 });
           break;
         }
         case B.TABLE:
-          g.roundRect(px + 1.5, py + 3, 21, 18, 3).fill(0x7d5836);
-          g.roundRect(px + 2.5, py + 3.5, 19, 15.5, 2.5).fill(0xa87a4a);
-          g.circle(cx - 4, cy - 1, 2.4).fill(0xe9e3d5);
-          g.circle(cx + 5, cy + 1.5, 1.6).fill(0xc9a24a);
+          shade(px + 1.5, py + 3, 21, 18, 3);
+          g.roundRect(px + 1.5, py + 3, 21, 18, 3).fill(0xa87a4a).stroke({ width: 1.2, color: 0x2a1d12 });
+          g.rect(px + 2.5, py + 9, 19, 0.8).rect(px + 2.5, py + 15, 19, 0.8).fill({ color: 0x5d4028, alpha: 0.55 });
+          g.circle(cx - 4, cy - 1, 2.6).fill(0xe9e3d5).stroke({ width: 0.8, color: 0x8a8070 });
+          g.circle(cx + 5, cy + 1.5, 1.8).fill(0xc9a24a);
           break;
         case B.CHAIR:
-          g.roundRect(px + 6, py + 7, 12, 12, 3).fill(0x8f6a44);
-          g.roundRect(px + 6, py + 5, 12, 3.5, 1.5).fill(0x5d4028);
+          shade(px + 6, py + 6, 12, 13, 3);
+          g.roundRect(px + 6, py + 7, 12, 12, 3).fill(0xa47a4c).stroke({ width: 1.2, color: 0x2a1d12 });
+          g.roundRect(px + 5.5, py + 4.5, 13, 4, 1.5).fill(0x5d4028).stroke({ width: 1, color: 0x2a1d12 });
           break;
         case B.HEARTH:
           g.circle(cx, cy, 14).fill({ color: 0xff9a3a, alpha: 0.14 });
@@ -466,11 +480,12 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           g.roundRect(cx - 5.5, cy + 3.5, 11, 3.2, 1).fill(0xe8662a);
           break;
         case B.BENCH:
-          g.roundRect(px + 1.5, py + 5, 21, 14, 2).fill(0x6e5133);
-          g.roundRect(px + 2.5, py + 5.5, 19, 11.5, 1.5).fill(0x9a744a);
-          g.rect(px + 5, py + 8.5, 8, 2).fill(0x4b4f58);
-          g.rect(px + 8, py + 8.5, 2, 6).fill(0x7d5836);
-          g.circle(px + 17.5, py + 12.5, 2.2).fill(0xc9ccd4);
+          // a workbench: a hammer and a saw on top, so it reads as a place of work
+          shade(px + 1.5, py + 5, 21, 14, 2);
+          g.roundRect(px + 1.5, py + 5, 21, 14, 2).fill(0x9a744a).stroke({ width: 1.2, color: 0x2a1d12 });
+          g.rect(px + 4, py + 9, 9, 2.4).fill(0x4b4f58);
+          g.rect(px + 7.5, py + 9, 2, 7).fill(0x7d5836);
+          g.poly([px + 14, py + 8, px + 20, py + 8, px + 20, py + 16, px + 14, py + 13]).fill(0xc9ccd4).stroke({ width: 0.8, color: 0x4b4f58 });
           break;
         case B.ANVIL:
           g.ellipse(cx + 1, cy + 5, 8, 3.5).fill({ color: 0x0b1220, alpha: 0.25 });
@@ -487,13 +502,16 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           g.circle(cx - 1, cy - 1, 2.6).fill(0xffb347);
           break;
         case B.CRATE:
-          g.rect(px + 4, py + 4, 16, 16).fill(0x9c7446).stroke({ width: 1.5, color: 0x6b4c2c });
-          g.moveTo(px + 4, py + 4).lineTo(px + 20, py + 20).moveTo(px + 20, py + 4).lineTo(px + 4, py + 20).stroke({ width: 1.2, color: 0x6b4c2c });
+          shade(px + 4, py + 4, 16, 16, 1);
+          g.rect(px + 4, py + 4, 16, 16).fill(0xb48a54).stroke({ width: 1.4, color: 0x2a1d12 });
+          g.rect(px + 4, py + 9, 16, 1).rect(px + 4, py + 14.5, 16, 1).fill({ color: 0x6b4c2c, alpha: 0.7 });
+          g.moveTo(px + 5, py + 5).lineTo(px + 19, py + 19).stroke({ width: 1.4, color: 0x6b4c2c });
           break;
         case B.BARREL:
-          g.circle(cx, cy, 8.5).fill(0x4b4f58);
-          g.circle(cx, cy, 7.2).fill(0x8a5f38);
-          g.circle(cx, cy, 4.6).fill(0xa87a4a);
+          shade(cx - 8.5, cy - 8.5, 17, 17, 8.5);
+          g.circle(cx, cy, 8.5).fill(0x9a6a3c).stroke({ width: 1.2, color: 0x2a1d12 });
+          g.circle(cx, cy, 6.8).stroke({ width: 1.6, color: 0x4b4f58 });
+          g.circle(cx, cy, 3.6).fill(0xb8864e);
           g.circle(cx, cy, 1.2).fill(0x4d3524);
           break;
         case B.ALTAR:
@@ -502,7 +520,8 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           g.circle(px + 5.5, cy, 1.7).circle(px + 18.5, cy, 1.7).fill(0xffd36a);
           break;
         case B.PEW:
-          g.roundRect(px + 2, py + 8, 20, 8.5, 2).fill(0x8f6a44);
+          shade(px + 2, py + 6, 20, 10.5, 2);
+          g.roundRect(px + 2, py + 8, 20, 8.5, 2).fill(0xa47a4c).stroke({ width: 1.1, color: 0x2a1d12 });
           g.roundRect(px + 2, py + 6, 20, 3, 1.2).fill(0x5d4028);
           break;
         case B.LOOM:
@@ -523,10 +542,12 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           g.rect(cx - 2.5, py + 3.5, 5, 1).rect(cx - 2.5, py + 5.5, 5, 1).fill({ color: 0x4b4f58, alpha: 0.7 });
           break;
         case B.SHELF:
-          g.roundRect(px + 2, py + 2.5, 20, 9, 1.5).fill(0x7d5836);
-          g.circle(px + 6, py + 7, 2).fill(0x8fb4f0);
-          g.circle(px + 11, py + 7, 2).fill(0x86c466);
-          g.circle(px + 16, py + 7, 2).fill(0xe2933a);
+          // a shelf of jars and bundles
+          shade(px + 2, py + 2.5, 20, 9, 1.5);
+          g.roundRect(px + 2, py + 2.5, 20, 9, 1.5).fill(0x7d5836).stroke({ width: 1.1, color: 0x2a1d12 });
+          g.roundRect(px + 4, py + 4, 4, 6, 1).fill(0x8fb4f0);
+          g.roundRect(px + 9.5, py + 4, 4, 6, 1).fill(0x86c466);
+          g.roundRect(px + 15, py + 4, 5, 6, 1).fill(0xe2933a);
           break;
         case B.STATUE:
           g.ellipse(cx + 1.5, cy + 3, 9, 7).fill({ color: 0x0b1220, alpha: 0.22 });

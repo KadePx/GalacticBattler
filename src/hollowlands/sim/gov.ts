@@ -233,7 +233,7 @@ export function succession(c: Colony, old: Pawn | undefined, r: Rand): void {
   let score = -1e9;
   for (const p of adults) {
     const R = RACES[p.race];
-    const s = ((ageYears(c, p) - R.adult) / (R.old - R.adult)) * 10 + p.sk[10] * 0.3 + standing(c, p, adults) / Math.max(1, adults.length) / 10;
+    const s = ((ageYears(c, p) - R.adult) / (R.old - R.adult)) * 10 + p.sk[10] * 0.3 + p.sk[11] * 0.35 + standing(c, p, adults) / Math.max(1, adults.length) / 10;
     if (s > score) { score = s; best = p; }
   }
   crown(c, best, 'eldest', old);

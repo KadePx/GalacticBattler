@@ -587,9 +587,12 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       for (const o of c.pawns) {
         const s = stage(c, o);
         if (s !== STAGE.CHILD && s !== STAGE.TEEN) continue;
-        const sub = r.int(12);
-        o.sk[sub] = Math.min(20, o.sk[sub] + 0.02 * hours * stat(o, 'learn'));
-        o.sk[11] = Math.min(20, o.sk[11] + 0.012 * hours * stat(o, 'learn'));
+        // a learned teacher teaches more, and leans toward what they know best
+        const good = 0.5 + p.sk[11] * 0.08;
+        let sub = r.int(12);
+        if (r.chance(0.4)) { let best = 0; for (let k = 1; k < 12; k++) if (p.sk[k] > p.sk[best]) best = k; sub = best; }
+        o.sk[sub] = Math.min(20, o.sk[sub] + 0.02 * hours * stat(o, 'learn') * good);
+        o.sk[11] = Math.min(20, o.sk[11] + 0.012 * hours * stat(o, 'learn') * good);
       }
       break;
     }

@@ -13,7 +13,7 @@ export const SKILL_INFO: string[] = [
   /* Medicine */ 'Tending wounds and sickness: stopping bleeding, keeping wounds clean, nursing the sick and making medicine from herbs. Also makes childbirth safer.',
   /* Animals  */ 'Fishing and hunting, and handling beasts. Helps a hunter find and bring down game.',
   /* Social   */ 'Charm and persuasion: how others take what they say, winning arguments, votes, converts and trials, holding a crowd with a story or a sermon.',
-  /* Lore     */ 'Learning and memory: teaching the colony\'s children, preaching, and standing as a respected elder.',
+  /* Lore     */ 'Learning and memory. A learned teacher passes on more to the children; Lore makes sermons stronger, helps win the steward\'s post, counts when a colony chooses its elder, and a colonist with plenty of it can hold a crowd with a story.',
 ];
 
 /** How levels work, for the one-line legend. */
