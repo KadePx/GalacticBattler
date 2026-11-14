@@ -39,10 +39,10 @@ export function face(c: Colony, p: Who, size: number): string {
   return svg;
 }
 
-/** "Spr 3 · Y2": dates in lists stay short; the full date is in the tooltip. */
+/** A date for lists, in two short lines: "Autumn, day 13" over "Year 3". Returns HTML. */
 export function shortDate(tick: number): string {
   const w = when(tick);
-  return `${SEASON_NAMES[w.season].slice(0, 3)} ${w.day} · Y${w.year}`;
+  return `<span class="sd">${SEASON_NAMES[w.season]}, day ${w.day}<small>Year ${w.year}</small></span>`;
 }
 
 const sign = (v: number): string => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(Math.round(v));
@@ -120,7 +120,7 @@ function backs(p: Who): string {
 }
 
 function story(c: Colony, p: Who, end?: string): string {
-  let out = `<div class="ln"><span class="y">${p.born < 0 ? 'Before' : shortDate(p.born)}</span><span class="t">${p.born < 0 ? 'Born before the colony kept records.' : 'Born in the colony.'}</span></div>`;
+  let out = `<div class="ln"><span class="y wide">${p.born < 0 ? 'Before' : shortDate(p.born)}</span><span class="t">${p.born < 0 ? 'Born before the colony kept records.' : 'Born in the colony.'}</span></div>`;
   for (const b of p.bio as Bio[]) {
     out += `<div class="ln" title="${esc(dateText(b.t, true))}"><span class="y">${shortDate(b.t)}</span><span class="t">${linkNames(c, bioText(c, b), [b.o])}</span></div>`;
   }
