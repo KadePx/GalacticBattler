@@ -278,7 +278,7 @@
         #top .seg { flex-basis: 100%; }
         #top .seg button { flex: 1; padding: 0 4px; }
         #side { left: 0; right: 0; bottom: 0; top: auto; width: auto; height: 46vh; border-radius: 18px 18px 0 0; border-bottom: 0; }
-        #side.shut { height: auto; }
+        #side.shut { height: auto; top: auto; bottom: 0; }
         #side .dh { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px) * 0); }
         #side.shut .dh { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
         #card { left: 0; right: 0; bottom: 0; top: auto; width: auto; height: 66vh; border-radius: 18px 18px 0 0; border-bottom: 0; z-index: 4; }
@@ -339,7 +339,7 @@
       .wrow { display: grid; text-align: left; gap: 1px; padding: 9px 12px; border-radius: 10px; background: var(--raise); border: 1px solid var(--line); }
       .wrow:hover { background: var(--raise2); } .wrow.here { border-color: rgba(124, 140, 255, 0.5); }
       .wrow span { color: var(--dim); font-size: 12.5px; }
-      @media (max-width: 640px) { #worldbtn { top: auto; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); right: 8px; } }
+      @media (max-width: 760px) { #worldbtn { top: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); right: 8px; height: 42px; } }
       .askbox { display: grid; gap: 6px; margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px; background: var(--accentSoft); border: 1px solid rgba(124, 140, 255, 0.45); }
       .askbox b { font-size: 14.5px; }
       .diary { padding: 12px 14px; border-radius: 12px; background: var(--raise); border: 1px solid var(--line); font-style: italic; color: var(--dim); }
