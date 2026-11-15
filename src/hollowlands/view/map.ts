@@ -5,10 +5,11 @@
 import { actText } from './words';
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
+import { TOOL_FOR } from '../sim/jobs';
 import { CROPS, HOMES, TPL, cellCode, cells, shapeOf } from '../sim/data/buildings';
 import { stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
-import { BLD_ICON, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
+import { BLD_ICON, SWINGING, WORK_HELD, drawHeld, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
 import { SHAPE, yearsAt } from './look';
 import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
 
@@ -33,6 +34,9 @@ interface PawnView {
   pin: Graphics;
   /** what they are doing, as a small badge */
   act: Graphics;
+  /** the tool or weapon in their hand, and which one it is */
+  held: Graphics;
+  heldKey: string;
   actKey: string;
   bubble: Graphics;
   mark: Graphics;
@@ -97,6 +101,9 @@ export class MapView {
   private signLayer = new Container();
   private signs: { g: Graphics; label: Text; x: number; y: number; field: boolean }[] = [];
   private signKey = '';
+  /** the colony's stores, piled up beside the storehouse */
+  private piles = new Graphics();
+  private pileKey = '';
   private chunks: Chunk[] = [];
   private views = new Map<Id, PawnView>();
   private foeViews = new Map<number, { g: Graphics; stamp: number }>();
@@ -187,6 +194,10 @@ export class MapView {
     this.night.clear().rect(0, 0, this.mw, this.mh).fill(0xffffff);
     this.overLayer.addChild(this.ring, this.mineMark);
     this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.pawnLayer, this.canopyLayer, this.night, this.lightLayer, this.signLayer, this.overLayer);
+    // the old pile graphic went with the old chunks: start a fresh one
+    this.piles = new Graphics();
+    this.structLayer.addChild(this.piles);
+    this.pileKey = '';
     this.signKey = '';
     this.pal = null;
     this.selectBld(this.selBld);
@@ -211,6 +222,7 @@ export class MapView {
     this.syncFoes(tf);
     this.syncBeasts(tf);
     this.syncSigns(c);
+    this.syncPiles(c);
     this.stepCamera(dt);
     this.cull();
     this.lighting(tf, dt);
@@ -312,6 +324,9 @@ export class MapView {
     const over = new Container();
     const act = new Graphics();
     act.visible = false;
+    const held = new Graphics();
+    held.visible = false;
+    root.addChild(held);
     const pin = new Graphics().circle(0, 0, 4.2).fill(0x120c08).circle(0, 0, 3).fill(0xf4efe4);
     pin.visible = false;
     const bubble = new Graphics();
@@ -328,7 +343,7 @@ export class MapView {
     this.pawnLayer.addChild(root);
     this.overLayer.addChild(over);
     this.labelLayer.addChild(label);
-    const v: PawnView = { id: p.id, root, fig, blanket, over, pin, act, actKey: '', bubble, mark, label, key: '', keyTick: -1, bubbleKey: '', markKey: '', blanketKey: -1, x: 0, y: 0, tile: 0, size: 1, asleep: false, stamp: 0 };
+    const v: PawnView = { id: p.id, root, fig, blanket, over, pin, act, actKey: '', held, heldKey: '', bubble, mark, label, key: '', keyTick: -1, bubbleKey: '', markKey: '', blanketKey: -1, x: 0, y: 0, tile: 0, size: 1, asleep: false, stamp: 0 };
     this.views.set(p.id, v);
     return v;
   }
@@ -419,6 +434,18 @@ export class MapView {
         v.bubble.position.set(0, markKey && markKey !== 'z' ? -12 : 0);
       }
       v.bubble.visible = talking;
+      // what is in their hand: the tool for the work, a weapon in a fight, a guard's spear
+      const hk = asleep || inBed || stage(c, p) <= 1 || p.brk?.k === 'seized' ? '' : heldFor(p);
+      if (hk !== v.heldKey) { v.heldKey = hk; drawHeld(v.held, hk); }
+      v.held.visible = !!hk && s >= 0.5;
+      if (v.held.visible) {
+        const sc = v.size * boost * 0.85;
+        v.held.scale.set(sc);
+        v.held.position.set(6.2 * v.size * boost, v.fig.position.y + 3 * v.size);
+        // tools swing while the work goes on; at rest they lean
+        const working = !moving && p.act.k === 'work' && c.tick >= p.act.ta;
+        v.held.rotation = working && SWINGING.has(hk) ? -0.2 + Math.sin(this.time * 0.012 + p.id) * 0.7 : p.act.k === 'fight' && !moving ? Math.sin(this.time * 0.02 + p.id) * 0.6 : 0.18;
+      }
       // what they are up to: shown beside them, faded while they walk there
       const ak = asleep || p.brk?.k === 'seized' ? '' : activityKey(p.act.k, p.act.w);
       if (ak !== v.actKey) { v.actKey = ak; drawActivity(v.act, ak); }
@@ -516,6 +543,74 @@ export class MapView {
     }
     for (const [id, v] of this.beastViews) {
       if (v.stamp !== stamp) { v.g.destroy(); this.beastViews.delete(id); }
+    }
+  }
+
+  /** Woodpile, stone, sacks of food and barrels of ale beside the storehouse, as big as the stores. */
+  private syncPiles(c: Colony): void {
+    const s = c.stock;
+    const n = (v: number, per: number, max: number): number => Math.max(0, Math.min(max, Math.ceil(v / per)));
+    const want = [
+      ['wood', n(s.wood, 30, 7)],
+      ['stone', n(s.stone, 15, 6)],
+      ['sacks', n(s.grain + s.veg + s.mushrooms, 90, 6)],
+      ['ale', n(s.ale, 12, 4)],
+      ['iron', n(s.iron + s.ore + s.tools, 6, 4)],
+    ] as const;
+    const store = c.blds.find((b) => b.k === 'store' && b.built) ?? c.blds.find((b) => b.k === 'hall' && b.built);
+    const key = `${store?.id ?? 0}|${want.map((w) => w[1]).join(',')}|${c.blds.length}`;
+    if (key === this.pileKey) return;
+    this.pileKey = key;
+    const g = this.piles;
+    g.clear();
+    if (!store) return;
+    // free tiles round the storehouse, the side and the front first
+    const spots: [number, number][] = [];
+    const free = (x: number, y: number): boolean => {
+      if (x < 1 || y < 1 || x >= c.w - 1 || y >= c.h - 1) return false;
+      const i = y * c.w + x;
+      return !c.st[i] && !c.sb[i] && !c.feat[i] && c.ter[i] !== 5 && c.ter[i] !== 6 && c.ter[i] !== 7;
+    };
+    for (let y = store.y; y < store.y + store.h; y++) if (free(store.x + store.w, y)) spots.push([store.x + store.w, y]);
+    for (let x = store.x; x < store.x + store.w; x++) if (free(x, store.y - 1)) spots.push([x, store.y - 1]);
+    for (let y = store.y; y < store.y + store.h; y++) if (free(store.x - 1, y)) spots.push([store.x - 1, y]);
+    let k = 0;
+    for (const [what, count] of want) {
+      if (!count) continue;
+      const spot = spots[k++];
+      if (!spot) break;
+      const px = spot[0] * TS;
+      const py = spot[1] * TS;
+      g.ellipse(px + 13, py + 19, 11, 4).fill({ color: 0x0b1220, alpha: 0.22 });
+      for (let i = 0; i < count; i++) {
+        if (what === 'wood') {
+          // logs stacked in a pyramid, ends towards us
+          const row = i < 3 ? 0 : i < 5 ? 1 : 2;
+          const col = i < 3 ? i : i < 5 ? i - 3 : 0;
+          const lx = px + 6 + col * 6 + row * 3;
+          const ly = py + 17 - row * 5;
+          g.circle(lx, ly, 3).fill(0x8a6440).stroke({ width: 0.8, color: 0x3a2716 });
+          g.circle(lx, ly, 1.4).fill(0xc9a27a);
+        } else if (what === 'stone') {
+          const row = i < 3 ? 0 : i < 5 ? 1 : 2;
+          const col = i < 3 ? i : i < 5 ? i - 3 : 0;
+          g.roundRect(px + 3 + col * 6 + row * 3, py + 14 - row * 5, 6, 4.5, 1).fill(0x9da1aa).stroke({ width: 0.7, color: 0x4b4f58 });
+        } else if (what === 'sacks') {
+          const sx = px + 5 + (i % 3) * 6.5;
+          const sy = py + 16 - Math.floor(i / 3) * 6;
+          g.roundRect(sx - 3, sy - 4, 6.5, 7, 2.4).fill(0xd9c08a).stroke({ width: 0.7, color: 0x6b4c2c });
+          g.rect(sx - 0.8, sy - 4.6, 1.8, 1.4).fill(0x6b4c2c);
+        } else if (what === 'ale') {
+          const bx = px + 6 + (i % 2) * 10;
+          const by = py + 15 - Math.floor(i / 2) * 7;
+          g.circle(bx, by, 4.2).fill(0x9a6a3c).stroke({ width: 0.8, color: 0x2a1d12 });
+          g.circle(bx, by, 3).stroke({ width: 0.9, color: 0x4b4f58 });
+        } else {
+          // iron bars and tools leaning on a rack
+          g.rect(px + 3, py + 8, 18, 1.6).fill(0x5a3d28);
+          for (let j = 0; j < count; j++) g.moveTo(px + 5 + j * 4.5, py + 8).lineTo(px + 6 + j * 4.5, py + 19).stroke({ width: 1.4, color: j % 2 ? 0xc9ced8 : 0x7b808b });
+        }
+      }
     }
   }
 
@@ -916,4 +1011,21 @@ function rainCanvas(): HTMLCanvasElement {
     g.fillRect(1, 0, 1.4, 20);
   }
   return cv;
+}
+
+/** What a colonist has in hand right now ('' for nothing). */
+function heldFor(p: Pawn): string {
+  const a = p.act;
+  if (a.k === 'fight') return a.b === 1 ? 'bow' : p.prof === 'guard' || p.prof === 'scout' ? 'spear' : 'sword';
+  if (a.k === 'subdue') return '';
+  if (a.k === 'music') return 'lute';
+  if (a.k === 'read' || a.k === 'study') return 'book';
+  if (a.k === 'work' && a.w) {
+    const want = TOOL_FOR[a.w];
+    if (want) return p.tool && p.tool[0] === want ? want : '';
+    return WORK_HELD[a.w] ?? '';
+  }
+  // a guard on their feet keeps the spear to hand
+  if ((p.prof === 'guard' || p.prof === 'scout') && a.k !== 'eat' && a.k !== 'relax' && a.k !== 'drink' && a.k !== 'bathe') return 'spear';
+  return '';
 }

@@ -240,6 +240,102 @@ export function drawFoe(g: Graphics, k: string): void {
   g.poly([-2.6, -13.5, 2.6, -13.5, 0, -10]).fill(0xef4444);
 }
 
+// ---------- What someone has in hand ----------
+
+const WOOD = 0x8a6440;
+const IRON = 0xc9ced8;
+const DARK = 0x2a1d12;
+
+/**
+ * Draw the thing in a colonist's hand, held at (0,0) and pointing up and outward. Drawn at
+ * figure scale, beside the right hand.
+ */
+export function drawHeld(g: Graphics, k: string): void {
+  g.clear();
+  if (!k) return;
+  const haft = (len: number, col = WOOD, w = 1.6): void => { g.moveTo(0, 2).lineTo(0, 2 - len).stroke({ width: w, color: col, cap: 'round' }); };
+  switch (k) {
+    case 'axe':
+      haft(11);
+      g.poly([0, -8.5, 4.6, -10.5, 4.6, -5.2, 0, -6.4]).fill(IRON).stroke({ width: 0.6, color: DARK });
+      break;
+    case 'pick':
+      haft(11);
+      g.moveTo(-4.8, -7.2).quadraticCurveTo(0, -10.8, 4.8, -7.2).stroke({ width: 1.8, color: IRON, cap: 'round' });
+      break;
+    case 'hoe': // a hoe, and a sickle tucked in the belt
+      haft(12);
+      g.poly([0, -10, 4, -10, 4, -8.2, 0, -8.6]).fill(IRON);
+      g.moveTo(-3, 4).arc(-3.5, 2.2, 2.4, -0.4, Math.PI * 1.05).stroke({ width: 1.1, color: IRON });
+      break;
+    case 'hammer':
+      haft(9);
+      g.roundRect(-2.8, -9.2, 5.6, 3, 0.8).fill(0x7b808b).stroke({ width: 0.5, color: DARK });
+      break;
+    case 'bow':
+      g.moveTo(1, -9).quadraticCurveTo(6.5, -3.5, 1, 2).stroke({ width: 1.6, color: WOOD, cap: 'round' });
+      g.moveTo(1, -9).lineTo(1, 2).stroke({ width: 0.6, color: 0xe9e3d5 });
+      break;
+    case 'rod':
+      g.moveTo(0, 2).lineTo(7, -11).stroke({ width: 1.1, color: WOOD, cap: 'round' });
+      g.moveTo(7, -11).quadraticCurveTo(9.5, -4, 8, 3).stroke({ width: 0.5, color: 0xe9e3d5 });
+      break;
+    case 'tongs':
+      g.moveTo(-0.8, 2).lineTo(-0.8, -8).moveTo(0.8, 2).lineTo(1.4, -8).stroke({ width: 1, color: 0x4b4f58 });
+      g.circle(0.4, -8.6, 1.7).fill(0xff9a3a);
+      break;
+    case 'knife':
+      haft(3, WOOD, 1.6);
+      g.poly([-0.8, -1, 0.8, -1, 0.3, -7, -0.8, -5.5]).fill(IRON);
+      break;
+    case 'spear':
+      haft(15, WOOD, 1.4);
+      g.poly([0, -16.5, 1.6, -12.5, 0, -11.5, -1.6, -12.5]).fill(IRON).stroke({ width: 0.5, color: DARK });
+      break;
+    case 'sword':
+      g.rect(-0.9, -1, 1.8, 3.4).fill(0x5a3d28);
+      g.rect(-2.6, -1.6, 5.2, 1.2).fill(0x9a8a6a);
+      g.poly([-1, -1.6, 1, -1.6, 0.6, -11, 0, -12.5, -0.6, -11]).fill(IRON).stroke({ width: 0.4, color: DARK });
+      break;
+    case 'book':
+      g.roundRect(-3, -6, 6, 7.5, 0.8).fill(0x4f6fa8).stroke({ width: 0.6, color: DARK });
+      g.rect(-2.2, -6, 0.9, 7.5).fill(0x2f4f88);
+      break;
+    case 'ladle':
+      haft(8, 0x9a8a6a, 1.1);
+      g.circle(0, -6.6, 2).fill(0x8a9099);
+      break;
+    case 'basket':
+      g.moveTo(-3.4, -3).arc(0, -3, 3.4, Math.PI, 0).stroke({ width: 0.9, color: WOOD });
+      g.roundRect(-4, -3, 8, 5, 1.5).fill(0xc9a27a).stroke({ width: 0.6, color: DARK });
+      g.circle(-1.4, -3.2, 1.1).circle(1.3, -3.4, 1.1).fill(0xd2445a);
+      break;
+    case 'herbs':
+      g.moveTo(0, 2).lineTo(0, -5).stroke({ width: 0.8, color: 0x4f8a3e });
+      g.ellipse(-1.6, -5, 1.4, 2.4).ellipse(1.6, -5.4, 1.4, 2.4).fill(0x6fbf5a);
+      break;
+    case 'lute':
+      g.ellipse(0, -1, 3, 3.6).fill(0xd9a85a).stroke({ width: 0.6, color: DARK });
+      g.moveTo(0, -4).lineTo(0, -11).stroke({ width: 1.3, color: WOOD });
+      g.circle(0, -1, 0.9).fill(DARK);
+      break;
+    case 'satchel':
+      g.roundRect(-3, -3.5, 6, 5, 1.2).fill(0x9a6a3c).stroke({ width: 0.6, color: DARK });
+      g.rect(-1, -3, 2, 2).fill(0xef5a5a);
+      break;
+    case 'mug':
+      g.roundRect(-2, -4, 4, 5, 0.8).fill(0xe0a84a);
+      g.rect(-2.2, -4.8, 4.4, 1.4).fill(0xf6f1e4);
+      break;
+    default: break;
+  }
+}
+
+/** Work that has its own thing in hand even without a tool from the stores. */
+export const WORK_HELD: Record<string, string> = { cook: 'ladle', teach: 'book', preach: 'book', forage: 'basket', herbs: 'herbs', heal: 'satchel', brew: 'mug', guard: 'spear' };
+/** Held items that swing while the work goes on. */
+export const SWINGING = new Set(['axe', 'pick', 'hoe', 'hammer', 'tongs']);
+
 // ---------- Building signs ----------
 
 /** The badge each kind of building wears on its sign (same little pictures as the activity badges). */

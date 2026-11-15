@@ -62,13 +62,14 @@ export function placeBuilding(c: Colony, k: string, x: number, y: number, instan
 const OPEN = new Set<number>([T.GRASS, T.DIRT, T.SOIL, T.SAND, T.STONE, T.MARSH]);
 
 /** Best free plot for a building, or null if the land is full. */
-export function findSite(c: Colony, k: string, shape = k): [number, number] | null {
+export function findSite(c: Colony, k: string, shape = k, far = false): [number, number] | null {
   const t = TPL[shape];
   const w = t.rows[0].length;
   const h = t.rows.length;
   const field = k === 'field';
   const minR = field ? 8 : k === 'graveyard' ? 14 : k === 'tower' ? 11 : k === 'hall' ? 0 : 3;
-  const maxR = field ? 31 : 28;
+  // a crowded colony builds further out, almost to the edge of its land
+  const maxR = field ? (far ? 34 : 31) : far ? 33 : 28;
   let best: [number, number] | null = null;
   let bestScore = -1e9;
   for (let y = 3; y < c.h - h - 3; y++) {
@@ -103,13 +104,15 @@ export function findSite(c: Colony, k: string, shape = k): [number, number] | nu
 
 export function build(c: Colony, k: string, instant = false, crop?: string): Bld | null {
   // no point measuring the same crowded ground every morning
-  if (c.nosite[k] && c.tick - c.nosite[k] < 240 * 12) return null;
+  // homes are looked for more often: someone is sleeping on the floor
+  if (c.nosite[k] && c.tick - c.nosite[k] < 240 * (HOMES.includes(k) ? 3 : 12)) return null;
   // a new building may take one of its kind's other shapes; an instant one (a new colony's first) keeps the plain plan
   const opts = SHAPES[k];
   const shape = opts && !instant ? opts[hash32(c.seed, S.PLAN, 77, c.nextBld) % opts.length] : k;
   let use = shape;
   let site = findSite(c, k, shape);
   if (!site && shape !== k) { use = k; site = findSite(c, k); }
+  if (!site) { use = k; site = findSite(c, k, k, true); }
   if (!site) { c.nosite[k] = c.tick; return null; }
   delete c.nosite[k];
   let dwarves = 0;
@@ -118,6 +121,8 @@ export function build(c: Colony, k: string, instant = false, crop?: string): Bld
   const mat = k !== 'field' && k !== 'well' && k !== 'graveyard' && (stoneLover || (k === 'shrine' && c.stock.stone > 60)) ? 1 : 0;
   const b = placeBuilding(c, k, site[0], site[1], instant, mat, use);
   if (k === 'field') { b.crop = crop ?? 'veg'; b.tend = 40; }
+  // a home is not left waiting on stone the colony does not have: it goes up in timber
+  if (!instant && HOMES.includes(k) && b.need.stone > c.stock.stone) { b.need.wood += b.need.stone * 1.5; b.need.stone = 0; }
   if (!instant) log(c, 'plan', undefined, undefined, k, b.id);
   return b;
 }
@@ -367,7 +372,7 @@ export function plan(c: Colony): void {
   const pending = c.blds.filter((b) => !b.built);
   // no stone to be had for weeks: build it in timber instead
   for (const b of pending) {
-    if (b.need.stone > 0.01 && c.stock.stone < 1 && c.tick - b.made > 240 * 12) {
+    if (b.need.stone > 0.01 && c.stock.stone < 1 && c.tick - b.made > 240 * 5) {
       b.need.wood += b.need.stone * 1.5;
       b.need.stone = 0;
     }
@@ -398,6 +403,8 @@ export function plan(c: Colony): void {
     const need = homeless - beds;
     const k = need >= 4 ? (rough / pop > 0.5 ? 'longhouse' : 'bighouse') : need >= 2 ? 'house' : 'cottage';
     if (build(c, k)) return;
+    // no room for that: something smaller may still fit
+    for (const smaller of ['house', 'cottage']) if (smaller !== k && build(c, smaller)) return;
   }
   if (c.dead.some((d) => !d.left) && !count('graveyard')) { if (build(c, 'graveyard')) return; }
   if (pop >= 4 && !count('well')) { if (build(c, 'well')) return; }
