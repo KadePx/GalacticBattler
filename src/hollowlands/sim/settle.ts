@@ -63,6 +63,18 @@ export function dailySettle(c: Colony): void {
       if (wants && rr.chance(wants)) { note(c, p, 'moved'); depart(c, p, 'moved'); break; }
     }
   }
+  // a player's colonist who chose to go, when no party is coming: they set out alone for the
+  // nearest colony rather than wait for ever
+  if (c.near?.length && !c.foes.length && !c.alarm && c.settle < 40) {
+    for (const p of c.pawns) {
+      if (!p.owner || p.roots !== -1 || p.gone || p.leaveT === undefined || c.tick - p.leaveT < 15 * 240 || isDown(p) || p.brk) continue;
+      p.roots = undefined;
+      p.leaveT = undefined;
+      log(c, 'set_out', p.id, undefined, c.near[0].name);
+      depart(c, p, 'moved');
+      break;
+    }
+  }
   const forced = pop >= HARD_CAP - 1;
   if (!forced && (c.settle < 45 || pop < 24)) return;
   // nobody sets out in the snow, in the middle of a fight, or on the day of a wedding

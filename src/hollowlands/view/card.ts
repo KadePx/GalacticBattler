@@ -287,6 +287,11 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
     if (p.focus && p.focus[1] > c.tick) lean.push(`Focused on ${esc(SKILL_NAMES[p.focus[0]].toLowerCase())}`);
     h += `<div class="hint">${lean.length ? lean.join(' · ') + '. ' : ''}You cannot command them, only lean on them. Open someone under Relationships to reach out, court, make peace or confront; or pick work to focus on:</div>`;
     h += `<div class="nudges"><button class="btn sm${p.roots === -1 ? ' on' : ''}" data-act="nudge" data-k="yearn" data-v="0" title="${esc(NUDGES.yearn.blurb)} Costs 1 Resolve."${res >= 1 && p.roots !== -1 ? '' : ' disabled'}>${esc(NUDGES.yearn.name)}</button><button class="btn sm${p.roots === 1 ? ' on' : ''}" data-act="nudge" data-k="stay" data-v="0" title="${esc(NUDGES.stay.blurb)} Costs 1 Resolve."${res >= 1 && p.roots !== 1 ? '' : ' disabled'}>${esc(NUDGES.stay.name)}</button></div>`;
+    if (p.roots === -1) {
+      const talk = c.settle ?? 0;
+      const days = p.leaveT !== undefined ? Math.max(0, 15 - Math.floor((c.tick - p.leaveT) / 240)) : 15;
+      h += `<div class="note">${esc(p.first)} wants to leave. They will go with the next settler party: ${talk >= 40 ? '<b>talk of leaving is loud, a party will set out any day</b>' : talk >= 20 ? 'people are talking about it' : 'nobody else is talking of leaving yet'}.${talk < 40 ? ` If no party forms, they will set out alone for a neighbouring colony ${days ? `in about ${days} ${days === 1 ? 'day' : 'days'}` : 'soon'}.` : ''} Put down roots to stay after all.</div>`;
+    }
     h += '<div class="nudges">' + SKILL_NAMES.map((n, i) => `<button class="btn sm" data-act="nudge" data-k="focus" data-v="${i}"${res >= 1 ? '' : ' disabled'}>${esc(n)}</button>`).join('') + '</div>';
   }
   h += `<h3>Mood <span class="legend">${moodWord(p)}</span></h3>`;

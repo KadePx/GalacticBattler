@@ -103,7 +103,7 @@ export function applyInputs(c: Colony): void {
     } else if (e.k === 'answer') answer(c, e);
     else if (e.k === 'migrant') {
       // someone from another colony walks in: an exile, or someone who had had enough
-      if (c.pawns.length >= HARD_CAP || !e.pawn) continue;
+      if (!e.pawn || (c.pawns.length >= HARD_CAP && !(e.pawn as Pawn).owner)) continue;
       const id = importPawns(c, { k: 'settlers', t: c.tick, from: '', fromName: String(e.fromName), leader: (e.pawn as Pawn).id, pawns: [e.pawn as Pawn], stock: {} }, new Rand(c.seed, S.EVENT, c.tick, 5));
       const p = c.pawns.find((x) => x.id === id);
       if (p) {

@@ -102,7 +102,7 @@ export const WEIGHT: Record<string, number> = {
   odd_goat: 3, odd_ring: 3, odd_raven: 3, odd_ogre: 3, odd_ghost: 3, odd_mushroom: 3, odd_coat: 3, odd_oath: 3, odd_bones: 2, odd_cat: 2, odd_weep: 2,
   schism: 3, fire_spread: 3, match_sent: 3, match: 3,
   asked: 2, blackmail: 3, prosthetic: 2, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
-  raidout: 3, raiders_from: 2, raidback: 3, war_declared: 3, war_on_us: 3, incident: 2, warband: 3, peace_sued: 3, peace_made: 3, spotted: 2, brokeup: 1, berserk_hit: 3, subdued: 3, subdue_failed: 2,
+  raidout: 3, raiders_from: 2, raidback: 3, war_declared: 3, war_on_us: 3, incident: 2, set_out: 3, warband: 3, peace_sued: 3, peace_made: 3, spotted: 2, brokeup: 1, berserk_hit: 3, subdued: 3, subdue_failed: 2,
   feast_set: 2, audience: 2,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
@@ -243,6 +243,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'subdued': return `${a} wrestled ${b} to the ground and ended the rampage.`;
     case 'subdue_failed': return `${a} tried to stop ${b} and was thrown off.`;
     case 'incident': return [`Hunters from ${e.s} were caught poaching on our land.`, `A trader from ${e.s} cheated us and was gone before anyone noticed.`, `Our people were turned back on the road by men from ${e.s}.`, `${e.s} drove off a herd that strayed onto their land, and kept half of it.`, `Word came that ${e.s} has been mocking us in their tavern.`, `Things went missing after visitors from ${e.s} left.`][e.n ?? 0] ?? `Trouble with ${e.s}.`;
+    case 'set_out': return `${a} grew tired of waiting for settlers and set out alone for ${e.s}.`;
     case 'war_declared': return `${a} has declared war on ${e.s}. There has been too much blood between us.`;
     case 'war_on_us': return `${e.s} has declared war on us.`;
     case 'warband': return `${a} led ${e.n} fighters out against ${e.s}.`;

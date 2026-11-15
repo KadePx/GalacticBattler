@@ -265,7 +265,13 @@ export class Panels {
     const fd = foodDays(c);
     let mood = 0;
     for (const p of c.pawns) mood += p.mood;
-    let h = `<div class="stats"><div class="stat"><b>${c.pawns.length}</b><span>people</span></div><div class="stat"><b class="${fd < 3 ? 'down' : ''}">${fd < 10 ? fd.toFixed(1) : Math.round(fd)}</b><span>days of food</span></div><div class="stat"><b>${c.pawns.length ? Math.round(mood / c.pawns.length) : 0}</b><span>average mood</span></div></div>`;
+    // who the colony mostly is
+    const folk: Record<string, number> = {};
+    for (const p of c.pawns) folk[p.race] = (folk[p.race] ?? 0) + 1;
+    const ranked = Object.entries(folk).sort((a, b) => b[1] - a[1]);
+    const peoples = ranked.map(([k, n]) => `${n} ${esc((n === 1 ? RACES[k as keyof typeof RACES]?.name : RACES[k as keyof typeof RACES]?.plural)?.toLowerCase() ?? k)}`).join(', ');
+    const mostly = ranked[0] && ranked[0][1] / Math.max(1, c.pawns.length) >= 0.45 ? `Mostly ${esc(RACES[ranked[0][0] as keyof typeof RACES]?.plural.toLowerCase() ?? ranked[0][0])}: ` : '';
+    let h = `<div class="stats"><div class="stat"><b>${c.pawns.length}</b><span>people</span></div><div class="stat"><b class="${fd < 3 ? 'down' : ''}">${fd < 10 ? fd.toFixed(1) : Math.round(fd)}</b><span>days of food</span></div><div class="stat"><b>${c.pawns.length ? Math.round(mood / c.pawns.length) : 0}</b><span>average mood</span></div></div><div class="hint" title="Each colony was founded mostly by one people; others join, and children are born, over the years.">${mostly}${peoples}.</div>`;
     if (c.gath) {
       const a = person(c, c.gath.a ?? 0);
       const o = person(c, c.gath.o ?? 0);
@@ -349,7 +355,9 @@ export class Panels {
     let trades = '';
     for (const def of PROF_LIST) {
       const who = c.pawns.filter((p) => p.prof === def.k);
-      if (who.length) trades += `<div class="th"><span title="${esc(def.blurb)}">${esc(def.name)}</span><b>${who.map((p) => `<a class="who" data-p="${p.id}">${esc(p.first)}</a>`).join(', ')}</b></div>`;
+      const shown = who.slice(0, 3).map((p) => `<a class="who" data-p="${p.id}">${esc(p.first)}</a>`).join(', ');
+      const more = who.length > 3 ? ` <span class="more" title="${esc(who.slice(3).map((p) => p.first).join(', '))}">+${who.length - 3} more</span>` : '';
+      if (who.length) trades += `<div class="th trade"><span title="${esc(def.blurb)}">${esc(def.name)}${who.length > 1 ? ` <small>${who.length}</small>` : ''}</span><b>${shown}${more}</b></div>`;
     }
     h += trades || '<div class="hint">Nobody holds a trade yet.</div>';
 

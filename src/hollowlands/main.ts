@@ -175,7 +175,9 @@ function syncMine(): void {
   const away = !p && !d && live && here && store.get('hl.col') && store.get('hl.col') !== here;
   const label = away ? 'Go to my colonist' : pending && !p ? 'On the road…' : p?.ask ? 'A choice awaits' : p ? 'My colonist' : d ? 'Make a new colonist' : 'Make your colonist';
   const banner = !p && !pending && d && dismissed !== d.id
-    ? `<span class="t"><b>${esc(fullName(d))}</b> ${d.left ? 'was lost to the colony' : 'died'} on ${dateText(d.died)}: ${esc(causeText(c, d).toLowerCase())}.</span><button class="btn sm" data-m="view">Remember them</button>${heirsOf(c, me).slice(0, 3).map((x) => `<button class="btn sm go" data-m="heir" data-id="${x.id}">Carry on as ${esc(x.first)}</button>`).join('')}<button class="btn sm" data-m="new">Make a new colonist</button><button class="icon" data-m="x" title="Close" aria-label="Close">&times;</button>`
+    ? (d.left && (d.cause === 'moved' || d.cause === 'settled') && live
+      ? `<span class="t"><b>${esc(fullName(d))}</b> set out for another colony on ${dateText(d.died)}.</span><button class="btn sm go" data-m="follow">Follow them</button>`
+      : `<span class="t"><b>${esc(fullName(d))}</b> ${d.left ? 'was lost to the colony' : 'died'} on ${dateText(d.died)}: ${esc(causeText(c, d).toLowerCase())}.</span>`) + `<button class="btn sm" data-m="view">Remember them</button>${heirsOf(c, me).slice(0, 3).map((x) => `<button class="btn sm go" data-m="heir" data-id="${x.id}">Carry on as ${esc(x.first)}</button>`).join('')}<button class="btn sm" data-m="new">Make a new colonist</button><button class="icon" data-m="x" title="Close" aria-label="Close">&times;</button>`
     : '';
   const html = label + '|' + (p ? 'has' : '') + '|' + banner;
   if (html === mineHtml) return;
@@ -321,6 +323,13 @@ function bindMine(): void {
     const d = myDead();
     if (k === 'view' && d) setSel({ k: 'dead', id: d.id });
     else if (k === 'new') openCreator();
+    else if (k === 'follow') {
+      // the colony they reached tells the region they live there now
+      void fetchRegion().then(() => {
+        if (regionMine && regionMine !== here) location.search = '?c=' + regionMine;
+        else toast('Still on the road. Try again in a minute or two.');
+      });
+    }
     else if (k === 'heir') {
       const id = Number((e.target as HTMLElement).closest<HTMLElement>('[data-id]')?.dataset.id);
       if (live) void live.send('heir', { id }).then((err) => { if (err) toast(err); });

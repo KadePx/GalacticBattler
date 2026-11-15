@@ -19,7 +19,7 @@ export const ASKS: Record<string, AskDef> = {
   report: { k: 'report', title: 'Caught in the act', text: 'They saw {o} stealing from the stores. Nobody else did.', opts: [['report', 'Turn them in'], ['hush', 'Say nothing'], ['blackmail', 'Make them pay for silence']] },
   plot: { k: 'plot', title: 'A quiet word', text: '{o} says the ruler has to go, and asks if they are in.', opts: [['join', 'Join the plot'], ['no', 'Want no part of it'], ['warn', 'Warn the ruler']] },
   cult: { k: 'cult', title: 'After dark', text: '{o} speaks of the Hollow Mother, who fills what is empty, and asks them to come and see.', opts: [['join', 'Go with them'], ['no', 'Refuse'], ['report', 'Tell the ruler']] },
-  settle: { k: 'settle', title: 'Talk of leaving', text: 'People are talking about setting out to found a new colony.', opts: [['go', 'Go with them'], ['stay', 'Stay here'], ['see', 'Let them decide']] },
+  settle: { k: 'settle', title: 'Talk of leaving', text: 'People are talking about setting out to found a new colony.', opts: [['go', 'Go with them (or alone, if no party forms)'], ['stay', 'Stay here'], ['see', 'Let them decide']] },
 };
 
 /** Put a question to the player (if this colonist has one and is not already being asked something). */
@@ -81,8 +81,8 @@ export function settleAsk(c: Colony, p: Pawn, v: string): void {
     if (choice === 'join') joinCult(c, p, o);
     else if (choice === 'report' && o && !o.gone) exposeCultist(c, p, o);
   } else if (a.k === 'settle') {
-    if (v === 'go') p.roots = -1;
-    else if (v === 'stay') p.roots = 1;
+    if (v === 'go') { p.roots = -1; p.leaveT = c.tick; }
+    else if (v === 'stay') { p.roots = 1; p.leaveT = undefined; }
   }
 }
 
