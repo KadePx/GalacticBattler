@@ -434,15 +434,20 @@ export class MapView {
       v.over.scale.set(overScale);
       // far out, a small dot marks each person; your own colonist and the selected one stand out
       v.pin.visible = s < 0.75 && !v.bubble.visible;
-      if (v.pin.visible) v.pin.tint = p.id === this.mineId ? 0xa5b0ff : p.id === this.selected ? 0xffd36a : p.brk ? 0xf87171 : 0xffffff;
+      // player-made colonists are gold; your own is blue
+      if (v.pin.visible) v.pin.tint = p.id === this.mineId ? 0xa5b0ff : p.id === this.selected ? 0xffffff : p.owner ? 0xffd36a : p.brk ? 0xf87171 : 0xb9c0cc;
 
       const isSel = p.id === this.selected;
       if (isSel) sel = v;
       if (p.id === this.mineId) mine = v;
-      v.label.visible = showNames || isSel || p.id === this.followId || p.id === this.mineId;
-      // the one you are looking at also says what they are doing
-      const want = isSel || p.id === this.followId ? `${p.first} · ${actText(c, p).toLowerCase()}` : p.first;
+      v.label.visible = showNames || isSel || p.id === this.followId || p.id === this.mineId || (!!p.owner && s >= 0.75);
+      // the one you are looking at also says what they are doing; someone a player made wears a gold diamond
+      const name = p.owner ? `◆ ${p.first}` : p.first;
+      const want = isSel || p.id === this.followId ? `${name} · ${actText(c, p).toLowerCase()}` : name;
       if (v.label.text !== want) v.label.text = want;
+      const ink = p.id === this.mineId ? 0xc3caff : p.owner ? 0xffd36a : 0xeef1f7;
+      const lab = v.label as unknown as { ink?: number };
+      if (lab.ink !== ink) { lab.ink = ink; v.label.style.fill = ink; }
     }
     for (const [id, v] of this.views) {
       if (v.stamp !== stamp) { this.dropView(v); this.views.delete(id); }

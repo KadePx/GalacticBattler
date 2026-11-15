@@ -255,7 +255,7 @@ export class Panels {
 
   private personRow(c: Colony, p: Pawn, sel: boolean, mine: boolean): string {
     const trade = PROFS[p.prof]?.name ?? (stage(c, p) < 2 ? 'Child' : '');
-    return `<div class="row${sel ? ' sel' : ''}" data-p="${p.id}">${face(c, p, 38)}<div class="n"><b>${esc(fullName(p))}${mine ? '<span class="tie kin">Yours</span>' : ''}</b><small>${esc(raceName(p.race))}${trade ? ' · ' + esc(trade) : ''}</small><small class="plain">${esc(actText(c, p))}</small></div>` +
+    return `<div class="row${sel ? ' sel' : ''}" data-p="${p.id}">${face(c, p, 38)}<div class="n"><b>${esc(fullName(p))}${mine ? '<span class="tie kin">Yours</span>' : p.owner ? '<span class="tie player" title="Made by a player">◆ Player</span>' : ''}</b><small>${esc(raceName(p.race))}${trade ? ' · ' + esc(trade) : ''}</small><small class="plain">${esc(actText(c, p))}</small></div>` +
       `<div class="v" title="Mood"><i class="dot" style="background:${moodColor(p)}"></i>${Math.round(p.mood)}</div></div>`;
   }
 
