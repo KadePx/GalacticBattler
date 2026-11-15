@@ -225,4 +225,6 @@ export function colonyHash(c: Colony): string {
 function upgrade(c: Colony): void {
   for (const k of RES) if (typeof c.stock[k] !== 'number') c.stock[k] = 0;
   c.beasts ??= [];
+  // players who chose to leave before that choice was dated: the clock starts now
+  for (const p of c.pawns) if (p.owner && p.roots === -1 && p.leaveT === undefined) p.leaveT = c.tick;
 }
