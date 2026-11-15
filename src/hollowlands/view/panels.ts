@@ -75,7 +75,7 @@ export class Panels {
   tab: Tab = 'feed';
   shut = false;
   private filter: 'all' | 'notable' | 'mine' = 'all';
-  private sort: 'mood' | 'name' = 'mood';
+  private sort: 'mood' | 'name' | 'player' = 'mood';
   private ui: CardUi = { open: new Set(), allRel: false, following: false };
   private last = new Map<HTMLElement, string>();
   private holding = false;
@@ -166,7 +166,7 @@ export class Panels {
     else if (d.act === 'share') this.hooks.share();
     else if (d.act === 'recap') this.hooks.recap();
     else if (d.filter === 'all' || d.filter === 'notable' || d.filter === 'mine') { this.filter = d.filter; this.feedKey = ''; }
-    else if (d.sort === 'mood' || d.sort === 'name') this.sort = d.sort;
+    else if (d.sort === 'mood' || d.sort === 'name' || d.sort === 'player') this.sort = d.sort;
     this.dirty = true;
   }
 
@@ -246,8 +246,9 @@ export class Panels {
 
   private people(c: Colony, v: ViewState): string {
     const chip = (k: string, label: string): string => `<button class="chip${this.sort === k ? ' on' : ''}" data-sort="${k}">${label}</button>`;
-    let h = `<div class="filters"><span class="hint" style="margin:0 4px 0 0">Sort by</span>${chip('mood', 'Mood, lowest first')}${chip('name', 'Name')}</div>`;
-    const list = c.pawns.slice().sort(this.sort === 'mood' ? (a, b) => a.mood - b.mood || a.id - b.id : (a, b) => a.first.localeCompare(b.first) || a.id - b.id);
+    let h = `<div class="filters"><span class="hint" style="margin:0 4px 0 0">Sort by</span>${chip('mood', 'Mood, lowest first')}${chip('name', 'Name')}${chip('player', '◆ Players first')}</div>`;
+    const byName = (a: Pawn, b: Pawn): number => a.first.localeCompare(b.first) || a.id - b.id;
+    const list = c.pawns.slice().sort(this.sort === 'mood' ? (a, b) => a.mood - b.mood || a.id - b.id : this.sort === 'player' ? (a, b) => (a.id === v.me ? -1 : b.id === v.me ? 1 : 0) || (b.owner ? 1 : 0) - (a.owner ? 1 : 0) || byName(a, b) : byName);
     const selId = v.sel && v.sel.k === 'pawn' ? v.sel.id : 0;
     for (const p of list) h += this.personRow(c, p, p.id === selId, p.id === v.me);
     return h;
@@ -255,7 +256,7 @@ export class Panels {
 
   private personRow(c: Colony, p: Pawn, sel: boolean, mine: boolean): string {
     const trade = PROFS[p.prof]?.name ?? (stage(c, p) < 2 ? 'Child' : '');
-    return `<div class="row${sel ? ' sel' : ''}" data-p="${p.id}">${face(c, p, 38)}<div class="n"><b>${esc(fullName(p))}${mine ? '<span class="tie kin">Yours</span>' : p.owner ? '<span class="tie player" title="Made by a player">◆ Player</span>' : ''}</b><small>${esc(raceName(p.race))}${trade ? ' · ' + esc(trade) : ''}</small><small class="plain">${esc(actText(c, p))}</small></div>` +
+    return `<div class="row${sel ? ' sel' : ''}" data-p="${p.id}">${face(c, p, 38)}<div class="n"><b class="${mine ? 'mine' : p.owner ? 'player' : ''}"${mine ? ' title="Your colonist"' : p.owner ? ' title="Made by a player"' : ''}>${mine || p.owner ? '<i class="pm">◆</i>' : ''}${esc(fullName(p))}</b><small>${esc(raceName(p.race))}${trade ? ' · ' + esc(trade) : ''}</small><small class="plain">${esc(actText(c, p))}</small></div>` +
       `<div class="v" title="Mood"><i class="dot" style="background:${moodColor(p)}"></i>${Math.round(p.mood)}</div></div>`;
   }
 
