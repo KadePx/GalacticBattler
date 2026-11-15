@@ -252,27 +252,53 @@ async function digest(force = false): Promise<void> {
   let seen = force ? 0 : Number(store.get(key)) || 0;
   if (!seen) {
     const arrived = mine.bio.find((b) => b.k === 'arrived' || b.k === 'heir')?.t ?? 0;
-    seen = Math.max(arrived - 1, c.tick - TICKS_PER_DAY * 5);
+    seen = Math.max(arrived - 1, c.tick - TICKS_PER_DAY * (force ? 10 : 5));
   }
   store.set(key, String(c.tick));
   if (!force && c.tick - seen < TICKS_PER_DAY) return;
-  let events: Ev[] = c.log.filter((e) => e.a === mine.id || e.b === mine.id);
-  try {
-    const r = live ? await fetch(`/api/hl/c/${here}/events?who=${mine.id}`, { cache: 'no-store' }) : null;
-    if (r?.ok) {
-      const old = ((await r.json()) as { events?: Ev[] }).events ?? [];
-      const have = new Set(events.map((e) => e.t + e.k + (e.a ?? '') + (e.b ?? '')));
-      events = [...old.filter((e) => !have.has(e.t + e.k + (e.a ?? '') + (e.b ?? ''))), ...events];
-    }
-  } catch { /* the archive is a bonus */ }
-  const list = events.filter((e) => e.t > seen && (WEIGHT[e.k] ?? 0) >= 1).sort((x, y) => x.t - y.t);
-  if (!list.length) { if (force) toast('Nothing much has happened to them lately.'); return; }
-  const big = list.filter((e) => (WEIGHT[e.k] ?? 0) >= 2);
-  const show = (big.length >= 6 ? big : list).slice(-40);
+  // everything in the window: what is still in the colony's log, plus older events from the archive
+  let events: Ev[] = c.log.slice();
+  const keyOf = (e: Ev): string => e.t + e.k + (e.a ?? '') + (e.b ?? '');
+  if (live && (c.log[0]?.t ?? 0) > seen) {
+    try {
+      for (const q of [`who=${mine.id}`, '']) {
+        const r = await fetch(`/api/hl/c/${here}/events${q ? '?' + q : ''}`, { cache: 'no-store' });
+        if (!r.ok) continue;
+        const old = ((await r.json()) as { events?: Ev[] }).events ?? [];
+        const have = new Set(events.map(keyOf));
+        events = [...old.filter((e) => !have.has(keyOf(e))), ...events];
+      }
+    } catch { /* the archive is a bonus */ }
+  }
+  const inWindow = events.filter((e) => e.t > seen).sort((x, y) => x.t - y.t);
+  // their people: partner, parents, children, friends
+  const circle = new Set<number>([mine.sp, mine.mo, mine.fa].filter(Boolean));
+  for (const o of [...c.pawns, ...c.dead]) if (o.mo === mine.id || o.fa === mine.id) circle.add(o.id);
+  for (const k in mine.rel) if (mine.rel[k].f === 1 || mine.rel[k].k) circle.add(Number(k));
+  const theirs = (e: Ev): boolean => e.a === mine.id || e.b === mine.id;
+  const kin = (e: Ev): boolean => !theirs(e) && ((e.a !== undefined && circle.has(e.a)) || (e.b !== undefined && circle.has(e.b)));
+  const own = inWindow.filter((e) => theirs(e) && (WEIGHT[e.k] ?? 0) >= 1);
+  const near = inWindow.filter((e) => kin(e) && (WEIGHT[e.k] ?? 0) >= 2);
+  // the colony at large: only what everyone would be talking about
+  const BIG = new Set(['raid', 'death', 'looted', 'seized', 'rescued', 'hero', 'rout', 'war_declared', 'war_on_us', 'warband', 'peace_sued', 'peace_made', 'settlers', 'founded', 'ruler', 'usurped', 'coup', 'election', 'outbreak', 'fire', 'fire_spread', 'berserk_hit', 'murder', 'trial', 'saint', 'schism', 'joined', 'blight', 'raidout', 'raidback', 'match']);
+  const colony = inWindow.filter((e) => !theirs(e) && !kin(e) && BIG.has(e.k));
+  if (!own.length && !near.length && !colony.length) { if (force) toast('Nothing much has happened lately.'); return; }
+  const count = (k: string): number => inWindow.filter((e) => e.k === k).length;
+  const deaths = count('death');
+  const births = count('birth');
+  const raids = count('raid');
+  const tally = [deaths ? `${deaths} died` : '', births ? `${births} ${births === 1 ? 'was' : 'were'} born` : '', raids ? `${raids} ${raids === 1 ? 'raid' : 'raids'}` : '', count('war_declared') + count('war_on_us') ? 'war broke out' : '', count('settlers') ? 'settlers set out' : ''].filter(Boolean).join(' · ');
+  const rows = (list: Ev[], max: number): string => list.slice(-max).map((e) => `<div class="wrow"><span>${esc(dateText(e.t))}</span><b style="font-weight:500">${esc(evText(c, e))}</b></div>`).join('');
+  const big = own.filter((e) => (WEIGHT[e.k] ?? 0) >= 2);
+  const mineRows = rows(big.length >= 6 ? big : own, 25);
   const days = Math.round((c.tick - seen) / TICKS_PER_DAY);
   const el = document.createElement('div');
   el.id = 'world';
-  el.innerHTML = `<div class="wbox panel"><div class="whead"><b>${force ? 'Lately' : 'While you were away'}</b><span>${days >= 1 ? `${days} game ${days === 1 ? 'day' : 'days'}` : 'The last few hours'} in the life of ${esc(mine.first)}</span><button class="icon" data-x title="Close" aria-label="Close">&times;</button></div><div class="wlist">${show.map((e) => `<div class="wrow"><span>${esc(dateText(e.t))}</span><b style="font-weight:500">${esc(evText(c, e))}</b></div>`).join('')}</div></div>`;
+  el.innerHTML = `<div class="wbox panel"><div class="whead"><b>${force ? 'Lately' : 'While you were away'}</b><span>${days >= 1 ? `${days} game ${days === 1 ? 'day' : 'days'}` : 'The last few hours'} in ${esc(c.name)}${tally ? ': ' + esc(tally) : ''}</span><button class="icon" data-x title="Close" aria-label="Close">&times;</button></div><div class="wlist">` +
+    (mineRows ? `<h3 class="wsec">${esc(mine.first)}</h3>${mineRows}` : `<h3 class="wsec">${esc(mine.first)}</h3><div class="wrow"><span></span><b style="font-weight:500">A quiet stretch for them.</b></div>`) +
+    (near.length ? `<h3 class="wsec">Their people</h3>${rows(near, 15)}` : '') +
+    (colony.length ? `<h3 class="wsec">In the colony</h3>${rows(colony, 20)}` : '') +
+    '</div></div>';
   el.addEventListener('click', (e) => { if (e.target === el || (e.target as HTMLElement).closest('[data-x]')) el.remove(); });
   document.body.appendChild(el);
 }
