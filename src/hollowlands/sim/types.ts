@@ -200,6 +200,8 @@ export interface Pawn {
   prev?: Id;
   /** the player's wish about leaving with settlers: 1 stay, -1 go */
   roots?: number;
+  /** the trade the player asked for (a profession key) */
+  wantProf?: string;
   /** when the player chose to leave (to set out alone if no settlers go soon) */
   leaveT?: number;
   /** held in thrall: owns nothing, chooses nothing */

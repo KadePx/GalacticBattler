@@ -286,33 +286,76 @@ function slots(c: Colony, adults: number, kids: number): Record<string, number> 
   };
 }
 
+/** How many of each trade this colony has room for. */
+export function tradeSlots(c: Colony): Record<string, number> {
+  let adults = 0;
+  let kids = 0;
+  for (const p of c.pawns) { if (stage(c, p) >= STAGE.ADULT) adults++; else kids++; }
+  return slots(c, adults, kids);
+}
+
+/**
+ * Trades go to whoever is best at them. Players' colonists are placed first (and get the trade
+ * they asked for if there is room for it); everyone else fills in behind. A colonist already in
+ * a trade keeps a small edge, so nobody is moved for a hair's difference. The whole colony is
+ * re-sorted once a week (or when a player asks); on other days only empty places are filled.
+ */
 export function assignProfs(c: Colony, quiet: boolean): void {
-  const adults = c.pawns.filter((p) => { const s = stage(c, p); return s >= STAGE.ADULT; });
+  const adults = c.pawns.filter((p) => stage(c, p) >= STAGE.ADULT && !p.gone);
   const kids = c.pawns.length - adults.length;
   const want = slots(c, adults.length, kids);
-  for (const def of PROF_LIST) {
-    let have = 0;
-    for (const p of adults) if (p.prof === def.k) have++;
-    while (have < (want[def.k] ?? 0)) {
-      let best: Pawn | undefined;
-      let score = -1;
-      for (const p of adults) {
-        if (p.prof) continue;
-        if (BACKS[p.bc]?.no?.includes(def.work) || BACKS[p.ba]?.no?.includes(def.work)) continue;
-        const s = p.sk[def.skill] + p.pas[def.skill] * 3 - (stage(c, p) === STAGE.ELDER ? 2 : 0);
-        if (s > score) { score = s; best = p; }
-      }
-      if (!best || score < 1) break;
-      best.prof = def.k;
-      have++;
-      if (!quiet) {
-        think(c, best, 'newtrade');
-        log(c, 'trade', best.id, undefined, def.k);
-        note(c, best, 'trade', undefined, def.k);
+  const refuses = (p: Pawn, w: string): boolean => !!BACKS[p.bc]?.no?.includes(w as never) || !!BACKS[p.ba]?.no?.includes(w as never);
+  const fit = (p: Pawn, k: string): number => {
+    const def = PROFS[k];
+    if (refuses(p, def.work)) return -99;
+    let f = p.sk[def.skill] + p.pas[def.skill] * 3 - (stage(c, p) === STAGE.ELDER ? 2 : 0);
+    if (p.prof === k) f += 2;
+    if (p.owner) f += p.wantProf === k ? 100 : 1.5;
+    return f;
+  };
+  // a trade with no place left (the smithy burned, the colony shrank) is given up
+  const held: Record<string, number> = {};
+  for (const p of adults) if (p.prof) held[p.prof] = (held[p.prof] ?? 0) + 1;
+  const replan = quiet || dayOf(c.tick) % 7 === 0 || adults.some((p) => p.owner && p.wantProf && p.wantProf !== p.prof && (want[p.wantProf] ?? 0) > 0);
+  const next = new Map<Pawn, string>();
+  if (replan) {
+    const pairs: [Pawn, string, number][] = [];
+    for (const p of adults) for (const def of PROF_LIST) if ((want[def.k] ?? 0) > 0) { const f = fit(p, def.k); if (f >= 1) pairs.push([p, def.k, f]); }
+    pairs.sort((x, y) => y[2] - x[2] || x[0].id - y[0].id || PROF_LIST.indexOf(PROFS[x[1]]) - PROF_LIST.indexOf(PROFS[y[1]]));
+    const left: Record<string, number> = { ...want };
+    for (const [p, k] of pairs) {
+      if (next.has(p) || (left[k] ?? 0) <= 0) continue;
+      next.set(p, k);
+      left[k]--;
+    }
+  } else {
+    // keep everyone where they are; fill empty places with the best of those without a trade
+    const left: Record<string, number> = { ...want };
+    for (const p of adults) if (p.prof && (left[p.prof] ?? 0) > 0) { next.set(p, p.prof); left[p.prof]--; }
+    for (const def of PROF_LIST) {
+      while ((left[def.k] ?? 0) > 0) {
+        let best: Pawn | undefined;
+        let score = 0.999;
+        for (const p of adults) { if (next.has(p)) continue; const f = fit(p, def.k); if (f > score) { score = f; best = p; } }
+        if (!best) break;
+        next.set(best, def.k);
+        left[def.k]--;
       }
     }
   }
-  void PROFS;
+  for (const p of adults) {
+    const k = next.get(p) ?? '';
+    if (k === p.prof) continue;
+    const had = p.prof;
+    p.prof = k;
+    if (quiet) continue;
+    if (k) {
+      think(c, p, 'newtrade');
+      log(c, 'trade', p.id, undefined, k);
+      note(c, p, 'trade', undefined, k);
+    } else if (had) think(c, p, 'losttrade');
+  }
+  void held;
 }
 
 /** Once a day: beds, trades, and the next thing worth building. */

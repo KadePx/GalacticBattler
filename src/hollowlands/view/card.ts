@@ -5,8 +5,9 @@
 import { SEASON_NAMES, when } from '../config';
 import { BACKS } from '../sim/data/backstories';
 import { CROPS, PURPOSE, TPL } from '../sim/data/buildings';
+import { tradeSlots } from '../sim/planner';
 import { TOOL_FOR, TOOL_NAMES } from '../sim/jobs';
-import { PROFS } from '../sim/data/professions';
+import { PROFS, PROF_LIST } from '../sim/data/professions';
 import { TH } from '../sim/data/thoughts';
 import { TRAITS } from '../sim/data/traits';
 import { RANK_NAMES, rulerTitle } from '../sim/gov';
@@ -292,6 +293,11 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
       const days = p.leaveT !== undefined ? Math.max(0, 15 - Math.floor((c.tick - p.leaveT) / 240)) : 15;
       h += `<div class="note">${esc(p.first)} wants to leave. They will go with the next settler party: ${talk >= 40 ? '<b>talk of leaving is loud, a party will set out any day</b>' : talk >= 20 ? 'people are talking about it' : 'nobody else is talking of leaving yet'}.${talk < 40 ? ` If no party forms, they will set out alone for a neighbouring colony ${days ? `in about ${days} ${days === 1 ? 'day' : 'days'}` : 'soon'}.` : ''} Put down roots to stay after all.</div>`;
     }
+    // asking for a trade: the ones this colony has room for, with how good they would be at it
+    const room = tradeSlots(c);
+    const offered = PROF_LIST.map((d, i) => [d, i] as const).filter(([d]) => (room[d.k] ?? 0) > 0).sort((x, y) => (p.sk[y[0].skill] + p.pas[y[0].skill] * 3) - (p.sk[x[0].skill] + p.pas[x[0].skill] * 3));
+    h += `<div class="hint">Ask for a trade. They get it if there is a place; whoever holds it is found other work. ${p.wantProf ? `Asked for: <b>${esc(PROFS[p.wantProf]?.name ?? p.wantProf)}</b>${p.prof === p.wantProf ? ' (granted)' : ' (it is theirs from tomorrow)'}.` : 'Otherwise trades go to whoever is best, sorted each week, players first.'}</div>`;
+    h += '<div class="nudges">' + offered.map(([d, i]) => `<button class="btn sm${p.wantProf === d.k ? ' on' : ''}" data-act="nudge" data-k="trade" data-v="${i}" title="${esc(d.blurb)} Uses ${esc(SKILL_NAMES[d.skill])} (theirs: ${Math.floor(p.sk[d.skill])}). Costs 1 Resolve."${res >= 1 && p.wantProf !== d.k ? '' : ' disabled'}>${esc(d.name)} <small>${Math.floor(p.sk[d.skill])}</small></button>`).join('') + (p.wantProf ? `<button class="btn sm" data-act="nudge" data-k="trade" data-v="-1"${res >= 1 ? '' : ' disabled'} title="Let the colony decide again. Costs 1 Resolve.">Any trade</button>` : '') + '</div>';
     h += '<div class="nudges">' + SKILL_NAMES.map((n, i) => `<button class="btn sm" data-act="nudge" data-k="focus" data-v="${i}"${res >= 1 ? '' : ' disabled'}>${esc(n)}</button>`).join('') + '</div>';
   }
   h += `<h3>Mood <span class="legend">${moodWord(p)}</span></h3>`;

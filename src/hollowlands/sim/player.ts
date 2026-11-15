@@ -2,6 +2,7 @@
 // lean their colonist one way or another, and the choice of who to carry on as when the
 // colonist dies. Nothing here is control. An unspent nudge never costs anything.
 
+import { PROF_LIST } from './data/professions';
 import { TICKS_PER_DAY } from '../config';
 import { log, note } from './events';
 import { think } from './mood';
@@ -13,7 +14,7 @@ export const RESOLVE_CAP = 6;
 export const RESOLVE_TICKS = 1800;
 export const RESOLVE_START = 2;
 
-export interface NudgeDef { k: string; name: string; blurb: string; cost: number; needs: 'person' | 'skill' | 'self' }
+export interface NudgeDef { k: string; name: string; blurb: string; cost: number; needs: 'person' | 'skill' | 'self' | 'trade' }
 export const NUDGES: Record<string, NudgeDef> = {
   befriend: { k: 'befriend', name: 'Reach out', blurb: 'Seek them out and try to get closer.', cost: 1, needs: 'person' },
   court: { k: 'court', name: 'Court', blurb: 'Let them know how you feel.', cost: 1, needs: 'person' },
@@ -21,6 +22,7 @@ export const NUDGES: Record<string, NudgeDef> = {
   confront: { k: 'confront', name: 'Confront', blurb: 'Have it out with them.', cost: 1, needs: 'person' },
   yearn: { k: 'yearn', name: 'Yearn to leave', blurb: 'Go with the next settler party; if none sets out within about 15 days, leave alone for a neighbouring colony.', cost: 1, needs: 'self' },
   stay: { k: 'stay', name: 'Put down roots', blurb: 'Whatever happens, this is home.', cost: 1, needs: 'self' },
+  trade: { k: 'trade', name: 'Ask for a trade', blurb: 'Take up this trade if the colony has a place for it. Whoever holds it now is found other work.', cost: 1, needs: 'trade' },
   focus: { k: 'focus', name: 'Focus', blurb: 'Throw yourself into this work for a few days.', cost: 1, needs: 'skill' },
 };
 
@@ -61,6 +63,16 @@ export function nudge(c: Colony, e: Input): void {
     p.roots = def.k === 'stay' ? 1 : -1;
     p.leaveT = p.roots === -1 ? c.tick : undefined;
     log(c, 'nudge', p.id, undefined, def.k);
+    return;
+  }
+  if (def.needs === 'trade') {
+    const i = Number(e.v);
+    const k = i >= 0 ? PROF_LIST[i]?.k : undefined;
+    if (i >= 0 && !k) return;
+    if (k === p.wantProf) return;
+    if (!spend(c, p, def.cost)) return;
+    p.wantProf = k;
+    log(c, 'nudge', p.id, undefined, 'trade', i);
     return;
   }
   if (def.needs === 'person') {

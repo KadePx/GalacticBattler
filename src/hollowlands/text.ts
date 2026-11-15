@@ -3,7 +3,7 @@
 
 import { SEASON_NAMES, when } from './config';
 import { TPL } from './sim/data/buildings';
-import { PROFS } from './sim/data/professions';
+import { PROFS, PROF_LIST } from './sim/data/professions';
 import { RACES } from './sim/data/races';
 import { TH } from './sim/data/thoughts';
 import { person } from './sim/pawn';
@@ -233,7 +233,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'blackmail': return `${a} is making ${b} pay to keep a secret.`;
     case 'heir': return `${full(c, e.a)} takes up where ${first(c, e.b)} left off.`;
     case 'heirloom': return `${a} now keeps ${b}'s ${e.s ?? 'keepsake'}.`;
-    case 'nudge': return e.s === 'yearn' ? `${a} has begun to look at the road.` : e.s === 'stay' ? `${a} has decided this is home.` : e.s === 'focus' ? `${a} has thrown themselves into their work.` : `${a} has ${b} on their mind.`;
+    case 'nudge': return e.s === 'yearn' ? `${a} has begun to look at the road.` : e.s === 'stay' ? `${a} has decided this is home.` : e.s === 'focus' ? `${a} has thrown themselves into their work.` : e.s === 'trade' ? (e.n !== undefined && e.n >= 0 && PROF_LIST[e.n] ? `${a} has asked to work as ${/^[aeiou]/i.test(PROF_LIST[e.n].name) ? 'an' : 'a'} ${PROF_LIST[e.n].name.toLowerCase()}.` : `${a} will take whatever trade suits them.`) : `${a} has ${b} on their mind.`;
     case 'blabbed': return `Drunk, ${a} let slip the secret they came here to bury. ${e.n} heard it.`;
     case 'joined': return e.s?.startsWith('match:') ? `${full(c, e.a)} has arrived from ${e.s.slice(6)}, sent to be married.` : e.s?.startsWith('exile:') ? `${full(c, e.a)} has arrived, cast out of ${e.s.slice(6)}.` : e.s?.startsWith('migrant:') ? `${full(c, e.a)} has come from ${e.s.slice(8)} to start again.` : e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
     case 'trader': return e.s ? `A caravan from ${e.s} stopped for the day.` : 'A trader\'s caravan stopped for the day.';
