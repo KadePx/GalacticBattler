@@ -7,11 +7,12 @@ import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
 import { TOOL_FOR } from '../sim/jobs';
 import { CROPS, HOMES, TPL, cellCode, cells, shapeOf } from '../sim/data/buildings';
+import { OPEN_AIR as ROOFLESS, chimneys, drawRoof, roofStyle } from './roofs';
 import { stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
 import { BLD_ICON, SWINGING, WORK_HELD, drawHeld, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
 import { SHAPE, yearsAt } from './look';
-import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
+import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, hash2, lightOf, paletteAt, type Pal } from './tiles';
 
 /** Chunk size in tiles. */
 const CH = 8;
@@ -101,6 +102,10 @@ export class MapView {
   private signLayer = new Container();
   private signs: { g: Graphics; label: Text; x: number; y: number; field: boolean }[] = [];
   private signKey = '';
+  /** roofs, one per building, faded by zoom; and the smoke from their chimneys */
+  private roofLayer = new Container();
+  private roofs = new Map<number, { g: Graphics; key: string; alpha: number; chim: number[] }>();
+  private smoke = new Graphics();
   /** the colony's stores, piled up beside the storehouse */
   private piles = new Graphics();
   private pileKey = '';
@@ -177,6 +182,9 @@ export class MapView {
     this.herdViews.clear();
     for (const sg of this.signs) { sg.g.destroy(); sg.label.destroy(); }
     this.signs = [];
+    for (const r of this.roofs.values()) r.g.destroy();
+    this.roofs.clear();
+    if (!this.smoke.parent) this.roofLayer.addChild(this.smoke);
     this.cam.removeChildren();
     for (const l of [this.structLayer, this.groundLayer, this.canopyLayer]) for (const ch of l.removeChildren()) ch.destroy();
     this.terCv.width = this.mw;
@@ -196,7 +204,7 @@ export class MapView {
     }
     this.night.clear().rect(0, 0, this.mw, this.mh).fill(0xffffff);
     this.overLayer.addChild(this.ring, this.mineMark);
-    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.pawnLayer, this.canopyLayer, this.night, this.lightLayer, this.signLayer, this.overLayer);
+    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.pawnLayer, this.roofLayer, this.canopyLayer, this.night, this.lightLayer, this.signLayer, this.overLayer);
     // the old pile graphic went with the old chunks: start a fresh one
     this.piles = new Graphics();
     this.structLayer.addChild(this.piles);
@@ -227,6 +235,7 @@ export class MapView {
     this.syncAnimals(tf, 'herd', this.herdViews);
     this.syncSigns(c);
     this.syncPiles(c);
+    this.syncRoofs(c, dt);
     this.stepCamera(dt);
     this.cull();
     this.lighting(tf, dt);
@@ -461,6 +470,9 @@ export class MapView {
         // a tool in use swings a little
         v.act.rotation = !moving && SWINGS.has(ak) ? Math.sin(this.time * 0.012 + p.id) * 0.45 : 0;
       }
+      const roof = this.roofs.get(c.sb[v.tile]);
+      const covered = !!roof && roof.alpha > 0.5 && p.id !== this.selected && p.id !== this.followId;
+      v.over.visible = !covered;
       v.over.position.set(v.x, v.y - (asleep ? 6 : 10 * v.size * boost + 2));
       v.over.scale.set(overScale);
       // far out, a small dot marks each person; your own colonist and the selected one stand out
@@ -471,7 +483,8 @@ export class MapView {
       const isSel = p.id === this.selected;
       if (isSel) sel = v;
       if (p.id === this.mineId) mine = v;
-      v.label.visible = showNames || isSel || p.id === this.followId || p.id === this.mineId || (!!p.owner && s >= 0.75);
+      v.label.visible = showNames || isSel || p.id === this.followId || p.id === this.mineId || (!!p.owner && s >= 0.75 && !covered);
+      if (covered && p.id !== this.mineId) v.label.visible = false;
       // the one you are looking at also says what they are doing; someone a player made wears a gold diamond
       const name = p.owner ? `◆ ${p.first}` : p.first;
       const want = isSel || p.id === this.followId ? `${name} · ${actText(c, p).toLowerCase()}` : name;
@@ -552,6 +565,51 @@ export class MapView {
     }
     for (const [id, v] of views) {
       if (v.stamp !== stamp) { v.g.destroy(); views.delete(id); }
+    }
+  }
+
+  /** Roofs: drawn once per building, faded by how close you are, lifted off where you are looking. */
+  private syncRoofs(c: Colony, dt: number): void {
+    const s = this.cam.scale.x;
+    // full roofs when zoomed out, gone by the time you are close enough to see faces
+    const far = Math.max(0, Math.min(1, (1.05 - s) / 0.25));
+    const seen = new Set<number>();
+    const open = new Set<number>([this.selBld]);
+    for (const id of [this.selected, this.followId, this.mineId]) { const v = id ? this.views.get(id) : undefined; if (v) open.add(c.sb[v.tile]); }
+    for (const b of c.blds) {
+      if (!b.built || ROOFLESS.has(b.k)) continue;
+      seen.add(b.id);
+      const style = roofStyle(c, b);
+      const snow = this.pal ? Math.round(this.pal.snow * 4) / 4 : 0;
+      const key = `${style}|${b.mat}|${shapeOf(b)}|${b.x},${b.y}|${snow}`;
+      let r = this.roofs.get(b.id);
+      if (!r) {
+        r = { g: new Graphics(), key: '', alpha: far, chim: [] };
+        this.roofLayer.addChild(r.g);
+        this.roofs.set(b.id, r);
+      }
+      if (r.key !== key) { r.key = key; drawRoof(r.g, c, b, style, snow); r.chim = chimneys(c, b); }
+      const want = open.has(b.id) ? 0 : far;
+      r.alpha += (want - r.alpha) * Math.min(1, dt / 180);
+      r.g.alpha = r.alpha;
+      r.g.visible = r.alpha > 0.02;
+    }
+    for (const [id, r] of this.roofs) if (!seen.has(id)) { r.g.destroy(); this.roofs.delete(id); }
+    // chimney smoke drifts up from lit fires; heavier in the cold. It rises above every roof.
+    const sm = this.smoke;
+    if (this.roofLayer.children[this.roofLayer.children.length - 1] !== sm) this.roofLayer.addChild(sm);
+    sm.clear();
+    const cold = c.temp < 8 ? 1 : 0.55;
+    for (const r of this.roofs.values()) {
+      if (r.alpha < 0.05) continue;
+      for (const i of r.chim) {
+        const x = (i % c.w + 0.5) * TS;
+        const y = (Math.floor(i / c.w) + 0.35) * TS;
+        for (let k = 0; k < 4; k++) {
+          const ph = (this.time * 0.00035 + k / 4 + hash2(i, k, 3) * 0.2) % 1;
+          sm.circle(x + ph * 12 + Math.sin(ph * 6 + i) * 2.5, y - ph * 40, 3.5 + ph * 7).fill({ color: 0x9aa0aa, alpha: (1 - ph) * 0.6 * r.alpha * cold });
+        }
+      }
     }
   }
 
