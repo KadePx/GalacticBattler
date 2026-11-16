@@ -98,6 +98,9 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
     if (d) out.push(o ? [k, d.m, o] : [k, d.m]);
   };
   if (st <= STAGE.CHILD) add('child');
+  // a life's dream: lived, or let slip
+  if (p.dreamT) add('livedream');
+  else if (st === STAGE.ELDER) add('unfulfilled');
   if (p.food <= 0) add('starving');
   else if (p.food < 10) add('ravenous');
   else if (p.food < 25) add('hungry');

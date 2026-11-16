@@ -154,6 +154,7 @@ export function strike(c: Colony, p: Pawn, f: Foe, dmg: number): boolean {
       think(c, cap, 'rescued', p.id);
       log(c, 'rescued', p.id, cap.id);
       note(c, cap, 'rescued', p.id);
+      note(c, p, 'rescued_someone', cap.id);
     }
   }
   // the rest lose heart when enough have fallen

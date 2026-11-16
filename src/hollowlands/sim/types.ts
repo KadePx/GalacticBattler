@@ -205,6 +205,10 @@ export interface Pawn {
   roots?: number;
   /** apprenticed to: [master, skill, since tick] */
   appr?: [Id, number, number];
+  /** when their life's dream came true */
+  dreamT?: number;
+  /** buildings they finished with their own hands */
+  built?: number;
   /** finished an apprenticeship */
   graduated?: boolean;
   /** skills they have mastered (level 12+), in the order earned */

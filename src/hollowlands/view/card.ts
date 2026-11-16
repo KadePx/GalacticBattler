@@ -7,6 +7,7 @@ import { BACKS } from '../sim/data/backstories';
 import { CROPS, PURPOSE, TPL } from '../sim/data/buildings';
 import { tradeSlots } from '../sim/planner';
 import { MASTER_LEVEL, MASTER_TITLES } from '../sim/guild';
+import { DREAMS } from '../sim/dreams';
 import { TOOL_FOR, TOOL_NAMES } from '../sim/jobs';
 import { PROFS, PROF_LIST } from '../sim/data/professions';
 import { TH } from '../sim/data/thoughts';
@@ -317,7 +318,9 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   const facts: string[] = [];
   if (home) facts.push(`Lives in <a class="who" data-b="${home.id}">${esc((home.name ?? TPL[home.k]?.name ?? 'a home').toLowerCase())}</a>`);
   else if (st >= 2) facts.push('Has no bed of their own');
-  if (GOALS[p.goal]) facts.push(`Dreams of ${GOALS[p.goal]}`);
+  const dream = DREAMS[p.goal];
+  if (p.dreamT && dream) facts.push(`Lived their dream: ${esc(dream.done)} ✓`);
+  else if (GOALS[p.goal]) facts.push(`Dreams of ${GOALS[p.goal].toLowerCase()}${dream?.progress ? ` <span class="hint" style="display:inline">(${esc(dream.progress(c, p))})</span>` : ''}`);
   if (p.coin > 0) facts.push(`${Math.round(p.coin)} silver to their name`);
   if (p.heirloom) facts.push(`Keeps ${esc(p.heirloom)}`);
   if (p.prev) facts.push(`Their player lived before as ${whoLink(c, p.prev)}`);

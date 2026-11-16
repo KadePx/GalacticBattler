@@ -71,6 +71,10 @@ export const TH_LIST: ThDef[] = [
 
   // Food and drink
   h('atefeast', 'Ate a fine meal', 6, DAY),
+  h('dreamcometrue', 'My dream has come true', 14, DAY * 10),
+  h('gladfor', 'Glad for {o}, whose dream came true', 3, DAY * 2, { op: 6 }),
+  h('livedream', 'Lived the life they wanted', 3, 0),
+  h('unfulfilled', 'Never did what they set out to do', -3, 0),
   h('becamemaster', 'Earned the title of master', 6, DAY * 4),
   h('newapprentice', 'Apprenticed to {o}', 3, DAY * 2, { op: 8 }),
   h('tookapprentice', 'Took on {o} as an apprentice', 2, DAY * 2, { op: 6 }),

@@ -17,6 +17,7 @@ import { dailyIntrigue } from './intrigue';
 import { dailyWild, stepWild } from './wild';
 import { dailyHerd, stepHerd } from './herd';
 import { dailyGuild } from './guild';
+import { dailyDreams } from './dreams';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
@@ -24,6 +25,7 @@ function daily(c: Colony): void {
   dailyWild(c);
   dailyHerd(c);
   dailyGuild(c);
+  dailyDreams(c);
   dailyLife(c);
   plan(c);
   dailyStory(c);

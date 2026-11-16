@@ -172,13 +172,13 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
   if (p.soc < 50 || r.chance(0.2)) w('visit', 2.2 + per(p, AX.SOCIABLE) + (p.sp ? 1 : 0));
   const urged = p.urge && p.urge[2] > c.tick ? pawnById(c, p.urge[1]) : undefined;
   if (urged && !urged.gone && urged.act.k !== 'sleep') w('urge', 7);
-  if (p.crush && adult) w('woo', 2.4 + per(p, AX.FLIRT) * 0.6);
+  if (p.crush && adult) w('woo', 2.4 + per(p, AX.FLIRT) * 0.6 + (p.goal === 'love' && !p.dreamT ? 1 : 0));
   if (pub && adult && c.stock.ale >= 1 && !has(p, 'teetotal') && p.drunk < (has(p, 'drunkard') ? 80 : 35)) w('drink', (has(p, 'drunkard') ? 5 : 1.1) * (p.race === 'dwarf' ? 1.6 : 1) * (evening ? 1.6 : 0.25));
   if (pub || home) w('relax', 2);
   if (fair && hour >= 6 && hour < 21) w('walk', 1 + (p.race === 'elf' ? 1.2 : 0) + (has(p, 'wanderlust') ? 1 : 0) + (has(p, 'loner') ? 0.8 : 0));
-  if (p.dev >= 1) w('pray', p.dev * 0.7 + (has(p, 'pious') ? 1.5 : 0) + (p.mood < 35 ? 0.8 : 0));
+  if (p.dev >= 1 || (p.goal === 'faith' && !p.dreamT)) w('pray', Math.max(1, p.dev) * 0.7 + (has(p, 'pious') ? 1.5 : 0) + (p.mood < 35 ? 0.8 : 0) + (p.goal === 'faith' && !p.dreamT ? 1 : 0));
   if (pub && adult && evening) w('dice', 0.9 + (p.ba === 'gambler' ? 2.5 : 0) + Math.max(0, per(p, AX.GREED)) * 0.5);
-  if (adult && p.pas.some((x) => x > 0)) w('hobby', 1.3 + per(p, AX.DILIGENT) * 0.4);
+  if (adult && p.pas.some((x) => x > 0)) w('hobby', 1.3 + per(p, AX.DILIGENT) * 0.4 + (p.goal === 'craft' && !p.dreamT ? 1 : 0));
   if ((hour >= 20 || hour < 4) && c.weather === 0) w('stargaze', 0.5 + Math.max(0, per(p, AX.CURIOUS)) + (p.race === 'elf' ? 0.8 : 0));
   if (fair && seasonOf(c.tick) === 1 && hour >= 8 && hour < 19 && featList(c, SHORE).length) w('bathe', 0.6);
   if (pub && adult && evening && (has(p, 'storyteller') || p.sk[10] >= 9)) w('perform', 1.6);

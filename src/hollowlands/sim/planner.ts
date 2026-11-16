@@ -155,6 +155,7 @@ export function advanceBuild(c: Colony, b: Bld, hours: number, p: Pawn): boolean
     b.need.stone = 0;
     b.q = Math.max(5, Math.min(100, Math.round(b.q)));
     think(c, p, 'builtit');
+    p.built = (p.built ?? 0) + 1;
     log(c, 'built', p.id, undefined, b.k, b.id);
     bump(c, 'buildings');
     if (b.beds.length) assignBeds(c, false);
