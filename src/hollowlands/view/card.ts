@@ -250,6 +250,8 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   const standing = p.id === c.gov.ruler ? `${rulerTitle(c, p)} of ${c.name}` : p.id === c.gov.regent ? 'Regent' : office ? office[0].toUpperCase() + office.slice(1) : p.rank !== 2 && st >= 3 ? RANK_NAMES[p.rank] : '';
   if (standing) h += `<div class="sub"><span class="tie kin">${esc(standing)}</span></div>`;
   if (p.owner) h += `<div class="sub"><span class="tie player" title="Someone made this colonist and follows their life. Everyone else here was born to the colony or wandered in.">◆ ${ui.mine ? 'Your colonist' : 'Made by a player'}</span></div>`;
+  const dog = c.herd?.find((a) => a.k === 'dog' && a.owner === p.id);
+  if (dog) h += `<div class="sub">Has a dog, ${esc(dog.name ?? 'unnamed')}, who follows them everywhere</div>`;
   if (p.tool) {
     const fit = p.act.k === 'work' && p.act.w && TOOL_FOR[p.act.w] ? (TOOL_FOR[p.act.w] === p.tool[0] ? '' : ' (not the right tool for this work)') : '';
     h += `<div class="sub" title="The right tool makes work go faster; without one it goes slower. Tools wear out with use.">Carries ${esc(TOOL_NAMES[p.tool[0]] ?? p.tool[0])}, ${p.tool[1] > 66 ? 'in good shape' : p.tool[1] > 33 ? 'well used' : 'nearly worn out'}${fit}</div>`;

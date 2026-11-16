@@ -22,14 +22,14 @@ export const F = { NONE: 0, TREE: 1, PINE: 2, BUSH: 3, BOULDER: 4, ORE: 5, HERB:
 export const B = {
   NONE: 0, WALL_WOOD: 1, WALL_STONE: 2, DOOR: 3, FLOOR_WOOD: 4, FLOOR_STONE: 5, FENCE: 6, TILLED: 7,
   BED: 16, TABLE: 17, CHAIR: 18, HEARTH: 19, STOVE: 20, BENCH: 21, ANVIL: 22, CRATE: 23, BARREL: 24, ALTAR: 25, PEW: 26, LOOM: 27, WELL: 28, GRAVE: 29, FORGE: 30, SHELF: 31, COT: 32, STATUE: 33, TORCH: 34,
-  RUG: 35, WARDROBE: 36, LAMP: 37, BOOKS: 38, DESK: 39, RACK: 40, CAULDRON: 41, VAT: 42, BIN: 43, BATH: 44, CHESS: 45, DARTS: 46, MUSIC: 47, DRYRACK: 48, BRAZIER: 49,
+  RUG: 35, WARDROBE: 36, LAMP: 37, BOOKS: 38, DESK: 39, RACK: 40, CAULDRON: 41, VAT: 42, BIN: 43, BATH: 44, CHESS: 45, DARTS: 46, MUSIC: 47, DRYRACK: 48, BRAZIER: 49, TROUGH: 50,
 } as const;
 
-export const RES = ['grain', 'veg', 'meat', 'fish', 'berries', 'meal', 'feast', 'ale', 'wood', 'stone', 'ore', 'iron', 'leather', 'cloth', 'herbs', 'medicine', 'tools', 'clothes', 'weapons', 'silver', 'goods', 'hops', 'mushrooms'] as const;
+export const RES = ['grain', 'veg', 'meat', 'fish', 'berries', 'meal', 'feast', 'ale', 'wood', 'stone', 'ore', 'iron', 'leather', 'cloth', 'herbs', 'medicine', 'tools', 'clothes', 'weapons', 'silver', 'goods', 'hops', 'mushrooms', 'eggs', 'milk'] as const;
 export type ResK = (typeof RES)[number];
-export const RAW_FOOD: readonly ResK[] = ['grain', 'veg', 'meat', 'fish', 'berries', 'mushrooms'];
+export const RAW_FOOD: readonly ResK[] = ['grain', 'veg', 'meat', 'fish', 'berries', 'mushrooms', 'eggs', 'milk'];
 
-export type WorkK = 'farm' | 'forage' | 'hunt' | 'fish' | 'wood' | 'mine' | 'cook' | 'build' | 'craft' | 'smith' | 'brew' | 'heal' | 'teach' | 'preach' | 'guard' | 'herbs';
+export type WorkK = 'farm' | 'forage' | 'hunt' | 'fish' | 'wood' | 'mine' | 'cook' | 'build' | 'craft' | 'smith' | 'brew' | 'heal' | 'teach' | 'preach' | 'guard' | 'herbs' | 'herd';
 
 export type ActK =
   | 'fight' | 'flee' | 'hide' | 'tend' | 'train' | 'stalk'
@@ -113,6 +113,9 @@ export interface Foe {
 
 /** A war with another colony: since when, and how it is going. */
 export interface War { name: string; since: number; sent: number; came: number; lost: number; slain: number; ours: boolean }
+
+/** An animal the colony keeps: livestock in the pen, or a dog with its person. */
+export interface Animal { id: number; k: string; x: number; y: number; px: number; py: number; born: number; /** eggs, milk or wool waiting to be collected */ prod: number; /** 0 starving .. 100 well fed */ fed: number; owner?: Id; name?: string }
 
 /** A wild animal wandering the map. */
 export interface Beast { id: number; k: string; x: number; y: number; px: number; py: number }
@@ -339,6 +342,9 @@ export interface Colony {
   /** animals out in the wild */
   beasts?: Beast[];
   nextBeast?: number;
+  /** the colony's own animals */
+  herd?: Animal[];
+  nextAnimal?: number;
   /** crop kind -> tick it was last brought in, for the variety of the colony's table */
   fresh?: Record<string, number>;
   /** planned gathering (wedding, funeral, feast) */

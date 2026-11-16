@@ -14,6 +14,7 @@ import { importPawns } from './settle';
 import { cells } from './data/buildings';
 import { PLAYABLE } from './data/races';
 import { spawnRaid } from './combat';
+import { buyBeasts } from './herd';
 import { foodUnits } from './econ';
 import { bump, log, note } from './events';
 import { infect, tend, wound } from './health';
@@ -374,6 +375,8 @@ function trade(c: Colony, r: Rand): void {
   if (s.wood < pop * 4) buy('wood', pop * 8, 0.2);
   buy('clothes', 1 + pop * 0.15, 2.5);
   s.silver = silver;
+  const beasts = r.chance(0.5) ? buyBeasts(c, r) : '';
+  if (beasts) log(c, 'bought_beasts', undefined, undefined, beasts);
   for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, 'newfaces');
   log(c, 'trader', undefined, undefined, c.near?.length ? r.pick(c.near).name : undefined, Math.round(bought));
   bump(c, 'traders');

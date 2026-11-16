@@ -332,7 +332,7 @@ export function drawHeld(g: Graphics, k: string): void {
 }
 
 /** Work that has its own thing in hand even without a tool from the stores. */
-export const WORK_HELD: Record<string, string> = { cook: 'ladle', teach: 'book', preach: 'book', forage: 'basket', herbs: 'herbs', heal: 'satchel', brew: 'mug', guard: 'spear' };
+export const WORK_HELD: Record<string, string> = { herd: 'basket', cook: 'ladle', teach: 'book', preach: 'book', forage: 'basket', herbs: 'herbs', heal: 'satchel', brew: 'mug', guard: 'spear' };
 /** Held items that swing while the work goes on. */
 export const SWINGING = new Set(['axe', 'pick', 'hoe', 'hammer', 'tongs']);
 
@@ -341,12 +341,12 @@ export const SWINGING = new Set(['axe', 'pick', 'hoe', 'hammer', 'tongs']);
 /** The badge each kind of building wears on its sign (same little pictures as the activity badges). */
 export const BLD_ICON: Record<string, string> = {
   hall: 'eat', kitchen: 'w:cook', tavern: 'drink', brewery: 'w:brew', store: 'store', granary: 'w:farm', shrine: 'pray', smithy: 'w:smith',
-  workshop: 'w:craft', infirmary: 'w:heal', herbalist: 'w:herbs', school: 'study', guardhouse: 'w:guard', tower: 'w:guard', bathhouse: 'bathe', gamehall: 'chess',
+  workshop: 'w:craft', infirmary: 'w:heal', herbalist: 'w:herbs', school: 'study', guardhouse: 'w:guard', tower: 'w:guard', pen: 'w:herd', bathhouse: 'bathe', gamehall: 'chess',
 };
 
 // ---------- Wild animals (facing right) ----------
 
-export const WILD_SIZE: Record<string, number> = { deer: 1.25, boar: 1.1, hare: 0.8, fox: 0.95 };
+export const WILD_SIZE: Record<string, number> = { deer: 1.25, boar: 1.1, hare: 0.8, fox: 0.95, chicken: 0.6, goat: 0.95, sheep: 1, cow: 1.35, dog: 0.85 };
 
 export function drawBeast(g: Graphics, k: string): void {
   g.clear();
@@ -371,6 +371,42 @@ export function drawBeast(g: Graphics, k: string): void {
     g.ellipse(9.2, 1.2, 1.4, 1.2).fill(0x8a6a5a);
     g.poly([8.2, 2, 10.2, 0.4, 9, 2.6]).fill(0xf3efe2);
     g.circle(7.2, -0.4, 0.6).fill(0x1b1b1b);
+  } else if (k === 'chicken') {
+    g.ellipse(0, 1, 4.6, 3.8).fill(0xf4efe4).stroke({ width: 0.7, color: 0x8a8070 });
+    g.circle(3.6, -2.4, 2.4).fill(0xf4efe4).stroke({ width: 0.7, color: 0x8a8070 });
+    g.poly([5.6, -2.6, 7.6, -2, 5.6, -1.4]).fill(0xe2933a);
+    g.poly([2.6, -4.8, 3.4, -6.4, 4.2, -4.8]).fill(0xd2445a);
+    g.poly([-4.6, -1.5, -6.8, -3.6, -4, 0.5]).fill(0xe9e3d5);
+    g.circle(4.2, -2.8, 0.5).fill(0x1b1b1b);
+  } else if (k === 'goat') {
+    legs(0x5a4a3a, [-3.6, -1.8, 2.4, 4], 1, 3.8);
+    g.ellipse(0, 0, 6, 3.6).fill(0xd9d2c4);
+    g.ellipse(6, -2.4, 2.6, 2.2).fill(0xd9d2c4);
+    g.moveTo(5.4, -4.2).quadraticCurveTo(4, -7.4, 2.6, -6.6).moveTo(6.6, -4.2).quadraticCurveTo(6, -7.6, 4.4, -7).stroke({ width: 1, color: 0x8a7a68, cap: 'round' });
+    g.poly([7.4, -0.8, 7.9, 1.6, 6.8, 0]).fill(0xb9b1a0);
+    g.circle(6.8, -2.8, 0.5).fill(0x1b1b1b);
+  } else if (k === 'sheep') {
+    legs(0x2a2422, [-3.6, -1.6, 2.4, 4], 1.4, 3.4);
+    g.circle(-3, -0.4, 3.6).circle(0.6, -1.2, 3.8).circle(3, 0.4, 3.4).circle(-0.6, 1.4, 3.6).fill(0xf2eee6).stroke({ width: 0.6, color: 0xb9b1a0 });
+    g.ellipse(6.4, -0.6, 2.4, 2).fill(0x2a2422);
+    g.circle(7, -1, 0.5).fill(0xf2eee6);
+  } else if (k === 'cow') {
+    legs(0x2a2422, [-4.6, -2.6, 3, 5], 1.6, 4.2);
+    g.ellipse(0, 0, 7.4, 4.2).fill(0xf2eee6).stroke({ width: 0.7, color: 0x5a4a3a });
+    g.ellipse(-2.6, -1, 2.6, 2).ellipse(2.4, 1.2, 2.2, 1.6).fill(0x3a2a22);
+    g.ellipse(7.6, -1.6, 3, 2.6).fill(0xf2eee6).stroke({ width: 0.7, color: 0x5a4a3a });
+    g.ellipse(9.4, -0.8, 1.6, 1.3).fill(0xe8a8a0);
+    g.moveTo(6.4, -4).lineTo(5.6, -6).moveTo(8.4, -4).lineTo(9.2, -6).stroke({ width: 0.9, color: 0xe9dcc0, cap: 'round' });
+    g.circle(7.6, -2.4, 0.5).fill(0x1b1b1b);
+  } else if (k === 'dog') {
+    legs(0x4a3424, [-3.6, -1.8, 2.4, 4], 1.4, 3.6);
+    g.ellipse(0, 0, 5.6, 3).fill(0x9a6a3c);
+    g.moveTo(-5, -0.4).quadraticCurveTo(-7.6, -4.6, -6.4, -5.2).stroke({ width: 1.4, color: 0x9a6a3c, cap: 'round' });
+    g.circle(5.4, -2.2, 2.8).fill(0x9a6a3c);
+    g.ellipse(7.6, -1.4, 1.6, 1.2).fill(0xb8864e);
+    g.ellipse(4.6, -4.2, 1.1, 2).fill(0x6b4a2c);
+    g.circle(8.8, -1.6, 0.6).fill(0x1b1b1b);
+    g.circle(5.8, -2.8, 0.5).fill(0x1b1b1b);
   } else if (k === 'hare') {
     g.ellipse(0, 1, 5.4, 3.8).fill(0x9a8a78);
     g.circle(-5.2, 0.4, 1.8).fill(0xf2eee6);
@@ -533,6 +569,10 @@ export function drawActivity(g: Graphics, key: string): void {
     case 'perform': // a note
       g.circle(-1.4, 2.2, 1.7).fill(BADGE_INK);
       line([0.2, 2, 0.2, -3.8, 3, -2.6], BADGE_INK, 1.2);
+      break;
+    case 'w:herd': // an egg and a bucket
+      g.ellipse(-1.8, 0.6, 2, 2.6).fill(0xf4efe4);
+      g.poly([0.6, -1.4, 4.4, -1.4, 3.8, 3.4, 1.2, 3.4]).fill(0x8a9099);
       break;
     case 'chess': // a pawn piece
       g.circle(0, -2.4, 1.8).fill(BADGE_INK);

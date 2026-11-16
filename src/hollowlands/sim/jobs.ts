@@ -12,6 +12,7 @@ import { isDown, needsTending, tend } from './health';
 import { think, workSkillOf } from './mood';
 import { advanceBuild, canBuild, syncTiles } from './planner';
 import { BEAST_KINDS, plantAround, plantSpot } from './wild';
+import { herdNeed, herdWork, livestock } from './herd';
 import { TPL } from './data/buildings';
 import { STAGE, gainXp, has, mkAct, pawnById, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
@@ -52,8 +53,8 @@ export function toolMult(p: Pawn, w: WorkK): number {
   return p.tool && p.tool[0] === k ? 1.15 : 0.82;
 }
 
-const DUR: Record<WorkK, number> = { farm: 10, forage: 8, hunt: 36, fish: 16, wood: 12, mine: 14, cook: 10, build: 12, craft: 14, smith: 14, brew: 12, heal: 10, teach: 12, preach: 12, guard: 20, herbs: 8 };
-const CROWD: Record<WorkK, number> = { farm: 0.2, forage: 0.6, hunt: 1, fish: 1, wood: 0.6, mine: 0.8, cook: 2.5, build: 0.4, craft: 3, smith: 3, brew: 3, heal: 2, teach: 5, preach: 5, guard: 2, herbs: 3 };
+const DUR: Record<WorkK, number> = { farm: 10, forage: 8, hunt: 36, fish: 16, wood: 12, mine: 14, cook: 10, build: 12, craft: 14, smith: 14, brew: 12, heal: 10, teach: 12, preach: 12, guard: 20, herbs: 8, herd: 10 };
+const CROWD: Record<WorkK, number> = { farm: 0.2, forage: 0.6, hunt: 1, fish: 1, wood: 0.6, mine: 0.8, cook: 2.5, build: 0.4, craft: 3, smith: 3, brew: 3, heal: 2, teach: 5, preach: 5, guard: 2, herbs: 3, herd: 3 };
 
 interface FieldNeed { b: Bld; op: number; n: number }
 
@@ -233,6 +234,13 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
       }
       return null;
     });
+  }
+
+  // The beasts
+  const pen = bldOf(c, 'pen');
+  if (pen && livestock(c).length) {
+    const need = herdNeed(c);
+    if (need > 0.3) offer('herd', Math.min(6, 1 + need), 'herd', () => job('herd', spotTile(c, pen, 'Q', r), true, 'The beasts need seeing to', pen.id));
   }
 
   // Building
@@ -552,7 +560,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       const kitchen = c.blds.find((x) => x.id === a.b)?.k === 'kitchen';
       const fine = rich && lv >= 4 && r.chance(0.1 + lv * 0.035 + Math.max(0, kinds - 3) * 0.04 + (kitchen ? 0.08 : 0));
       let used = 0;
-      const order: ('meat' | 'fish' | 'berries' | 'veg' | 'grain' | 'mushrooms')[] = ['fish', 'meat', 'mushrooms', 'berries', 'veg', 'grain'];
+      const order: ('meat' | 'fish' | 'berries' | 'veg' | 'grain' | 'mushrooms' | 'eggs' | 'milk')[] = ['fish', 'meat', 'eggs', 'milk', 'mushrooms', 'berries', 'veg', 'grain'];
       let guard = 0;
       while (n > 0.5 && guard++ < 40) {
         let took = false;
@@ -739,6 +747,10 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
           o.act.b = c.sb[bed];
         }
       }
+      break;
+    }
+    case 'herd': {
+      herdWork(c, p, speed, hours, foodDays(c) < 3);
       break;
     }
     case 'guard': {

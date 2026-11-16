@@ -108,6 +108,7 @@ export class MapView {
   private views = new Map<Id, PawnView>();
   private foeViews = new Map<number, { g: Graphics; stamp: number }>();
   private beastViews = new Map<number, { g: Graphics; stamp: number; face: number }>();
+  private herdViews = new Map<number, { g: Graphics; stamp: number; face: number }>();
   private blds = new Map<number, Bld>();
   private plan = new Uint8Array(0);
   private fires: { x: number; y: number; r: number }[] = [];
@@ -172,6 +173,8 @@ export class MapView {
     this.foeViews.clear();
     for (const f of this.beastViews.values()) f.g.destroy();
     this.beastViews.clear();
+    for (const f of this.herdViews.values()) f.g.destroy();
+    this.herdViews.clear();
     for (const sg of this.signs) { sg.g.destroy(); sg.label.destroy(); }
     this.signs = [];
     this.cam.removeChildren();
@@ -221,6 +224,7 @@ export class MapView {
     this.syncPawns(tf);
     this.syncFoes(tf);
     this.syncBeasts(tf);
+    this.syncAnimals(tf, 'herd', this.herdViews);
     this.syncSigns(c);
     this.syncPiles(c);
     this.stepCamera(dt);
@@ -519,17 +523,22 @@ export class MapView {
 
   /** Deer, boar, hares and foxes out in the wild. They hop from tile to tile and face where they go. */
   private syncBeasts(tf: number): void {
-    const list = (this.c as unknown as { beasts?: FoeLike[] }).beasts;
-    if (!list?.length && !this.beastViews.size) return;
+    this.syncAnimals(tf, 'beasts', this.beastViews);
+  }
+
+  /** Animals of one list (the wild ones, or the colony's own) drawn and moved. */
+  private syncAnimals(tf: number, field: 'beasts' | 'herd', views: Map<number, { g: Graphics; stamp: number; face: number }>): void {
+    const list = (this.c as unknown as Record<string, FoeLike[] | undefined>)[field];
+    if (!list?.length && !views.size) return;
     const stamp = this.stamp;
     const u = Math.max(0, Math.min(1, tf - Math.floor(tf)));
     for (const b of list ?? []) {
-      let v = this.beastViews.get(b.id);
+      let v = views.get(b.id);
       if (!v) {
         v = { g: new Graphics(), stamp, face: 1 };
         drawBeast(v.g, b.k);
         this.pawnLayer.addChild(v.g);
-        this.beastViews.set(b.id, v);
+        views.set(b.id, v);
       }
       v.stamp = stamp;
       if (b.x !== b.px) v.face = b.x > b.px ? 1 : -1;
@@ -541,8 +550,8 @@ export class MapView {
       v.g.position.set(x, y - hop);
       v.g.zIndex = y;
     }
-    for (const [id, v] of this.beastViews) {
-      if (v.stamp !== stamp) { v.g.destroy(); this.beastViews.delete(id); }
+    for (const [id, v] of views) {
+      if (v.stamp !== stamp) { v.g.destroy(); views.delete(id); }
     }
   }
 

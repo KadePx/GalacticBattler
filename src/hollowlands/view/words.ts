@@ -22,12 +22,12 @@ export const DEVOTION = ['in name only', 'lightly held', 'devout', 'zealous'];
 export const RES_NAMES: Record<string, string> = {
   grain: 'Grain', veg: 'Vegetables', meat: 'Meat', fish: 'Fish', berries: 'Berries', meal: 'Meals', feast: 'Feast dishes', ale: 'Ale',
   wood: 'Wood', stone: 'Stone', ore: 'Ore', iron: 'Iron', leather: 'Leather', cloth: 'Cloth', herbs: 'Herbs', medicine: 'Medicine',
-  tools: 'Tools', clothes: 'Clothes', weapons: 'Weapons', silver: 'Silver', goods: 'Goods', hops: 'Hops', mushrooms: 'Mushrooms',
+  tools: 'Tools', clothes: 'Clothes', weapons: 'Weapons', silver: 'Silver', goods: 'Goods', hops: 'Hops', mushrooms: 'Mushrooms', eggs: 'Eggs', milk: 'Milk',
 };
 
 const WORK: Record<string, string> = {
   farm: 'Working the fields', forage: 'Foraging', hunt: 'Hunting', fish: 'Fishing', wood: 'Cutting wood', mine: 'Mining', cook: 'Cooking', build: 'Building',
-  craft: 'Crafting', smith: 'Smithing', brew: 'Brewing', heal: 'Tending the sick', teach: 'Teaching', preach: 'Preaching', guard: 'Standing guard', herbs: 'Gathering herbs',
+  craft: 'Crafting', smith: 'Smithing', brew: 'Brewing', heal: 'Tending the sick', teach: 'Teaching', preach: 'Preaching', guard: 'Standing guard', herbs: 'Gathering herbs', herd: 'Tending the beasts',
 };
 
 const ACT: Record<string, string> = {

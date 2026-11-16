@@ -317,7 +317,7 @@ export function hourly(c: Colony, p: Pawn): void {
   } else if (asleep && p.rest >= 100) a.t1 = t;
 }
 
-const WORK_SKILL: Record<string, number> = { farm: 4, forage: 4, hunt: 1, fish: 9, wood: 2, mine: 3, cook: 5, build: 2, craft: 6, smith: 7, brew: 5, heal: 8, teach: 11, preach: 10, guard: 0, herbs: 8 };
+const WORK_SKILL: Record<string, number> = { farm: 4, forage: 4, hunt: 1, fish: 9, wood: 2, mine: 3, cook: 5, build: 2, craft: 6, smith: 7, brew: 5, heal: 8, teach: 11, preach: 10, guard: 0, herbs: 8, herd: 9 };
 export function workSkillOf(w: string | undefined): number {
   return w ? WORK_SKILL[w] ?? 2 : 2;
 }

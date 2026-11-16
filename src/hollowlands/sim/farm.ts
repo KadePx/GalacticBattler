@@ -65,7 +65,7 @@ export function variety(c: Colony): number {
   const m = varMemo.get(c);
   if (m && m[0] === c.tick) return m[1];
   const s = c.stock;
-  let n = (s.meat >= 1 ? 1 : 0) + (s.fish >= 1 ? 1 : 0) + (s.berries >= 1 ? 1 : 0) + (s.mushrooms >= 1 ? 1 : 0);
+  let n = (s.meat >= 1 ? 1 : 0) + (s.fish >= 1 ? 1 : 0) + (s.berries >= 1 ? 1 : 0) + (s.mushrooms >= 1 ? 1 : 0) + (s.eggs >= 1 ? 1 : 0) + (s.milk >= 1 ? 1 : 0);
   const fresh = c.fresh ?? {};
   for (const k in fresh) {
     const def = CROPS[k];

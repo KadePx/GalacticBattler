@@ -33,7 +33,7 @@ function blank(seed: number): Colony {
   return {
     v: SIM_V, seed, id: 'c' + seed.toString(36), name: '', biome: 'valley', tick: 6 * TICKS_PER_HOUR, w: MAP_W, h: MAP_H,
     ter: new Uint8Array(n), feat: new Uint8Array(n), fg: new Uint8Array(n), st: new Uint8Array(n), crop: new Uint8Array(n), wear: new Uint8Array(n), sb: new Uint16Array(n),
-    cx: 0, cy: 0, gx: 0, gy: 0, beasts: [], pawns: [], dead: [], nextId: 1, blds: [], nextBld: 1, stock: emptyStock(), log: [], logBase: 0, facts: [], nextFact: 1,
+    cx: 0, cy: 0, gx: 0, gy: 0, beasts: [], herd: [], pawns: [], dead: [], nextId: 1, blds: [], nextBld: 1, stock: emptyStock(), log: [], logBase: 0, facts: [], nextFact: 1,
     weather: 0, temp: 9, game: 100, stats: {}, inq: [], foes: [], nextFoe: 1, alarm: 0, story: { last: 0, lastBad: 0, heat: 0, band: 0 }, mods: [], nosite: {},
     gov: { k: 'elder', ruler: 0, since: 0, laws: { harsh: 1, tax: 0, ration: 0 }, titles: {}, next: 0, regent: 0 }, trials: [], settle: 0, out: [],
   };
@@ -225,6 +225,7 @@ export function colonyHash(c: Colony): string {
 function upgrade(c: Colony): void {
   for (const k of RES) if (typeof c.stock[k] !== 'number') c.stock[k] = 0;
   c.beasts ??= [];
+  c.herd ??= [];
   // players who chose to leave before that choice was dated: the clock starts now
   for (const p of c.pawns) if (p.owner && p.roots === -1 && p.leaveT === undefined) p.leaveT = c.tick;
 }

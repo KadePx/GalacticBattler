@@ -15,7 +15,7 @@ export function emptyStock(): Record<ResK, number> {
   return s;
 }
 
-export const rawFood = (c: Colony): number => c.stock.grain + c.stock.veg + c.stock.meat + c.stock.fish + c.stock.berries + c.stock.mushrooms;
+export const rawFood = (c: Colony): number => c.stock.grain + c.stock.veg + c.stock.meat + c.stock.fish + c.stock.berries + c.stock.mushrooms + c.stock.eggs + c.stock.milk;
 export const foodUnits = (c: Colony): number => rawFood(c) + c.stock.meal + c.stock.feast;
 export const hasFood = (c: Colony): boolean => foodUnits(c) >= 1;
 
@@ -40,13 +40,13 @@ export function takeMeal(c: Colony, ironStomach: boolean): string {
   const s = c.stock;
   if (s.feast >= 1) { s.feast -= 1; return 'feast'; }
   if (s.meal >= 1) { s.meal -= 1; return 'meal'; }
-  for (const k of ['berries', 'mushrooms', 'veg', 'fish', 'meat', 'grain'] as const) {
+  for (const k of ['berries', 'milk', 'eggs', 'mushrooms', 'veg', 'fish', 'meat', 'grain'] as const) {
     if (s[k] >= 1) { s[k] -= 1; return ironStomach || k === 'berries' ? 'meal' : 'raw'; }
   }
   // scraps of this and that
   if (foodUnits(c) < 1) return '';
   let need = 1;
-  for (const k of ['feast', 'meal', 'berries', 'mushrooms', 'veg', 'fish', 'meat', 'grain'] as const) {
+  for (const k of ['feast', 'meal', 'berries', 'milk', 'eggs', 'mushrooms', 'veg', 'fish', 'meat', 'grain'] as const) {
     const n = Math.min(need, s[k]);
     s[k] -= n;
     need -= n;
@@ -158,6 +158,8 @@ export function dailyLand(c: Colony): void {
   rot('veg', 0.018, 0.008);
   rot('grain', 0.003, 0.003);
   rot('mushrooms', 0.06, 0.02);
+  rot('eggs', 0.03, 0.01);
+  rot('milk', 0.2, 0.06);
   rot('hops', 0.004, 0.002);
   rot('meal', 0.08, 0.02);
   rot('feast', 0.1, 0.02);

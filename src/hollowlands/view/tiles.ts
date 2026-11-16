@@ -713,6 +713,11 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           g.circle(px + 8, py + 13, 1).fill(0x2a1d12);
           g.circle(px + 17, py + 14, 3).fill(0xb84a4a).stroke({ width: 0.8, color: 0xe9e3d5 });
           break;
+        case B.TROUGH:
+          g.roundRect(px + 2, py + 7, 20, 10, 2).fill(0x7a5232).stroke({ width: 1.1, color: 0x2a1d12 });
+          g.roundRect(px + 4, py + 9, 16, 6, 1.5).fill(0xc9b458);
+          g.rect(px + 4, py + 11, 16, 1).fill({ color: 0x8a7a3a, alpha: 0.6 });
+          break;
         case B.BRAZIER:
           g.circle(cx, cy, 13).fill({ color: 0xff9a3a, alpha: 0.14 });
           g.circle(cx, cy, 6.5).fill(0x3a3d45).stroke({ width: 1.2, color: 0x15171b });

@@ -182,6 +182,15 @@ export const TPL_LIST: Tpl[] = [
     '#...#',
     ' #+# ',
   ]),
+  // fenced ground for the colony's beasts, with a trough
+  tpl('pen', 'Animal pen', 16, 0, 14, [
+    '=======',
+    '=,,,,,=',
+    '=,Q,,,=',
+    '=,,,,,=',
+    '=,,,,,=',
+    '===g===',
+  ]),
   tpl('graveyard', 'Graveyard', 12, 2, 12, [
     '=======',
     '=,,,,,=',
@@ -310,6 +319,7 @@ export const PURPOSE: Record<string, string> = {
   herbalist: 'Medicine is made much faster among the drying racks and the cauldron.',
   bathhouse: 'A hot bath lifts the mood and helps the sick shake off illness. The water is heated with wood.',
   gamehall: 'Chess, darts and music of an evening.',
+  pen: 'Chickens, goats, sheep and cows: eggs, milk and wool, if someone keeps them fed. The herder tends them.',
   tower: 'Wardens keep watch from here and see trouble coming from twice as far. Archers on the tower shoot further, safe behind its walls.',
   well: 'Fresh water.',
   graveyard: 'Where the dead are laid to rest.',
@@ -350,7 +360,7 @@ export function spots(k: string, ch: string): Cell[] {
 const FURN: Record<string, number> = {
   b: B.BED, t: B.TABLE, c: B.CHAIR, h: B.HEARTH, s: B.STOVE, w: B.BENCH, a: B.ANVIL, f: B.FORGE, x: B.CRATE, r: B.BARREL,
   A: B.ALTAR, p: B.PEW, l: B.LOOM, W: B.WELL, e: B.SHELF, o: B.COT, S: B.STATUE,
-  k: B.CAULDRON, v: B.VAT, n: B.BIN, d: B.DESK, K: B.BOOKS, R: B.RACK, T: B.BATH, C: B.CHESS, D: B.DARTS, m: B.MUSIC, H: B.DRYRACK, L: B.LAMP, u: B.RUG, O: B.WARDROBE, Y: B.BRAZIER,
+  k: B.CAULDRON, v: B.VAT, n: B.BIN, d: B.DESK, K: B.BOOKS, R: B.RACK, T: B.BATH, C: B.CHESS, D: B.DARTS, m: B.MUSIC, H: B.DRYRACK, L: B.LAMP, u: B.RUG, O: B.WARDROBE, Y: B.BRAZIER, Q: B.TROUGH,
 };
 
 /** Things a home gains as it is made finer. They sit on floor tiles and are kept when the floor is relaid. */

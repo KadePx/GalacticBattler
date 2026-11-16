@@ -31,6 +31,8 @@ export const PROF_LIST: ProfDef[] = [
   p('carpenter', 'Carpenter', 'build', 2, 'Makes the beams, the beds and the coffins.'),
   p('scout', 'Scout', 'guard', 1, 'Walks the far edge of the land and sees trouble first.'),
   p('lorekeeper', 'Lorekeeper', 'teach', 11, 'Keeps the stories and teaches the young.'),
+  // new trades go at the end: players ask for a trade by its place in this list
+  p('herder', 'Herder', 'herd', 9, 'Keeps the beasts fed and brings in the eggs, milk and wool.'),
 ];
 
 export const PROFS: Record<string, ProfDef> = Object.fromEntries(PROF_LIST.map((x) => [x.k, x]));

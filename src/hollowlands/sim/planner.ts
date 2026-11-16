@@ -288,6 +288,7 @@ function slots(c: Colony, adults: number, kids: number): Record<string, number> 
     gravedigger: has('graveyard') && adults >= 12 ? 1 : 0,
     ratcatcher: adults >= 18 ? 1 : 0,
     quartermaster: adults >= 20 ? 1 : 0,
+    herder: has('pen') ? (c.herd && c.herd.length > 12 ? 2 : 1) : 0,
   };
 }
 
@@ -420,6 +421,7 @@ export function plan(c: Colony): void {
   const want: [string, boolean][] = [
     ['kitchen', pop >= 12],
     ['granary', pop >= 14],
+    ['pen', pop >= 10],
     ['brewery', pop >= 15 && count('tavern') > 0],
     ['school', pop >= 14 && kids >= 4],
     ['herbalist', pop >= 16],

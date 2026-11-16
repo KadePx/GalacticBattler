@@ -71,6 +71,8 @@ export const TH_LIST: ThDef[] = [
 
   // Food and drink
   h('atefeast', 'Ate a fine meal', 6, DAY),
+  h('gotdog', 'A dog has taken to me', 5, DAY * 4),
+  h('dogdied', 'My dog died', -8, DAY * 4),
   h('losttrade', 'Lost my trade to someone better at it', -3, DAY * 2),
   h('wardread', 'We are at war', -4, DAY * 4),
   h('warjoy', 'At war at last', 3, DAY * 4),
