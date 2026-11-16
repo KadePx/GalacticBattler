@@ -87,6 +87,9 @@ export function bioText(c: Colony, b: Bio): string {
     case 'brawl_lost': return `Was beaten by ${o} in a brawl.`;
     case 'killed': return `Killed ${o} in a brawl.`;
     case 'break': return (BREAK_BIO[b.s ?? ''] ?? 'Broke down') + '.';
+    case 'master': return `Earned the title ${b.s ?? 'master'}.`;
+    case 'apprenticed': return `Apprenticed to ${o}.`;
+    case 'graduated': return `Finished their apprenticeship under ${o}.`;
     case 'trade': return `Became the colony's ${(PROFS[b.s ?? '']?.name ?? b.s ?? 'worker').toLowerCase()}.`;
     case 'lost': return `Lost their ${LOST[b.s ?? ''] ?? 'friend'}, ${o}.`;
     case 'adult': return 'Came of age.';

@@ -6,6 +6,7 @@ import { SEASON_NAMES, when } from '../config';
 import { BACKS } from '../sim/data/backstories';
 import { CROPS, PURPOSE, TPL } from '../sim/data/buildings';
 import { tradeSlots } from '../sim/planner';
+import { MASTER_LEVEL, MASTER_TITLES } from '../sim/guild';
 import { TOOL_FOR, TOOL_NAMES } from '../sim/jobs';
 import { PROFS, PROF_LIST } from '../sim/data/professions';
 import { TH } from '../sim/data/thoughts';
@@ -250,6 +251,11 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   const standing = p.id === c.gov.ruler ? `${rulerTitle(c, p)} of ${c.name}` : p.id === c.gov.regent ? 'Regent' : office ? office[0].toUpperCase() + office.slice(1) : p.rank !== 2 && st >= 3 ? RANK_NAMES[p.rank] : '';
   if (standing) h += `<div class="sub"><span class="tie kin">${esc(standing)}</span></div>`;
   if (p.owner) h += `<div class="sub"><span class="tie player" title="Someone made this colonist and follows their life. Everyone else here was born to the colony or wandered in.">◆ ${ui.mine ? 'Your colonist' : 'Made by a player'}</span></div>`;
+  const titles = (p.mastered ?? []).map((s) => MASTER_TITLES[s]);
+  if (titles.length) h += `<div class="sub">${titles.map((t) => `<span class="tie good" title="Reached level ${MASTER_LEVEL}">${esc(t)}</span>`).join(' ')}</div>`;
+  if (p.appr) h += `<div class="sub">Apprentice to ${whoLink(c, p.appr[0])}, learning ${esc(SKILL_NAMES[p.appr[1]].toLowerCase())}</div>`;
+  const pupil = c.pawns.find((o) => o.appr && o.appr[0] === p.id);
+  if (pupil) h += `<div class="sub">Teaching ${whoLink(c, pupil.id)} as their apprentice</div>`;
   const dog = c.herd?.find((a) => a.k === 'dog' && a.owner === p.id);
   if (dog) h += `<div class="sub">Has a dog, ${esc(dog.name ?? 'unnamed')}, who follows them everywhere</div>`;
   if (p.tool) {

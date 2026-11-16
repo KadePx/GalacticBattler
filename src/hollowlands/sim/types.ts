@@ -203,6 +203,12 @@ export interface Pawn {
   prev?: Id;
   /** the player's wish about leaving with settlers: 1 stay, -1 go */
   roots?: number;
+  /** apprenticed to: [master, skill, since tick] */
+  appr?: [Id, number, number];
+  /** finished an apprenticeship */
+  graduated?: boolean;
+  /** skills they have mastered (level 12+), in the order earned */
+  mastered?: number[];
   /** the trade the player asked for (a profession key) */
   wantProf?: string;
   /** when the player chose to leave (to set out alone if no settlers go soon) */

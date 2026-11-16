@@ -71,6 +71,13 @@ export const TH_LIST: ThDef[] = [
 
   // Food and drink
   h('atefeast', 'Ate a fine meal', 6, DAY),
+  h('becamemaster', 'Earned the title of master', 6, DAY * 4),
+  h('newapprentice', 'Apprenticed to {o}', 3, DAY * 2, { op: 8 }),
+  h('tookapprentice', 'Took on {o} as an apprentice', 2, DAY * 2, { op: 6 }),
+  h('learnedfrom', 'Learned something from {o}', 2, DAY, { op: 4 }),
+  h('taught', 'Showed {o} how it is done', 2, DAY, { op: 3 }),
+  h('finishedappr', 'Finished my apprenticeship under {o}', 5, DAY * 4, { op: 15 }),
+  h('proudmentor', 'Proud of {o}, who learned well', 4, DAY * 3, { op: 10 }),
   h('gotdog', 'A dog has taken to me', 5, DAY * 4),
   h('dogdied', 'My dog died', -8, DAY * 4),
   h('losttrade', 'Lost my trade to someone better at it', -3, DAY * 2),

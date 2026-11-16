@@ -16,12 +16,14 @@ import { dailyAbroad, dailyMatch } from './abroad';
 import { dailyIntrigue } from './intrigue';
 import { dailyWild, stepWild } from './wild';
 import { dailyHerd, stepHerd } from './herd';
+import { dailyGuild } from './guild';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
   dailyLand(c);
   dailyWild(c);
   dailyHerd(c);
+  dailyGuild(c);
   dailyLife(c);
   plan(c);
   dailyStory(c);
