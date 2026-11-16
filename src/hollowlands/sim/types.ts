@@ -358,7 +358,9 @@ export interface Colony {
   /** crop kind -> tick it was last brought in, for the variety of the colony's table */
   fresh?: Record<string, number>;
   /** planned gathering (wedding, funeral, feast) */
-  gath?: { k: string; t0: number; t1: number; b: number; a?: Id; o?: Id; x: number; y: number };
+  gath?: { k: string; t0: number; t1: number; b: number; a?: Id; o?: Id; x: number; y: number; /** which festival */ f?: string };
+  /** the colony's festivals: its own name for each, how many years held, and this year's champion */
+  trad?: Partial<Record<'spring' | 'summer', { name: string; n: number; champ?: Id }>>;
 }
 
 export const idx = (c: { w: number }, x: number, y: number): number => y * c.w + x;

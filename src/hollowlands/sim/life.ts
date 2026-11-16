@@ -1,6 +1,7 @@
 // The long arcs of a life: love, marriage, children, growing up, growing old, dying, and the
 // gatherings (weddings, funerals) that mark them.
 
+import { endFestival } from './festivals';
 import { HARD_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
 import { touch } from './cache';
 import { cells, shapeOf } from './data/buildings';
@@ -399,6 +400,8 @@ export function endGathering(c: Colony): void {
     verdict(c, there);
   } else if (g.k === 'sermon') {
     sermonEnd(c, g.a ?? 0, there);
+  } else if (g.k === 'festival') {
+    endFestival(c, (g.f === 'summer' ? 'summer' : 'spring'), there);
   } else if (g.k === 'feast') {
     // the best of the larder, and as much ale as will go round
     let ale = 0;

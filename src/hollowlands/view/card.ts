@@ -8,6 +8,7 @@ import { CROPS, PURPOSE, TPL } from '../sim/data/buildings';
 import { tradeSlots } from '../sim/planner';
 import { MASTER_LEVEL, MASTER_TITLES } from '../sim/guild';
 import { DREAMS } from '../sim/dreams';
+import { championOf } from '../sim/festivals';
 import { TOOL_FOR, TOOL_NAMES } from '../sim/jobs';
 import { PROFS, PROF_LIST } from '../sim/data/professions';
 import { TH } from '../sim/data/thoughts';
@@ -257,6 +258,8 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   if (p.appr) h += `<div class="sub">Apprentice to ${whoLink(c, p.appr[0])}, learning ${esc(SKILL_NAMES[p.appr[1]].toLowerCase())}</div>`;
   const pupil = c.pawns.find((o) => o.appr && o.appr[0] === p.id);
   if (pupil) h += `<div class="sub">Teaching ${whoLink(c, pupil.id)} as their apprentice</div>`;
+  const champ = championOf(c);
+  if (champ && champ.id === p.id) h += `<div class="sub"><span class="tie good">Champion of ${esc(champ.name.replace(/^the /, ''))}</span></div>`;
   const dog = c.herd?.find((a) => a.k === 'dog' && a.owner === p.id);
   if (dog) h += `<div class="sub">Has a dog, ${esc(dog.name ?? 'unnamed')}, who follows them everywhere</div>`;
   if (p.tool) {

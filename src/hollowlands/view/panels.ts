@@ -3,6 +3,7 @@
 // second and only written to the page when the text actually changed. Read-only: nothing
 // here touches the colony.
 
+import { festivalName } from '../sim/festivals';
 import { TICKS_PER_DAY } from '../config';
 import { CROPS, TPL } from '../sim/data/buildings';
 import { PROFS, PROF_LIST } from '../sim/data/professions';
@@ -276,7 +277,7 @@ export class Panels {
     if (c.gath) {
       const a = person(c, c.gath.a ?? 0);
       const o = person(c, c.gath.o ?? 0);
-      const what = c.gath.k === 'wedding' ? `The wedding of ${a?.first ?? 'someone'} and ${o?.first ?? 'someone'}` : c.gath.k === 'funeral' ? `The funeral of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'trial' ? `The trial of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'sermon' ? `${a?.first ?? 'The priest'} will preach` : c.gath.k === 'feast' ? 'A feast in the hall' : c.gath.k === 'audience' ? `${a?.first ?? 'The ruler'} will hear petitions` : 'A gathering';
+      const what = c.gath.k === 'wedding' ? `The wedding of ${a?.first ?? 'someone'} and ${o?.first ?? 'someone'}` : c.gath.k === 'funeral' ? `The funeral of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'trial' ? `The trial of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'sermon' ? `${a?.first ?? 'The priest'} will preach` : c.gath.k === 'feast' ? 'A feast in the hall' : c.gath.k === 'festival' ? festivalName(c, c.gath.f === 'summer' ? 'summer' : 'spring').replace(/^the /, 'The ') : c.gath.k === 'audience' ? `${a?.first ?? 'The ruler'} will hear petitions` : 'A gathering';
       h += `<div class="note">${linkNames(c, what, [c.gath.a, c.gath.o])}: ${dateText(c.gath.t0, true)}.</div>`;
     }
 
@@ -297,6 +298,10 @@ export class Panels {
         h += `<div class="th"><span>Heir</span><b>${heir ? `<a class="who" data-p="${heir.id}">${esc(heir.first)}</a>` : 'None'}</b></div>`;
       }
       if (c.gov.k === 'council') h += `<div class="th"><span>Next vote</span><b>${dateText(c.gov.next)}</b></div>`;
+      for (const f of ['spring', 'summer'] as const) {
+        const t = c.trad?.[f];
+        if (t) h += `<div class="th" title="Held every ${f}${t.n >= 3 ? '; a tradition now' : ''}"><span>${f === 'spring' ? 'Spring festival' : 'Summer festival'}</span><b>${esc(t.name.replace(/^the /, 'The '))} <small>(${t.n} ${t.n === 1 ? 'year' : 'years'})</small></b></div>`;
+      }
       const wars = Object.entries(c.wars ?? {});
       for (const [, w] of wars) h += `<div class="th" title="${w.ours ? 'We declared it' : 'They declared it'} on ${esc(dateText(w.since))}. War bands sent: ${w.sent}. Raids suffered: ${w.came}."><span class="down">At war with</span><b>${esc(w.name)} <small>(${w.lost} of ours dead, ${w.slain} of theirs)</small></b></div>`;
       const bad = Object.entries(c.grudge ?? {}).filter(([id, n]) => n >= 8 && !c.wars?.[id]).map(([id]) => c.near?.find((x) => x.id === id)?.name).filter(Boolean);

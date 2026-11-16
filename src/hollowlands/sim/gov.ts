@@ -1,6 +1,7 @@
 // Who rules, how they came to rule, what they decree, and where everyone else stands.
 // Colonies start small and free; crowns and noble houses grow out of what happens.
 
+import { festivalName, festivalToday } from './festivals';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, dayOf } from '../config';
 import { RACES } from './data/races';
 import { foodDays } from './econ';
@@ -258,7 +259,12 @@ export function dailyGov(c: Colony): void {
     const doy = day % 60;
     const hall = c.blds.find((b) => b.k === 'hall' && b.built);
     const at = hall ? { b: hall.id, x: hall.x + Math.floor(hall.w / 2), y: hall.y + Math.floor(hall.h / 2) } : { b: 0, x: c.cx, y: c.cy };
-    if ((doy === 43 || doy === 52) && foodDays(c) > 9) {
+    const fest = festivalToday(doy);
+    if (fest && adults.length >= 6 && foodDays(c) > 4) {
+      // out in the open, in the middle of the colony
+      c.gath = { k: 'festival', f: fest, t0: t + 13 * 10, t1: t + 18 * 10, b: 0, x: c.cx, y: c.cy };
+      log(c, 'festival_set', ruler.id, undefined, festivalName(c, fest));
+    } else if ((doy === 43 || doy === 52) && foodDays(c) > 9) {
       c.gath = { k: 'feast', t0: t + 17 * 10, t1: t + 21 * 10, ...at };
       log(c, 'feast_set', ruler.id, undefined, doy === 43 ? 'harvest' : 'midwinter');
     } else if (day % 10 === 6 && (c.gov.k === 'lord' || c.gov.k === 'tyrant' || c.gov.k === 'chief') && adults.length >= 8) {

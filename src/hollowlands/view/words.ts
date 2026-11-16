@@ -87,6 +87,7 @@ export function bioText(c: Colony, b: Bio): string {
     case 'brawl_lost': return `Was beaten by ${o} in a brawl.`;
     case 'killed': return `Killed ${o} in a brawl.`;
     case 'break': return (BREAK_BIO[b.s ?? ''] ?? 'Broke down') + '.';
+    case 'contest': return `Won the ${b.s ?? 'contest'} at the festival.`;
     case 'dream': return `Their dream came true: they ${b.s ?? 'got what they wanted'}.`;
     case 'rescued_someone': return `Rescued ${o} from raiders.`;
     case 'master': return `Earned the title ${b.s ?? 'master'}.`;
