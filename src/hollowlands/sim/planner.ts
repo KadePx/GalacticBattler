@@ -7,6 +7,7 @@ import { BACKS } from './data/backstories';
 import { CROPS, HOMES, SHAPES, TPL, cellCode, cells, isDecor, shapeOf, spots } from './data/buildings';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
+import { lotScore, pave, reserved } from './town';
 import { chooseCrop } from './farm';
 import { bump, log, note } from './events';
 import { bury } from './life';
@@ -62,12 +63,12 @@ export function placeBuilding(c: Colony, k: string, x: number, y: number, instan
 const OPEN = new Set<number>([T.GRASS, T.DIRT, T.SOIL, T.SAND, T.STONE, T.MARSH]);
 
 /** Best free plot for a building, or null if the land is full. */
-export function findSite(c: Colony, k: string, shape = k, far = false): [number, number] | null {
+export function findSite(c: Colony, k: string, shape = k, far = false, planned = false): [number, number] | null {
   const t = TPL[shape];
   const w = t.rows[0].length;
   const h = t.rows.length;
   const field = k === 'field';
-  const minR = field ? 8 : k === 'graveyard' ? 14 : k === 'tower' ? 11 : k === 'hall' ? 0 : 3;
+  const minR = planned ? (field ? 12 : 0) : field ? 8 : k === 'graveyard' ? 14 : k === 'tower' ? 11 : k === 'hall' ? 0 : 3;
   // a crowded colony builds further out, almost to the edge of its land
   const maxR = field ? (far ? 34 : 31) : far ? 33 : 28;
   let best: [number, number] | null = null;
@@ -86,15 +87,20 @@ export function findSite(c: Colony, k: string, shape = k, far = false): [number,
           const inside = xx >= x && xx < x + w && yy >= y && yy < y + h;
           const ter = c.ter[i];
           if (c.sb[i] || c.st[i] || c.feat[i] === F.RUIN || c.feat[i] === F.ORE) { ok = false; break; }
-          if (inside ? !OPEN.has(ter) : !OPEN.has(ter) && ter !== T.PATH) { ok = false; break; }
+          // the plan builds only on open ground; when nothing fits it, a worn path will do too
+          if (inside ? !OPEN.has(ter) && (planned || ter !== T.PATH) : !OPEN.has(ter) && ter !== T.PATH) { ok = false; break; }
           if (Math.abs(xx - c.cx) <= 1 && Math.abs(yy - c.cy) <= 1 && inside) { ok = false; break; }
           if (inside && ter === T.SOIL) soil++;
+          // the plan keeps the streets and the square open
+          if (planned && inside && t.rows[yy - y][xx - x] !== ' ' && reserved(c, xx, yy)) { ok = false; break; }
         }
       }
       if (!ok) continue;
       // a tower stands out along the road, where trouble comes from
       const road = k === 'tower' ? Math.hypot(x + w / 2 - (c.cx + (c.gx - c.cx) * 0.45), y + h / 2 - (c.cy + (c.gy - c.cy) * 0.45)) : 0;
-      let score = field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - 17) : k === 'tower' ? -road : -d;
+      let score = planned
+        ? lotScore(c, k, x, y, w, h, t.rows) + (field ? soil * 0.3 : 0) - (k === 'tower' ? road * 0.5 : 0)
+        : field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - 17) : k === 'tower' ? -road : -d;
       score += (hash32(c.seed, S.PLAN, x, y, c.nextBld) / 4294967296) * 1.6;
       if (score > bestScore) { bestScore = score; best = [x, y]; }
     }
@@ -109,8 +115,12 @@ export function build(c: Colony, k: string, instant = false, crop?: string): Bld
   // a new building may take one of its kind's other shapes; an instant one (a new colony's first) keeps the plain plan
   const opts = SHAPES[k];
   const shape = opts && !instant ? opts[hash32(c.seed, S.PLAN, 77, c.nextBld) % opts.length] : k;
+  // the town plan first; if nothing fits it, wherever there is room
   let use = shape;
-  let site = findSite(c, k, shape);
+  let site = findSite(c, k, shape, false, true);
+  if (!site && shape !== k) { use = k; site = findSite(c, k, k, false, true); }
+  if (!site) { use = shape; site = findSite(c, k, shape, true, true); }
+  if (!site) { use = shape; site = findSite(c, k, shape); }
   if (!site && shape !== k) { use = k; site = findSite(c, k); }
   if (!site) { use = k; site = findSite(c, k, k, true); }
   if (!site) { c.nosite[k] = c.tick; return null; }
@@ -367,6 +377,7 @@ export function assignProfs(c: Colony, quiet: boolean): void {
 
 /** Once a day: beds, trades, and the next thing worth building. */
 export function plan(c: Colony): void {
+  pave(c, 8);
   assignBeds(c, false);
   assignProfs(c, false);
   const pop = c.pawns.length;
@@ -387,7 +398,7 @@ export function plan(c: Colony): void {
 
   // Fields first, while there is still time to plant
   const fields = c.blds.filter((b) => b.k === 'field');
-  const wantFields = Math.ceil(mouths(c) * 0.34);
+  const wantFields = Math.ceil(mouths(c) * 0.28);
   if (fields.length < wantFields && pendingFields === 0 && (season === 0 || season === 3 || (season === 1 && doy < 22))) {
     if (build(c, 'field', false, chooseCrop(c, null))) return;
   }
@@ -408,7 +419,8 @@ export function plan(c: Colony): void {
     // no room for that: something smaller may still fit
     for (const smaller of ['house', 'cottage']) if (smaller !== k && build(c, smaller)) return;
   }
-  if (c.dead.some((d) => !d.left) && !count('graveyard')) { if (build(c, 'graveyard')) return; }
+  // the graveyard's plot is claimed early, before the land fills up
+  if ((c.dead.some((d) => !d.left) || pop >= 12) && !count('graveyard')) { if (build(c, 'graveyard')) return; }
   if (pop >= 4 && !count('well')) { if (build(c, 'well')) return; }
   if (pop >= 7 && !count('workshop')) { if (build(c, 'workshop')) return; }
   if (pop >= 9 && !count('tavern')) { if (build(c, 'tavern')) return; }

@@ -11,6 +11,7 @@ import { assignBeds, assignProfs, build } from './planner';
 import { Rand, S, hashStr } from './rng';
 import { importPawns, type SettlerMsg } from './settle';
 import { step } from './step';
+import { pave } from './town';
 import { RES, type Colony, type Pawn, type RaceK } from './types';
 
 export { step } from './step';
@@ -134,6 +135,8 @@ export function createColony(o: CreateOpts): Colony {
   assignBeds(c, true);
   assignProfs(c, true);
   initGov(c, r);
+  // the first streets and the square are laid when the colony is founded
+  pave(c, 160);
   for (const p of c.pawns) {
     p.x = c.cx + r.range(-2, 2);
     p.y = c.cy + r.range(-1, 2);
@@ -161,6 +164,7 @@ function foundColony(c: Colony, msg: SettlerMsg, r: Rand): Colony {
   c.stock.wood += 40;
   assignProfs(c, true);
   initGov(c, r);
+  pave(c, 120);
   const lead = c.pawns.find((p) => p.id === leader);
   if (lead) {
     const old = c.pawns.find((p) => p.id === c.gov.ruler);
