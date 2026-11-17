@@ -11,6 +11,7 @@ import { stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
 import { BLD_ICON, SWINGING, WORK_HELD, drawHeld, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
 import { SHAPE, yearsAt } from './look';
+import { Fx, type FxPawn } from './fx';
 import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
 
 /** Chunk size in tiles. */
@@ -19,7 +20,7 @@ const CH = 8;
 const FIG = 1.3;
 
 /** A raider or beast, as far as the view needs to know (the sim's Foe has more). */
-interface FoeLike { id: number; k: string; x: number; y: number; px: number; py: number }
+interface FoeLike { id: number; k: string; x: number; y: number; px: number; py: number; hp?: number }
 const OPEN_AIR = new Set(['well', 'field', 'graveyard']);
 
 interface Chunk { x0: number; y0: number; x1: number; y1: number; st: Graphics; ground: Graphics; canopy: Graphics; sigS: number; sigF: number }
@@ -37,6 +38,9 @@ interface PawnView {
   /** the tool or weapon in their hand, and which one it is */
   held: Graphics;
   heldKey: string;
+  /** two feet that step while they walk */
+  feet: Graphics;
+  moving: boolean;
   actKey: string;
   bubble: Graphics;
   mark: Graphics;
@@ -106,7 +110,12 @@ export class MapView {
   private pileKey = '';
   private chunks: Chunk[] = [];
   private views = new Map<Id, PawnView>();
-  private foeViews = new Map<number, { g: Graphics; stamp: number }>();
+  private foeViews = new Map<number, { g: Graphics; stamp: number; hp?: number; flash?: number }>();
+  /** work effects just above the people, and the wild things above the trees */
+  private fx = new Fx();
+  private fxWork = new Graphics();
+  private fxSky = new Graphics();
+  private fxPawns: FxPawn[] = [];
   private beastViews = new Map<number, { g: Graphics; stamp: number; face: number }>();
   private herdViews = new Map<number, { g: Graphics; stamp: number; face: number }>();
   private blds = new Map<number, Bld>();
@@ -196,7 +205,7 @@ export class MapView {
     }
     this.night.clear().rect(0, 0, this.mw, this.mh).fill(0xffffff);
     this.overLayer.addChild(this.ring, this.mineMark);
-    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.pawnLayer, this.canopyLayer, this.night, this.lightLayer, this.signLayer, this.overLayer);
+    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.pawnLayer, this.fxWork, this.canopyLayer, this.fxSky, this.night, this.lightLayer, this.signLayer, this.overLayer);
     // the old pile graphic went with the old chunks: start a fresh one
     this.piles = new Graphics();
     this.structLayer.addChild(this.piles);
@@ -223,6 +232,19 @@ export class MapView {
     this.refreshStatic(false);
     this.syncPawns(tf);
     this.syncFoes(tf);
+    {
+      const s = this.cam.scale.x;
+      const x0 = -this.cam.x / s / TS - 1;
+      const y0 = -this.cam.y / s / TS - 1;
+      const list = this.fxPawns;
+      list.length = 0;
+      for (const p of c.pawns) {
+        const v = this.views.get(p.id);
+        if (!v || v.asleep) continue;
+        list.push({ id: p.id, x: v.x, y: v.y, size: v.size, moving: v.moving, k: p.act.k, w: p.act.w, ta: p.act.ta, tx: p.act.tx, ty: p.act.ty, d: p.act.d, b: p.act.b });
+      }
+      this.fx.draw(this.fxWork, this.fxSky, c, list, this.time, tf, { x0, y0, x1: x0 + this.app.screen.width / s / TS + 2, y1: y0 + this.app.screen.height / s / TS + 2 }, s);
+    }
     this.syncBeasts(tf);
     this.syncAnimals(tf, 'herd', this.herdViews);
     this.syncSigns(c);
@@ -324,7 +346,8 @@ export class MapView {
     const fig = new Graphics();
     const blanket = new Graphics();
     blanket.visible = false;
-    root.addChild(fig, blanket);
+    const feet = new Graphics();
+    root.addChild(feet, fig, blanket);
     const over = new Container();
     const act = new Graphics();
     act.visible = false;
@@ -347,7 +370,7 @@ export class MapView {
     this.pawnLayer.addChild(root);
     this.overLayer.addChild(over);
     this.labelLayer.addChild(label);
-    const v: PawnView = { id: p.id, root, fig, blanket, over, pin, act, actKey: '', held, heldKey: '', bubble, mark, label, key: '', keyTick: -1, bubbleKey: '', markKey: '', blanketKey: -1, x: 0, y: 0, tile: 0, size: 1, asleep: false, stamp: 0 };
+    const v: PawnView = { id: p.id, root, fig, blanket, over, pin, act, actKey: '', held, heldKey: '', feet, moving: false, bubble, mark, label, key: '', keyTick: -1, bubbleKey: '', markKey: '', blanketKey: -1, x: 0, y: 0, tile: 0, size: 1, asleep: false, stamp: 0 };
     this.views.set(p.id, v);
     return v;
   }
@@ -388,6 +411,7 @@ export class MapView {
 
       this.place(p, tf);
       const moving = this.pos.moving;
+      v.moving = moving;
       const tx = Math.floor(this.pos.x / TS);
       const ty = Math.floor(this.pos.y / TS);
       v.tile = ty * c.w + tx;
@@ -415,9 +439,20 @@ export class MapView {
       } else {
         v.fig.rotation = 0;
         const bob = moving ? -Math.abs(Math.sin(this.time * 0.011 + p.id)) * 1.7 : p.act.k === 'work' ? Math.sin(this.time * 0.007 + p.id) * 0.6 : 0;
-        v.fig.position.set(0, bob * v.size);
+        // at a festival they dance: a sway and a hop
+        const dancing = !moving && p.act.k === 'attend' && c.gath?.k === 'festival' && tf >= p.act.ta;
+        v.fig.rotation = dancing ? Math.sin(this.time * 0.009 + p.id) * 0.28 : moving ? Math.sin(this.time * 0.018 + p.id) * 0.05 : 0;
+        v.fig.position.set(0, bob * v.size - (dancing ? Math.abs(Math.sin(this.time * 0.009 + p.id)) * 3 : 0));
       }
       v.blanket.visible = inBed;
+      // feet step under them as they walk
+      const f = v.feet;
+      f.clear();
+      if (moving) {
+        const stride = Math.sin(this.time * 0.02 + p.id) * 2.4;
+        const fw = 2.2 * v.size * boost;
+        f.ellipse(-fw, (5 + stride) * v.size * boost, 1.7 * v.size, 1.2 * v.size).ellipse(fw, (5 - stride) * v.size * boost, 1.7 * v.size, 1.2 * v.size).fill(0x2a1d12);
+      }
 
       // Marks and speech bubbles float above the head, on top of the night shading.
       const markKey = asleep ? 'z' : p.brk ? 'break' : p.insp && p.insp[1] > c.tick ? 'star' : '';
@@ -511,9 +546,13 @@ export class MapView {
         this.foeViews.set(f.id, v);
       }
       v.stamp = stamp;
+      if (v.hp !== undefined && f.hp !== undefined && f.hp < v.hp) v.flash = 1;
+      v.hp = f.hp;
+      v.flash = Math.max(0, (v.flash ?? 0) - 0.06);
+      v.g.tint = v.flash > 0 ? 0xff7a7a : 0xffffff;
       const x = (f.px + (f.x - f.px) * u + 0.5) * TS;
       const y = (f.py + (f.y - f.py) * u + 0.5) * TS;
-      v.g.position.set(x, y - Math.abs(Math.sin(this.time * 0.011 + f.id)) * 1.5);
+      v.g.position.set(x + (v.flash > 0.5 ? Math.sin(this.time * 0.08) * 1.5 : 0), y - Math.abs(Math.sin(this.time * 0.011 + f.id)) * 1.5);
       v.g.zIndex = y;
     }
     for (const [id, v] of this.foeViews) {
