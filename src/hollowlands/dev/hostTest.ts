@@ -4,6 +4,8 @@
 import { TICKS_PER_DAY } from '../config';
 import { ColonyHost, LEAD, type KV } from '../server/host';
 import { LocalWorld } from '../server/local';
+import { RegionHost } from '../server/region';
+import type { D1, D1Stmt } from '../../net/db';
 import type { PawnSpec } from '../sim/create';
 import { colonyHash, deserialize, step, type Colony, type Input } from '../sim/index';
 
@@ -217,6 +219,88 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
   const after = (await call<Region>('region')).body;
   const gone = await call(`c/${before.sites[0].id}/state`);
   check('starting over retires the old colonies and makes new ones', wipe.body.ok && wipe.body.retired === 2 && after.seed === 99 && after.sites.length === 2 && !after.sites.some((s) => before.sites.some((b) => b.id === s.id)) && gone.status === 404, after.sites.map((s) => s.name).join(', '));
+}
+
+// ---------- A world whose creation is cut short ----------
+{
+  const stores = new Map<string, Map<string, string>>();
+  const kvFor = (name: string): KV => {
+    let m = stores.get(name);
+    if (!m) { m = new Map(); stores.set(name, m); }
+    const mm = m;
+    return { get: async (k) => mm.get(k), put: async (k, v) => void mm.set(k, v) };
+  };
+  const hosts = new Map<string, ColonyHost>();
+  const hostOpts = { msPerDay: 240_000, maxStep: 4000, pop: 12, preDays: 1, managed: true, now: () => now };
+  let failOn = '';
+  // the region's line to each colony; it breaks once, after the colony has been made but before
+  // the region hears back (as when the worker runs out of time part way)
+  const link = async (id: string, path: string, body?: unknown): Promise<Record<string, unknown>> => {
+    let h = hosts.get(id);
+    if (!h) { h = new ColonyHost(kvFor('c_' + id), null, hostOpts); hosts.set(id, h); }
+    const r = (await (await h.handle(new Request(`http://x/api/hl/c/${id}/${path}`, { method: 'POST', body: JSON.stringify(body ?? {}) }), true)).json()) as Record<string, unknown>;
+    if (failOn && id.endsWith(failOn)) { failOn = ''; throw new Error('out of time'); }
+    return r;
+  };
+  const ropts = { seed: 41, colonies: 4, pop: 12, preDays: 1, now: () => now };
+  interface Region { sites: { id: string; name: string }[] }
+  const look = async (r: RegionHost): Promise<Region> => (await (await r.handle(new Request('http://x/api/hl/region'), false)).json()) as Region;
+
+  // the same keeper is asked again
+  failOn = 'c2';
+  const r1 = new RegionHost(kvFor('region'), ropts, link);
+  const first = await look(r1).then(() => 'answered', (e) => String(e));
+  const part = JSON.parse(stores.get('region')!.get('world')!) as { sites: unknown[]; n: number };
+  check('a world cut short keeps what it made and how many it meant to make', first.includes('out of time') && part.sites.length === 2 && part.n === 4, `${part.sites.length} of ${part.n}`);
+  const [a, b] = await Promise.all([look(r1), look(r1)]);
+  const names = a.sites.map((s) => s.name);
+  check('the next request finishes the world, and nobody sees half of it', a.sites.length === 4 && b.sites.length === 4 && new Set(names).size === 4 && new Set(a.sites.map((s) => s.id)).size === 4, names.join(', '));
+
+  // a fresh keeper (the Durable Object restarted) finishes a world left half made
+  stores.clear();
+  hosts.clear();
+  failOn = 'c1';
+  const r2 = new RegionHost(kvFor('region'), ropts, link);
+  await look(r2).catch(() => undefined);
+  const r3 = new RegionHost(kvFor('region'), ropts, link);
+  const done = await look(r3);
+  check('a restarted keeper finishes a world left half made', done.sites.length === 4 && new Set(done.sites.map((s) => s.name)).size === 4 && done.sites.every((s, k) => s.id.endsWith('c' + k)), done.sites.map((s) => s.name).join(', '));
+}
+
+// ---------- A long sleep archives every event ----------
+{
+  const events = new Map<number, string>();
+  let biggest = 0;
+  const stmt = (sql: string, vals: unknown[] = []): D1Stmt => ({
+    bind: (...v: unknown[]) => stmt(sql, v),
+    first: async <T>() => ({ n: 0 }) as T,
+    all: async <T>() => ({ results: [] as T[] }),
+    run: async () => undefined,
+    sql, vals,
+  } as D1Stmt);
+  const db: D1 = {
+    prepare: (sql) => stmt(sql),
+    batch: async (list) => {
+      for (const st of list as (D1Stmt & { sql: string; vals: unknown[] })[]) if (st.sql.includes('INTO hl_events')) events.set(Number(st.vals[1]), String(st.vals[3]));
+      return [];
+    },
+  };
+  const m2 = new Map<string, string>();
+  const h = new ColonyHost({ get: async (k) => m2.get(k), put: async (k, v) => void m2.set(k, v) }, db, { ...opts, maxStep: 3000, pop: 40, preDays: 1, seed: 7 });
+  await h.advance();
+  const start = deserialize((await get<{ colony: string }>(h, 'snapshot')).colony);
+  const from = start.logBase + start.log.length;
+  for (let k = 0; k < 4; k++) {
+    now += 1000 * 3000;
+    const had = events.size;
+    await h.advance();
+    biggest = Math.max(biggest, events.size - had);
+  }
+  const live = deserialize((await get<{ colony: string }>(h, 'snapshot')).colony);
+  const end = live.logBase + live.log.length;
+  let missing = 0;
+  for (let id = from; id < end; id++) if (!events.has(id)) missing++;
+  check('a long catch-up archives every event', missing === 0 && end - from > 0, `${end - from} events, ${missing} missing, up to ${biggest} in one catch-up`);
 }
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

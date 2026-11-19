@@ -52,8 +52,7 @@ function inland(seed: number, x: number, y: number): number {
 }
 
 /** What covers a point of the region (in cell units). Colonies always sit on open, dry ground. */
-function landAt(seed: number, sites: WorldSite[], x: number, y: number): Land {
-  const e = height(seed, x, y);
+function landAt(seed: number, sites: WorldSite[], x: number, y: number, e = height(seed, x, y)): Land {
   const m = noise(seed, 3, x, y, 9) * 0.8 + noise(seed, 6, x, y, 3) * 0.2;
   let near = 99;
   for (const s of sites) near = Math.min(near, Math.hypot(s.x + 0.5 - x, s.y + 0.5 - y));
@@ -123,21 +122,43 @@ function rivers(seed: number, sites: WorldSite[]): [number, number][][] {
 }
 
 const FILL: Record<Land, string> = { sea: '#2b4a63', lake: '#3b6687', marsh: '#66775a', plain: '#93a066', forest: '#5f7c46', hills: '#a0915f', mount: '#8a8478' };
+const KINDS: Land[] = ['sea', 'lake', 'marsh', 'plain', 'forest', 'hills', 'mount'];
+/** Samples per cell side for the ground. */
+const SUB = 4;
+
+/** The ground at sub-cell samples, once, with a one-sample border so the shore pass can look at neighbours. */
+function landGrid(seed: number, sites: WorldSite[]): { at: (x: number, y: number) => Land; hi: (x: number, y: number) => number } {
+  const gw = W * SUB + 2;
+  const gh = H * SUB + 2;
+  const g = new Uint8Array(gw * gh);
+  const e = new Float32Array(gw * gh);
+  for (let y = -1; y <= H * SUB; y++) {
+    for (let x = -1; x <= W * SUB; x++) {
+      const i = (y + 1) * gw + x + 1;
+      const fx = (x + 0.5) / SUB;
+      const fy = (y + 0.5) / SUB;
+      const h = height(seed, fx, fy);
+      e[i] = h;
+      g[i] = KINDS.indexOf(landAt(seed, sites, fx, fy, h));
+    }
+  }
+  return { at: (x, y) => KINDS[g[(y + 1) * gw + x + 1]], hi: (x, y) => e[(y + 1) * gw + x + 1] };
+}
 
 function drawLand(ctx: CanvasRenderingContext2D, seed: number, land: Land[], sites: WorldSite[], flows: [number, number][][]): void {
   // the ground, sampled finer than the cells so coasts and woods have soft edges
-  const SUB = 4;
   const px = CELL / SUB;
+  const grid = landGrid(seed, sites);
+  const wet = (x: number, y: number): boolean => { const k = grid.at(x, y); return k === 'sea' || k === 'lake'; };
   for (let y = 0; y < H * SUB; y++) {
     for (let x = 0; x < W * SUB; x++) {
-      const fx = (x + 0.5) / SUB;
-      const fy = (y + 0.5) / SUB;
-      const k = landAt(seed, sites, fx, fy);
+      const k = grid.at(x, y);
       ctx.fillStyle = FILL[k];
       ctx.fillRect(x * px, y * px, px + 0.5, px + 0.5);
       if (k === 'sea' || k === 'lake') continue;
       // light on slopes facing the north-west, shade on the far side
-      const sl = (height(seed, fx + 0.3, fy + 0.3) - height(seed, fx - 0.3, fy - 0.3)) * 3;
+      // (neighbouring samples are a quarter cell apart: scaled to the old 0.3-cell reach)
+      const sl = (grid.hi(x + 1, y + 1) - grid.hi(x - 1, y - 1)) * 3 * (0.3 * SUB);
       if (Math.abs(sl) > 0.02) {
         ctx.fillStyle = sl > 0 ? `rgba(255,250,230,${Math.min(0.22, sl * 0.5).toFixed(3)})` : `rgba(20,15,10,${Math.min(0.26, -sl * 0.6).toFixed(3)})`;
         ctx.fillRect(x * px, y * px, px + 0.5, px + 0.5);
@@ -148,10 +169,8 @@ function drawLand(ctx: CanvasRenderingContext2D, seed: number, land: Land[], sit
   ctx.fillStyle = 'rgba(214,200,150,0.55)';
   for (let y = 0; y < H * SUB; y++) {
     for (let x = 0; x < W * SUB; x++) {
-      const k = landAt(seed, sites, (x + 0.5) / SUB, (y + 0.5) / SUB);
-      if (k === 'sea' || k === 'lake') continue;
-      const wet = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) => { const o = landAt(seed, sites, (x + ox + 0.5) / SUB, (y + oy + 0.5) / SUB); return o === 'sea' || o === 'lake'; });
-      if (wet) ctx.fillRect(x * px, y * px, px + 0.5, px + 0.5);
+      if (wet(x, y)) continue;
+      if (wet(x + 1, y) || wet(x - 1, y) || wet(x, y + 1) || wet(x, y - 1)) ctx.fillRect(x * px, y * px, px + 0.5, px + 0.5);
     }
   }
   // rivers, widening as they run
@@ -228,6 +247,53 @@ function drawLand(ctx: CanvasRenderingContext2D, seed: number, land: Land[], sit
       ctx.beginPath(); ctx.moveTo(mx - 3 * sz, base - hgt + 5 * sz); ctx.lineTo(mx, base - hgt); ctx.lineTo(mx + 3 * sz, base - hgt + 5 * sz); ctx.closePath(); ctx.fill();
     }
   }
+}
+
+/** The land, rivers and what grows on them, drawn once per world shape and kept: drawing it costs a lot. */
+let landCache: { key: string; canvas: HTMLCanvasElement } | null = null;
+
+function landLayer(seed: number, sites: WorldSite[]): HTMLCanvasElement | null {
+  const key = `${seed}|${sites.length}|${sites.filter((s) => s.dead).length}`;
+  if (landCache?.key === key) return landCache.canvas;
+  const canvas = document.createElement('canvas');
+  canvas.width = W * CELL;
+  canvas.height = H * CELL;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  drawLand(ctx, seed, lands(seed, sites), sites, rivers(seed, sites));
+  landCache = { key, canvas };
+  return canvas;
+}
+
+/** Push apart name labels that would cover each other (measured as laid out, so it works at any width). */
+function spreadLabels(box: HTMLElement): void {
+  const els = Array.from(box.querySelectorAll<HTMLElement>('.wlabel'));
+  if (els.length < 2) return;
+  const bh = box.clientHeight;
+  const r = els.map((e) => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, h: b.height, dy: 0 }; });
+  const top0 = box.getBoundingClientRect().top;
+  const GAP = 1;
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false;
+    const order = r.map((_, k) => k).sort((a, b) => r[a].t + r[a].dy - (r[b].t + r[b].dy) || a - b);
+    for (let i = 0; i < order.length; i++) {
+      for (let j = i + 1; j < order.length; j++) {
+        const a = r[order[i]];
+        const b = r[order[j]];
+        if (a.r <= b.l || b.r <= a.l) continue;
+        const at = a.t + a.dy;
+        const bt = b.t + b.dy;
+        const need = at + a.h + GAP - bt;
+        if (need <= 0 || bt + b.h + GAP <= at) continue;
+        // the lower one steps down, unless that would take it off the map: then the upper one steps up
+        if (bt + need + b.h - top0 <= bh) b.dy += need;
+        else a.dy -= need;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  els.forEach((e, k) => { if (r[k].dy) e.style.marginTop = `${Math.round(r[k].dy)}px`; });
 }
 
 /** Two colonies at war: a red dashed line, crossed swords at the middle. */
@@ -351,12 +417,15 @@ export class WorldView {
       return `<button class="wrow${s.id === here ? ' here' : ''}" data-c="${s.id}"><b>${esc(s.name)}${s.id === mine ? ' <span class="tie kin">Yours</span>' : ''}${s.id === here ? ' <span class="tie dim">Viewing</span>' : ''}</b><span>${sub}</span><span>${origin}</span></button>`;
     }).join('');
     // names over the map, as links, placed where the canvas puts the colonies
-    const labels = sites.map((s) => `<button class="wlabel${s.id === here ? ' here' : ''}${s.dead ? ' dead' : ''}" data-c="${s.id}" style="left:${(((s.x + 0.5) / W) * 100).toFixed(2)}%;top:${((((s.y + 0.5) * CELL + 14) / (H * CELL)) * 100).toFixed(2)}%">${esc(s.name)}</button>`).join('');
+    // a colony founded on a ruin stands on the same spot: only the living one is named
+    const named = sites.filter((s) => !s.dead || !sites.some((o) => !o.dead && o.x === s.x && o.y === s.y));
+    const labels = named.map((s) => `<button class="wlabel${s.id === here ? ' here' : ''}${s.dead ? ' dead' : ''}" data-c="${s.id}" style="left:${(((s.x + 0.5) / W) * 100).toFixed(2)}%;top:${((((s.y + 0.5) * CELL + 14) / (H * CELL)) * 100).toFixed(2)}%">${esc(s.name)}</button>`).join('');
     this.el.innerHTML = `<div class="wbox panel"><div class="whead"><b>The Hollow Lands</b><span>${sites.filter((s) => !s.dead).length} colonies</span><button class="icon" data-x title="Close" aria-label="Close">&times;</button></div><div class="wmapbox"><canvas class="wmap" width="${W * CELL}" height="${H * CELL}"></canvas>${labels}</div><div class="wlist">${rows}</div></div>`;
     const canvas = this.el.querySelector('canvas') as HTMLCanvasElement;
     const ctx = canvas.getContext('2d');
-    if (ctx) {
-      drawLand(ctx, seed, lands(seed, sites), sites, rivers(seed, sites));
+    const layer = ctx ? landLayer(seed, sites) : null;
+    if (ctx && layer) {
+      ctx.drawImage(layer, 0, 0);
       // roads: from each colony to the one that founded it, and to its two nearest neighbours
       const done = new Set<string>();
       const link = (a: WorldSite, b: WorldSite): void => {
@@ -381,5 +450,7 @@ export class WorldView {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     this.el.classList.remove('hidden');
+    const box = this.el.querySelector<HTMLElement>('.wmapbox');
+    if (box) spreadLabels(box);
   }
 }

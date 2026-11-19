@@ -2,7 +2,7 @@
 
 import type { Colony, Fact, Id, Pawn } from './types';
 
-const LOG_KEEP = 800;
+const LOG_KEEP = 1200;
 
 export function log(c: Colony, k: string, a?: Id, b?: Id, s?: string, n?: number): void {
   c.log.push({ t: c.tick, k, a, b, s, n });

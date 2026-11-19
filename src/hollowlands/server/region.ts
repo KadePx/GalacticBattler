@@ -11,7 +11,7 @@ export interface RegionOpts { seed?: number; /** colonies a new world starts wit
 
 /** What the region knows about a colony at a glance (kept fresh by the colony's own reports). */
 export interface SiteInfo extends Site { pop: number; ruler?: string; tick?: number; owners?: string[]; /** colonies this one is at war with */ wars?: string[] }
-interface WorldRec { seed: number; count: number; sites: SiteInfo[]; created: number; day?: number; lastThreat?: number }
+interface WorldRec { seed: number; count: number; /** colonies the world starts with; creation carries on until there are this many */ n?: number; sites: SiteInfo[]; created: number; day?: number; lastThreat?: number }
 
 /** Call a colony's keeper: path under its own API, optional JSON body (POST). */
 export type Link = (id: string, path: string, body?: unknown) => Promise<Record<string, unknown>>;
@@ -28,27 +28,38 @@ export class RegionHost {
     await this.kv.put('world', JSON.stringify(this.w));
   }
 
+  /** Make sure the world exists, finishing its creation if an earlier attempt stopped part way. */
   async load(): Promise<void> {
-    if (this.w) return;
-    this.loading ??= (async () => {
+    if (!this.loading && this.w && this.w.sites.length >= (this.w.n ?? 0)) return;
+    if (!this.loading) {
+      const p: Promise<void> = this.build().finally(() => { if (this.loading === p) this.loading = null; });
+      this.loading = p;
+    }
+    await this.loading;
+  }
+
+  private async build(): Promise<void> {
+    if (!this.w) {
       const saved = await this.kv.get('world');
-      if (saved) { this.w = JSON.parse(saved) as WorldRec; return; }
-      const now = this.o.now();
-      const seed = this.o.seed ?? ((now % 2147483647) | 1);
-      const w: WorldRec = { seed, count: 0, sites: [], created: now };
-      this.w = w;
-      const n = this.o.colonies ?? startColonies(seed);
-      for (let k = 0; k < n; k++) {
-        const id = (w.seed % 46656).toString(36) + 'c' + w.count; // unique to this world, so archives never mix
-        const cs = colonySeed(seed, w.count);
-        const [x, y] = pickSpot(seed, w.sites, undefined, w.count);
-        const made = await this.link(id, 'init', { seed: cs, id, pop: this.o.pop + (cs % 11), preDays: this.o.preDays, avoid: w.sites.map((s) => s.name) });
-        w.sites.push({ id, name: String(made.name ?? id), x, y, founded: 0, seed: cs, pop: Number(made.pop) || 0 });
-        w.count++;
+      if (saved) this.w = JSON.parse(saved) as WorldRec;
+      else {
+        const now = this.o.now();
+        const seed = this.o.seed ?? ((now % 2147483647) | 1);
+        this.w = { seed, count: 0, sites: [], created: now, n: this.o.colonies ?? startColonies(seed) };
         await this.save();
       }
-    })();
-    await this.loading;
+    }
+    const w = this.w;
+    // one at a time and in order: each new colony avoids the names of those before it
+    while (w.sites.length < (w.n ?? 0)) {
+      const id = (w.seed % 46656).toString(36) + 'c' + w.count; // unique to this world, so archives never mix
+      const cs = colonySeed(w.seed, w.count);
+      const [x, y] = pickSpot(w.seed, w.sites, undefined, w.count);
+      const made = await this.link(id, 'init', { seed: cs, id, pop: this.o.pop + (cs % 11), preDays: this.o.preDays, avoid: w.sites.map((s) => s.name) });
+      w.sites.push({ id, name: String(made.name ?? id), x, y, founded: 0, seed: cs, pop: Number(made.pop) || 0 });
+      w.count++;
+      await this.save();
+    }
   }
 
   /** A colony reports in, and hands over anything it has sent out into the world. */

@@ -108,12 +108,81 @@ export function genMap(c: Colony): void {
     rises.push([x, y, r.range(Math.round(4 * K), Math.round(7 * K)), 0.08 + r.float() * (c.biome === 'hills' || c.biome === 'highland' ? 0.2 : 0.12)]);
     k++;
   }
-  // the rise beside the town, where a keep will one day stand: away from the road and the river
+  const marshy = c.biome === 'marsh';
+  // ---------- Water ----------
+  // how far each tile is from the nearest river, less that river's width there
+  const rd = new Float32Array(N).fill(99);
+  const ford = new Uint8Array(N);
+  const stamp = (x: number, y: number, w: number, isFord: boolean): void => {
+    const R = 4;
+    for (let yy = Math.floor(y - R); yy <= Math.ceil(y + R); yy++) {
+      if (yy < 0 || yy >= H) continue;
+      for (let xx = Math.floor(x - R); xx <= Math.ceil(x + R); xx++) {
+        if (xx < 0 || xx >= W) continue;
+        const i = yy * W + xx;
+        const d = Math.sqrt((xx - x) * (xx - x) + (yy - y) * (yy - y)) - w;
+        if (d < rd[i]) rd[i] = d;
+        if (isFord && d < 1.6) ford[i] = 1;
+      }
+    }
+  };
+  /** A river across the whole map: horizontal (h) or vertical, wandering about a line `off` from the centre. */
+  const river = (h: boolean, off: number, salt: number, minOff: number): void => {
+    const L = h ? W : H;
+    const vc = h ? cy : cx;
+    const uc = h ? cx : cy;
+    const fords = [r.range(Math.round(L * 0.12), Math.round(L * 0.4)), r.range(Math.round(L * 0.6), Math.round(L * 0.88))];
+    const sgn = off >= 0 ? 1 : -1;
+    for (let s = 0; s < L * 2; s++) {
+      const u = s / 2;
+      let v = vc + off + (vnoise(seed, salt, 0, u, 16) - 0.5) * 16 + (vnoise(seed, salt + 1, 0, u, 5) - 0.5) * 3;
+      // the river bends away from the town rather than through it
+      const du = Math.abs(u - uc);
+      const keep = minOff - du * 0.35;
+      if (keep > 0 && (v - vc) * sgn < keep) v = vc + sgn * keep;
+      const w = Math.max(0.6, 1.1 + P.wide + (vnoise(seed, salt + 2, 0, u, 9) - 0.5) * 1.2);
+      const isFord = fords.some((f) => Math.abs(u - f) <= 1.5);
+      if (h) stamp(u, v, w, isFord);
+      else stamp(v, u, w, isFord);
+    }
+  };
+  const towardRoad = roadSide === 2 || roadSide === 1 ? 1 : -1;
+  const riverOff = Math.round(13 * K) + r.range(0, Math.round(4 * K));
+  river(roadV, towardRoad * riverOff, 20, Math.round(11 * K));
+  if (r.chance(P.river2)) river(!roadV, (r.chance(0.5) ? 1 : -1) * (Math.round(19 * K) + r.range(0, Math.round(6 * K))), 30, Math.round(16 * K));
+  // the sea's edge on a coast: how far a point lies out past it
+  const into = (x: number, y: number): number => (seaSide === 0 ? -y : seaSide === 1 ? x : seaSide === 2 ? y : -x);
+  const along = (x: number, y: number): number => (seaSide === 0 || seaSide === 2 ? x : y);
+  const seaLine = coast ? into(cx, cy) + Math.round(19 * K) + r.range(0, Math.round(4 * K)) : 0;
+  const seaD = (x: number, y: number): number => {
+    const a = along(x, y);
+    return into(x, y) - (seaLine + (vnoise(seed, 6, 0, a, 11) - 0.5) * 12 + (vnoise(seed, 16, 0, a, 4) - 0.5) * 3);
+  };
+
+  // the rise beside the town, where a keep will one day stand: away from the road, and on ground
+  // the rivers, lakes and sea leave dry (clearing it later must not cut a river in two)
   const away = (roadSide + 2) % 4;
   const kd = Math.round(13 * K) + r.range(0, 2);
   const side = r.chance(0.5) ? 1 : -1;
-  const kx = Math.round(cx + SIDE_DX[away] * kd + SIDE_DX[(away + 1) % 4] * side * r.range(2, 6));
-  const ky = Math.round(cy + SIDE_DY[away] * kd + SIDE_DY[(away + 1) % 4] * side * r.range(2, 6));
+  const lat = r.range(2, 6);
+  const lat2 = r.range(2, 6);
+  const wetAt = (x: number, y: number): boolean => rd[y * W + x] < 1.3 + (marshy ? 0.8 : 0) || (coast && seaD(x, y) > 0);
+  let kx = 0;
+  let ky = 0;
+  let bestWet = Infinity;
+  for (const dd of [kd, kd + 3, kd - 2, kd + 6]) {
+    for (const [l1, l2] of [[lat, lat2], [-lat, -lat2], [0, 0], [lat + 5, lat2 + 5], [-lat - 5, -lat2 - 5]]) {
+      const x = Math.round(cx + SIDE_DX[away] * dd + SIDE_DX[(away + 1) % 4] * side * l1);
+      const y = Math.round(cy + SIDE_DY[away] * dd + SIDE_DY[(away + 1) % 4] * side * l2);
+      if (x < KEEP_R + 2 || y < KEEP_R + 2 || x > W - KEEP_R - 3 || y > H - KEEP_R - 3) continue;
+      let wet = 0;
+      const R = KEEP_R + 1;
+      for (let yy = y - R; yy <= y + R; yy++) for (let xx = x - R; xx <= x + R; xx++) if ((xx - x) * (xx - x) + (yy - y) * (yy - y) < R * R && wetAt(xx, yy)) wet++;
+      if (wet < bestWet) { bestWet = wet; kx = x; ky = y; }
+      if (!wet) break;
+    }
+    if (!bestWet) break;
+  }
   c.keep = { x: kx, y: ky };
   const keepRise = [kx, ky, Math.round(5 * K), 0.1];
 
@@ -183,48 +252,6 @@ export function genMap(c: Colony): void {
     return false;
   };
 
-  // ---------- Water ----------
-  // how far each tile is from the nearest river, less that river's width there
-  const rd = new Float32Array(N).fill(99);
-  const ford = new Uint8Array(N);
-  const stamp = (x: number, y: number, w: number, isFord: boolean): void => {
-    const R = 4;
-    for (let yy = Math.floor(y - R); yy <= Math.ceil(y + R); yy++) {
-      if (yy < 0 || yy >= H) continue;
-      for (let xx = Math.floor(x - R); xx <= Math.ceil(x + R); xx++) {
-        if (xx < 0 || xx >= W) continue;
-        const i = yy * W + xx;
-        const d = Math.sqrt((xx - x) * (xx - x) + (yy - y) * (yy - y)) - w;
-        if (d < rd[i]) rd[i] = d;
-        if (isFord && d < 1.6) ford[i] = 1;
-      }
-    }
-  };
-  /** A river across the whole map: horizontal (h) or vertical, wandering about a line `off` from the centre. */
-  const river = (h: boolean, off: number, salt: number, minOff: number): void => {
-    const L = h ? W : H;
-    const vc = h ? cy : cx;
-    const uc = h ? cx : cy;
-    const fords = [r.range(Math.round(L * 0.12), Math.round(L * 0.4)), r.range(Math.round(L * 0.6), Math.round(L * 0.88))];
-    const sgn = off >= 0 ? 1 : -1;
-    for (let s = 0; s < L * 2; s++) {
-      const u = s / 2;
-      let v = vc + off + (vnoise(seed, salt, 0, u, 16) - 0.5) * 16 + (vnoise(seed, salt + 1, 0, u, 5) - 0.5) * 3;
-      // the river bends away from the town rather than through it
-      const du = Math.abs(u - uc);
-      const keep = minOff - du * 0.35;
-      if (keep > 0 && (v - vc) * sgn < keep) v = vc + sgn * keep;
-      const w = Math.max(0.6, 1.1 + P.wide + (vnoise(seed, salt + 2, 0, u, 9) - 0.5) * 1.2);
-      const isFord = fords.some((f) => Math.abs(u - f) <= 1.5);
-      if (h) stamp(u, v, w, isFord);
-      else stamp(v, u, w, isFord);
-    }
-  };
-  const towardRoad = roadSide === 2 || roadSide === 1 ? 1 : -1;
-  const riverOff = Math.round(13 * K) + r.range(0, Math.round(4 * K));
-  river(roadV, towardRoad * riverOff, 20, Math.round(11 * K));
-  if (r.chance(P.river2)) river(!roadV, (r.chance(0.5) ? 1 : -1) * (Math.round(19 * K) + r.range(0, Math.round(6 * K))), 30, Math.round(16 * K));
-  const marshy = c.biome === 'marsh';
   for (let i = 0; i < N; i++) {
     const d = rd[i];
     if (d >= 2.4) continue;
@@ -235,14 +262,9 @@ export function genMap(c: Colony): void {
 
   // the sea, along the far side on a coast
   if (coast) {
-    const into = (x: number, y: number): number => (seaSide === 0 ? -y : seaSide === 1 ? x : seaSide === 2 ? y : -x);
-    const along = (x: number, y: number): number => (seaSide === 0 || seaSide === 2 ? x : y);
-    const reach = Math.round(19 * K) + r.range(0, Math.round(4 * K));
-    const line = into(cx, cy) + reach;
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
-        const a = along(x, y);
-        const d = into(x, y) - (line + (vnoise(seed, 6, 0, a, 11) - 0.5) * 12 + (vnoise(seed, 16, 0, a, 4) - 0.5) * 3);
+        const d = seaD(x, y);
         const i = y * W + x;
         if (d > 3.2) c.ter[i] = T.DEEP;
         else if (d > 0) c.ter[i] = T.SHALLOW;
@@ -258,11 +280,13 @@ export function genMap(c: Colony): void {
     const y = r.range(8, H - 9);
     const lr = marshy ? r.range(2, Math.round(3 * K)) : r.range(Math.round(2.5 * K), Math.round(5 * K));
     if (dCentre(x, y) < 14 * K + lr || nearRoad(x, y, lr + 5)) continue;
+    // nor over the keep's rise
+    if (Math.sqrt((x - kx) * (x - kx) + (y - ky) * (y - ky)) < lr + 4 + KEEP_R + 1) continue;
     for (let yy = y - lr - 4; yy <= y + lr + 4; yy++) {
       for (let xx = x - lr - 4; xx <= x + lr + 4; xx++) {
         if (xx < 1 || yy < 1 || xx >= W - 1 || yy >= H - 1) continue;
         const i = yy * W + xx;
-        const d = lr - Math.sqrt((xx - x) * (xx - x) + (yy - y) * (yy - y)) + (vnoise(seed, 12 + k, xx, yy, 4) - 0.5) * 3;
+        const d = lr - Math.sqrt((xx - x) * (xx - x) + (yy - y) * (yy - y)) + (vnoise(seed, 60 + k, xx, yy, 4) - 0.5) * 3;
         if (onRoad[i]) continue;
         if (d > 1.6) c.ter[i] = T.DEEP;
         else if (d > 0) { if (c.ter[i] !== T.DEEP) c.ter[i] = T.SHALLOW; }

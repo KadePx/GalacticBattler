@@ -50,6 +50,8 @@ interface SeqInput extends Input { seq: number }
 export const LEAD = 12;
 const SAVE_EVERY = TICKS_PER_HOUR * 2;
 const CHECK_EVERY = 100;
+/** Statements per D1 batch when archiving. */
+const ARCHIVE_BATCH = 80;
 const JOINS_PER_IP_PER_DAY = 5;
 /** Real milliseconds a player waits after a death before sending in someone new. */
 const REJOIN_MS = 30 * 60_000;
@@ -204,19 +206,27 @@ export class ColonyHost {
     const c = this.c!;
     const m = this.meta!;
     if (!this.db) { m.archived = c.logBase + c.log.length; m.buried = c.dead.length; return; }
-    const stmts = [];
+    const db = this.db;
     const end = c.logBase + c.log.length;
-    for (let id = Math.max(m.archived, c.logBase); id < end && stmts.length < 80; id++) {
-      const e = c.log[id - c.logBase];
-      stmts.push(this.db.prepare('INSERT OR REPLACE INTO hl_events (colony, id, t, k, a, b, s, n) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(m.id, id, e.t, e.k, e.a ?? null, e.b ?? null, e.s ?? null, e.n ?? null));
-      m.archived = id + 1;
-    }
     if (m.archived < c.logBase) m.archived = c.logBase;
-    for (; m.buried < c.dead.length && stmts.length < 90; m.buried++) {
-      const d = c.dead[m.buried];
-      stmts.push(this.db.prepare('INSERT OR REPLACE INTO hl_people (colony, id, owner, name, born, died, cause, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(m.id, d.id, d.owner ?? null, `${d.first} ${d.fam}`, d.born, d.died, d.cause, JSON.stringify(d)));
+    // in batches, until everything still in the log is safe: a long catch-up makes hundreds
+    while (m.archived < end || m.buried < c.dead.length) {
+      const stmts = [];
+      let id = m.archived;
+      for (; id < end && stmts.length < ARCHIVE_BATCH; id++) {
+        const e = c.log[id - c.logBase];
+        stmts.push(db.prepare('INSERT OR REPLACE INTO hl_events (colony, id, t, k, a, b, s, n) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(m.id, id, e.t, e.k, e.a ?? null, e.b ?? null, e.s ?? null, e.n ?? null));
+      }
+      let buried = m.buried;
+      for (; buried < c.dead.length && stmts.length < ARCHIVE_BATCH; buried++) {
+        const d = c.dead[buried];
+        stmts.push(db.prepare('INSERT OR REPLACE INTO hl_people (colony, id, owner, name, born, died, cause, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(m.id, d.id, d.owner ?? null, `${d.first} ${d.fam}`, d.born, d.died, d.cause, JSON.stringify(d)));
+      }
+      await db.batch(stmts);
+      // only count them as archived once D1 has them
+      m.archived = id;
+      m.buried = buried;
     }
-    if (stmts.length) await this.db.batch(stmts);
   }
 
   /** When the Durable Object should next wake: no need to wake every tick when nobody is asking. */
