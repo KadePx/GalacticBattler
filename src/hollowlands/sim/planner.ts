@@ -106,7 +106,9 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
       }
       if (!ok) continue;
       // a tower stands out along the road, where trouble comes from
-      const road = k === 'tower' ? Math.hypot(x + w / 2 - (c.cx + (c.gx - c.cx) * 0.45), y + h / 2 - (c.cy + (c.gy - c.cy) * 0.45)) : 0;
+      const rdx = x + w / 2 - (c.cx + (c.gx - c.cx) * 0.45);
+      const rdy = y + h / 2 - (c.cy + (c.gy - c.cy) * 0.45);
+      const road = k === 'tower' ? Math.sqrt(rdx * rdx + rdy * rdy) : 0;
       let score = planned
         ? lotScore(c, k, x, y, w, h, t.rows) + (field ? soil * 0.3 : 0) - (k === 'tower' ? road * 0.5 : 0)
         : field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - REACH) : k === 'tower' ? -road : -d;

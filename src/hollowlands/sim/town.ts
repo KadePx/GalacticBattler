@@ -66,7 +66,10 @@ export function quarter(c: Colony, k: string): { near: number; spread: number } 
  * and lined up with the block's edge. Higher is better.
  */
 export function lotScore(c: Colony, k: string, x: number, y: number, w: number, h: number, rows: string[]): number {
-  const d = Math.hypot(x + w / 2 - c.cx, y + h / 2 - c.cy);
+  // plain multiplication and sqrt: exact in every browser (hypot and ** are not)
+  const ddx = x + w / 2 - c.cx;
+  const ddy = y + h / 2 - c.cy;
+  const d = Math.sqrt(ddx * ddx + ddy * ddy);
   const q = quarter(c, k);
   let s = -Math.abs(d - q.near) * q.spread;
   if (k === 'field' || k === 'graveyard') return s;
