@@ -25,6 +25,8 @@ export const WALK_SPEED = 12;
 
 export const SOFT_CAP = 80;
 export const HARD_CAP = 100;
+/** Colonies a new world starts with: between these two (picked from the world's seed). */
+export const START_COLONIES = [6, 8] as const;
 /** People a new colony starts with: between these two. */
 export const START_POP = [35, 45] as const;
 

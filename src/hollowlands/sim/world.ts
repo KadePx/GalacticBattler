@@ -3,7 +3,7 @@
 // becomes a new colony. The server does the same job with one Durable Object per colony;
 // this version runs them all in one place for tests and local play.
 
-import { START_POP, TICKS_PER_DAY } from '../config';
+import { START_COLONIES, START_POP, TICKS_PER_DAY } from '../config';
 import { createColony } from './index';
 import { Rand, S, hash32 } from './rng';
 import type { SettlerMsg } from './settle';
@@ -23,20 +23,25 @@ export interface World {
   lastThreat?: number;
 }
 
-export const REGION_W = 48;
-export const REGION_H = 36;
+/** The region map, in cells (the world view draws the same grid). */
+export const REGION_W = 72;
+export const REGION_H = 54;
+
+/** How many colonies a new world starts with. */
+export const startColonies = (worldSeed: number): number => START_COLONIES[0] + (hash32(worldSeed >>> 0, S.GEN, 901) % (START_COLONIES[1] - START_COLONIES[0] + 1));
 
 /** A place on the region map for a new colony: a few days' walk from its parent, clear of the others. */
 export function pickSpot(seed: number, sites: Site[], near: Site | undefined, n: number): [number, number] {
   const r = new Rand(seed, S.GEN, 500, n);
-  let best: [number, number] = [r.range(4, REGION_W - 5), r.range(4, REGION_H - 5)];
+  let best: [number, number] = [r.range(6, REGION_W - 7), r.range(6, REGION_H - 7)];
   let score = -1e9;
-  for (let tries = 0; tries < 60; tries++) {
-    const x = near ? Math.max(3, Math.min(REGION_W - 4, near.x + r.range(-9, 9))) : r.range(4, REGION_W - 5);
-    const y = near ? Math.max(3, Math.min(REGION_H - 4, near.y + r.range(-7, 7))) : r.range(4, REGION_H - 5);
+  for (let tries = 0; tries < 80; tries++) {
+    const x = near ? Math.max(4, Math.min(REGION_W - 5, near.x + r.range(-12, 12))) : r.range(6, REGION_W - 7);
+    const y = near ? Math.max(4, Math.min(REGION_H - 5, near.y + r.range(-9, 9))) : r.range(6, REGION_H - 7);
     let gap = 99;
     for (const s of sites) gap = Math.min(gap, Math.abs(s.x - x) + Math.abs(s.y - y));
-    const sc = Math.min(gap, 9) + r.float();
+    // first colonies spread over the whole land; settlers stay a few days' walk from home
+    const sc = Math.min(gap, near ? 10 : 30) + r.float();
     if (sc > score) { score = sc; best = [x, y]; }
   }
   return best;
@@ -47,7 +52,7 @@ export const colonySeed = (worldSeed: number, n: number): number => hash32(world
 /** A new world: a handful of settled colonies that have already lived a while. */
 export function createWorld(o: { seed: number; colonies?: number; pop?: number; preDays?: number }): World {
   const w: World = { seed: o.seed >>> 0, tick: 0, sites: [], colonies: [], count: 0 };
-  const n = o.colonies ?? 4;
+  const n = o.colonies ?? startColonies(w.seed);
   for (let k = 0; k < n; k++) {
     const seed = colonySeed(w.seed, w.count);
     const c = createColony({ seed, pop: o.pop ?? START_POP[0] + (seed % (START_POP[1] - START_POP[0] + 1)), id: 'c' + w.count });

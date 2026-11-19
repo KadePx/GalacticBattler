@@ -2,12 +2,12 @@
 // few, and when a settler party walks out of one it finds them a place and starts a new one.
 // Each colony has its own keeper (host.ts); this one only passes things between them.
 
-import { colonySeed, pickSpot, type Site } from '../sim/world';
+import { colonySeed, pickSpot, startColonies, type Site } from '../sim/world';
 import type { SettlerMsg } from '../sim/settle';
 import type { KV } from './host';
 import { landThreat, nearLists, routeMsg, ruinFor, type Delivery } from '../sim/routes';
 
-export interface RegionOpts { seed?: number; colonies: number; pop: number; preDays: number; now: () => number; adminKey?: string }
+export interface RegionOpts { seed?: number; /** colonies a new world starts with (default: 6 to 8, from the seed) */ colonies?: number; pop: number; preDays: number; now: () => number; adminKey?: string }
 
 /** What the region knows about a colony at a glance (kept fresh by the colony's own reports). */
 export interface SiteInfo extends Site { pop: number; ruler?: string; tick?: number; owners?: string[]; /** colonies this one is at war with */ wars?: string[] }
@@ -37,7 +37,8 @@ export class RegionHost {
       const seed = this.o.seed ?? ((now % 2147483647) | 1);
       const w: WorldRec = { seed, count: 0, sites: [], created: now };
       this.w = w;
-      for (let k = 0; k < this.o.colonies; k++) {
+      const n = this.o.colonies ?? startColonies(seed);
+      for (let k = 0; k < n; k++) {
         const id = (w.seed % 46656).toString(36) + 'c' + w.count; // unique to this world, so archives never mix
         const cs = colonySeed(seed, w.count);
         const [x, y] = pickSpot(seed, w.sites, undefined, w.count);

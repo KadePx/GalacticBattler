@@ -87,7 +87,7 @@ export class RegionDO extends DurableObject<Env> {
     const storage = ctx.storage;
     this.host = new RegionHost(
       { get: (k) => storage.get<string>(k), put: (k, v) => storage.put(k, v) },
-      { colonies: 4, pop: 35, preDays: 120, now: Date.now, adminKey: env.HL_ADMIN_KEY },
+      { pop: 35, preDays: 120, now: Date.now, adminKey: env.HL_ADMIN_KEY },
       async (id, path, body) => (await (await env.COLONY.get(env.COLONY.idFromName(id)).fetch(inside(`https://hl/api/hl/c/${id}/${path}`, body))).json()) as Record<string, unknown>,
     );
   }

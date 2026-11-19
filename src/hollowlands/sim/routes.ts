@@ -70,5 +70,5 @@ export function landThreat(seed: number, day: number, sites: Place[], state: { l
 /** An abandoned colony close enough for settlers to move into, if they are so minded. */
 export function ruinFor<T extends Place>(seed: number, sites: T[], parent: Place | undefined, n: number): T | undefined {
   if (!parent || hash32(seed, S.GEN, 950, n) % 100 >= 40) return undefined;
-  return sites.filter((s) => s.dead && gap(s, parent) <= 14 && !sites.some((o) => !o.dead && o.x === s.x && o.y === s.y)).sort((a, b) => gap(a, parent) - gap(b, parent))[0];
+  return sites.filter((s) => s.dead && gap(s, parent) <= 18 && !sites.some((o) => !o.dead && o.x === s.x && o.y === s.y)).sort((a, b) => gap(a, parent) - gap(b, parent))[0];
 }

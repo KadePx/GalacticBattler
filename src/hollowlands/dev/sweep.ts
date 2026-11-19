@@ -17,7 +17,8 @@ const seen = new Map<string, number>();
 const flag = (k: string): void => { seen.set(k, (seen.get(k) ?? 0) + 1); };
 
 for (let s = 1; s <= worlds; s++) {
-  const w = createWorld({ seed: s * 7 + 1, colonies: 3 });
+  const w = createWorld({ seed: s * 7 + 1 });
+  console.log(`world ${s}: starts with ${w.colonies.length} colonies of ${w.colonies.map((c) => c.pawns.length).join(', ')}`);
   const stuck = new Map<string, number>();
   for (let d = 0; d < years * 60; d++) {
     for (let k = 0; k < TICKS_PER_DAY; k++) stepWorld(w);
