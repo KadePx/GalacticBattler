@@ -1,7 +1,7 @@
 // The things a colony does not say out loud: people kept in thrall, plots against the ruler
 // that grow one whispered conversation at a time, and a cult that meets after dark.
 
-import { TICKS_PER_DAY, dayOf } from '../config';
+import { HARD_CAP, TICKS_PER_DAY, dayOf } from '../config';
 import { ask } from './ask';
 import { accuse } from './crime';
 import { bump, log, note } from './events';
@@ -20,7 +20,7 @@ const adultsOf = (c: Colony): Pawn[] => c.pawns.filter((p) => !p.gone && stage(c
 /** A raider is taken alive. What becomes of them depends on who rules. */
 export function capture(c: Colony, kind: string, r: Rand): void {
   const ruler = pawnById(c, c.gov.ruler);
-  if (!ruler || c.pawns.length >= 36) return;
+  if (!ruler || c.pawns.length >= HARD_CAP - 4) return;
   if (c.gov.laws.thrall) {
     const p = makePawn(c, r, { race: kind === 'orc' ? 'orc' : r.pick(['human', 'human', 'orc', 'goblin', 'dwarf', 'halfling'] as const) });
     p.thrall = true;

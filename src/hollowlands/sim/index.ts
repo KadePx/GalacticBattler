@@ -1,6 +1,6 @@
 // Public face of the colony sim: make a colony, advance it, save and load it, fingerprint it.
 
-import { MAP_H, MAP_W, SIM_V, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
+import { MAP_H, MAP_W, SIM_V, START_POP, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
 import { RACES, PLAYABLE, childRace } from './data/races';
 import { emptyStock, mouths } from './econ';
 import { BIOMES, genMap } from './mapgen';
@@ -54,14 +54,14 @@ export function createColony(o: CreateOpts): Colony {
     // what is left of the last people who tried to live here
     c.ruins = o.ruinsOf;
     for (let k = 0; k < 26; k++) {
-      const x = c.cx + r.range(-11, 11);
-      const y = c.cy + r.range(-11, 11);
+      const x = c.cx + r.range(-20, 20);
+      const y = c.cy + r.range(-20, 20);
       const i = y * c.w + x;
       if (Math.abs(x - c.cx) + Math.abs(y - c.cy) > 5 && c.ter[i] <= 2 && !c.feat[i]) c.feat[i] = 7;
     }
   }
   if (o.settlers) return foundColony(c, o.settlers, r);
-  const pop = o.pop ?? 16;
+  const pop = o.pop ?? START_POP[0] + r.int(START_POP[1] - START_POP[0] + 1);
 
   let main = o.race;
   if (!main) {
@@ -112,8 +112,11 @@ export function createColony(o: CreateOpts): Colony {
     }
   }
 
+  // the core of a town this size: the hall, a store for every two dozen mouths, a well for every
+  // thirty, and a kitchen once the hall's hearth is not enough
   build(c, 'hall', true);
-  build(c, 'store', true);
+  for (let k = 0; k < Math.max(1, Math.round(pop / 24)); k++) build(c, 'store', true);
+  if (pop >= 24) build(c, 'kitchen', true);
   let singles = 0;
   for (const h of households) {
     if (h.length >= 3) build(c, 'bighouse', true);
@@ -121,7 +124,7 @@ export function createColony(o: CreateOpts): Colony {
     else singles++;
   }
   for (let k = 0; k < Math.ceil(singles / 2); k++) build(c, 'house', true);
-  build(c, 'well', true);
+  for (let k = 0; k < Math.max(1, Math.round(pop / 30)); k++) build(c, 'well', true);
   const fields = Math.ceil(mouths(c) * 0.4);
   const first = ['wheat', 'potato', 'grain', 'beans', 'oats', 'onion', 'cabbage', 'turnip'];
   for (let k = 0; k < fields; k++) build(c, 'field', true, first[k % first.length]);
@@ -136,7 +139,7 @@ export function createColony(o: CreateOpts): Colony {
   assignProfs(c, true);
   initGov(c, r);
   // the first streets and the square are laid when the colony is founded
-  pave(c, 160);
+  pave(c, 160 + pop * 6);
   for (const p of c.pawns) {
     p.x = c.cx + r.range(-2, 2);
     p.y = c.cy + r.range(-1, 2);

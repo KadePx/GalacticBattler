@@ -11,13 +11,42 @@ export interface Cache {
   reach: Uint8Array;
   dirty: boolean;
   feats: Map<number, number[]>;
+  /** every tile, nearest the colony centre first (ties by index): lists built in this order need no sorting */
+  order: Int32Array;
+  /** every feature list was built in one pass since the last change, so a missing one was dropped */
+  all: boolean;
 }
 
 const store = new WeakMap<object, Cache>();
 
+/**
+ * How each field's plots stand (ripe, bare, growing) by field id, counted at most once a tick.
+ * Anything that sows, reaps or kills a crop calls cropsChanged().
+ */
+export const fieldMemo = new WeakMap<object, { t: number; n: Map<number, [number, number, number]> }>();
+
+export function cropsChanged(c: Colony): void {
+  fieldMemo.delete(c);
+}
+
 export function touch(c: Colony): void {
   const k = store.get(c);
   if (k) k.dirty = true;
+}
+
+/**
+ * One tile changed. If it is still as open (or as blocked) as it was, nothing about who can
+ * reach what has changed: only its walking cost and the feature lists need redoing, which is
+ * far cheaper than a whole touch().
+ */
+export function touchAt(c: Colony, i: number): void {
+  const k = store.get(c);
+  if (!k || k.dirty) return;
+  const w = tileCost(c, i);
+  if (!w !== !k.walk[i]) { k.dirty = true; return; }
+  k.walk[i] = w;
+  k.feats.clear();
+  k.all = false;
 }
 
 export function tileCost(c: Colony, i: number): number {
@@ -42,14 +71,30 @@ export function tileCost(c: Colony, i: number): number {
 export function cacheOf(c: Colony): Cache {
   let k = store.get(c);
   if (!k) {
-    k = { walk: new Uint8Array(c.w * c.h), reach: new Uint8Array(c.w * c.h), dirty: true, feats: new Map() };
+    k = { walk: new Uint8Array(c.w * c.h), reach: new Uint8Array(c.w * c.h), dirty: true, feats: new Map(), order: byDistance(c), all: false };
     store.set(c, k);
   }
   if (k.dirty) rebuild(c, k);
   return k;
 }
 
+export const cacheStats = { rebuilds: 0, lists: 0 };
+function byDistance(c: Colony): Int32Array {
+  const n = c.w * c.h;
+  const d = new Float64Array(n);
+  const out = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i % c.w) - c.cx;
+    const y = Math.floor(i / c.w) - c.cy;
+    d[i] = x * x + y * y;
+    out[i] = i;
+  }
+  out.sort((a, b) => d[a] - d[b] || a - b);
+  return out;
+}
+
 function rebuild(c: Colony, k: Cache): void {
+  cacheStats.rebuilds++;
   const n = c.w * c.h;
   for (let i = 0; i < n; i++) k.walk[i] = tileCost(c, i);
   k.reach.fill(0);
@@ -69,6 +114,7 @@ function rebuild(c: Colony, k: Cache): void {
     if (y < c.h - 1 && !k.reach[i + c.w] && k.walk[i + c.w]) { k.reach[i + c.w] = 1; q[tail++] = i + c.w; }
   }
   k.feats.clear();
+  k.all = false;
   k.dirty = false;
 }
 
@@ -89,9 +135,17 @@ export function featList(c: Colony, f: number): number[] {
   const k = cacheOf(c);
   let out = k.feats.get(f);
   if (out) return out;
+  if (!k.all) {
+    allLists(c, k);
+    out = k.feats.get(f);
+    if (out) return out;
+  }
   out = [];
-  const n = c.w * c.h;
-  for (let i = 0; i < n; i++) {
+  cacheStats.lists++;
+  const order = k.order;
+  const n = order.length;
+  for (let o = 0; o < n; o++) {
+    const i = order[o];
     if (f === ROCK_FACE) {
       if (c.ter[i] !== T.ROCK || c.feat[i] !== F.NONE || c.sb[i]) continue;
     } else if (f === SHORE) {
@@ -99,14 +153,38 @@ export function featList(c: Colony, f: number): number[] {
     } else if (c.feat[i] !== f || c.sb[i]) continue;
     if (nearReach(c, k, i)) out.push(i);
   }
-  const d = (i: number): number => {
-    const x = (i % c.w) - c.cx;
-    const y = Math.floor(i / c.w) - c.cy;
-    return x * x + y * y;
-  };
-  out.sort((a, b) => d(a) - d(b) || a - b);
   k.feats.set(f, out);
   return out;
+}
+
+const FEAT_MAX = 16;
+
+/** Every feature list at once, in one walk over the map (each list comes out as featList would make it). */
+function allLists(c: Colony, k: Cache): void {
+  cacheStats.lists++;
+  const by: number[][] = [];
+  for (let f = 0; f < FEAT_MAX; f++) by.push([]);
+  const rock: number[] = [];
+  const shore: number[] = [];
+  const order = k.order;
+  const n = order.length;
+  for (let o = 0; o < n; o++) {
+    const i = order[o];
+    const f = c.feat[i];
+    const t = c.ter[i];
+    const free = !c.sb[i];
+    const isRock = t === T.ROCK && f === F.NONE && free;
+    const isShore = t === T.SHALLOW || t === T.DEEP;
+    if (!isRock && !isShore && (f === F.NONE || !free)) continue;
+    if (!nearReach(c, k, i)) continue;
+    if (isRock) rock.push(i);
+    if (isShore) shore.push(i);
+    if (f !== F.NONE && free && f < FEAT_MAX) by[f].push(i);
+  }
+  for (let f = 1; f < FEAT_MAX; f++) if (!k.feats.has(f)) k.feats.set(f, by[f]);
+  if (!k.feats.has(ROCK_FACE)) k.feats.set(ROCK_FACE, rock);
+  if (!k.feats.has(SHORE)) k.feats.set(SHORE, shore);
+  k.all = true;
 }
 
 /** Forget one feature list (after a bush is picked clean, say) without rebuilding the walk map. */

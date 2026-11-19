@@ -6,11 +6,15 @@
 //   npm run hl -- golden            determinism check against dev/golden.json
 //   npm run hl -- golden --update   accept the current result as the new golden hash
 //   npm run hl -- many 5 12         5 years across 12 seeds: survival and averages
+//   npm run hl -- size 3 1 90       snapshot size after 3 years, seed 1, 90 colonists (raw and gzipped)
+//   npm run hl -- many 5 6 1 90     ... from seed 1, starting with 90 colonists (default 40)
 
 import { DAYS_PER_SEASON, SEASON_NAMES, TICKS_PER_DAY, TICKS_PER_HOUR, when } from '../config';
 import { TH } from '../sim/data/thoughts';
 import { foodDays } from '../sim/econ';
 import { colonyHash, createColony, deserialize, serialize, step, type Colony, type RaceK } from '../sim/index';
+import { pathStats } from '../sim/path';
+import { cacheStats } from '../sim/cache';
 import { STAGE, ageYears, fullName, stage } from '../sim/pawn';
 import { WEIGHT, dateText, evText } from '../text';
 
@@ -26,6 +30,7 @@ async function fsMod(): Promise<{ readFileSync(p: string, e: string): string; wr
 }
 
 if (args[0] === 'golden') await golden(args.includes('--update'));
+else if (args[0] === 'size') await size();
 else if (args[0] === 'many') many();
 else report();
 
@@ -93,7 +98,8 @@ function report(): void {
     if (!c.pawns.length) { console.log('The colony is dead.'); break; }
   }
 
-  console.log(`\nSlowest season ${slowest.toFixed(0)} ms (a year is 4 seasons; budget 2000 ms per year)`);
+  console.log(`\nSlowest season ${slowest.toFixed(0)} ms (a year is 4 seasons; budget 5000 ms per year at 90 colonists)`);
+  console.log(`Paths: ${pathStats.calls} searches, ${pathStats.fails} failed, ${(pathStats.nodes / Math.max(1, pathStats.calls)).toFixed(0)} tiles looked at each; map cache rebuilt ${cacheStats.rebuilds} times, ${cacheStats.lists} feature lists`);
   console.log('\nCounters:');
   console.log('  ' + Object.keys(c.stats).sort().map((k) => `${k} ${Math.round(c.stats[k])}`).join(', '));
   console.log('\nHow adults spent their time:');
@@ -132,13 +138,38 @@ function many(): void {
   console.log([pad('seed', 6), pad('colony', 16), 'pop', 'mood', 'd_sick', 'd_fight', ...keys.map((k) => k.replace('death_', 'd_').slice(0, 7))].map((s, i) => (i > 1 ? lpad(s, 8) : s)).join(' '));
   const t0 = performance.now();
   const from = Number(args[3]) || 1;
+  const town: string[] = [];
   for (let seed = from; seed < from + n; seed++) {
-    const c = createColony({ seed, pop: 16 });
+    const c = createColony({ seed, pop: Number(args[4]) || 40 });
     const end = c.tick + years * 60 * TICKS_PER_DAY;
-    while (c.tick < end && c.pawns.length) step(c);
+    // who has gone without a bed, and for how long
+    const roofless = new Map<number, number>();
+    let longest = 0;
+    let homelessDays = 0;
+    let peak = 0;
+    let popSum = 0;
+    let days = 0;
+    while (c.tick < end && c.pawns.length) {
+      step(c);
+      if (c.tick % TICKS_PER_DAY !== 0) continue;
+      days++;
+      popSum += c.pawns.length;
+      if (c.pawns.length > peak) peak = c.pawns.length;
+      for (const p of c.pawns) {
+        if (p.home) { roofless.delete(p.id); continue; }
+        homelessDays++;
+        const d = (roofless.get(p.id) ?? 0) + 1;
+        roofless.set(p.id, d);
+        if (d > longest) longest = d;
+      }
+    }
     console.log([pad(seed, 6), pad(c.name, 16), c.pawns.length, avgMood(c)[0].toFixed(0), sick(c), slain(c), ...keys.map((k) => Math.round(c.stats[k] ?? 0))].map((s, i) => (i > 1 ? lpad(s, 8) : s)).join(' '));
+    const homeless = c.pawns.filter((p) => !p.home).length;
+    town.push(`  ${pad(seed, 6)} ${pad(c.name, 16)} pop ${lpad(c.pawns.length, 3)} (avg ${(popSum / Math.max(1, days)).toFixed(0)}, peak ${peak})  buildings ${lpad(c.blds.filter((b) => b.built).length, 3)}/${lpad(c.blds.length, 3)}  beds ${lpad(c.blds.reduce((a, b) => a + (b.built ? b.beds.length : 0), 0), 3)}  homeless now ${homeless}, person-days ${homelessDays}, longest ${longest} d  no room for: ${Object.keys(c.nosite).join(' ') || '-'}`);
   }
   console.log(`${((performance.now() - t0) / (n * years)).toFixed(0)} ms per colony-year`);
+  console.log('Towns:');
+  for (const line of town) console.log(line);
 }
 
 async function golden(update: boolean): Promise<void> {
@@ -167,4 +198,23 @@ async function golden(update: boolean): Promise<void> {
   const want = JSON.parse(fs.readFileSync(path, 'utf8')) as { hash: string };
   if (want.hash !== one.hash) { console.error(`FAIL: golden hash changed (${want.hash} -> ${one.hash}). If the sim change is intended, run with --update.`); process.exit(1); }
   console.log(`golden ok: ${one.hash}`);
+}
+
+async function size(): Promise<void> {
+  const years = Number(args[1]) || 3;
+  const seed = Number(args[2]) || 1;
+  const pop = Number(args[3]) || 90;
+  const zlib = (await import('node:' + 'zlib')) as unknown as { gzipSync(b: Uint8Array, o?: { level: number }): Uint8Array };
+  const c = createColony({ seed, pop });
+  const end = c.tick + years * 60 * TICKS_PER_DAY;
+  while (c.tick < end && c.pawns.length) step(c);
+  const json = serialize(c);
+  const bytes = new TextEncoder().encode(json);
+  const kb = (n: number): string => (n / 1024).toFixed(0) + ' KB';
+  console.log(`${c.name}: ${c.pawns.length} colonists, ${c.dead.length} dead, ${c.blds.length} buildings, ${c.w}x${c.h} after ${years} years`);
+  console.log(`snapshot ${kb(bytes.length)} raw, ${kb(zlib.gzipSync(bytes, { level: 9 }).length)} gzipped`);
+  // what takes the room
+  const raw = JSON.parse(json) as Record<string, unknown>;
+  const parts = Object.entries(raw).map(([k, v]) => [k, JSON.stringify(v).length] as [string, number]).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  console.log('largest parts (raw): ' + parts.map(([k, n]) => `${k} ${kb(n)}`).join(', '));
 }

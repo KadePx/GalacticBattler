@@ -100,8 +100,22 @@ export const PERM: Record<string, Partial<Record<StatK, number>>> = {
 
 export const fullName = (p: { first: string; fam: string; epi?: string }): string => (p.epi ? `${p.first} ${p.fam} ${p.epi}` : `${p.first} ${p.fam}`);
 
+// Colonists by id. The list only ever grows by push and is replaced (filtered) when people
+// leave, so the index is good while it is the same list at the same length.
+const byId = new WeakMap<object, { arr: Pawn[]; n: number; m: Map<Id, Pawn> }>();
+
 export function pawnById(c: Colony, id: Id): Pawn | undefined {
-  for (const p of c.pawns) if (p.id === id) return p;
+  let x = byId.get(c);
+  if (!x || x.arr !== c.pawns || x.n !== c.pawns.length) {
+    const m = new Map<Id, Pawn>();
+    for (const p of c.pawns) if (!m.has(p.id)) m.set(p.id, p);
+    x = { arr: c.pawns, n: c.pawns.length, m };
+    byId.set(c, x);
+  }
+  const p = x.m.get(id);
+  if (p && p.id === id) return p;
+  // an id changed under the index: look the slow way
+  if (p) { byId.delete(c); for (const q of c.pawns) if (q.id === id) return q; }
   return undefined;
 }
 

@@ -1,6 +1,7 @@
 // The land beyond the fences: animals that wander it, storms that bring trees down, mushrooms
 // in autumn, and woods that grow back.
 
+import { REACH } from './town';
 import { DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
 import { cacheOf, dropFeat, featList, touch } from './cache';
 import { bump } from './events';
@@ -150,7 +151,7 @@ export function dailyWild(c: Colony): void {
       const i = y * c.w + x;
       const dx = x - c.cx;
       const dy = y - c.cy;
-      if (dx * dx + dy * dy < 400) continue;
+      if (dx * dx + dy * dy < (REACH + 4) * (REACH + 4)) continue;
       if (c.feat[i] !== F.NONE || c.sb[i] || c.st[i] || c.ter[i] !== T.GRASS) continue;
       c.feat[i] = F.SAPLING;
       c.fg[i] = 0;
@@ -164,13 +165,14 @@ export function dailyWild(c: Colony): void {
 export function plantSpot(c: Colony, r: Rand): number {
   const k = cacheOf(c);
   for (let tries = 0; tries < 20; tries++) {
-    const x = c.cx + r.range(-24, 24);
-    const y = c.cy + r.range(-24, 24);
+    // a ring of woodland just outside the town's streets
+    const x = c.cx + r.range(-(REACH + 16), REACH + 16);
+    const y = c.cy + r.range(-(REACH + 16), REACH + 16);
     if (x < 2 || y < 2 || x >= c.w - 2 || y >= c.h - 2) continue;
     const dx = x - c.cx;
     const dy = y - c.cy;
     const d2 = dx * dx + dy * dy;
-    if (d2 < 196 || d2 > 600) continue;
+    if (d2 < (REACH + 4) * (REACH + 4) || d2 > (REACH + 16) * (REACH + 16)) continue;
     const i = y * c.w + x;
     if (!k.reach[i] || c.feat[i] !== F.NONE || c.sb[i] || c.st[i] || (c.ter[i] !== T.GRASS && c.ter[i] !== T.DIRT)) continue;
     return i;

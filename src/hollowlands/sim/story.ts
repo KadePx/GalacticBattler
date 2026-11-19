@@ -285,8 +285,9 @@ export function dailyStory(c: Colony): void {
 function goodThing(c: Colony, r: Rand, season: number, pop: number): void {
   const hurt = c.pawns.some((p) => p.inj.length || p.ill);
   const k = pick(r, [
-    { k: 'wanderer', w: pop >= SOFT_CAP ? 0 : pop < 12 ? 5 : pop < 20 ? 3 : pop < 26 ? 1.4 : 0.5 },
-    { k: 'refugees', w: pop < 20 ? 1.2 : pop < 26 ? 0.5 : 0 },
+    // newcomers matter most to a small colony; past the soft cap nobody new comes looking
+    { k: 'wanderer', w: pop >= SOFT_CAP ? 0 : pop < SOFT_CAP * 0.4 ? 5 : pop < SOFT_CAP * 0.67 ? 3 : pop < SOFT_CAP * 0.87 ? 1.4 : 0.5 },
+    { k: 'refugees', w: pop < SOFT_CAP * 0.67 ? 1.2 : pop < SOFT_CAP * 0.87 ? 0.5 : 0 },
     { k: 'trader', w: 3 },
     { k: 'bard', w: 1 },
     { k: 'herd', w: season === 3 ? 0.4 : 1 },

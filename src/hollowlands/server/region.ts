@@ -41,7 +41,7 @@ export class RegionHost {
         const id = (w.seed % 46656).toString(36) + 'c' + w.count; // unique to this world, so archives never mix
         const cs = colonySeed(seed, w.count);
         const [x, y] = pickSpot(seed, w.sites, undefined, w.count);
-        const made = await this.link(id, 'init', { seed: cs, id, pop: this.o.pop + (cs % 5), preDays: this.o.preDays, avoid: w.sites.map((s) => s.name) });
+        const made = await this.link(id, 'init', { seed: cs, id, pop: this.o.pop + (cs % 11), preDays: this.o.preDays, avoid: w.sites.map((s) => s.name) });
         w.sites.push({ id, name: String(made.name ?? id), x, y, founded: 0, seed: cs, pop: Number(made.pop) || 0 });
         w.count++;
         await this.save();

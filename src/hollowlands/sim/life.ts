@@ -2,7 +2,7 @@
 // gatherings (weddings, funerals) that mark them.
 
 import { endFestival } from './festivals';
-import { HARD_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
+import { HARD_CAP, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
 import { touch } from './cache';
 import { cells, shapeOf } from './data/buildings';
 import { RACES, childRace } from './data/races';
@@ -109,7 +109,7 @@ export function tryConceive(c: Colony, a: Pawn, b: Pawn, r: Rand): void {
   let young = 0;
   for (const p of c.pawns) if (p.mo === f.id) { kids++; if (stage(c, p) === STAGE.BABY) young++; }
   if (kids >= 6 || young >= 1) return;
-  const crowd = c.pawns.length >= 30 ? 0.4 : 1;
+  const crowd = c.pawns.length >= SOFT_CAP ? 0.4 : 1;
   if (!r.chance(0.2 * RACES[f.race].fert * crowd)) return;
   f.preg = { x: c.tick + RACES[f.race].preg * TICKS_PER_DAY, fa: m.id };
   log(c, 'pregnant', f.id, m.id);

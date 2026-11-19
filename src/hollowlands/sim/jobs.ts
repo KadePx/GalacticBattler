@@ -1,7 +1,8 @@
 // Work: what needs doing, who is best placed to do it, and what comes of an hour's labour.
 
+import { REACH } from './town';
 import { DAYS_PER_YEAR, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
-import { ROCK_FACE, SHORE, cacheOf, dropFeat, featList, touch } from './cache';
+import { ROCK_FACE, SHORE, cacheOf, cropsChanged, dropFeat, featList, fieldMemo, touch, touchAt } from './cache';
 import { BACKS } from './data/backstories';
 import { CROPS, DECOR, cells, isDecor, spots, shapeOf } from './data/buildings';
 import { PROFS } from './data/professions';
@@ -58,12 +59,13 @@ const CROWD: Record<WorkK, number> = { farm: 0.2, forage: 0.6, hunt: 1, fish: 1,
 
 interface FieldNeed { b: Bld; op: number; n: number }
 
-/** What a field needs most: 1 harvest, 0 sowing, 2 tending. */
-function fieldNeed(c: Colony, b: Bld): FieldNeed | null {
-  if (!b.built || !b.crop) return null;
-  const def = CROPS[b.crop];
-  const season = seasonOf(c.tick);
-  const doy = dayOf(c.tick) % DAYS_PER_YEAR;
+// How each field's plots stand (ripe, bare, growing), counted once per tick: every colonist
+// looking for work asks.
+function fieldCounts(c: Colony, b: Bld): [number, number, number] {
+  let m = fieldMemo.get(c);
+  if (!m || m.t !== c.tick) { m = { t: c.tick, n: new Map() }; fieldMemo.set(c, m); }
+  let got = m.n.get(b.id);
+  if (got) return got;
   let ripe = 0;
   let bare = 0;
   let growing = 0;
@@ -73,6 +75,18 @@ function fieldNeed(c: Colony, b: Bld): FieldNeed | null {
     else if (v === 0) bare++;
     else growing++;
   }
+  got = [ripe, bare, growing];
+  m.n.set(b.id, got);
+  return got;
+}
+
+/** What a field needs most: 1 harvest, 0 sowing, 2 tending. */
+function fieldNeed(c: Colony, b: Bld): FieldNeed | null {
+  if (!b.built || !b.crop) return null;
+  const def = CROPS[b.crop];
+  const season = seasonOf(c.tick);
+  const doy = dayOf(c.tick) % DAYS_PER_YEAR;
+  const [ripe, bare, growing] = fieldCounts(c, b);
   if (ripe) return { b, op: 1, n: ripe };
   // a field lying bare can take a new crop; a half-sown one goes on with what it has
   if (bare && (!growing ? anySowable(c) : sowable(c, def.old ? { ...def, old: false } : def))) return { b, op: 0, n: bare };
@@ -188,10 +202,11 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
       if (tower && !c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === tower.id)) return job('guard', spotTile(c, tower, '.', r), true, 'On watch from the tower', tower.id);
       const k = cacheOf(c);
       for (let tries = 0; tries < 12; tries++) {
-        const x = c.cx + r.range(-17, 17);
-        const y = c.cy + r.range(-17, 17);
+        // out at the edge of the town
+        const x = c.cx + r.range(-(REACH + 2), REACH + 2);
+        const y = c.cy + r.range(-(REACH + 2), REACH + 2);
         if (x < 1 || y < 1 || x >= c.w - 1 || y >= c.h - 1) continue;
-        if (Math.abs(x - c.cx) + Math.abs(y - c.cy) < 14) continue;
+        if (Math.abs(x - c.cx) + Math.abs(y - c.cy) < REACH - 4) continue;
         if (k.reach[y * c.w + x] && k.walk[y * c.w + x] < 20) return job('guard', y * c.w + x, false, 'On watch');
       }
       return null;
@@ -478,6 +493,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       }
       const sowDef = CROPS[b.crop];
       if (op === 0 && !sowable(c, sowDef.old ? { ...sowDef, old: false } : sowDef)) break;
+      cropsChanged(c);
       let n = Math.max(1, Math.round((op === 1 ? 2 : 2.4) * speed * hours));
       let got = 0;
       const list = cells('field');
@@ -511,7 +527,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       }
       if (tile >= 0 && c.feat[tile] === F.LOG) {
         const left = c.fg[tile] - 19 * speed * hours;
-        if (left <= 0) { c.feat[tile] = F.NONE; c.fg[tile] = 0; c.stock.wood += 6; made('wood', 6); dropFeat(c, F.LOG); touch(c); }
+        if (left <= 0) { c.feat[tile] = F.NONE; c.fg[tile] = 0; c.stock.wood += 6; made('wood', 6); dropFeat(c, F.LOG); touchAt(c, tile); }
         else c.fg[tile] = Math.round(left);
         break;
       }
@@ -523,7 +539,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
         c.fg[tile] = 0;
         c.stock.wood += n;
         made('wood', n);
-        touch(c);
+        touchAt(c, tile);
       } else c.fg[tile] = Math.round(left);
       break;
     }
@@ -537,7 +553,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
           c.fg[tile] = 0;
           if (f === F.ORE) { c.stock.ore += 6; c.stock.stone += 3; made('ore', 6); c.ter[tile] = T.STONE; }
           else { c.stock.stone += 8; made('stone', 8); }
-          touch(c);
+          touchAt(c, tile);
         } else c.fg[tile] = Math.round(left);
       } else if (c.ter[tile] === T.ROCK) {
         const done = c.fg[tile] + 20 * speed * hours;
@@ -546,7 +562,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
           c.fg[tile] = 0;
           c.stock.stone += 12;
           made('stone', 12);
-          touch(c);
+          touchAt(c, tile);
         } else c.fg[tile] = Math.round(done);
       }
       break;

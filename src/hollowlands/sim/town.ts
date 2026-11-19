@@ -2,6 +2,7 @@
 // colony grows as a town rather than a scatter. Worked out from the colony's centre each time
 // (nothing stored), so older colonies follow it for whatever they build next.
 
+import { MAP_SCALE } from '../config';
 import { cellCode } from './data/buildings';
 import { dropFeat, touch } from './cache';
 import { B, F, T, type Colony } from './types';
@@ -10,8 +11,8 @@ import { B, F, T, type Colony } from './types';
 export const BLOCK = 12;
 /** Half the width of the square. */
 export const SQUARE = 4;
-/** How far out the streets run. */
-const REACH = 20;
+/** How far out the streets run: three blocks each way on the big map. */
+export const REACH = Math.round((20 * MAP_SCALE) / BLOCK) * BLOCK;
 
 const mod = (a: number, n: number): number => ((a % n) + n) % n;
 
@@ -35,12 +36,13 @@ export const reserved = (c: Colony, x: number, y: number): boolean => inSquare(c
 export function quarter(k: string): { near: number; spread: number } {
   if (k === 'hall' || k === 'store') return { near: 6, spread: 1.5 };
   if (k === 'well') return { near: 5, spread: 1 };
-  if (k === 'field') return { near: 24, spread: 0.7 };
-  if (k === 'pen' || k === 'graveyard') return { near: 22, spread: 0.6 };
-  if (k === 'tower') return { near: 18, spread: 0.3 };
-  if (k === 'cottage' || k === 'house' || k === 'bighouse' || k === 'longhouse') return { near: 14, spread: 0.8 };
+  // farms and pens lie outside the town's streets, homes in a ring around the workshops
+  if (k === 'field') return { near: REACH + 6, spread: 0.7 };
+  if (k === 'pen' || k === 'graveyard') return { near: REACH, spread: 0.6 };
+  if (k === 'tower') return { near: REACH - 4, spread: 0.3 };
+  if (k === 'cottage' || k === 'house' || k === 'bighouse' || k === 'longhouse') return { near: 16, spread: 0.8 };
   // workshops, the smithy, the kitchen and the rest: round the square
-  return { near: 9, spread: 1 };
+  return { near: 10, spread: 1 };
 }
 
 /**

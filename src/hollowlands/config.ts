@@ -14,14 +14,19 @@ export const TICKS_PER_YEAR = TICKS_PER_DAY * DAYS_PER_YEAR; // 14400
 /** Real milliseconds per game day. 24 minutes = one game year per real day. Env: HL_MS_PER_DAY. */
 export const DEFAULT_MS_PER_DAY = 1_440_000;
 
-export const MAP_W = 72;
-export const MAP_H = 72;
+/** The colony's land, in tiles. The town plan and the map generator scale their distances to it. */
+export const MAP_W = 128;
+export const MAP_H = 128;
+/** How much bigger than the first 72-tile maps the land is: distances in the plan grow with it. */
+export const MAP_SCALE = MAP_W / 72;
 
 /** Tiles a healthy adult walks in one tick on open ground. */
 export const WALK_SPEED = 12;
 
-export const SOFT_CAP = 30;
-export const HARD_CAP = 40;
+export const SOFT_CAP = 80;
+export const HARD_CAP = 100;
+/** People a new colony starts with: between these two. */
+export const START_POP = [35, 45] as const;
 
 export const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'] as const;
 

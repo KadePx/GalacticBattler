@@ -3,7 +3,7 @@
 // steps the sim. The map and the panels only ever read the colony.
 //
 //   /hollow-lands/?seed=1&pop=16&race=dwarf&pre=30
-//     seed  world seed (default 1)        pop  starting colonists (default 16)
+//     seed  world seed (default 1)        pop  starting colonists (default 40)
 //     race  main people (optional)        pre  game days to fast-forward before showing
 
 import { HARD_CAP, DEFAULT_MS_PER_DAY, TICKS_PER_DAY } from './config';
@@ -33,7 +33,7 @@ const num = (k: string, d: number, lo: number, hi: number): number => {
   return q.has(k) && Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.floor(v))) : d;
 };
 const raceQ = q.get('race') ?? '';
-const opts = { seed: num('seed', 1, 0, 4294967295), pop: num('pop', 16, 2, 40), race: raceQ in RACES ? (raceQ as RaceK) : undefined };
+const opts = { seed: num('seed', 1, 0, 4294967295), pop: num('pop', 40, 2, HARD_CAP), race: raceQ in RACES ? (raceQ as RaceK) : undefined };
 
 /** Local play: a colony made in this browser from a seed. Otherwise the shared live colony, if there is one. */
 const wantLocal = q.has('seed') || q.has('local') || q.has('pre');

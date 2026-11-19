@@ -29,6 +29,8 @@ export function genMap(c: Colony): void {
   const seed = c.seed;
   const r = new Rand(seed, S.GEN, 1);
   const biome = c.biome;
+  // distances below were set for a 72-tile map; a bigger map keeps a bigger clearing for its town
+  const K = W / 72;
   const cx = (c.cx = Math.floor(W / 2) + r.range(-3, 3));
   const cy = (c.cy = Math.floor(H / 2) + r.range(-3, 3));
   const mx = r.chance(0.5) ? 0 : W - 1;
@@ -43,7 +45,7 @@ export function genMap(c: Colony): void {
       let e = 0.5 * vnoise(seed, 1, x, y, 20) + 0.3 * vnoise(seed, 2, x, y, 9) + 0.2 * vnoise(seed, 3, x, y, 4);
       e = e * 0.62 + Math.max(0, 1 - dm * 1.6) * mountain + 0.08;
       const dc = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-      if (dc < 15) e = Math.min(e, 0.45 + Math.max(0, dc - 11) * 0.07);
+      if (dc < 15 * K) e = Math.min(e, 0.45 + Math.max(0, dc - 11 * K) * 0.07);
       elev[i] = e;
       moist[i] = 0.6 * vnoise(seed, 4, x, y, 16) + 0.4 * vnoise(seed, 5, x, y, 6);
     }
@@ -69,7 +71,7 @@ export function genMap(c: Colony): void {
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     const i = y * W + x;
     const dc = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-    if (dc < 13) return;
+    if (dc < 13 * K) return;
     if (d < 1.1) c.ter[i] = T.DEEP;
     else if (d < 2.3) { if (c.ter[i] !== T.DEEP) c.ter[i] = T.SHALLOW; }
     else if (d < 3.3 && c.ter[i] !== T.DEEP && c.ter[i] !== T.SHALLOW && c.ter[i] !== T.ROCK) c.ter[i] = T.SAND;
@@ -86,8 +88,8 @@ export function genMap(c: Colony): void {
     }
   } else if (biome === 'hills') {
     const px = wx + sign * r.range(-2, 4);
-    const py = Math.floor(H / 2) + r.range(-14, 14);
-    const pr = r.range(4, 6);
+    const py = Math.floor(H / 2) + r.range(-Math.round(14 * K), Math.round(14 * K));
+    const pr = r.range(4, 6) + Math.round(2 * (K - 1));
     for (let y = py - pr - 4; y <= py + pr + 4; y++) {
       for (let x = px - pr - 4; x <= px + pr + 4; x++) {
         const d = Math.sqrt((x - px) * (x - px) + (y - py) * (y - py)) - pr + vnoise(seed, 6, x, y, 4) * 2.4;
@@ -138,21 +140,21 @@ export function genMap(c: Colony): void {
       if (t === T.SHALLOW) { if (roll < 0.12) c.feat[i] = F.REEDS; continue; }
       if (t === T.STONE) {
         if (roll < 0.13) { c.feat[i] = F.BOULDER; c.fg[i] = 100; }
-        else if (roll < 0.17 && dc > 8) { c.feat[i] = F.PINE; c.fg[i] = 100; }
+        else if (roll < 0.17 && dc > 8 * K) { c.feat[i] = F.PINE; c.fg[i] = 100; }
         continue;
       }
-      const clear = dc < 8 ? 0 : dc < 13 ? (dc - 8) / 5 : 1;
+      const clear = dc < 8 * K ? 0 : dc < 13 * K ? (dc - 8 * K) / (5 * K) : 1;
       const dens = Math.max(0, forest - (biome === 'marsh' ? 0.5 : 0.42)) * 1.7 * clear * (t === T.SOIL ? 0.5 : 1) + 0.012 * clear;
       if (roll < dens) {
         c.feat[i] = elev[i] > 0.56 || (biome === 'hills' && roll2 < 0.4) ? F.PINE : F.TREE;
         c.fg[i] = 100;
-      } else if (roll2 < 0.016 && forest > 0.34 && dc > 6 && t !== T.MARSH) {
+      } else if (roll2 < 0.016 && forest > 0.34 && dc > 6 * K && t !== T.MARSH) {
         c.feat[i] = F.BUSH;
         c.fg[i] = 0;
-      } else if (roll2 < 0.022 && dc > 7) {
+      } else if (roll2 < 0.022 && dc > 7 * K) {
         c.feat[i] = F.BOULDER;
         c.fg[i] = 100;
-      } else if (roll2 < (t === T.MARSH ? 0.05 : 0.027) && dc > 6) {
+      } else if (roll2 < (t === T.MARSH ? 0.05 : 0.027) && dc > 6 * K) {
         c.feat[i] = F.HERB;
         c.fg[i] = 100;
       } else if (roll2 < 0.05 && t === T.GRASS) {
@@ -166,7 +168,7 @@ export function genMap(c: Colony): void {
     const x = r.range(6, W - 10);
     const y = r.range(6, H - 10);
     const dc = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-    if (dc < 20 || c.ter[y * W + x] !== T.GRASS) continue;
+    if (dc < 20 * K || c.ter[y * W + x] !== T.GRASS) continue;
     const w = r.range(3, 5);
     const h = r.range(3, 4);
     for (let k = 0; k <= w; k++) {

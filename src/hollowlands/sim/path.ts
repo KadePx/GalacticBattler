@@ -67,6 +67,11 @@ export const pathStats = { calls: 0, fails: 0, nodes: 0 };
 
 const DX = [1, -1, 0, 0, 1, 1, -1, -1];
 const DY = [0, 0, 1, -1, 1, -1, 1, -1];
+// The estimate of the walk left, per straight step and per extra diagonal one. Open ground costs
+// 100 a step and a street 70, so this is greedy: paths come out a little longer than the very
+// shortest, but on the big map the search looks at a fraction of the tiles.
+const HS = 180;
+const HD = 72;
 
 /**
  * Cheapest walk from (sx,sy) to (tx,ty). With adj, stopping on any tile next to the target
@@ -103,7 +108,7 @@ export function findPath(c: Colony, sx: number, sy: number, tx: number, ty: numb
   {
     const dx = Math.abs(sx - tx);
     const dy = Math.abs(sy - ty);
-    push(s, dx > dy ? 96 * dx + 38 * dy : 96 * dy + 38 * dx);
+    push(s, dx > dy ? HS * dx + HD * dy : HS * dy + HD * dx);
   }
   let seen = 0;
   const limit = heap.length - 8;
@@ -140,7 +145,7 @@ export function findPath(c: Colony, sx: number, sy: number, tx: number, ty: numb
       // a touch greedy: paths stay near-shortest but the search looks at far fewer tiles
       const dx = nx > tx ? nx - tx : tx - nx;
       const dy = ny > ty ? ny - ty : ty - ny;
-      push(j, ng + (dx > dy ? 96 * dx + 38 * dy : 96 * dy + 38 * dx));
+      push(j, ng + (dx > dy ? HS * dx + HD * dy : HS * dy + HD * dx));
     }
   }
   pathStats.fails++;

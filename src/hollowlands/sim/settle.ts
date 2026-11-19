@@ -45,10 +45,10 @@ function restless(c: Colony, p: Pawn, leader: Pawn | null): number {
 export function dailySettle(c: Colony): void {
   const pop = c.pawns.length;
   let push = 0;
-  if (pop > 26) push += (pop - 26) * 0.15;
+  if (pop > SOFT_CAP - 4) push += (pop - SOFT_CAP + 4) * 0.15;
   if (pop >= SOFT_CAP) push += 1.2;
-  if (pop >= 18 && approval(c) < -12) push += 0.5;
-  if (pop < 20) push -= 0.6;
+  if (pop >= SOFT_CAP * 0.6 && approval(c) < -12) push += 0.5;
+  if (pop < SOFT_CAP * 0.66) push -= 0.6;
   c.settle = Math.max(0, (c.settle ?? 0) + push);
   // the talk starts well before anyone packs: time to ask the players what theirs will do
   if (c.settle > 28) for (const p of c.pawns) if (p.owner && !p.roots && stage(c, p) >= STAGE.ADULT && c.settle < 30) ask(c, p, 'settle', undefined, undefined, 3);
@@ -76,7 +76,7 @@ export function dailySettle(c: Colony): void {
     }
   }
   const forced = pop >= HARD_CAP - 1;
-  if (!forced && (c.settle < 45 || pop < 24)) return;
+  if (!forced && (c.settle < 45 || pop < SOFT_CAP * 0.8)) return;
   // nobody sets out in the snow, in the middle of a fight, or on the day of a wedding
   if (c.foes.length || c.alarm || c.gath || (seasonOf(c.tick) === 3 && !forced)) return;
   const r = new Rand(c.seed, S.EVENT, dayOf(c.tick), 77);

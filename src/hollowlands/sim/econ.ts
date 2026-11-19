@@ -2,7 +2,7 @@
 // crops, bushes and trees grow back.
 
 import { DAYS_PER_SEASON, DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
-import { dropFeat, touch } from './cache';
+import { cropsChanged, dropFeat, touch } from './cache';
 import { CROPS, cells } from './data/buildings';
 import { bump, log } from './events';
 import { STAGE, stage, stat } from './pawn';
@@ -110,6 +110,7 @@ export function dailyLand(c: Colony): void {
     b.tend = Math.max(0, (b.tend ?? 0) - 10);
   }
   if (firstFrost) log(c, 'frost');
+  cropsChanged(c);
 
   // Wild things
   const n = c.w * c.h;

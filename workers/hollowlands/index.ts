@@ -44,7 +44,7 @@ export class ColonyDO extends DurableObject<Env> {
       { get: (k) => storage.get<string>(k), put: (k, v) => storage.put(k, v) },
       env.DB,
       {
-        msPerDay: Number(env.HL_MS_PER_DAY) || 1_440_000, maxStep: 3000, pop: 16, preDays: 120, adminKey: env.HL_ADMIN_KEY, now: Date.now, managed: true,
+        msPerDay: Number(env.HL_MS_PER_DAY) || 1_440_000, maxStep: 3000, pop: 40, preDays: 120, adminKey: env.HL_ADMIN_KEY, now: Date.now, managed: true,
         claim: async (owner, colony) => String(((await (await env.REGION.get(env.REGION.idFromName('region')).fetch(inside('https://hl/api/hl/region/claim', { owner, colony }))).json()) as { where?: string }).where ?? ''),
         humanKey: env.TURNSTILE_SECRET ? env.TURNSTILE_SITEKEY : undefined,
         verifyHuman: env.TURNSTILE_SECRET ? (t, ip) => turnstile(env.TURNSTILE_SECRET!, t, ip) : undefined,
@@ -87,7 +87,7 @@ export class RegionDO extends DurableObject<Env> {
     const storage = ctx.storage;
     this.host = new RegionHost(
       { get: (k) => storage.get<string>(k), put: (k, v) => storage.put(k, v) },
-      { colonies: 4, pop: 14, preDays: 120, now: Date.now, adminKey: env.HL_ADMIN_KEY },
+      { colonies: 4, pop: 35, preDays: 120, now: Date.now, adminKey: env.HL_ADMIN_KEY },
       async (id, path, body) => (await (await env.COLONY.get(env.COLONY.idFromName(id)).fetch(inside(`https://hl/api/hl/c/${id}/${path}`, body))).json()) as Record<string, unknown>,
     );
   }

@@ -2,12 +2,12 @@
 // (Later the ruler and council will steer this; for now it is common sense.)
 
 import { DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
-import { dropFeat, touch } from './cache';
+import { dropFeat, touch, touchAt } from './cache';
 import { BACKS } from './data/backstories';
 import { CROPS, HOMES, SHAPES, TPL, cellCode, cells, isDecor, shapeOf, spots } from './data/buildings';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
-import { lotScore, pave, reserved } from './town';
+import { REACH, lotScore, pave, reserved } from './town';
 import { chooseCrop } from './farm';
 import { bump, log, note } from './events';
 import { bury } from './life';
@@ -25,9 +25,8 @@ export function syncTiles(c: Colony, b: Bld): void {
     const code = cellCode(b.k, cell.ch, b.mat);
     if (code === B.NONE) continue;
     const ti = (b.y + cell.dy) * c.w + b.x + cell.dx;
-    if (c.st[ti] !== code && c.st[ti] !== B.GRAVE && !(cell.ch === '.' && isDecor(c.st[ti]))) c.st[ti] = code;
+    if (c.st[ti] !== code && c.st[ti] !== B.GRAVE && !(cell.ch === '.' && isDecor(c.st[ti]))) { c.st[ti] = code; touchAt(c, ti); }
   }
-  touch(c);
 }
 
 export function placeBuilding(c: Colony, k: string, x: number, y: number, instant: boolean, mat = 0, shape = k): Bld {
@@ -56,6 +55,7 @@ export function placeBuilding(c: Colony, k: string, x: number, y: number, instan
   }
   if (shape !== k) b.s = shape;
   c.blds.push(b);
+  touch(c);
   syncTiles(c, b);
   return b;
 }
@@ -68,13 +68,19 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
   const w = t.rows[0].length;
   const h = t.rows.length;
   const field = k === 'field';
-  const minR = planned ? (field ? 12 : 0) : field ? 8 : k === 'graveyard' ? 14 : k === 'tower' ? 11 : k === 'hall' ? 0 : 3;
+  const minR = planned ? (field ? REACH - 6 : 0) : field ? 14 : k === 'graveyard' ? 24 : k === 'tower' ? 20 : k === 'hall' ? 0 : 3;
   // a crowded colony builds further out, almost to the edge of its land
-  const maxR = field ? (far ? 34 : 31) : far ? 33 : 28;
+  const edge = Math.min(c.w, c.h) / 2 - 6;
+  const maxR = field ? (far ? edge : REACH + 18) : far ? edge - 2 : REACH + 12;
   let best: [number, number] | null = null;
   let bestScore = -1e9;
-  for (let y = 3; y < c.h - h - 3; y++) {
-    for (let x = 3; x < c.w - w - 3; x++) {
+  // only the ground within reach of the plan is looked at, not the whole map
+  const y0 = Math.max(3, Math.floor(c.cy - maxR - h));
+  const y1 = Math.min(c.h - h - 3, Math.ceil(c.cy + maxR));
+  const x0 = Math.max(3, Math.floor(c.cx - maxR - w));
+  const x1 = Math.min(c.w - w - 3, Math.ceil(c.cx + maxR));
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
       const mx = x + w / 2 - c.cx;
       const my = y + h / 2 - c.cy;
       const d = Math.sqrt(mx * mx + my * my);
@@ -100,7 +106,7 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
       const road = k === 'tower' ? Math.hypot(x + w / 2 - (c.cx + (c.gx - c.cx) * 0.45), y + h / 2 - (c.cy + (c.gy - c.cy) * 0.45)) : 0;
       let score = planned
         ? lotScore(c, k, x, y, w, h, t.rows) + (field ? soil * 0.3 : 0) - (k === 'tower' ? road * 0.5 : 0)
-        : field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - 17) : k === 'tower' ? -road : -d;
+        : field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - REACH) : k === 'tower' ? -road : -d;
       score += (hash32(c.seed, S.PLAN, x, y, c.nextBld) / 4294967296) * 1.6;
       if (score > bestScore) { bestScore = score; best = [x, y]; }
     }

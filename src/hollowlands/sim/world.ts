@@ -3,7 +3,7 @@
 // becomes a new colony. The server does the same job with one Durable Object per colony;
 // this version runs them all in one place for tests and local play.
 
-import { TICKS_PER_DAY } from '../config';
+import { START_POP, TICKS_PER_DAY } from '../config';
 import { createColony } from './index';
 import { Rand, S, hash32 } from './rng';
 import type { SettlerMsg } from './settle';
@@ -50,7 +50,7 @@ export function createWorld(o: { seed: number; colonies?: number; pop?: number; 
   const n = o.colonies ?? 4;
   for (let k = 0; k < n; k++) {
     const seed = colonySeed(w.seed, w.count);
-    const c = createColony({ seed, pop: o.pop ?? 14 + (seed % 5), id: 'c' + w.count });
+    const c = createColony({ seed, pop: o.pop ?? START_POP[0] + (seed % (START_POP[1] - START_POP[0] + 1)), id: 'c' + w.count });
     const [x, y] = pickSpot(w.seed, w.sites, undefined, w.count);
     w.sites.push({ id: c.id, name: c.name, x, y, founded: 0, seed });
     w.colonies.push(c);
