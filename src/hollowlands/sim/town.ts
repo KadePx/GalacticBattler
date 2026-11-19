@@ -2,17 +2,31 @@
 // colony grows as a town rather than a scatter. Worked out from the colony's centre each time
 // (nothing stored), so older colonies follow it for whatever they build next.
 
-import { MAP_SCALE } from '../config';
 import { cellCode } from './data/buildings';
 import { dropFeat, touch } from './cache';
 import { B, F, T, type Colony } from './types';
 
 /** Distance between streets; the blocks between them are BLOCK - 1 tiles across. */
 export const BLOCK = 12;
+/** Radius of the ground on the rise kept clear for a keep. */
+export const KEEP_R = 7;
+
+/** Ground on the rise held for the keep: nothing else is built there. */
+export function onKeep(c: Colony, x: number, y: number): boolean {
+  const k = c.keep;
+  if (!k) return false;
+  const dx = x - k.x;
+  const dy = y - k.y;
+  return dx * dx + dy * dy <= KEEP_R * KEEP_R;
+}
+
 /** Half the width of the square. */
 export const SQUARE = 4;
-/** How far out the streets run: three blocks each way on the big map. */
-export const REACH = Math.round((20 * MAP_SCALE) / BLOCK) * BLOCK;
+/**
+ * How far out the streets run: three blocks each way on a 128-tile map, two on the old 72-tile
+ * ones. Worked out from the colony's own land, so older, smaller maps still plan sensibly.
+ */
+export const reach = (c: { w: number; h: number }): number => Math.round((20 * Math.min(c.w, c.h)) / 72 / BLOCK) * BLOCK;
 
 const mod = (a: number, n: number): number => ((a % n) + n) % n;
 
@@ -25,7 +39,8 @@ export function inSquare(c: Colony, x: number, y: number): boolean {
 export function isStreet(c: Colony, x: number, y: number): boolean {
   const dx = x - c.cx;
   const dy = y - c.cy;
-  if (Math.abs(dx) > REACH || Math.abs(dy) > REACH) return false;
+  const R = reach(c);
+  if (Math.abs(dx) > R || Math.abs(dy) > R) return false;
   return mod(dx, BLOCK) === 0 || mod(dy, BLOCK) === 0;
 }
 
@@ -33,7 +48,8 @@ export function isStreet(c: Colony, x: number, y: number): boolean {
 export const reserved = (c: Colony, x: number, y: number): boolean => inSquare(c, x, y) || isStreet(c, x, y);
 
 /** The quarter a kind of building belongs in, as a preferred distance from the square. */
-export function quarter(k: string): { near: number; spread: number } {
+export function quarter(c: Colony, k: string): { near: number; spread: number } {
+  const REACH = reach(c);
   if (k === 'hall' || k === 'store') return { near: 6, spread: 1.5 };
   if (k === 'well') return { near: 5, spread: 1 };
   // farms and pens lie outside the town's streets, homes in a ring around the workshops
@@ -51,7 +67,7 @@ export function quarter(k: string): { near: number; spread: number } {
  */
 export function lotScore(c: Colony, k: string, x: number, y: number, w: number, h: number, rows: string[]): number {
   const d = Math.hypot(x + w / 2 - c.cx, y + h / 2 - c.cy);
-  const q = quarter(k);
+  const q = quarter(c, k);
   let s = -Math.abs(d - q.near) * q.spread;
   if (k === 'field' || k === 'graveyard') return s;
   // the door opens onto a street (or the square)
@@ -77,11 +93,14 @@ export function lotScore(c: Colony, k: string, x: number, y: number, w: number, 
 export function pave(c: Colony, n: number): void {
   let done = 0;
   let changed = false;
+  const REACH = reach(c);
   for (let r = 0; r <= REACH && done < n; r++) {
     for (let y = c.cy - r; y <= c.cy + r && done < n; y++) {
       for (let x = c.cx - r; x <= c.cx + r && done < n; x++) {
         if (Math.max(Math.abs(x - c.cx), Math.abs(y - c.cy)) !== r) continue;
         if (x < 1 || y < 1 || x >= c.w - 1 || y >= c.h - 1 || !reserved(c, x, y)) continue;
+        // the streets stop at the foot of the rise kept for the keep
+        if (onKeep(c, x, y)) continue;
         const i = y * c.w + x;
         if (c.sb[i] || c.st[i]) continue;
         const t = c.ter[i];

@@ -8,13 +8,15 @@
 //   npm run hl -- many 5 12         5 years across 12 seeds: survival and averages
 //   npm run hl -- size 3 1 90       snapshot size after 3 years, seed 1, 90 colonists (raw and gzipped)
 //   npm run hl -- many 5 6 1 90     ... from seed 1, starting with 90 colonists (default 40)
+//   npm run hl -- land 20 5         the land of seeds 1..20: water, wood, stone in reach, then 5 years each (0: land only)
 
 import { DAYS_PER_SEASON, SEASON_NAMES, TICKS_PER_DAY, TICKS_PER_HOUR, when } from '../config';
 import { TH } from '../sim/data/thoughts';
 import { foodDays } from '../sim/econ';
 import { colonyHash, createColony, deserialize, serialize, step, type Colony, type RaceK } from '../sim/index';
 import { pathStats } from '../sim/path';
-import { cacheStats } from '../sim/cache';
+import { ROCK_FACE, SHORE, cacheStats, featList } from '../sim/cache';
+import { F } from '../sim/types';
 import { STAGE, ageYears, fullName, stage } from '../sim/pawn';
 import { WEIGHT, dateText, evText } from '../text';
 
@@ -32,6 +34,7 @@ async function fsMod(): Promise<{ readFileSync(p: string, e: string): string; wr
 if (args[0] === 'golden') await golden(args.includes('--update'));
 else if (args[0] === 'size') await size();
 else if (args[0] === 'many') many();
+else if (args[0] === 'land') land();
 else report();
 
 function avgMood(c: Colony): [number, number] {
@@ -127,6 +130,37 @@ function report(): void {
   for (const d of c.dead) console.log(`  ${pad(d.first + ' ' + d.fam, 24)} ${pad(d.race, 9)} ${lpad(((d.died - d.born) / (TICKS_PER_DAY * 60)).toFixed(0), 4)}  ${d.cause}  (${dateText(d.died)})`);
   console.log('\nRecent story:');
   for (const e of c.log.filter((x) => (WEIGHT[x.k] ?? 0) >= 2).slice(-45)) console.log(`  ${pad(dateText(e.t), 22)} ${evText(c, e)}`);
+}
+
+/** What each map gives a town: the nearest water, wood and stone it can walk to, and room to grow. */
+function land(): void {
+  const n = Number(args[1]) || 20;
+  const years = args[2] === undefined ? 5 : Number(args[2]);
+  const t0 = performance.now();
+  console.log([pad('seed', 5), pad('biome', 9), pad('colony', 14), 'water', 'trees40', 'wood d', 'stone40', 'stone d', 'ore', 'keep', 'pop', 'peak', 'roofless', 'p-days', 'no room for'].map((s, i) => (i > 2 ? lpad(s, 8) : s)).join(' '));
+  for (let seed = 1; seed <= n; seed++) {
+    const c = createColony({ seed, pop: 40 });
+    const dist = (i: number): number => Math.round(Math.hypot((i % c.w) - c.cx, Math.floor(i / c.w) - c.cy));
+    const within = (l: number[], d: number): number => l.filter((i) => dist(i) <= d).length;
+    const shore = featList(c, SHORE);
+    const trees = [...featList(c, F.TREE), ...featList(c, F.PINE)].sort((a, b) => dist(a) - dist(b));
+    const stone = [...featList(c, F.BOULDER), ...featList(c, ROCK_FACE), ...featList(c, F.ORE)].sort((a, b) => dist(a) - dist(b));
+    const ore = featList(c, F.ORE);
+    const k = c.keep ? c.ter[c.keep.y * c.w + c.keep.x] : -1;
+    const row = [pad(seed, 5), pad(c.biome, 9), pad(c.name, 14), shore.length ? dist(shore[0]) : '-', within(trees, 40), trees.length ? dist(trees[0]) : '-', within(stone, 40), stone.length ? dist(stone[0]) : '-', ore.length ? dist(ore[0]) : '-', k <= 2 ? 'open' : 'ter' + k];
+    let peak = 0;
+    let pdays = 0;
+    const end = c.tick + years * 60 * TICKS_PER_DAY;
+    while (c.tick < end && c.pawns.length) {
+      step(c);
+      if (c.tick % TICKS_PER_DAY !== 0) continue;
+      peak = Math.max(peak, c.pawns.length);
+      for (const p of c.pawns) if (!p.home) pdays++;
+    }
+    row.push(c.pawns.length, peak, c.pawns.filter((p) => !p.home).length, pdays, Object.keys(c.nosite).join(' ') || '-');
+    console.log(row.map((s, i) => (i > 2 && i < 14 ? lpad(s, 8) : i === 14 ? ' ' + s : s)).join(' '));
+  }
+  if (years) console.log(`${((performance.now() - t0) / (n * years)).toFixed(0)} ms per colony-year`);
 }
 
 function many(): void {

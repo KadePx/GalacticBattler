@@ -297,6 +297,10 @@ export interface Colony {
   cx: number; cy: number;
   /** where the road leaves the map */
   gx: number; gy: number;
+  /** the rise beside the town where a keep can stand (made with the land) */
+  keep?: { x: number; y: number };
+  /** hills and rises of the land: [x, y, radius, height], for shading the ground */
+  rises?: number[][];
   pawns: Pawn[];
   dead: Dead[];
   nextId: number;

@@ -7,7 +7,7 @@ import { BACKS } from './data/backstories';
 import { CROPS, HOMES, SHAPES, TPL, cellCode, cells, isDecor, shapeOf, spots } from './data/buildings';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
-import { REACH, lotScore, pave, reserved } from './town';
+import { onKeep, reach, lotScore, pave, reserved } from './town';
 import { chooseCrop } from './farm';
 import { bump, log, note } from './events';
 import { bury } from './life';
@@ -68,6 +68,7 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
   const w = t.rows[0].length;
   const h = t.rows.length;
   const field = k === 'field';
+  const REACH = reach(c);
   const minR = planned ? (field ? REACH - 6 : 0) : field ? 14 : k === 'graveyard' ? 24 : k === 'tower' ? 20 : k === 'hall' ? 0 : 3;
   // a crowded colony builds further out, almost to the edge of its land
   const edge = Math.min(c.w, c.h) / 2 - 6;
@@ -96,6 +97,8 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
           // the plan builds only on open ground; when nothing fits it, a worn path will do too
           if (inside ? !OPEN.has(ter) && (planned || ter !== T.PATH) : !OPEN.has(ter) && ter !== T.PATH) { ok = false; break; }
           if (Math.abs(xx - c.cx) <= 1 && Math.abs(yy - c.cy) <= 1 && inside) { ok = false; break; }
+          // the rise is kept for the keep
+          if (inside && onKeep(c, xx, yy)) { ok = false; break; }
           if (inside && ter === T.SOIL) soil++;
           // the plan keeps the streets and the square open
           if (planned && inside && t.rows[yy - y][xx - x] !== ' ' && reserved(c, xx, yy)) { ok = false; break; }

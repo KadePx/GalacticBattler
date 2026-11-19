@@ -4,6 +4,7 @@
 
 import type { Graphics } from 'pixi.js';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR, TICKS_PER_DAY } from '../config';
+import { riseAt } from '../sim/mapgen';
 import { B, F, T, type Bld, type Colony } from '../sim/types';
 import { css, darken, lighten, mix } from './look';
 
@@ -74,6 +75,32 @@ function tileColor(c: Colony, pal: Pal, x: number, y: number): number {
   return j < 0.5 ? darken(base, (0.5 - j) * 0.06) : lighten(base, (j - 0.5) * 0.05);
 }
 
+/**
+ * Light and shade from the land's hills and rises, per tile: slopes facing the light (north-west)
+ * are brighter, slopes facing away darker, and high ground a touch paler. Null on flat land.
+ */
+function hillShade(c: Colony): Float32Array | null {
+  if (!c.rises?.length) return null;
+  const W = c.w;
+  const H = c.h;
+  const hc = new Float32Array((W + 1) * (H + 1));
+  for (let y = 0; y <= H; y++) for (let x = 0; x <= W; x++) hc[y * (W + 1) + x] = riseAt(c.rises, x, y);
+  const out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const a = hc[y * (W + 1) + x];
+      const b = hc[y * (W + 1) + x + 1];
+      const d = hc[(y + 1) * (W + 1) + x];
+      const e = hc[(y + 1) * (W + 1) + x + 1];
+      const sx = (b + e - a - d) / 2;
+      const sy = (d + e - a - b) / 2;
+      const lit = Math.max(-0.24, Math.min(0.24, (sx + sy) * 9));
+      out[y * W + x] = 1 + lit + Math.min(0.08, (a + e) * 0.12);
+    }
+  }
+  return out;
+}
+
 /** Paint the whole ground. Called only when terrain or season changes. */
 export function bakeTerrain(c: Colony, cv: HTMLCanvasElement, pal: Pal): void {
   const g = cv.getContext('2d');
@@ -103,6 +130,21 @@ export function bakeTerrain(c: Colony, cv: HTMLCanvasElement, pal: Pal): void {
     return a + (b - a) * tx + (cc - a) * ty + (a - b - cc + d) * tx * ty;
   };
   const AMP = 0.42;
+  const hs = hillShade(c);
+  const hill = (fx: number, fy: number): number => {
+    if (!hs) return 1;
+    const gx = Math.max(0, Math.min(W - 1.001, fx - 0.5));
+    const gy = Math.max(0, Math.min(H - 1.001, fy - 0.5));
+    const x0 = Math.floor(gx);
+    const y0 = Math.floor(gy);
+    const tx = gx - x0;
+    const ty = gy - y0;
+    const x1 = Math.min(W - 1, x0 + 1);
+    const y1 = Math.min(H - 1, y0 + 1);
+    const top = hs[y0 * W + x0] * (1 - tx) + hs[y0 * W + x1] * tx;
+    const bot = hs[y1 * W + x0] * (1 - tx) + hs[y1 * W + x1] * tx;
+    return top * (1 - ty) + bot * ty;
+  };
   for (let sy = 0; sy < sh; sy++) {
     for (let sx = 0; sx < sw; sx++) {
       const fx = (sx + 0.5) / SUB;
@@ -115,7 +157,7 @@ export function bakeTerrain(c: Colony, cv: HTMLCanvasElement, pal: Pal): void {
       const own = c.ter[Math.floor(fy) * W + Math.floor(fx)];
       const t = own === T.ROCK || own === T.PATH ? Math.floor(fy) * W + Math.floor(fx) : ty * W + tx;
       const col = cols[t];
-      const shade = 1 + (vn(fx * 3.1, fy * 3.1, 43) - 0.5) * 0.09;
+      const shade = (1 + (vn(fx * 3.1, fy * 3.1, 43) - 0.5) * 0.09) * (isWater(c.ter[t]) ? 1 : hill(fx, fy));
       const o = (sy * sw + sx) * 4;
       img.data[o] = Math.min(255, ((col >> 16) & 255) * shade);
       img.data[o + 1] = Math.min(255, ((col >> 8) & 255) * shade);

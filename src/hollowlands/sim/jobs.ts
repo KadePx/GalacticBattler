@@ -1,6 +1,6 @@
 // Work: what needs doing, who is best placed to do it, and what comes of an hour's labour.
 
-import { REACH } from './town';
+import { reach } from './town';
 import { DAYS_PER_YEAR, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
 import { ROCK_FACE, SHORE, cacheOf, cropsChanged, dropFeat, featList, fieldMemo, touch, touchAt } from './cache';
 import { BACKS } from './data/backstories';
@@ -203,10 +203,10 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
       const k = cacheOf(c);
       for (let tries = 0; tries < 12; tries++) {
         // out at the edge of the town
-        const x = c.cx + r.range(-(REACH + 2), REACH + 2);
-        const y = c.cy + r.range(-(REACH + 2), REACH + 2);
+        const x = c.cx + r.range(-(reach(c) + 2), reach(c) + 2);
+        const y = c.cy + r.range(-(reach(c) + 2), reach(c) + 2);
         if (x < 1 || y < 1 || x >= c.w - 1 || y >= c.h - 1) continue;
-        if (Math.abs(x - c.cx) + Math.abs(y - c.cy) < REACH - 4) continue;
+        if (Math.abs(x - c.cx) + Math.abs(y - c.cy) < reach(c) - 4) continue;
         if (k.reach[y * c.w + x] && k.walk[y * c.w + x] < 20) return job('guard', y * c.w + x, false, 'On watch');
       }
       return null;

@@ -175,9 +175,14 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
     const child = deserialize(snap.body.colony);
     check('the new colony is a real place with a ruler and a first roof', child.pawns.length >= 5 && child.blds.length >= 3 && child.pawns.some((p) => p.id === child.gov.ruler) && child.from === made.from);
     const parent = deserialize((await call<{ colony: string }>(`c/${made.from}/snapshot`)).body.colony);
-    now += 20 * 1000;
-    const parent2 = deserialize((await call<{ colony: string }>(`c/${made.from}/snapshot`)).body.colony);
-    check('and word of it reaches the old home', [...parent.log, ...parent2.log].some((e) => e.k === 'news') && parent.dead.some((d) => d.cause === 'settled'));
+    // look in on the old home every couple of seconds: a big colony's log is long, and older
+    // entries drop off the front of it, so one look much later might miss the news
+    const seen = [...parent.log];
+    for (let k = 0; k < 10; k++) {
+      now += 2 * 1000;
+      seen.push(...deserialize((await call<{ colony: string }>(`c/${made.from}/snapshot`)).body.colony).log);
+    }
+    check('and word of it reaches the old home', seen.some((e) => e.k === 'news') && parent.dead.some((d) => d.cause === 'settled'));
     // everything survives a restart
     world = mk();
     const again = (await call<Region>('region')).body.sites;

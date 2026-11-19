@@ -1,7 +1,7 @@
 // The land beyond the fences: animals that wander it, storms that bring trees down, mushrooms
 // in autumn, and woods that grow back.
 
-import { REACH } from './town';
+import { reach } from './town';
 import { DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
 import { cacheOf, dropFeat, featList, touch } from './cache';
 import { bump } from './events';
@@ -98,7 +98,7 @@ export function dailyWild(c: Colony): void {
       const x = edge === 0 ? 1 : edge === 1 ? c.w - 2 : t;
       const y = edge === 2 ? 1 : edge === 3 ? c.h - 2 : edge < 2 ? t : t;
       if (!open(c, y * c.w + x)) continue;
-      const forest = c.biome === 'valley' || c.biome === 'hills';
+      const forest = c.biome === 'valley' || c.biome === 'hills' || c.biome === 'forest';
       const roll = r.float();
       const kind = roll < (forest ? 0.4 : 0.25) ? 'deer' : roll < (forest ? 0.6 : 0.4) ? 'boar' : roll < 0.85 ? 'hare' : 'fox';
       list.push({ id: (c.nextBeast = (c.nextBeast ?? 0) + 1), k: kind, x, y, px: x, py: y });
@@ -151,7 +151,7 @@ export function dailyWild(c: Colony): void {
       const i = y * c.w + x;
       const dx = x - c.cx;
       const dy = y - c.cy;
-      if (dx * dx + dy * dy < (REACH + 4) * (REACH + 4)) continue;
+      if (dx * dx + dy * dy < (reach(c) + 4) * (reach(c) + 4)) continue;
       if (c.feat[i] !== F.NONE || c.sb[i] || c.st[i] || c.ter[i] !== T.GRASS) continue;
       c.feat[i] = F.SAPLING;
       c.fg[i] = 0;
@@ -166,13 +166,13 @@ export function plantSpot(c: Colony, r: Rand): number {
   const k = cacheOf(c);
   for (let tries = 0; tries < 20; tries++) {
     // a ring of woodland just outside the town's streets
-    const x = c.cx + r.range(-(REACH + 16), REACH + 16);
-    const y = c.cy + r.range(-(REACH + 16), REACH + 16);
+    const x = c.cx + r.range(-(reach(c) + 16), reach(c) + 16);
+    const y = c.cy + r.range(-(reach(c) + 16), reach(c) + 16);
     if (x < 2 || y < 2 || x >= c.w - 2 || y >= c.h - 2) continue;
     const dx = x - c.cx;
     const dy = y - c.cy;
     const d2 = dx * dx + dy * dy;
-    if (d2 < (REACH + 4) * (REACH + 4) || d2 > (REACH + 16) * (REACH + 16)) continue;
+    if (d2 < (reach(c) + 4) * (reach(c) + 4) || d2 > (reach(c) + 16) * (reach(c) + 16)) continue;
     const i = y * c.w + x;
     if (!k.reach[i] || c.feat[i] !== F.NONE || c.sb[i] || c.st[i] || (c.ter[i] !== T.GRASS && c.ter[i] !== T.DIRT)) continue;
     return i;
