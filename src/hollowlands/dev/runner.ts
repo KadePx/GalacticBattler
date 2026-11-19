@@ -180,11 +180,15 @@ async function golden(update: boolean): Promise<void> {
     for (let k = 0; k < TICKS_PER_DAY * 45; k++) step(c);
     // save and load half way: a restored colony must carry on exactly the same
     const mid = colonyHash(c);
-    const c2 = deserialize(serialize(c));
-    for (let k = 0; k < TICKS_PER_DAY * 45; k++) { step(c); step(c2); }
+    // reload copies at several points; each must end exactly where the original does
+    const copies = [deserialize(serialize(c))];
+    for (let k = 0; k < TICKS_PER_DAY * 45; k++) {
+      step(c);
+      for (const x of copies) step(x);
+      if (k > 0 && k % (TICKS_PER_DAY * 11) === 0) copies.push(deserialize(serialize(c)));
+    }
     const a = colonyHash(c);
-    const b = colonyHash(c2);
-    if (a !== b) { console.error(`FAIL: a saved and reloaded colony drifted (${a} vs ${b})`); process.exit(1); }
+    copies.forEach((x, n) => { const b = colonyHash(x); if (a !== b) { console.error(`FAIL: reloaded copy ${n} drifted (${a} vs ${b})`); process.exit(1); } });
     return { hash: a, mid };
   };
   const one = run();

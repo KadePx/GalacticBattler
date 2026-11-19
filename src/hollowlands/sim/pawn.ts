@@ -28,13 +28,14 @@ const BASE: Record<StatK, number> = { work: 1, learn: 1, move: 1, appetite: 1, s
 
 // The parts of stats and personality that come from traits, people, backstory and lasting
 // marks only change when those do, so they are worked out once and kept (never saved).
-interface Fixed { traits: string[]; tn: number; pn: number; bc: string; ba: string; base: number[]; st: Partial<Record<StatK, number>>; ax: number[] }
+interface Fixed { traits: string[]; tn: number; pn: number; pr: string[]; ps: string; bc: string; ba: string; base: number[]; st: Partial<Record<StatK, number>>; ax: number[] }
 const fixed = new WeakMap<Pawn, Fixed>();
 const STAT_KEYS = Object.keys(BASE) as StatK[];
 
 function fixedOf(p: Pawn): Fixed {
   let f = fixed.get(p);
-  if (f && f.traits === p.traits && f.tn === p.traits.length && f.pn === p.perm.length && f.base === p.per && f.bc === p.bc && f.ba === p.ba) return f;
+  // lasting marks can be swapped (a lost hand for a hook) without the list growing: compare what is in it
+  if (f && f.traits === p.traits && f.tn === p.traits.length && f.pr === p.perm && f.pn === p.perm.length && f.ps === p.perm.join() && f.base === p.per && f.bc === p.bc && f.ba === p.ba) return f;
   const R = RACES[p.race];
   const st: Partial<Record<StatK, number>> = {};
   for (const k of STAT_KEYS) {
@@ -67,7 +68,7 @@ function fixedOf(p: Pawn): Fixed {
     }
     ax.push(v < -2 ? -2 : v > 2 ? 2 : v);
   }
-  f = { traits: p.traits, tn: p.traits.length, pn: p.perm.length, bc: p.bc, ba: p.ba, base: p.per, st, ax };
+  f = { traits: p.traits, tn: p.traits.length, pn: p.perm.length, pr: p.perm, ps: p.perm.join(), bc: p.bc, ba: p.ba, base: p.per, st, ax };
   fixed.set(p, f);
   return f;
 }

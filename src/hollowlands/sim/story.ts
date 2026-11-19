@@ -2,6 +2,7 @@
 // and the comfortable, backs off after a tragedy, and never arrives twice in quick succession.
 // Events are sparks. What they lead to is up to the colony.
 
+import { cropsChanged } from './cache';
 import { DAYS_PER_YEAR, HARD_CAP, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
 import { checkSpec, pawnFromSpec, type PawnSpec } from './create';
 import { addFact, learn } from './social';
@@ -218,6 +219,7 @@ export function dailyStory(c: Colony): void {
           if (c.crop[i] > 0 && r.chance(0.55)) { c.crop[i] = 0; lost++; }
         }
       }
+      if (lost) cropsChanged(c);
       log(c, 'blight', undefined, undefined, undefined, lost);
       break;
     }
