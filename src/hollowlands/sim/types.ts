@@ -285,6 +285,8 @@ export interface Bld {
   own?: Id;
   /** a home: the tick it was last found standing empty (unset while lived in) */
   vac?: number;
+  /** a home: when its family bought it or moved in, so the move has time to happen */
+  got?: number;
 }
 
 export interface Ev { t: number; k: string; a?: Id; b?: Id; s?: string; n?: number }

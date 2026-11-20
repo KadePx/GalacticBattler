@@ -141,8 +141,8 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
     return { get: async (k) => mm.get(k), put: async (k, v) => void mm.set(k, v) };
   };
   const mk = (): LocalWorld => new LocalWorld(kvFor, null, {
-    host: { msPerDay: 240, maxStep: 4000, pop: 27, preDays: 2, adminKey: 'key', now: () => now },
-    region: { seed: 21, colonies: 2, pop: 27, preDays: 2, now: () => now },
+    host: { msPerDay: 240, maxStep: 4000, pop: 66, preDays: 2, adminKey: 'key', now: () => now },
+    region: { seed: 21, colonies: 2, pop: 66, preDays: 2, now: () => now },
   });
   let world = mk();
   const call = async <T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> => {
@@ -171,7 +171,7 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
     sites = (await call<Region>('region')).body.sites;
   }
   const made = sites[2];
-  check('a crowded colony sends out settlers who found a new one', !!made && !!made.from && made.pop >= 5, made ? `${made.name}, ${made.pop} settlers from ${sites.find((s) => s.id === made.from)?.name}` : 'nobody left in 600 days');
+  check('a crowded colony sends out settlers who found a new one', !!made && !!made.from && made.pop >= 5, made ? `${made.name}, ${made.pop} settlers from ${sites.find((s) => s.id === made.from)?.name}` : `nobody left in 600 days (${sites.map((s) => `${s.name} ${s.pop}`).join(', ')})`);
   if (made) {
     const snap = await call<{ colony: string; tick: number }>(`c/${made.id}/snapshot`);
     const child = deserialize(snap.body.colony);

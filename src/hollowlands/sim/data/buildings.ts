@@ -376,6 +376,13 @@ export const PURPOSE: Record<string, string> = {
   pen: 'Chickens, goats, sheep and cows: eggs, milk and wool, if someone keeps them fed. The herder tends them.',
   tower: 'Wardens keep watch from here and see trouble coming from twice as far. Archers on the tower shoot further, safe behind its walls.',
   well: 'Fresh water.',
+  shack: 'Rough boards over bare earth and straw to sleep on: the last roof of the poor.',
+  cottage: 'A small home for one.',
+  house: 'A plain family home.',
+  bighouse: 'A home with room for a growing family.',
+  longhouse: 'One long hall of beds and a fire, shared by many.',
+  townhouse: 'A narrow house of the inner streets for a family doing well. Costly to keep.',
+  manor: 'A great house by the keep, with a walled garden. Only the rich can keep one up.',
   graveyard: 'Where the dead are laid to rest.',
 };
 

@@ -324,8 +324,11 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
       // a beast in sight first: the nearest one nobody else is after
       let prey = -1;
       let pd = 1e9;
+      const kc = cacheOf(c);
       for (const b of c.beasts ?? []) {
         if (!BEAST_KINDS[b.k]?.prey) continue;
+        // not one standing somewhere nobody can walk to
+        if (!kc.reach[b.y * c.w + b.x]) continue;
         if (c.pawns.some((o) => o !== p && o.act.k === 'work' && o.act.w === 'hunt' && o.act.d === b.id)) continue;
         const d = Math.abs(b.x - p.x) + Math.abs(b.y - p.y);
         if (d < pd) { pd = d; prey = b.id; }

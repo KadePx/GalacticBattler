@@ -421,6 +421,10 @@ export function bldCard(c: Colony, b: Bld): string {
     h += `<div class="hint">${qualityWord(b.q)} work${b.dmg > 60 ? ', and falling apart' : b.dmg > 25 ? ', in need of repair' : ''}.</div>`;
   }
   if (PURPOSE[b.k]) h += `<div class="hint">${esc(PURPOSE[b.k])}</div>`;
+  if (b.own) {
+    const o = c.pawns.find((p) => p.id === b.own);
+    if (o) h += `<div class="hint">Home of the ${esc(o.fam)} family (${esc(o.first)} ${esc(o.fam)}).</div>`;
+  }
 
   if (b.k === 'field') {
     const crop = CROPS[b.crop ?? ''];

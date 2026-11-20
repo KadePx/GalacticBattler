@@ -4,14 +4,14 @@
 // shack. Homes that stand empty, or whose owners can no longer pay, go to seed; long-empty ones
 // in a town with beds to spare are pulled down for their timber.
 
-import { TICKS_PER_DAY } from '../config';
+import { TICKS_PER_DAY, dayOf } from '../config';
 import { touch, touchAt } from './cache';
 import { DECOR, cellCode, isDecor, shapeOf, spots } from './data/buildings';
 import { log } from './events';
 import { RANK } from './gov';
 import { think } from './mood';
 import { STAGE, pawnById, stage } from './pawn';
-import { build, sharesWithStrangers } from './planner';
+import { assignBeds, build, sharesWithStrangers } from './planner';
 import { B, type Bld, type Colony, type Pawn } from './types';
 
 /** How fine each kind of home is: 0 a shack, 4 a manor. */
@@ -19,9 +19,12 @@ export const TIER: Record<string, number> = { shack: 0, cottage: 1, longhouse: 1
 /** How far each tier of home can be made fine (its quality). */
 const QCAP = [30, 56, 68, 84, 92];
 export const homeCap = (k: string): number => QCAP[TIER[k] ?? 2];
-/** What a family pays toward a home of its own, and what it costs them a day to keep up. */
-const PRICE: Record<string, number> = { house: 30, bighouse: 40, townhouse: 60, manor: 100 };
-const UPKEEP = [0, 0, 0.04, 0.18, 0.4];
+/** What a family pays toward a home of its own, and what it costs them a day to keep up (servants,
+ * firewood, the garden): a fine house is a drain on all but the richest. */
+const PRICE: Record<string, number> = { house: 30, bighouse: 40, townhouse: 90, manor: 170 };
+const UPKEEP = [0, 0, 0.08, 0.55, 1.5];
+/** Days a family has to move into a home it has just bought or finished. */
+const GRACE = 6 * TICKS_PER_DAY;
 
 /** A grown colonist's household: them, their partner, and the children of either still at home age. */
 export function household(c: Colony, p: Pawn): Pawn[] {
@@ -91,14 +94,17 @@ export function prosper(c: Colony): boolean {
   }
   if (buy) {
     buy.own = best.id;
+    buy.got = c.tick;
     const paid = pay(c, best, Math.round((PRICE[buy.k] ?? 30) * 0.6));
     log(c, 'prosper', best.id, best.sp || undefined, buy.k, Math.round(paid));
+    // they move in today
+    assignBeds(c, false);
     return true;
   }
-  // with plenty of beds standing empty, nothing new is built: they wait for a home to come free
-  let free = 0;
-  for (const b of c.blds) if (b.built) for (const id of b.beds) if (!id) free++;
-  if (free >= 8 + Math.floor(pop / 8)) return false;
+  // with plenty of plain beds standing empty, no new plain house is built: they wait for one to
+  // come free (a townhouse or a manor is about standing, not room, and is built regardless)
+  // (and plain houses go up one at a time, a few weeks apart)
+  if (want <= 2 && (spareBeds(c) >= 6 + Math.floor(pop / 10) || c.stock.wood < 120 || dayOf(c.tick) % 9 !== 0)) return false;
   // no room left for a manor: a fine townhouse (or a big family house) will do
   let b = build(c, bestK);
   if (!b && bestK === 'manor') {
@@ -107,9 +113,20 @@ export function prosper(c: Colony): boolean {
   }
   if (!b) return false;
   b.own = best.id;
+  b.got = c.tick;
   const paid = pay(c, best, PRICE[bestK] ?? 30);
   log(c, 'prosper', best.id, best.sp || undefined, bestK, Math.round(paid));
   return true;
+}
+
+/** Empty beds standing in the town's homes (a family's own spare room counts: lodgers go there last). */
+function spareBeds(c: Colony): number {
+  let n = 0;
+  for (const b of c.blds) {
+    if (!b.built || !b.beds.length) continue;
+    for (const id of b.beds) if (!id) n++;
+  }
+  return n;
 }
 
 /** The heir to a family's home: the partner, else the eldest grown child living there. */
@@ -161,8 +178,7 @@ export function raze(c: Colony, b: Bld): void {
 
 /** Once a day: homes are kept up, or not. */
 export function upkeep(c: Colony): void {
-  let free = 0;
-  for (const b of c.blds) if (b.built) for (const id of b.beds) if (!id) free++;
+  let free = spareBeds(c);
   let razed = false;
   for (const b of c.blds.slice()) {
     if (!b.built || !b.beds.length || b.k === 'infirmary') continue;
@@ -174,11 +190,12 @@ export function upkeep(c: Colony): void {
       const o = pawnById(c, b.own);
       // the family moved on to somewhere better, or died out: it is anyone's now
       if (!o) b.own = heirOf(c, b, b.own);
-      else if (o.home !== b.id && b.beds.every((x) => x !== o.id)) b.own = undefined;
+      // (a family that has only just bought or finished it has a few days to move in)
+      else if (o.home !== b.id && b.beds.every((x) => x !== o.id) && c.tick - (b.got ?? 0) > GRACE) b.own = undefined;
     }
     if (!lived) {
       b.q = Math.max(8, b.q - 0.6);
-      if (c.tick - b.vac! > 25 * TICKS_PER_DAY) b.dmg = Math.min(80, b.dmg + 0.4);
+      if (c.tick - b.vac! > 20 * TICKS_PER_DAY) b.dmg = Math.min(80, b.dmg + 0.5);
     } else if (b.own) {
       const o = pawnById(c, b.own);
       const fee = UPKEEP[tier];
@@ -186,10 +203,11 @@ export function upkeep(c: Colony): void {
         const have = o.coin + (o.sp ? pawnById(c, o.sp)?.coin ?? 0 : 0);
         if (have >= fee) pay(c, o, fee);
         else {
-          b.q = Math.max(20, b.q - 0.5);
+          b.q = Math.max(20, b.q - 1.2);
           // they can no longer keep it: it goes to whoever needs it
-          if (b.q < homeCap(b.k) - 30) {
+          if (b.q < homeCap(b.k) - 24) {
             b.own = undefined;
+            b.got = undefined;
             think(c, o, 'shabbyhome');
             log(c, 'home_lost', o.id, undefined, b.k);
           }
@@ -199,7 +217,7 @@ export function upkeep(c: Colony): void {
     if (b.q > homeCap(b.k) + 2) b.q = Math.max(homeCap(b.k), b.q - 0.5);
     unfurnish(c, b);
     // long empty and falling in, and there are beds to spare: pulled down for its timber
-    if (!lived && !b.own && !razed && tier <= 2 && c.tick - b.vac! > 90 * TICKS_PER_DAY && b.dmg >= 40 && free - b.beds.length >= 6) {
+    if (!lived && !b.own && !razed && tier <= 2 && c.tick - b.vac! > 50 * TICKS_PER_DAY && b.dmg >= 28 && free - b.beds.length >= 4) {
       free -= b.beds.length;
       c.stock.wood += 6;
       log(c, 'razed', undefined, undefined, b.k);

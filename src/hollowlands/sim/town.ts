@@ -341,10 +341,19 @@ export function pave(c: Colony, n: number): void {
     if (t !== T.GRASS && t !== T.DIRT && t !== T.SOIL && t !== T.PATH && t !== T.STONE && t !== T.SAND) continue;
     // set out only as the town reaches that far: something is built within a few paces
     if (!publicGround(c, x, y) && !builtNear(c, x, y)) continue;
-    // nothing that would close a doorway
+    // nothing that would close a doorway; a fountain or a pump only on open ground all round, so
+    // it can never be what shuts a corner off
     let door = false;
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (c.st[i + oy * c.w + ox] === B.DOOR) door = true;
     if (door) continue;
+    if (!passableThing(code)) {
+      let clear = true;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const j = i + oy * c.w + ox;
+        if (j !== i && (c.sb[j] || (c.st[j] && !passableThing(c.st[j])) || c.ter[j] === T.DEEP || c.ter[j] === T.ROCK)) clear = false;
+      }
+      if (!clear) continue;
+    }
     c.st[i] = code;
     changed = true;
   }

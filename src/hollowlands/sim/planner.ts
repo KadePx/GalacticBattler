@@ -80,8 +80,7 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
   // a crowded colony builds further out, almost to the edge of its land
   const edge = Math.min(c.w, c.h) / 2 - 6;
   const maxR = field ? (far ? edge : WALL + 18) : far ? edge - 2 : planned ? (out ? WALL + 14 : WALL + 2) : WALL + 9;
-  let best: [number, number] | null = null;
-  let bestScore = -1e9;
+  const TOP = 24;
   const top: [number, number, number][] = [];
   const doors = cells(shape).filter((q) => q.ch === '+' || q.ch === 'g');
   // only the ground within reach of the plan is looked at, not the whole map
@@ -147,13 +146,11 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
         ? lotScore(c, k, x, y, w, h, t.rows) + (field ? soil * 0.3 : 0) - (k === 'tower' ? road * 0.5 : 0)
         : field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - WALL) : k === 'tower' ? -road : -d;
       score += (hash32(c.seed, S.PLAN, x, y, c.nextBld) / 4294967296) * 1.6;
-      void best;
-      if (score > bestScore) { bestScore = score; best = [x, y]; }
-      // the few best plots are kept, in case the very best would wall someone in
-      if (top.length < 8 || score > top[top.length - 1][0]) {
+      // the best plots are kept, in case the very best would wall someone in
+      if (top.length < TOP || score > top[top.length - 1][0]) {
         top.push([score, x, y]);
         top.sort((a, b) => b[0] - a[0] || a[2] - b[2] || a[1] - b[1]);
-        if (top.length > 8) top.pop();
+        if (top.length > TOP) top.pop();
       }
     }
   }
@@ -306,6 +303,7 @@ export function advanceBuild(c: Colony, b: Bld, hours: number, p: Pawn): boolean
     p.built = (p.built ?? 0) + 1;
     log(c, 'built', p.id, undefined, b.k, b.id);
     bump(c, 'buildings');
+    if (b.own) b.got = c.tick;
     if (b.beds.length) assignBeds(c, false);
     if (b.k === 'graveyard') bury(c);
   }
@@ -337,6 +335,9 @@ export function assignBeds(c: Colony, quiet: boolean): void {
     if (!b.own) continue;
     const head = pawnById(c, b.own);
     if (!head || head.gone) continue;
+    // a couple who each hold a home live in one of them, not moved back and forth
+    const cur = head.home ? homes.find((x) => x.id === head.home) : undefined;
+    if (cur && cur !== b && cur.own && (cur.own === head.sp || cur.own === head.id) && (b.got ?? 0) <= (cur.got ?? 0)) continue;
     const fam = household(c, head);
     for (const p of fam) {
       if (p.home === b.id || p.gone) continue;
