@@ -24,7 +24,10 @@ import { SKILL_INFO, SKILL_LEVELS } from '../sim/data/skills';
 import { SKILL_NAMES, type Bio, type Bld, type Colony, type Dead, type Id, type Pawn } from '../sim/types';
 import { dateText, raceName, thoughtText, whyText } from '../text';
 import { stageOfAge, yearsAt } from './look';
-import { portraitKey, portraitSvg } from './portrait';
+import { bustSvg, portraitKey, portraitSvg } from './portrait';
+import { VIS_INFO, partyOfId } from '../sim/visit';
+import type { Visitor } from '../sim/types';
+import { clockText, evText } from '../text';
 import { DEVOTION, ILL_NAMES, PART_NAMES, STAGE_NAMES, actText, bioText, causeText, esc, faithName, moodColor, moodWord, pretty, qualityWord } from './words';
 
 type Who = Pawn | Dead;
@@ -474,5 +477,49 @@ export function bldCard(c: Colony, b: Bld): string {
     h += `<h3>Here now <span class="legend">${inside.length}</span></h3>`;
     for (const o of inside) h += `<div class="row" data-p="${o.id}">${face(c, o, 34)}<div class="n"><b>${esc(fullName(o))}</b><small class="plain">${esc(actText(c, o))}</small></div></div>`;
   }
+  return h;
+}
+
+// ---------- A visitor ----------
+
+const FAITH_OF: Record<string, string> = { hearth: 'the Hearth', iron: 'the Iron Ancestors', pale: 'the Pale Lady', green: 'the Green Choir', teeth: 'the Old Teeth', hollow: 'the Hollow Mother' };
+
+/** A small portrait of a visitor (a bust, like a colonist's). */
+export function guestFace(c: Colony, v: Visitor, size: number): string {
+  if (v.k === 'mule') return `<div class="face" style="width:${size}px;height:${size}px"></div>`;
+  return bustSvg(v, yearsAt(v.born, c.tick), size);
+}
+
+/** Who a visitor is, what they are here for, and what they have done so far. */
+export function guestCard(c: Colony, v: Visitor): string {
+  const info = VIS_INFO[v.k] ?? { name: 'Visitor', why: '' };
+  const years = Math.floor(yearsAt(v.born, c.tick));
+  let h = `<div class="head">${guestFace(c, v, 88)}<div class="hd"><div class="nm">${esc(v.first + (v.fam ? ' ' + v.fam : ''))}</div>`;
+  h += `<div class="sub">${esc(raceName(v.race))} · ${v.sex ? 'Male' : 'Female'} · ${years} ${years === 1 ? 'year' : 'years'}</div>`;
+  h += `<div class="sub"><span class="tie guest">✦ Guest · ${esc(info.name)}</span></div></div></div>`;
+  h += `<div class="why">${esc(info.why)}</div>`;
+  const q = v.o ? person(c, v.o) : undefined;
+  const detail = v.k === 'merchant' ? `Come from ${v.f}.` : v.k === 'minstrel' ? `Plays the ${v.f}.` : v.k === 'pilgrim' ? `A pilgrim of ${FAITH_OF[v.f] ?? v.f}.` : v.k === 'refugee' ? `Fled ${v.f}.`
+    : v.k === 'taxman' ? `Sent by ${v.f}, for ${v.n} silver.` : v.k === 'hunter' ? `After a ${v.f}${v.n ? `, for a bounty of ${v.n} silver` : ''}.` : '';
+  if (detail) h += `<div class="sub" style="margin:6px 0">${esc(detail)}</div>`;
+  const doing = v.m === 0 ? 'On the road into the colony' : v.m === 2 ? 'Leaving by the road' : (v.b & 1024) && c.alarm ? 'Sheltering from the fighting' : c.tick < v.ta ? 'Walking through the colony' : 'Staying in the colony';
+  h += `<div class="th"><span>Now</span><b>${esc(doing)}</b></div>`;
+  h += `<div class="th"><span>Came</span><b>${dateText(v.arr, true)}</b></div>`;
+  if (v.m !== 2) h += `<div class="th"><span>Means to leave</span><b>${dateText(v.dep)}</b></div>`;
+  if (v.k === 'merchant' && v.d) h += `<div class="th"><span>Sold</span><b>${v.d} ${v.d === 1 ? 'thing' : 'things'}, ${v.n} silver</b></div>`;
+  if (v.k === 'minstrel' && v.n) h += `<div class="th"><span>Tips so far</span><b>${v.n} silver</b></div>`;
+  if (q && v.k === 'hunter') h += `<div class="th"><span>Asking after</span><b>${whoLink(c, q.id)}</b></div>`;
+  const party = partyOfId(c, v.g).filter((x) => x.id !== v.id);
+  if (party.length) h += `<div class="th"><span>With them</span><b>${party.map((x) => esc(x.k === 'mule' ? 'a pack mule' : x.k === 'guard' ? `${x.first} (guard)` : x.first)).join(', ')}</b></div>`;
+  // what they have done here, newest first
+  const lines: string[] = [];
+  for (let i = c.log.length - 1; i >= 0 && lines.length < 12; i--) {
+    const e = c.log[i];
+    if (!e.k.startsWith('v_') || !e.s || !e.s.startsWith(v.g + '|')) continue;
+    lines.push(`<div class="ln"><span class="y">${clockText(e.t)}</span><span class="t">${esc(evText(c, e))}</span></div>`);
+    if (e.t < v.arr) break;
+  }
+  if (lines.length) h += `<h3>Here so far</h3>${lines.join('')}`;
+  h += `<div class="btns"><button class="btn sm" data-act="findguest">Show on map</button></div>`;
   return h;
 }

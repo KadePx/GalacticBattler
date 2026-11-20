@@ -18,6 +18,7 @@ import { die } from './life';
 import { MARKET_POP, buy, goMarket, marketOpen, pickShop } from './market';
 import { bedFor, equip, findJob, finishWork } from './jobs';
 import { addLore } from './tech';
+import { guestCall, guestSpot, metGuest } from './visit';
 import { endBreak, feltTemp, hasThought, think } from './mood';
 import { findPath, walkTicks } from './path';
 import { STAGE, gainXp, has, idleAct, mkAct, pawnById, per, posAt, stage, stat } from './pawn';
@@ -214,6 +215,9 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
   if (grave && hour >= 6 && hour < 21) w('mourn', 1.6);
   // on other days the masters of the trades sell from their shops
   if (adult && p.coin >= 6 && hour >= 8 && hour < 19 && c.pawns.length >= MARKET_POP && !marketOpen(c)) w('shop', 0.3 + (p.coin >= 60 ? 0.5 : 0));
+  // a visitor in town draws a little crowd
+  const gc = c.vis && c.vis.l.length ? guestCall(c, p, st, hour) : null;
+  if (gc) w('guest', gc[1]);
 
   let total = 0;
   for (const o of opts) total += o[1];
@@ -296,6 +300,11 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
         const shore = featList(c, SHORE);
         const i = shore[r.int(Math.min(8, shore.length))];
         if (setAct(c, p, 'bathe', i % c.w, Math.floor(i / c.w), 8, 'bathe', { adj: true })) return true;
+        break;
+      }
+      case 'guest': {
+        const s = guestSpot(c, gc![0], r);
+        if (s && setAct(c, p, 'listen', s[0], s[1], dur, 'guest', { d: gc![0].id })) return true;
         break;
       }
       case 'perform': {
@@ -778,6 +787,7 @@ export function finish(c: Colony, p: Pawn): void {
       if (r.chance(0.5)) think(c, p, 'lovework');
       break;
     }
+    case 'listen': if (a.why === 'guest' && spent > 0) metGuest(c, p, a.d ?? 0, r); break;
     case 'perform': {
       let n = 0;
       for (const o of c.pawns) {

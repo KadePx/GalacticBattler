@@ -50,6 +50,7 @@ const CAUSES: Record<string, string> = {
   accident: 'died in an accident', match: 'was sent away to be married', escaped: 'escaped from thralldom', raiding: 'died raiding another colony', foe_raider: 'was killed by raiders from another colony', moved: 'left for another colony', settled: 'left to found a new colony', duel: 'died fighting for the seat', coup: 'was killed when the seat was seized', exiled: 'was exiled',
   bled: 'bled to death',
   taken: 'was carried off by slavers',
+  foe_soldier: 'was cut down by the king\'s soldiers', bounty: 'was taken away in chains by a bounty hunter', fled_hunter: 'fled before a bounty hunter could take them',
   foe_bandit: 'was cut down by bandits', foe_slaver: 'was killed by slavers', foe_orc: 'was butchered by orc raiders', foe_wolf: 'was torn apart by wolves',
   foe_ghoul: 'was dragged down by ghouls', foe_troll: 'was crushed by a troll', foe_boar: 'was gored by a boar',
   sick_flux: 'died of the flux', sick_fever: 'died of rot fever', sick_plague: 'died of the grey plague', sick_cough: 'died of lung-cough', sick_pox: 'died of goblin pox',
@@ -66,8 +67,8 @@ const BREAKS: Record<string, string> = {
   berserk: 'has gone berserk and is attacking anyone near',
 };
 
-const FOE_ONE: Record<string, string> = { raider: 'raider', bandit: 'bandit', slaver: 'slaver', orc: 'orc raider', wolf: 'wolf', ghoul: 'ghoul', troll: 'troll', boar: 'maddened boar' };
-const FOE_MANY: Record<string, string> = { raider: 'raiders', bandit: 'bandits', slaver: 'slavers', orc: 'orc raiders', wolf: 'wolves', ghoul: 'ghouls', troll: 'trolls', boar: 'maddened boars' };
+const FOE_ONE: Record<string, string> = { soldier: 'king\'s soldier', raider: 'raider', bandit: 'bandit', slaver: 'slaver', orc: 'orc raider', wolf: 'wolf', ghoul: 'ghoul', troll: 'troll', boar: 'maddened boar' };
+const FOE_MANY: Record<string, string> = { soldier: 'king\'s soldiers', raider: 'raiders', bandit: 'bandits', slaver: 'slavers', orc: 'orc raiders', wolf: 'wolves', ghoul: 'ghouls', troll: 'trolls', boar: 'maddened boars' };
 const ILL: Record<string, string> = { flux: 'the flux', fever: 'rot fever', plague: 'the grey plague', cough: 'lung-cough', pox: 'goblin pox' };
 const PART: Record<string, string> = {
   eyeL: 'eye', eyeR: 'eye', armL: 'arm', armR: 'arm', handL: 'hand', handR: 'hand', legL: 'leg', legR: 'leg', footL: 'foot', footR: 'foot',
@@ -109,6 +110,9 @@ export const WEIGHT: Record<string, number> = {
   feast_set: 2, audience: 2, prosper: 2, home_lost: 2, razed: 1, castle: 3, walls: 3, siege: 3, breach: 3, mended: 2,
   discovery: 3, firstbuilt: 3, cleared: 1, chronicle: 2, tech_trader: 1, glazed_first: 2, jewels_first: 2,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
+  v_come: 2, v_gone: 1, v_shelter: 1, v_fair: 1, v_rare: 2, v_nosale: 1, v_finery: 1, v_festival: 2, v_played: 1, v_song: 2, v_saint: 2, v_offering: 1, v_converted: 2,
+  v_takenin: 3, v_turnedaway: 3, v_healed: 2, v_blessed: 2, v_fields: 2, v_lights: 2, v_lore: 2, v_fortune: 2, v_paid: 3, v_refused: 3, v_kingmen: 3,
+  v_told: 2, v_miss: 2, v_lost: 1, v_bought: 3, v_beaten: 3, v_wounded: 3, v_fled: 3, v_taken: 3,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
 
@@ -187,6 +191,7 @@ function siegeText(c: Colony, e: Ev): string {
 export function evText(c: Colony, e: Ev): string {
   const a = first(c, e.a);
   const b = first(c, e.b);
+  if (e.k.startsWith('v_')) return visitText(c, e);
   switch (e.k) {
     case 'death': return `${full(c, e.a)} ${CAUSES[e.s ?? ''] ?? 'died'}${e.b && e.s === 'brawl' ? ` at the hands of ${full(c, e.b)}` : ''}.`;
     case 'birth': return `${full(c, e.b)} gave birth to ${a}${e.n && person(c, e.n) ? `, child of ${first(c, e.n)}` : ''}.`;
@@ -282,7 +287,8 @@ export function evText(c: Colony, e: Ev): string {
     case 'allclear': return 'It is over. The colony counts its wounds.';
     case 'rout': return `The ${FOE_MANY[e.s ?? ''] ?? 'attackers'} broke and ran.`;
     case 'slew': { const f = FOE_ONE[e.s ?? ''] ?? 'foe'; return `${a} killed ${/^[aeiou]/.test(f) ? 'an' : 'a'} ${f}.`; }
-    case 'looted': return `${FOE_MANY[e.s ?? ''] ?? 'Raiders'} broke into the stores and carried off what they could.`.replace(/^./, (x) => x.toUpperCase());
+    case 'looted': if (e.s === 'soldier') return "The king's soldiers broke into the treasury and took the king's due, and more besides.";
+      return `${FOE_MANY[e.s ?? ''] ?? 'Raiders'} broke into the stores and carried off what they could.`.replace(/^./, (x) => x.toUpperCase());
     case 'seized': return `${full(c, e.a)} has been seized by slavers!`;
     case 'rescued': return `${a} cut ${b} free from the slavers.`;
     case 'hero': return `${full(c, e.a)} killed ${e.n} of them. Nobody will forget it.`;
@@ -381,6 +387,78 @@ export function evText(c: Colony, e: Ev): string {
     case 'rats': return 'Rats have got into the grain.';
     case 'eclipse': return 'The sun went dark at midday. The faithful are afraid.';
     default: return `${e.k}: ${a}${e.b ? ' and ' + b : ''}`;
+  }
+}
+
+const FAITH_NAME: Record<string, string> = { hearth: 'the Hearth', iron: 'the Iron Ancestors', pale: 'the Pale Lady', green: 'the Green Choir', teeth: 'the Old Teeth', hollow: 'the Hollow Mother' };
+/** What the colony bought from a merchant. */
+const RARE_TEXT: Record<string, string> = {
+  silk: 'a bale of southern silk', spice: 'a chest of spices, and tonight every pot smells of far places', seed: 'seed of a hardier crop for the fields',
+  book: 'a book of the old learning', tools: 'a crate of good steel tools', relic: 'a holy relic, a finger bone in a silver box',
+};
+/** What the minstrel's song was about. */
+const SONG_TEXT: Record<string, string> = {
+  slew: ' and the foe they cut down', rescued_someone: ' and the life they saved', contest: ' and their win at the festival games', masterwork: ' and the masterwork from their hands',
+  discovery: ' and what they worked out', ruler: ', who rules here', master: ', master of their craft', dream: ' and the dream they made come true', firstbuilt: ' and the first of its kind they raised',
+};
+
+/** A line about a visitor. The visitor's name, kind and business travel in the event, so it reads the same after they have gone. */
+function visitText(c: Colony, e: Ev): string {
+  const beat = e.k.slice(2);
+  if (beat === 'kingmen') return `The king's soldiers have come for the tax that was refused: ${e.n ?? 'a band'} of them, marching up the road.`;
+  const [, k, name, f, x] = (e.s ?? '').split('|');
+  const a = first(c, e.a);
+  const fa = full(c, e.a);
+  const b = first(c, e.b);
+  const n = e.n ?? 0;
+  const fam = (name ?? '').split(' ').slice(1).join(' ');
+  switch (beat) {
+    case 'come':
+      switch (k) {
+        case 'merchant': return `${name}, a merchant from ${f}, led a laden mule in off the road and set out wares in the square.`;
+        case 'minstrel': return `${name}, a minstrel with a ${f}, walked in off the road singing${x === 'fest' ? ', just in time for the festival' : ''}.`;
+        case 'pilgrim': return n > 1 ? `${n} pilgrims of ${FAITH_NAME[f] ?? f} came up the road, led by ${name}, and asked the way to the shrine.` : `${name}, a pilgrim of ${FAITH_NAME[f] ?? f}, came up the road and asked the way to the shrine.`;
+        case 'refugee': return n > 1 ? `A family of ${n} came in off the road with nothing but what they carried: the ${fam} family, fleeing ${f}.` : `${name} came in off the road alone, fleeing ${f}, and sat down by the hall.`;
+        case 'wizard': return `${name}, a wandering wizard, came up the road leaning on a staff. Children followed at a safe distance.`;
+        case 'taxman': return `${name} rode in under the banner of ${f} with two guards, and demanded ${n} silver in the king's name.`;
+        case 'hunter': return e.a ? `${name}, a bounty hunter with a crossbow, came asking after a ${f}. ${a} has gone very quiet.` : `${name}, a bounty hunter, came asking after a ${f}.`;
+        default: return `${name} came in off the road.`;
+      }
+    case 'shelter': return `${name} took shelter indoors until the fighting was done.`;
+    case 'gone':
+      if (k === 'merchant') return `${name} packed up and took the road out${n ? `, ${n} ${n === 1 ? 'trinket' : 'trinkets'} lighter` : ''}.`;
+      if (k === 'minstrel') return `${name} took the road again${n ? `, ${n} silver richer in tips` : ''}.`;
+      if (k === 'wizard') return `${name} was gone before dawn. Nobody saw which way.`;
+      return 'The pilgrims went on their way to the next holy place.';
+    case 'fair': return `It is market day, and ${name} has set out silks and spices among the stalls.`;
+    case 'rare': return `The colony bought ${RARE_TEXT[x] ?? 'something rare'} from ${name} for ${n} silver.`;
+    case 'nosale': return `${name} had rare things to sell, but the treasury could not stretch to them.`;
+    case 'finery': return `${fa} bought ${x} from ${name} for ${n} silver.`;
+    case 'festival': return `${name} played the ${f} at the festival, and everyone danced.`;
+    case 'played': return `${n} ${n === 1 ? 'person' : 'people'} crowded round to hear ${name} play the ${f}.`;
+    case 'song': return x === 'town' ? `${name} made a song about ${c.name}. It is already being sung in the tavern.` : `${name} made a song about ${fa}${SONG_TEXT[x] ?? ''}. It is already being sung in the tavern.`;
+    case 'saint': return `The pilgrims knelt at the grave of ${fa} and left ${n} silver for the shrine.`;
+    case 'offering': return `The pilgrims prayed at the shrine and left ${n} silver as an offering.`;
+    case 'converted': return `${fa} has taken up the pilgrims' faith: ${FAITH_NAME[f] ?? f}.`;
+    case 'takenin': return `The ${fam} family have been taken in. ${n} new ${n === 1 ? 'soul' : 'souls'}, fleeing ${f}, now call ${c.name} home.`;
+    case 'turnedaway': return x === 'full' ? `There is no room left for the ${fam} family. They took the road again.` : `${e.a ? a + ' would' : 'The colony would'} not take the ${fam} family in. They took the road again, slowly.`;
+    case 'healed': return `${name} laid hands on ${fa}, and by morning ${a} was mending.`;
+    case 'blessed': return `${name} blessed the baby ${a}. A lucky child, they say now.`;
+    case 'fields': return `${name} walked the fields at dusk, muttering. By morning the crops stood taller.`;
+    case 'lights': return `${name} filled the night sky with coloured lights. Nobody slept for hours.`;
+    case 'lore': return `${name} sat up half the night with ${e.a ? a : 'the curious'}, talking of ${(TECHS[x]?.name ?? 'old secrets').toLowerCase()}. The colony is closer to working it out.`;
+    case 'fortune': return x === 'good' ? `${name} read ${fa}'s palm and foretold great things.` : `${name} read ${fa}'s palm, went pale, and would not say what was there.`;
+    case 'paid': return `${e.a ? a : 'The colony'} paid the king's ${n} silver${x === 'short' ? ', and goods to make up what the treasury could not' : ''}. ${name} rode off with it.`;
+    case 'refused': return `${e.a ? a : 'The colony'} refused to pay ${f} a single coin. ${name} rode off with a warning.${x.startsWith('feud:') ? ` Word of it has reached ${x.slice(5)}, and they will not forget it.` : ' The king will send soldiers.'}`;
+    case 'told': return `${a} told the bounty hunter where to find ${b}.`;
+    case 'miss': return `${name} gave up and rode away. ${a} came out of hiding.`;
+    case 'lost': return `${name} left: whoever was wanted is gone from here.`;
+    case 'bought': return `${name} found ${fa}, the ${f}. ${e.b ? b : 'The colony'} paid ${n} silver to let them be.`;
+    case 'beaten': return `${name} found ${fa}, the ${f}, and lost the fight that followed. The hunter limped away.`;
+    case 'wounded': return `${name} found ${fa}, the ${f}. There was a fight, and ${a} was hurt, but would not be taken.`;
+    case 'fled': return `${name} found out ${fa}, the ${f}, but ${a} fled into the night before they could be taken.`;
+    case 'taken': return `${name} found ${fa}, the ${f}, and took them away in chains.`;
+    default: return `${name ?? 'A visitor'} passed through.`;
   }
 }
 

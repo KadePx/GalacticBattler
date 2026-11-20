@@ -44,10 +44,42 @@ const ACT: Record<string, string> = {
   shop: 'Buying from {o}', sell: 'Minding a stall',
 };
 
+const GUEST_ACT: Record<string, string> = {
+  minstrel: 'Listening to the minstrel', merchant: 'Looking over the merchant\'s wares', wizard: 'Hearing the wizard out', pilgrim: 'Talking faith with the pilgrims',
+  refugee: 'Bringing bread to the refugees', hunter: 'Talking to the bounty hunter',
+};
+
 const firstOf = (c: Colony, id: Id | undefined): string => {
   const o = id ? person(c, id) : undefined;
   return o ? o.first : 'someone';
 };
+
+/** A line in someone's life story about a visitor (b.s is "kind|name|detail"). */
+function visitBio(c: Colony, b: Bio, o: string): string {
+  const [, name, x] = (b.s ?? '').split('|');
+  switch (b.k) {
+    case 'v_hunted': return `A bounty hunter, ${name}, came looking for the ${x} they once were.`;
+    case 'v_hidden': return `Kept out of sight until the bounty hunter ${name} gave up.`;
+    case 'v_exposed': return `Was found out by the bounty hunter ${name}. Everyone knows now.`;
+    case 'v_beathunter': return `Beat the bounty hunter ${name} in a fight in the street.`;
+    case 'v_told': return `Told the bounty hunter ${name} where to find ${o}.`;
+    case 'v_song': return `The minstrel ${name} made a song about them.`;
+    case 'v_trinket': return `Bought ${x} from ${name} the merchant.`;
+    case 'v_gift': return `Bought ${x} from the merchant ${name} for ${o}.`;
+    case 'v_finery': return `Bought ${x} for the house from ${name} the merchant.`;
+    case 'v_healed': return `Was healed by ${name} the wizard.`;
+    case 'v_blessed': return `Was blessed as a baby by ${name} the wizard.`;
+    case 'v_lore': return `Sat up all night with ${name} the wizard, talking of ${(TECHS[x]?.name ?? 'old secrets').toLowerCase()}.`;
+    case 'v_fortune': return x === 'good' ? `Had a bright future foretold by ${name} the wizard.` : `Had their palm read by ${name} the wizard, who would not say what was there.`;
+    case 'v_inspired': return `Was set alight by a long talk with ${name} the wizard.`;
+    case 'v_devout': return `Talked faith with the pilgrim ${name}, and came away more devout.`;
+    case 'v_converted': return `Took up the faith of the pilgrim ${name}.`;
+    case 'v_takenin': return `Fled ${x} and was taken in at ${c.name}${b.o ? ` by ${o}` : ''}.`;
+    case 'v_tax_paid': return `Paid the king's tax to ${name}.`;
+    case 'v_tax_no': return `Refused to pay ${x} when ${name} came for the king's tax.`;
+    default: return `Met ${name ?? 'a traveller'}.`;
+  }
+}
 
 /** A few words for what a colonist is doing right now. */
 export function actText(c: Colony, p: Pawn): string {
@@ -55,6 +87,10 @@ export function actText(c: Colony, p: Pawn): string {
   let s = a.k === 'work' && a.w ? WORK[a.w] ?? 'Working' : ACT[a.k] ?? a.k;
   // at a shop, buying from its master only when the master is there; otherwise just shopping
   if (a.k === 'shop' && a.b) { const o = a.o ? person(c, a.o) : undefined; if (!o || !('act' in o) || o.act.b !== a.b) s = 'Shopping'; }
+  if (a.k === 'listen' && a.why === 'guest') {
+    const g = c.vis?.l.find((x) => x.id === a.d);
+    s = g ? GUEST_ACT[g.k] ?? 'With a visitor' : 'With a visitor';
+  }
   s = s.replace('{o}', firstOf(c, a.o));
   // still on the way there (the tick being shown is the one just stepped: c.tick - 1)
   if (c.tick - 1 < a.ta && a.path && a.path.length > 1 && a.k !== 'wander' && a.k !== 'walk') return 'Off to: ' + s[0].toLowerCase() + s.slice(1);
@@ -157,7 +193,8 @@ export function bioText(c: Colony, b: Bio): string {
     case 'cult': return b.o ? `Was brought to the Hollow Mother by ${o}.` : 'Found the Hollow Mother.';
     case 'enthralled': return `Was taken alive in a raid and put in chains at ${b.s ?? 'the colony'}.`;
     case 'freed': return 'Was freed.';
-    default: return pretty(b.k) + (b.o ? ` (${o})` : '') + '.';
+    default: if (b.k.startsWith('v_')) return visitBio(c, b, o);
+    return pretty(b.k) + (b.o ? ` (${o})` : '') + '.';
   }
 }
 

@@ -65,6 +65,7 @@ function setSpeed(s: number): void {
 function setSel(next: Sel): void {
   sel = next;
   map.selected = next?.k === 'pawn' ? next.id : 0;
+  map.selectedGuest = next?.k === 'guest' ? next.id : 0;
   map.selectBld(next?.k === 'bld' ? next.id : 0);
   if (!next || next.k !== 'pawn' || next.id !== follow) setFollow(0);
   ui?.touch();
@@ -418,6 +419,8 @@ function frame(dt: number): void {
     const id = sel.id;
     setSel(c.dead.some((d) => d.id === id) ? { k: 'dead', id } : null);
   }
+  // a guest who has gone (or been taken in) closes their card
+  if (sel?.k === 'guest') { const id = sel.id; if (!c.vis?.l.some((v) => v.id === id)) setSel(null); }
   if (c.out.length) c.out = []; // a lone colony has nobody to send to
   map.render(c, c.tick - 1 + acc, dt);
   const now = performance.now();
@@ -468,6 +471,8 @@ async function boot(): Promise<void> {
       setSel({ k: 'bld', id });
       map.focusTile(b.x + b.w / 2 - 0.5, b.y + b.h / 2 - 0.5, 1);
     },
+    guest: (id) => { setSel({ k: 'guest', id }); map.focusGuest(id, 1.2); },
+    findGuest: () => { if (sel?.k === 'guest') map.focusGuest(sel.id, 1.6); },
     tile: (i) => map.focusTile(i % c.w, Math.floor(i / c.w), 1.6),
     follow: () => {
       if (sel?.k !== 'pawn') return;
@@ -479,7 +484,7 @@ async function boot(): Promise<void> {
     layout,
     recap: () => { void digest(true); },
     share: () => {
-      if (!sel || sel.k === 'bld') return;
+      if (!sel || sel.k === 'bld' || sel.k === 'guest') return;
       const u = new URL(location.href);
       u.search = live && here ? `?c=${here}&who=${sel.id}` : `${location.search.replace(/[?&]who=\d+/, '')}${location.search ? '&' : '?'}who=${sel.id}`;
       void navigator.clipboard?.writeText(u.toString()).then(() => toast('Link copied'), () => toast(u.toString()));
@@ -500,6 +505,7 @@ async function boot(): Promise<void> {
 
   map.onPick = (hit) => {
     if (hit.pawn) { openPerson(hit.pawn, false); return; }
+    if (hit.guest) { setSel({ k: 'guest', id: hit.guest }); return; }
     if (hit.grave !== undefined) {
       const d = c.dead.find((x) => x.grave === hit.grave);
       if (d) { setSel({ k: 'dead', id: d.id }); return; }

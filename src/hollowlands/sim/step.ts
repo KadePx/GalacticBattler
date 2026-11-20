@@ -23,6 +23,7 @@ import { dailyGuild } from './guild';
 import { dailyDreams } from './dreams';
 import { dailyMarket, tickMarket } from './market';
 import { dailyTech } from './tech';
+import { dailyVisitors, stepVisitors } from './visit';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
@@ -45,6 +46,7 @@ function daily(c: Colony): void {
   dailyMatch(c);
   dailyIntrigue(c);
   dailyMarket(c);
+  dailyVisitors(c);
   // let go of faded memories and of people long forgotten
   for (const p of c.pawns) {
     for (const key in p.rel) {
@@ -67,6 +69,7 @@ export function step(c: Colony): void {
   if (c.gath && t >= c.gath.t1) endGathering(c);
   if (c.beasts?.length) stepWild(c);
   if (c.herd?.length) stepHerd(c);
+  if (c.vis && (c.vis.l.length || c.vis.nx)) stepVisitors(c);
   if (c.foes.length) combatTick(c);
   else if (c.alarm) aftermath(c);
   const list = c.pawns;

@@ -14,13 +14,14 @@ import { GOVS, approval, rulerTitle } from '../sim/gov';
 import { fullName, pawnById, person, stage } from '../sim/pawn';
 import type { Colony, Dead, Ev, Id, Pawn } from '../sim/types';
 import { WEIGHT, clockText, dateText, evText, raceName, wareName } from '../text';
-import { bldCard, deadCard, face, linkNames, pawnCard, shortDate, type CardUi } from './card';
+import { bldCard, deadCard, face, guestCard, guestFace, linkNames, pawnCard, shortDate, type CardUi } from './card';
+import { VIS_INFO, guests } from '../sim/visit';
 import { MARKET_POP, WARES, daysToMarket, marketOpen, priceMult, priceOf } from '../sim/market';
 import { TECHS, TECH_LIST } from '../sim/data/tech';
 import { costOf, nextTech } from '../sim/tech';
 import { RES_NAMES, WEATHER, actText, causeText, esc, moodColor } from './words';
 
-export type Sel = { k: 'pawn'; id: Id } | { k: 'dead'; id: Id } | { k: 'bld'; id: number } | null;
+export type Sel = { k: 'pawn'; id: Id } | { k: 'dead'; id: Id } | { k: 'bld'; id: number } | { k: 'guest'; id: number } | null;
 export type Tab = 'feed' | 'people' | 'colony';
 
 /** What the controller tells the panels about the current view. */
@@ -32,6 +33,10 @@ export interface Hooks {
   /** Open someone's card: a colonist, or a memorial if they are dead or gone. */
   person(id: Id): void;
   building(id: number): void;
+  /** Open a visitor's card. */
+  guest(id: number): void;
+  /** Centre the map on the visitor whose card is open. */
+  findGuest(): void;
   /** Centre the map on a tile. */
   tile(i: number): void;
   /** Toggle following the selected colonist. */
@@ -153,17 +158,19 @@ export class Panels {
   }
 
   private click(e: MouseEvent): void {
-    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-speed],[data-tab],[data-p],[data-b],[data-open],[data-act],[data-tile],[data-filter],[data-sort]');
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-speed],[data-tab],[data-p],[data-g],[data-b],[data-open],[data-act],[data-tile],[data-filter],[data-sort]');
     if (!t) return;
     const d = t.dataset;
     if (d.speed !== undefined) this.hooks.speed(Number(d.speed));
     else if (d.tab) this.open(d.tab, true);
     else if (d.p) this.hooks.person(Number(d.p));
+    else if (d.g) this.hooks.guest(Number(d.g));
     else if (d.b) this.hooks.building(Number(d.b));
     else if (d.tile) this.hooks.tile(Number(d.tile));
     else if (d.open) { if (!this.ui.open.delete(d.open)) this.ui.open.add(d.open); }
     else if (d.act === 'follow') this.hooks.follow();
     else if (d.act === 'find') this.hooks.find();
+    else if (d.act === 'findguest') this.hooks.findGuest();
     else if (d.act === 'allrel') this.ui.allRel = !this.ui.allRel;
     else if (d.act === 'nudge' && d.k) this.hooks.nudge(d.k, Number(d.v));
     else if (d.act === 'answer' && d.v) this.hooks.answer(d.v);
@@ -254,6 +261,18 @@ export class Panels {
     const byName = (a: Pawn, b: Pawn): number => a.first.localeCompare(b.first) || a.id - b.id;
     const list = c.pawns.slice().sort(this.sort === 'mood' ? (a, b) => a.mood - b.mood || a.id - b.id : this.sort === 'player' ? (a, b) => (a.id === v.me ? -1 : b.id === v.me ? 1 : 0) || (b.owner ? 1 : 0) - (a.owner ? 1 : 0) || byName(a, b) : byName);
     const selId = v.sel && v.sel.k === 'pawn' ? v.sel.id : 0;
+    // visitors first, marked as guests: they are not counted among the colony's people
+    const here = guests(c);
+    if (here.length) {
+      const gSel = v.sel && v.sel.k === 'guest' ? v.sel.id : 0;
+      h += `<h3>Guests <span class="legend">passing through, not counted</span></h3>`;
+      for (const g of here) {
+        const n = c.vis!.l.filter((x) => x.g === g.id && x.k !== 'mule').length;
+        const doing = g.m === 0 ? 'Coming up the road' : g.m === 2 ? 'Leaving' : c.tick < g.ta ? 'Walking about' : 'In the colony';
+        h += `<div class="row guest${g.id === gSel ? ' sel' : ''}" data-g="${g.id}">${guestFace(c, g, 38)}<div class="n"><b><i class="gm">✦</i>${esc(g.first + ' ' + g.fam)}</b><small>${esc(VIS_INFO[g.k]?.name ?? g.k)}${n > 1 ? ` · party of ${n}` : ''}</small><small class="plain">${doing}</small></div><div class="v"><span class="tie guest">Guest</span></div></div>`;
+      }
+      h += `<h3>People of ${esc(c.name)}</h3>`;
+    }
     for (const p of list) h += this.personRow(c, p, p.id === selId, p.id === v.me);
     return h;
   }
@@ -411,6 +430,9 @@ export class Panels {
     } else if (s?.k === 'dead') {
       const d = c.dead.find((x) => x.id === s.id);
       if (d) { title = d.left ? 'Gone from the colony' : 'In memory'; body = deadCard(c, d); }
+    } else if (s?.k === 'guest') {
+      const g = c.vis?.l.find((x) => x.id === s.id);
+      if (g) { title = 'A guest'; body = guestCard(c, g); }
     } else if (s?.k === 'bld') {
       const b = c.blds.find((x) => x.id === s.id);
       if (b) { title = b.name ?? TPL[b.k]?.name ?? 'Building'; body = bldCard(c, b); }

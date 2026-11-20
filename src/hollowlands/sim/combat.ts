@@ -28,7 +28,11 @@ export interface FoeDef {
   beast?: boolean;
 }
 
+const LOOT = ['grain', 'veg', 'meat', 'meal', 'ale', 'goods', 'silver', 'tools', 'leather', 'cloth'] as const;
+const KING_LOOT = ['silver', 'goods', 'tools', 'ale'] as const;
+
 export const FOES: Record<string, FoeDef> = {
+  soldier: { k: 'soldier', name: 'king\'s soldier', plural: 'king\'s soldiers', hp: 70, atk: 8, dmg: 14, wound: 'cut', spd: 10, goal: 'loot', nerve: 0.5 },
   raider: { k: 'raider', name: 'raider', plural: 'raiders', hp: 62, atk: 7, dmg: 14, wound: 'cut', spd: 10, goal: 'loot', nerve: 0.45 },
   bandit: { k: 'bandit', name: 'bandit', plural: 'bandits', hp: 55, atk: 6, dmg: 13, wound: 'cut', spd: 10, goal: 'loot', nerve: 0.5 },
   slaver: { k: 'slaver', name: 'slaver', plural: 'slavers', hp: 60, atk: 7, dmg: 10, wound: 'bruise', spd: 10, goal: 'slave', nerve: 0.5 },
@@ -253,8 +257,10 @@ export function combatTick(c: Colony): void {
         // ransacking takes a while, which gives the colony time to do something about it
         if (!c.foes.some((x) => x.band === f.band && x.loot > 0)) log(c, 'looted', undefined, undefined, f.k);
         let took = 0;
-        for (const k of ['grain', 'veg', 'meat', 'meal', 'ale', 'goods', 'silver', 'tools', 'leather', 'cloth'] as const) {
-          const n = c.stock[k] * 0.022;
+        // the king's soldiers came for the tax: they take coin and goods, and leave the granary alone
+        const kings = f.k === 'soldier';
+        for (const k of kings ? KING_LOOT : LOOT) {
+          const n = c.stock[k] * (kings ? 0.05 : 0.022);
           c.stock[k] -= n;
           took += n;
         }

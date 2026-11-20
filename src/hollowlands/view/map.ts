@@ -10,10 +10,12 @@ import { TOOL_FOR } from '../sim/jobs';
 import { CROPS, HOMES, TPL, cellCode, cells, shapeOf } from '../sim/data/buildings';
 import { STAGE, stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
-import { TECH_HELD } from './figures';
+import { TECH_HELD, drawMule, drawVisitorProp } from './figures';
+import { VIS_INFO, VIS_SAY } from '../sim/visit';
+import type { Visitor } from '../sim/types';
 import { drawSails, drawWheel } from './techart';
 import { BLD_ICON, SWINGING, WORK_HELD, drawHeld, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
-import { SHAPE, yearsAt } from './look';
+import { SHAPE, stageOfAge, yearsAt } from './look';
 import { Fx, type FxPawn } from './fx';
 import { Life } from './life';
 import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
@@ -63,7 +65,10 @@ interface PawnView {
 }
 
 /** What a click on the map landed on. */
-export interface Pick { pawn?: Id; bld?: number; grave?: number; tile: number }
+export interface Pick { pawn?: Id; bld?: number; grave?: number; guest?: number; tile: number }
+
+/** A visitor on the map: figure, what marks them out, feet, name and what they say. */
+interface GuestView { root: Container; fig: Graphics; prop: Graphics; feet: Graphics; label: Text; talk: Text; key: string; sayKey: string; stamp: number; x: number; y: number; size: number; face: number }
 
 // Sky colour through the day: [hour, r, g, b, darkness]. Night is a dark blue you can still read.
 const SKY: number[][] = [
@@ -125,6 +130,9 @@ export class MapView {
   private mktKey = '';
   private chunks: Chunk[] = [];
   private views = new Map<Id, PawnView>();
+  private guestViews = new Map<number, GuestView>();
+  /** the visitor whose card is open, 0 for none */
+  selectedGuest = 0;
   private foeViews = new Map<number, { g: Graphics; stamp: number; hp?: number; flash?: number }>();
   /** work effects just above the people, and the wild things above the trees */
   private fx = new Fx();
@@ -201,6 +209,8 @@ export class MapView {
     this.mh = c.h * TS;
     for (const v of this.views.values()) this.dropView(v);
     this.views.clear();
+    for (const g of this.guestViews.values()) this.dropGuest(g);
+    this.guestViews.clear();
     for (const f of this.foeViews.values()) f.g.destroy();
     this.foeViews.clear();
     for (const f of this.beastViews.values()) f.g.destroy();
@@ -266,6 +276,7 @@ export class MapView {
     this.time += dt;
     this.refreshStatic(false);
     this.syncPawns(tf);
+    this.syncGuests(tf);
     this.syncFoes(tf);
     {
       const s = this.cam.scale.x;
@@ -586,6 +597,127 @@ export class MapView {
     if (sel) {
       this.ring.position.set(sel.x, sel.y + 4 * sel.size);
       this.ring.scale.set(Math.max(0.6, sel.size) * (1 + Math.sin(this.time * 0.005) * 0.06));
+    }
+  }
+
+  private dropGuest(g: GuestView): void {
+    g.root.destroy({ children: true });
+    g.label.destroy();
+    g.talk.destroy();
+  }
+
+  /** Visitors: drawn like colonists, with what marks them out, a name in their own colour, and now and then a few words. */
+  private syncGuests(tf: number): void {
+    const list = (this.c as { vis?: { l: Visitor[] } }).vis?.l;
+    if (!list?.length && !this.guestViews.size) return;
+    const c = this.c;
+    const stamp = this.stamp;
+    const s = this.cam.scale.x;
+    const W = c.w;
+    const boost = s < 1 ? Math.min(1.75, Math.pow(1 / s, 0.75)) : 1;
+    let sel: GuestView | undefined;
+    for (const v of list ?? []) {
+      let g = this.guestViews.get(v.id);
+      if (!g) {
+        const root = new Container();
+        const feet = new Graphics();
+        const fig = new Graphics();
+        const prop = new Graphics();
+        root.addChild(feet, fig, prop);
+        this.pawnLayer.addChild(root);
+        const style = { fontFamily: 'Inter, system-ui, sans-serif', fontSize: 12, fontWeight: '700' as const, fill: 0x8fe3cf, stroke: { color: 0x0a0d14, width: 3, join: 'round' as const } };
+        const label = new Text({ text: '', resolution: 2, style });
+        label.anchor.set(0.5, 0);
+        const talk = new Text({ text: '', resolution: 2, style: { ...style, fontSize: 11, fill: 0xfff4d6, fontStyle: 'italic' as const } });
+        talk.anchor.set(0.5, 1);
+        this.labelLayer.addChild(label, talk);
+        g = { root, fig, prop, feet, label, talk, key: '', sayKey: '', stamp, x: 0, y: 0, size: 1, face: 1 };
+        this.guestViews.set(v.id, g);
+      }
+      g.stamp = stamp;
+      const mule = v.k === 'mule';
+      if (!g.key) {
+        g.key = v.k;
+        if (mule) { drawMule(g.fig); g.size = FIG * 1.05; }
+        else {
+          const years = yearsAt(v.born, c.tick);
+          const st = stageOfAge(v.race, years);
+          drawFigure(g.fig, { race: v.race, look: v.look, sex: v.sex, stage: st, years });
+          drawVisitorProp(g.prop, v.k);
+          g.size = Math.max(0.55, (SHAPE[v.race]?.size ?? 1) * STAGE_SIZE[st] * FIG);
+          const info = VIS_INFO[v.k];
+          g.label.text = v.k === 'guard' ? 'King\'s guard' : `✦ ${v.first} · ${(info?.name ?? v.k).toLowerCase().replace('travelling ', '').replace('wandering ', '')}`;
+        }
+      }
+      // where they are: part-way along the road they are walking, or standing still
+      let x: number;
+      let y: number;
+      let moving = false;
+      const p = v.path;
+      if (p && p.length > 1 && tf < v.ta && v.ta > v.t0) {
+        const f = Math.max(0, (tf - v.t0) / (v.ta - v.t0)) * (p.length - 1);
+        const i = Math.min(p.length - 2, Math.floor(f));
+        const u = f - i;
+        const x0 = p[i] % W, y0 = (p[i] - x0) / W, x1 = p[i + 1] % W, y1 = (p[i + 1] - x1) / W;
+        x = (x0 + (x1 - x0) * u + 0.5) * TS;
+        y = (y0 + (y1 - y0) * u + 0.5) * TS;
+        if (x1 !== x0) g.face = x1 > x0 ? 1 : -1;
+        moving = true;
+      } else {
+        x = (v.x + 0.5) * TS;
+        y = (v.y + 0.5) * TS;
+      }
+      x += ((v.id * 37) % 7 - 3) * 0.8;
+      y += ((v.id * 53) % 5 - 2) * 0.8;
+      g.x = x;
+      g.y = y;
+      g.root.position.set(x, y);
+      g.root.zIndex = y;
+      const sc = g.size * boost;
+      if (mule) {
+        g.fig.scale.set(sc * g.face, sc);
+        g.fig.position.set(0, moving ? -Math.abs(Math.sin(this.time * 0.012 + v.id)) * 1.4 : 0);
+      } else {
+        g.fig.scale.set(sc);
+        g.prop.scale.set(sc);
+        const bob = moving ? -Math.abs(Math.sin(this.time * 0.011 + v.id)) * 1.7 : 0;
+        // the minstrel sways while playing
+        const play = !moving && v.k === 'minstrel' && v.say && tf - v.say[1] < TICKS_PER_HOUR * 2;
+        g.fig.rotation = g.prop.rotation = play ? Math.sin(this.time * 0.008 + v.id) * 0.12 : moving ? Math.sin(this.time * 0.018 + v.id) * 0.05 : 0;
+        g.fig.position.set(0, bob * g.size);
+        g.prop.position.set(0, bob * g.size);
+      }
+      g.feet.clear();
+      if (moving && !mule) {
+        const stride = Math.sin(this.time * 0.02 + v.id) * 2.4;
+        const fw = 2.2 * sc;
+        g.feet.ellipse(-fw, (5 + stride) * sc, 1.7 * g.size, 1.2 * g.size).ellipse(fw, (5 - stride) * sc, 1.7 * g.size, 1.2 * g.size).fill(0x2a1d12);
+      }
+      const isSel = v.id === this.selectedGuest || v.g === this.selectedGuest;
+      if (v.id === this.selectedGuest) sel = g;
+      g.label.visible = !mule && (s >= 0.55 || isSel) && (v.g === v.id || s >= 1.1);
+      // a few words over their head for an hour or so after they say them
+      const say = v.say && tf - v.say[1] < TICKS_PER_HOUR * 1.5 && tf >= v.say[1] - 1 ? v.say[0] : '';
+      if (say !== g.sayKey) { g.sayKey = say; g.talk.text = VIS_SAY[say] ?? ''; }
+      g.talk.visible = !!say && s >= 0.5;
+    }
+    for (const [id, g] of this.guestViews) {
+      if (g.stamp !== stamp) { this.dropGuest(g); this.guestViews.delete(id); }
+    }
+    if (sel) {
+      this.ring.visible = true;
+      this.ring.position.set(sel.x, sel.y + 4 * sel.size);
+      this.ring.scale.set(Math.max(0.6, sel.size) * (1 + Math.sin(this.time * 0.005) * 0.06));
+    }
+  }
+
+  /** Centre on a visitor. */
+  focusGuest(id: number, minZoom = 1.5): void {
+    const g = this.guestViews.get(id);
+    if (g) this.focusTile(g.x / TS - 0.5, g.y / TS - 0.5, minZoom);
+    else {
+      const v = (this.c as { vis?: { l: Visitor[] } }).vis?.l.find((x) => x.id === id);
+      if (v) this.focusTile(v.x, v.y, minZoom);
     }
   }
 
@@ -1014,6 +1146,10 @@ export class MapView {
       if (!v.label.visible) continue;
       v.label.position.set(this.cam.x + v.x * s, this.cam.y + (v.y + 7 * v.size) * s + 2);
     }
+    for (const g of this.guestViews.values()) {
+      if (g.label.visible) g.label.position.set(this.cam.x + g.x * s, this.cam.y + (g.y + 7 * g.size) * s + 2);
+      if (g.talk.visible) g.talk.position.set(this.cam.x + g.x * s, this.cam.y + (g.y - 16 * g.size) * s - 2);
+    }
   }
 
   /** Hide chunks that are off screen. */
@@ -1246,11 +1382,22 @@ export class MapView {
       const d = dx * dx + dy * dy;
       if (d < bd) { bd = d; best = v; }
     }
+    let guest = 0;
+    for (const [id, g] of this.guestViews) {
+      const dx = g.x - wx;
+      const dy = g.y - 2 * g.size - wy;
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; guest = id; best = undefined; }
+    }
     const tx = Math.floor(wx / TS);
     const ty = Math.floor(wy / TS);
     const inside = tx >= 0 && ty >= 0 && tx < c.w && ty < c.h;
     const tile = inside ? ty * c.w + tx : -1;
-    if (best) this.onPick({ pawn: best.id, tile });
+    if (guest) {
+      // the mule and the guards belong to their party's leader
+      const v = (c as { vis?: { l: Visitor[] } }).vis?.l.find((x) => x.id === guest);
+      this.onPick({ guest: v ? v.g : guest, tile });
+    } else if (best) this.onPick({ pawn: best.id, tile });
     else if (inside) this.onPick({ bld: c.sb[tile] || undefined, grave: c.st[tile] === B.GRAVE ? tile : undefined, tile });
     else this.onPick({ tile });
   }

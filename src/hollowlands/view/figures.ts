@@ -666,3 +666,93 @@ export function drawActivity(g: Graphics, key: string): void {
       g.circle(0, 0, 1.6).fill(BADGE_INK);
   }
 }
+
+// ---------- Visitors ----------
+
+/**
+ * What marks a visitor out, drawn over their figure: a wizard's hat and staff, a minstrel's cap and
+ * lute, a pilgrim's cowl and staff, a merchant's wide hat, the tax collector's tall hat and the
+ * king's banner, a guard's helmet, tabard and spear, a bounty hunter's crossbow, a refugee's bundle.
+ */
+export function drawVisitorProp(g: Graphics, k: string): void {
+  g.clear();
+  const wood = 0x8a6440;
+  switch (k) {
+    case 'wizard':
+      g.moveTo(7.4, 7).lineTo(8.4, -12).stroke({ width: 1.6, color: 0x5a3d22, cap: 'round' });
+      g.circle(8.5, -13.4, 3.6).fill({ color: 0x9fe8ff, alpha: 0.25 });
+      g.circle(8.5, -13.4, 2).fill(0x9fe8ff).stroke({ width: 0.6, color: 0x2a3a5a });
+      g.poly([-5.6, -5.6, 5.6, -5.6, 1.8, -18]).fill(0x3b3f8f).stroke({ width: 0.8, color: 0x141633 });
+      g.ellipse(0, -5.8, 7.2, 2).fill(0x30346f).stroke({ width: 0.6, color: 0x141633 });
+      g.circle(-1.4, -9, 0.8).circle(1.6, -12.5, 0.7).circle(0.4, -7.2, 0.6).fill(0xffe08a);
+      break;
+    case 'minstrel':
+      g.ellipse(-4.6, 4.2, 3.4, 4).fill(0xb07a3a).stroke({ width: 0.7, color: 0x3a2412 });
+      g.circle(-4.6, 4.2, 1).fill(0x3a2412);
+      g.moveTo(-5.6, 0.6).lineTo(-9.6, -6.4).stroke({ width: 1.5, color: 0x3a2412, cap: 'round' });
+      g.ellipse(0, -6.6, 4.8, 2.2).fill(0xa8323a).stroke({ width: 0.6, color: 0x40101a });
+      g.poly([2.6, -7.4, 9.6, -12.6, 4.2, -6.2]).fill(0xf2d26a);
+      break;
+    case 'pilgrim':
+      g.moveTo(6.6, 7).lineTo(7.2, -13).stroke({ width: 1.5, color: wood, cap: 'round' });
+      g.circle(7.9, -9.6, 1.7).fill(0xc89a4a);
+      g.ellipse(0, -6.1, 5.6, 3.4).fill(0x6b5a44).stroke({ width: 0.6, color: 0x2a2014 });
+      g.ellipse(0, 6.2, 4.5, 1).fill(0x4a3d2c);
+      break;
+    case 'merchant':
+      g.roundRect(4.6, 1.4, 3.6, 4.4, 1).fill(0x8a5a2a).stroke({ width: 0.6, color: 0x2a1d12 });
+      g.ellipse(0, -5.8, 7.8, 2.5).fill(0x5a3d22).stroke({ width: 0.6, color: 0x24160a });
+      g.ellipse(0, -7.4, 3.9, 2.4).fill(0x6e4a2a);
+      g.rect(-3.9, -7.2, 7.8, 0.9).fill(0xd4a030);
+      break;
+    case 'taxman':
+      // the king's banner: purple and gold, high over the crowd
+      g.moveTo(-7.2, 7).lineTo(-7.2, -25).stroke({ width: 1.4, color: 0x3a2a1a, cap: 'round' });
+      g.circle(-7.2, -25.6, 1.2).fill(0xf2c94a);
+      g.poly([-7.2, -24, 6, -24, 6, -14.5, -0.6, -11.6, -7.2, -14.5]).fill(0x6a2a8a).stroke({ width: 1, color: 0xf2c94a });
+      g.poly([-3.4, -17.4, -3.4, -20.6, -1.8, -19, -0.6, -21.2, 0.6, -19, 2.2, -20.6, 2.2, -17.4]).fill(0xf2c94a);
+      g.roundRect(4.2, 1, 3.6, 4.4, 0.6).fill(0x7a2a2a).stroke({ width: 0.5, color: 0x1a0a0a });
+      g.ellipse(0, -5.9, 6.2, 1.8).fill(0x1a1a22);
+      g.rect(-3.4, -13.4, 6.8, 7.6).fill(0x1a1a22);
+      g.rect(-3.4, -7.6, 6.8, 1).fill(0xf2c94a);
+      break;
+    case 'guard':
+      g.moveTo(6.8, 7).lineTo(6.8, -14).stroke({ width: 1.3, color: wood, cap: 'round' });
+      g.poly([6.8, -17, 8.4, -13, 6.8, -12, 5.2, -13]).fill(0xc9ced8).stroke({ width: 0.5, color: 0x2a1d12 });
+      g.roundRect(-2.8, -0.2, 5.6, 5.6, 1).fill(0x2f4fa8);
+      g.rect(-0.5, -0.2, 1, 5.6).fill(0xf2c94a);
+      g.ellipse(0, -6.4, 5, 3.2).fill(0x9aa3ad).stroke({ width: 0.6, color: 0x3a3f48 });
+      g.rect(-0.5, -6, 1, 4).fill(0x6b7280);
+      break;
+    case 'hunter':
+      g.moveTo(-7, 6.6).lineTo(4, -8).stroke({ width: 1.8, color: 0x5a3d22, cap: 'round' });
+      g.moveTo(-0.8, -9.6).lineTo(6.4, -3.2).stroke({ width: 1.4, color: 0x3a3f48, cap: 'round' });
+      g.moveTo(-0.8, -9.6).lineTo(1.4, -3.4).lineTo(6.4, -3.2).stroke({ width: 0.4, color: 0xd8d2c0 });
+      g.ellipse(0, -5.9, 6.6, 2).fill(0x24202a).stroke({ width: 0.5, color: 0x0a080c });
+      g.ellipse(0, -7.2, 3.8, 2.3).fill(0x2e2934);
+      break;
+    case 'refugee':
+      g.circle(-4.6, 5.4, 3).fill(0x8a7a5a).stroke({ width: 0.6, color: 0x3a3020 });
+      g.circle(-4.6, 2.6, 1).fill(0x6a5a3a);
+      g.rect(1.2, 2.2, 1.8, 1.6).fill({ color: 0x5a4a32, alpha: 0.8 });
+      break;
+    default: break;
+  }
+}
+
+/** The merchant's pack mule with its panniers, facing right. */
+export function drawMule(g: Graphics): void {
+  g.clear();
+  const col = 0x7a6650;
+  g.ellipse(0.8, 5.2, 9, 2.8).fill({ color: 0x0b1220, alpha: 0.28 });
+  for (const x of [-5, -2.4, 3, 5.4]) g.rect(x, 2.5, 1.4, 4).fill(darken(col, 0.25));
+  g.ellipse(0, 1, 7.6, 4).fill(col);
+  g.poly([5.2, -1, 8.4, -4.6, 10.6, -2.6, 7.4, 1.6]).fill(col);
+  g.ellipse(9.8, -2.6, 2.6, 1.8).fill(lighten(col, 0.12));
+  g.poly([7.6, -4.2, 7.2, -8.6, 8.8, -4.6]).poly([8.8, -4.4, 9.4, -8.4, 10.2, -4.2]).fill(darken(col, 0.15));
+  g.circle(9.6, -3.4, 0.6).fill(0x1d1a1c);
+  g.moveTo(-7.4, 0).lineTo(-9.6, 3).stroke({ width: 1, color: darken(col, 0.3) });
+  g.roundRect(-5, -4.6, 4.6, 6.4, 1).fill(0xa8323a).stroke({ width: 0.6, color: 0x2a1d12 });
+  g.roundRect(0, -4.4, 4.4, 6.2, 1).fill(0x2f6fa8).stroke({ width: 0.6, color: 0x2a1d12 });
+  g.rect(-5.4, -2.2, 10.2, 1).fill(0x5a3d22);
+}

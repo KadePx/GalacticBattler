@@ -100,6 +100,8 @@ export function applyInputs(c: Colony): void {
       let fighters = 0;
       for (const p of c.pawns) if (canFight(c, p)) fighters++;
       const host = Math.min(Number(e.siege) || 1, 10, 6 + Math.floor(fighters / 6));
+      // the king's soldiers, come for the tax that was refused
+      if (e.king) log(c, 'v_kingmen', undefined, undefined, undefined, Number(e.n) || 1);
       const sieged = !!e.siege && siegeable(c) && startSiege(c, String(e.kind), host, String(e.name ?? e.fromName ?? ''), rr, from);
       if (!sieged) spawnRaid(c, String(e.kind), Number(e.n) || 1, rr);
       if (e.fromId) {
@@ -308,9 +310,7 @@ function goodThing(c: Colony, r: Rand, season: number, pop: number): void {
   const k = pick(r, [
     // newcomers matter most to a small colony; past the soft cap nobody new comes looking
     { k: 'wanderer', w: pop >= SOFT_CAP ? 0 : pop < SOFT_CAP * 0.4 ? 5 : pop < SOFT_CAP * 0.67 ? 3 : pop < SOFT_CAP * 0.87 ? 1.4 : 0.5 },
-    { k: 'refugees', w: pop < SOFT_CAP * 0.67 ? 1.2 : pop < SOFT_CAP * 0.87 ? 0.5 : 0 },
     { k: 'trader', w: 3 },
-    { k: 'bard', w: 1 },
     { k: 'herd', w: season === 3 ? 0.4 : 1 },
     { k: 'omen', w: 0.5 },
     { k: 'healer', w: hurt ? 1.5 : 0 },
@@ -323,27 +323,7 @@ function goodThing(c: Colony, r: Rand, season: number, pop: number): void {
       arrive(c, makePawn(c, r, { race }), 'wanderer');
       break;
     }
-    case 'refugees': {
-      const race = r.chance(0.5) ? mainRace(c) : r.pick(PLAYABLE);
-      const a = makePawn(c, r, { race, sex: 1 });
-      const b = makePawn(c, r, { race, sex: 0, fam: a.fam });
-      if (a.orient === 2) a.orient = 1;
-      if (b.orient === 2) b.orient = 1;
-      a.sp = b.id; b.sp = a.id;
-      a.rel[b.id] = { m: [], k: 'spouse', s: c.tick };
-      b.rel[a.id] = { m: [], k: 'spouse', s: c.tick };
-      a.food = 25; b.food = 25;
-      arrive(c, a, 'refugee');
-      arrive(c, b, 'refugee');
-      if (r.chance(0.5)) wound(c, r.chance(0.5) ? a : b, 'cut', 10 + r.int(12), r);
-      break;
-    }
     case 'trader': trade(c, r); break;
-    case 'bard': {
-      for (const p of c.pawns) if (stage(c, p) >= STAGE.CHILD) { think(c, p, 'heardbard'); p.joy = Math.min(100, p.joy + 25); }
-      log(c, 'bard');
-      break;
-    }
     case 'herd': c.game = Math.min(100, c.game + 45); log(c, 'herd'); break;
     case 'omen': {
       for (const p of c.pawns) if (stage(c, p) >= STAGE.CHILD && (p.dev >= 2 || has(p, 'superstitious'))) think(c, p, 'omen_good');

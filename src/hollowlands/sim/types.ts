@@ -305,6 +305,39 @@ export interface Bld {
   gl?: 1;
 }
 
+/**
+ * Someone passing through (see visit.ts): a merchant, a minstrel, pilgrims, a refugee family, a
+ * wizard, the king's tax collector and his guards, a bounty hunter. Not a colonist: they eat at the
+ * tavern, sleep where they can, and are gone in a few days. A party walks together behind its
+ * first member (g is that member's id). Every field but path, say and pw is always present.
+ */
+export interface Visitor {
+  id: number; k: string; g: number;
+  first: string; fam: string; race: RaceK; sex: 0 | 1; born: number; look: Look;
+  /** where they are going (or stand), and the walk there: started, arrives, path */
+  x: number; y: number; t0: number; ta: number; path?: number[];
+  /** when they next make up their mind */
+  t1: number;
+  /** arrived, and when they mean to leave */
+  arr: number; dep: number;
+  /** 0 on the way in, 1 staying, 2 on the way out */
+  m: number;
+  /** the colonist their business is with (0 none) */
+  o: Id;
+  /** silver: taken in, asked for or paid */
+  n: number;
+  /** a count: sales, listeners, leads */
+  d: number;
+  /** what they have done so far (bits, kind by kind) */
+  b: number;
+  /** where they come from, their faith, what they hunt: a word or two, kind by kind */
+  f: string;
+  /** a few words said aloud: [key, tick] */
+  say?: [string, number];
+  /** a refugee: the colonist they would become */
+  pw?: Pawn;
+}
+
 export interface Ev { t: number; k: string; a?: Id; b?: Id; s?: string; n?: number }
 
 /** Something that happened (or is said to have) that people can know and pass on. */
@@ -414,6 +447,12 @@ export interface Colony {
    * finished, the jeweller's orders, and the printed chronicle (volumes, pages toward the next).
    */
   tech?: { lore: number; got: { k: string; t: number; a: Id; from?: string }[]; heard: Record<string, string>; first: Record<string, number>; ord: Id[]; vol: number; pg: number };
+  /**
+   * Visitors (see visit.ts): who is here, the next id, the day the last party left, the day each
+   * kind was last here, the party on the road today (kind and tick, '' for none), the day the king's
+   * soldiers come for a refused tax (0 none), and taxes paid and refused
+   */
+  vis?: { l: Visitor[]; n: number; gone: number; seen: Record<string, number>; nx: string; at: number; wrath: number; paid: number; refused: number };
   /** the colony's festivals: its own name for each, how many years held, and this year's champion */
   trad?: Partial<Record<'spring' | 'summer', { name: string; n: number; champ?: Id }>>;
 }

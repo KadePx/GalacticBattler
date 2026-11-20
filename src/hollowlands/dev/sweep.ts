@@ -54,6 +54,13 @@ for (let s = 1; s <= worlds; s++) {
       }
       for (const e of c.log) if (evText(c, e).startsWith(e.k + ':')) flag(`no words for event ${e.k}`);
       for (const b of c.blds) { if (!Number.isFinite(b.q) || !Number.isFinite(b.prog)) flag('building number bad'); for (const id of b.beds) if (id && !ids.has(id)) flag('bed owned by nobody'); }
+      // visitors: on the map, few at a time, and never staying on long past their leaving day
+      for (const v of c.vis?.l ?? []) {
+        if (v.x < 0 || v.y < 0 || v.x >= c.w || v.y >= c.h) flag('visitor off the map');
+        if (c.tick > v.dep + TICKS_PER_DAY * 4) flag(`visitor ${v.k} overstayed`);
+        if (v.g !== v.id && !c.vis!.l.some((x) => x.id === v.g)) flag('visitor party without a leader');
+      }
+      if ((c.vis?.l.length ?? 0) > 8) flag('too many visitors');
       for (const f of c.foes) if (!Number.isFinite(f.hp) || f.x < 0 || f.y < 0 || f.x >= c.w || f.y >= c.h) flag('foe off the map');
     }
   }
