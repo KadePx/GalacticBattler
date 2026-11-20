@@ -10,10 +10,12 @@
 // Wages are paid here too: a trade's wage depends on the trade and on how good its holder is at it,
 // so a master smith earns several times what a ratcatcher does.
 
-import { TICKS_PER_DAY, TICKS_PER_HOUR, dayOf } from '../config';
+import { DAYS_PER_YEAR, TICKS_PER_DAY, TICKS_PER_HOUR, dayOf } from '../config';
 import { cacheOf } from './cache';
 import { castleStone } from './castle';
+import { foodDays } from './econ';
 import { bump, log } from './events';
+import { festivalToday } from './festivals';
 import { isDown, needsRest } from './health';
 import { think } from './mood';
 import { STAGE, has, pawnById, per, stage } from './pawn';
@@ -41,14 +43,14 @@ export interface WareDef {
 
 export const WARES: WareDef[] = [
   { k: 'bread', profs: ['baker', 'cook', 'quartermaster'], skill: 5, res: ['meal'], base: 0.5, per: 2, keep: 0.3, shop: 'kitchen' },
-  { k: 'meat', profs: ['butcher', 'hunter'], skill: 5, res: ['meat'], base: 0.7, per: 1, keep: 0, shop: '' },
-  { k: 'cloth', profs: ['weaver'], skill: 6, res: ['clothes', 'cloth'], base: 2.2, per: 0.3, keep: 0, shop: 'workshop' },
+  { k: 'meat', profs: ['butcher', 'hunter'], skill: 5, res: ['meat'], base: 0.7, per: 0.3, keep: 0, shop: '' },
+  { k: 'cloth', profs: ['weaver'], skill: 6, res: ['clothes'], base: 2.2, per: 0.3, keep: 0.2, shop: 'workshop' },
   { k: 'pots', profs: ['potter', 'carpenter'], skill: 6, res: ['goods'], base: 1.4, per: 0.4, keep: 0, shop: 'workshop' },
   { k: 'tools', profs: ['smith'], skill: 7, res: ['tools'], base: 3, per: 0.4, keep: 0.2, shop: 'smithy' },
   { k: 'ale', profs: ['brewer', 'tavernkeeper'], skill: 5, res: ['ale'], base: 0.4, per: 1.5, keep: 0.6, shop: 'brewery' },
   { k: 'greens', profs: ['farmer'], skill: 4, res: ['veg'], base: 0.3, per: 6, keep: 2, shop: '' },
-  { k: 'fish', profs: ['fisher'], skill: 9, res: ['fish'], base: 0.4, per: 1, keep: 0, shop: '' },
-  { k: 'dairy', profs: ['herder'], skill: 9, res: ['eggs', 'milk'], base: 0.4, per: 0.8, keep: 0, shop: '' },
+  { k: 'fish', profs: ['fisher'], skill: 9, res: ['fish'], base: 0.4, per: 0.3, keep: 0, shop: '' },
+  { k: 'dairy', profs: ['herder'], skill: 9, res: ['eggs', 'milk'], base: 0.4, per: 0.3, keep: 0, shop: '' },
   { k: 'herbs', profs: ['herbalist'], skill: 8, res: ['herbs'], base: 1, per: 0.2, keep: 0.05, shop: 'herbalist' },
 ];
 const FOOD = new Set(['bread', 'meat', 'greens', 'fish', 'dairy']);
@@ -58,6 +60,8 @@ export const MARKET_POP = 18;
 /** Market hours. */
 export const OPEN_H = 8;
 export const CLOSE_H = 15;
+/** Silver a colonist keeps back: nobody spends their last few coins at the market. */
+export const RESERVE = 8;
 /** Share of each sale that goes to the treasury. */
 const TOLL = 0.1;
 /** How much more the best of a stall costs than the plain: plain, good, fine, the finest. */
@@ -138,9 +142,12 @@ export function daysToMarket(c: Colony): number {
 
 /** What a stall has to sell, above what the colony keeps back for itself. */
 export function onHand(c: Colony, w: WareDef): number {
+  // food is sold only from plenty: never while the larder is short or rationed
+  if (FOOD.has(w.k) && (c.gov.laws.ration || foodDays(c) < 10)) return 0;
   let n = 0;
   for (const k of w.res) n += c.stock[k];
-  return Math.max(0, n - w.keep * c.pawns.length);
+  // clothes are kept back as the weavers keep them (one, and one for every five people)
+  return Math.max(0, n - w.keep * c.pawns.length - (w.k === 'cloth' ? 1 : 0));
 }
 
 /** How far the price of a ware sits from its usual, by how full the stores are: 0.7 when there is plenty, up to 2 when it is scarce. */
@@ -162,6 +169,8 @@ export function dailyMarket(c: Colony): void {
   const m = c.mkt;
   if (m) { m.t0 = 0; m.t1 = 0; }
   if (day % 7 !== marketDow(c) || c.pawns.length < MARKET_POP) return;
+  // the town is at its festival instead
+  if (festivalToday(day % DAYS_PER_YEAR)) return;
   const mk = (c.mkt ??= blankMarket());
   const t = day * TICKS_PER_DAY;
   mk.t0 = t + OPEN_H * TICKS_PER_HOUR;
@@ -171,6 +180,7 @@ export function dailyMarket(c: Colony): void {
 /** Every tick: the market opens and shuts at its hours (or early, when trouble comes). */
 export function tickMarket(c: Colony): void {
   const m = c.mkt!;
+  if (m.st.length && c.tick % TICKS_PER_HOUR === 0) for (const s of m.st) if (s.o && !pawnById(c, s.o)) s.o = 0;
   if (c.tick === m.t0 && !m.st.length) openMarket(c);
   else if (m.st.length && (c.tick >= m.t1 || c.alarm || (c.siege && c.siege.phase < 2))) closeMarket(c);
 }
@@ -227,6 +237,37 @@ export function stoneWant(c: Colony): number {
   return n;
 }
 
+/** A treasury holding more than this per head has silver to spare for alms, a grain reserve and the town's feasts. */
+export const SPARE_PER_HEAD = 15;
+const spare = (c: Colony): boolean => c.stock.silver > SPARE_PER_HEAD * c.pawns.length;
+
+/** At the end of market day a full treasury gives alms to the poorest: three silver to each grown colonist down to their last few coins. */
+function alms(c: Colony): void {
+  if (!spare(c)) return;
+  const poor = c.pawns.filter((p) => !p.gone && !p.thrall && stage(c, p) >= STAGE.ADULT && p.coin < RESERVE).sort((a, b) => a.coin - b.coin || a.id - b.id);
+  const n = Math.min(poor.length, Math.max(1, Math.ceil(c.pawns.length / 10)));
+  if (!n) return;
+  for (let i = 0; i < n; i++) { poor[i].coin += 3; think(c, poor[i], 'alms'); }
+  c.stock.silver -= n * 3;
+  bump(c, 'alms', n * 3);
+  // told once a season, not every week
+  if (c.tick - (c.stats.almsTold ?? -1e9) >= 15 * TICKS_PER_DAY) {
+    c.stats.almsTold = c.tick;
+    log(c, 'alms', undefined, undefined, undefined, n);
+  }
+}
+
+/** A full treasury pays for the feast: roast meat, white bread and wine for everyone. Returns what it spent. */
+export function payFeast(c: Colony): number {
+  if (!spare(c)) return 0;
+  const n = Math.ceil(c.pawns.length * 0.7);
+  const cost = Math.round(n * 0.8);
+  c.stock.silver -= cost;
+  c.stock.feast += n;
+  bump(c, 'feastPaid', cost);
+  return cost;
+}
+
 /** Carters come in on market day; the treasury buys stone and timber off them for the town's building. */
 function carters(c: Colony, r: Rand): void {
   const m = c.mkt!;
@@ -243,6 +284,17 @@ function carters(c: Colony, r: Rand): void {
       m.carts.push('stone');
       bump(c, 'bulkStone', n);
       log(c, 'carter', undefined, undefined, `stone|${from}`, n);
+    }
+  }
+  // a full treasury lays in a reserve of grain against a hard winter
+  if (spare(c) && s.grain < pop * 18) {
+    const n = Math.floor(Math.min(pop * 4, pop * 18 - s.grain));
+    if (n >= 20) {
+      s.grain += n;
+      s.silver -= n * 0.3;
+      m.carts.push('grain');
+      bump(c, 'bulkGrain', n);
+      log(c, 'carter', undefined, undefined, `grain|${from}`, n);
     }
   }
   if (s.wood < pop * 5 && s.silver >= 15) {
@@ -263,22 +315,23 @@ function closeMarket(c: Colony): void {
   let best = m.st[0];
   for (const s of m.st) if (s.e > best.e) best = s;
   for (const s of m.st) {
-    const p = pawnById(c, s.o);
+    const p = s.o ? pawnById(c, s.o) : undefined;
     if (p && s.e >= 3) think(c, p, 'soldwell');
   }
+  alms(c);
   // what the day was like: the dearest ware, else the cheapest
   let dear = -1;
   let cheap = -1;
   for (let i = 0; i < m.st.length; i++) {
     const k = m.st[i].k;
     const pr = m.pr[k] ?? 100;
-    if (pr >= 140 && (dear < 0 || pr > (m.pr[dear] ?? 0))) dear = k;
+    if (pr >= 150 && (dear < 0 || pr > (m.pr[dear] ?? 0))) dear = k;
     if (pr <= 75 && (cheap < 0 || pr < (m.pr[cheap] ?? 999))) cheap = k;
   }
   const buyers = new Set(m.went).size;
   const said = dear >= 0 ? `dear:${WARES[dear].k}` : cheap >= 0 ? `cheap:${WARES[cheap].k}` : '';
   // a day cut short by trouble with nothing sold is not worth a line
-  if (buyers > 0) log(c, 'market', best.e > 0 ? best.o : undefined, undefined, `${m.st.length}|${buyers}|${WARES[best.k].k}|${said}`, Math.round(m.coin));
+  if (buyers > 0) log(c, 'market', best.e > 0 && best.o ? best.o : undefined, undefined, `${m.st.length}|${buyers}|${WARES[best.k].k}|${said}`, Math.round(m.coin));
   bump(c, 'marketCoin', m.coin);
   m.st = [];
   m.went = [];
@@ -296,14 +349,14 @@ function gradeFor(p: Pawn): number {
 }
 
 /** How many times a colonist goes round the stalls in a day: the well-off linger. */
-const visits = (p: Pawn): number => (p.coin >= 60 ? 3 : p.coin >= 15 ? 2 : 1);
+const visits = (p: Pawn): number => (p.coin >= 60 ? 3 : p.coin >= 20 ? 2 : 1);
 
 /** How much this colonist wants a ware right now. */
 function wantOf(c: Colony, p: Pawn, w: WareDef): number {
   if (w.k === 'tools') return p.tool ? (p.tool[1] < 45 ? 4 : 0.4) : 0;
-  if (w.k === 'cloth') return p.cloth < 50 ? 4 : 0.8;
+  if (w.k === 'cloth') return p.cloth < 50 ? 4 : 0;
   if (w.k === 'ale') return stage(c, p) < STAGE.ADULT || has(p, 'teetotal') ? 0 : has(p, 'drunkard') ? 3 : 1;
-  if (FOOD.has(w.k)) return p.food < 60 ? 2.4 : 1;
+  if (FOOD.has(w.k)) return p.food < 65 ? 2.4 : 0;
   if (w.k === 'herbs') return p.inj.length || p.ill ? 3 : 0.5;
   return p.joy < 45 ? 2 : 1.2;
 }
@@ -318,7 +371,7 @@ export function goMarket(c: Colony, p: Pawn, r: Rand, set: (x: number, y: number
     if (s.o !== p.id) continue;
     return set(s.x, s.y, 'sell', Math.min(30, left), 'stall', 0, i);
   }
-  if (p.coin < 0.3 || !r.chance(0.35)) return false;
+  if (p.coin < RESERVE + 0.3 || !r.chance(0.35)) return false;
   let n = 0;
   for (const id of m.went) if (id === p.id) n++;
   if (n >= visits(p)) return false;
@@ -327,11 +380,12 @@ export function goMarket(c: Colony, p: Pawn, r: Rand, set: (x: number, y: number
   const opts: [number, number][] = [];
   for (let i = 0; i < m.st.length; i++) {
     const s = m.st[i];
-    if (s.o === p.id) continue;
+    if (!s.o || s.o === p.id) continue;
     const w = WARES[s.k];
     if (onHand(c, w) < 1) continue;
     const v = wantOf(c, p, w);
-    if (v <= 0) continue;
+    // someone getting hungry goes to the market only for something to eat
+    if (v <= 0 || (p.food < 50 && !FOOD.has(w.k))) continue;
     opts.push([i, v]);
     total += v;
   }
@@ -360,7 +414,7 @@ export function pickShop(c: Colony, p: Pawn, r: Rand): [number, number, number] 
     const b = c.blds.find((x) => x.k === w.shop && x.built);
     if (!b) continue;
     let best: Pawn | undefined;
-    for (const o of c.pawns) if (o !== p && w.profs.includes(o.prof) && stage(c, o) >= STAGE.ADULT && (!best || o.sk[w.skill] > best.sk[w.skill])) best = o;
+    for (const o of c.pawns) if (o !== p && w.profs.includes(o.prof) && free(c, o) && (!best || o.sk[w.skill] > best.sk[w.skill])) best = o;
     if (best) opts.push([b.id, wi, best.id]);
   }
   return opts.length ? r.pick(opts) : null;
@@ -382,9 +436,10 @@ export function buy(c: Colony, p: Pawn, stall: number, seller: number, shop: boo
   if (!w || !o || o === p || onHand(c, w) < 1) return;
   const price = priceOf(c, w) * (shop ? 1.15 : 1);
   let g = gradeFor(p);
-  while (g > 0 && p.coin < price * GRADE[g]) g--;
+  const purse = p.coin - RESERVE;
+  while (g > 0 && purse < price * GRADE[g]) g--;
   const cost = Math.round(price * GRADE[g] * 100) / 100;
-  if (p.coin < cost) {
+  if (purse < cost) {
     if (!shop && priceMult(c, w) >= 1.3) think(c, p, 'pricey');
     return;
   }
@@ -410,8 +465,9 @@ export function buy(c: Colony, p: Pawn, stall: number, seller: number, shop: boo
     }
   } else bump(c, 'shopSales');
   // what it does for them
-  if (FOOD.has(w.k)) p.food = Math.min(100, p.food + 22);
-  else if (w.k === 'cloth') { if (res === 'clothes' && p.cloth < 80) p.cloth = 100; p.joy = Math.min(100, p.joy + 8); }
+  // a loaf, a cut, a basket: as good as a meal
+  if (FOOD.has(w.k)) p.food = Math.min(100, p.food + 62);
+  else if (w.k === 'cloth') { p.cloth = 100; p.joy = Math.min(100, p.joy + 8); }
   else if (w.k === 'tools') { if (p.tool) p.tool[1] = 100; }
   else if (w.k === 'ale') { p.drunk += 12; p.joy = Math.min(100, p.joy + 8); }
   else p.joy = Math.min(100, p.joy + 12);

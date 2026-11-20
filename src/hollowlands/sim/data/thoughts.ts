@@ -355,6 +355,8 @@ export const TH_LIST: ThDef[] = [
   h('boughtfine', 'Bought something fine at the market', 5, DAY * 2),
   h('soldwell', 'Sold well at the market', 5, DAY * 2),
   h('pricey', 'Could not afford a thing at the market', -3, DAY),
+  h('alms', 'Given alms from the treasury', 3, DAY * 3),
+  h('feastpaid', 'The treasury paid for the feast', 4, DAY * 2),
 ];
 
 export const TH: Record<string, ThDef> = Object.fromEntries(TH_LIST.map((x) => [x.k, x]));

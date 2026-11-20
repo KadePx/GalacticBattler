@@ -227,12 +227,12 @@ export function checkBond(c: Colony, p: Pawn, o: Pawn): void {
     note(c, o, 'rivals', p.id);
     bump(c, 'rivalries');
   } else if (rp.f === 1 && (a < 12 || b < 12)) {
-    rp.f = undefined;
-    ro.f = undefined;
+    delete rp.f;
+    delete ro.f;
     log(c, 'unfriend', p.id, o.id);
   } else if (rp.f === -1 && a > -8 && b > -8) {
-    rp.f = undefined;
-    ro.f = undefined;
+    delete rp.f;
+    delete ro.f;
     log(c, 'reconciled', p.id, o.id);
   }
 }

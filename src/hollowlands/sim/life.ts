@@ -39,7 +39,7 @@ export function becomeLovers(c: Colony, p: Pawn, o: Pawn): void {
   const ro = getRel(o, p.id);
   rp.k = 'lover'; ro.k = 'lover';
   rp.s = c.tick; ro.s = c.tick;
-  rp.f = undefined; ro.f = undefined;
+  delete rp.f; delete ro.f;
   p.sp = o.id;
   o.sp = p.id;
   think(c, p, 'newlove', o.id);
@@ -211,7 +211,7 @@ export function die(c: Colony, p: Pawn, cause: string, by?: Id): void {
     if (k) think(c, o, k, p.id);
     if (k && k !== 'died_colonist' && k !== 'died_rival') note(c, o, 'lost', p.id, k.slice(5));
     if (o.sp === p.id) o.sp = 0;
-    if (rel?.k && rel.k !== 'ex') rel.k = undefined;
+    if (rel?.k && rel.k !== 'ex') delete rel.k;
     const oi = posAt(c, o, c.tick);
     if (!(o.act.k === 'sleep') && Math.abs((oi % c.w) - px) <= 4 && Math.abs(Math.floor(oi / c.w) - py) <= 4 && cause !== 'age') think(c, o, 'sawdeath', p.id);
   }

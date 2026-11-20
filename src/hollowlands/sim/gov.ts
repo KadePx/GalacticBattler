@@ -10,7 +10,7 @@ import { foodDays } from './econ';
 import { bump, log, note } from './events';
 import { wound } from './health';
 import { depart, die } from './life';
-import { wage } from './market';
+import { payFeast, wage } from './market';
 import { think } from './mood';
 import { STAGE, ageYears, has, pawnById, per, stage, stat } from './pawn';
 import { Rand, S } from './rng';
@@ -269,9 +269,11 @@ export function dailyGov(c: Colony): void {
       // out in the open, in the middle of the colony
       c.gath = { k: 'festival', f: fest, t0: t + 13 * 10, t1: t + 18 * 10, b: 0, x: c.cx, y: c.cy };
       log(c, 'festival_set', ruler.id, undefined, festivalName(c, fest));
+      treat(c, 'festival');
     } else if ((doy === 43 || doy === 52) && foodDays(c) > 9) {
       c.gath = { k: 'feast', t0: t + 17 * 10, t1: t + 21 * 10, ...at };
       log(c, 'feast_set', ruler.id, undefined, doy === 43 ? 'harvest' : 'midwinter');
+      treat(c, 'feast');
     } else if (day % 10 === 6 && (c.gov.k === 'lord' || c.gov.k === 'tyrant' || c.gov.k === 'chief') && adults.length >= 8) {
       c.gath = { k: 'audience', t0: t + 11 * 10, t1: t + 12 * 10 + 5, a: ruler.id, ...at };
     }
@@ -396,4 +398,12 @@ export function dailyGov(c: Colony): void {
       updateRanks(c, false);
     }
   }
+}
+
+/** A full treasury pays for a festival or feast: the best food going, and everyone knows who paid. */
+function treat(c: Colony, k: string): void {
+  const cost = payFeast(c);
+  if (!cost) return;
+  log(c, 'feast_paid', undefined, undefined, k, cost);
+  for (const p of c.pawns) if (stage(c, p) >= STAGE.CHILD) think(c, p, 'feastpaid');
 }

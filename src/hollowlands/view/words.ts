@@ -50,6 +50,8 @@ const firstOf = (c: Colony, id: Id | undefined): string => {
 export function actText(c: Colony, p: Pawn): string {
   const a = p.act;
   let s = a.k === 'work' && a.w ? WORK[a.w] ?? 'Working' : ACT[a.k] ?? a.k;
+  // at a shop, buying from its master only when the master is there; otherwise just shopping
+  if (a.k === 'shop' && a.b) { const o = a.o ? person(c, a.o) : undefined; if (!o || !('act' in o) || o.act.b !== a.b) s = 'Shopping'; }
   s = s.replace('{o}', firstOf(c, a.o));
   // still on the way there (the tick being shown is the one just stepped: c.tick - 1)
   if (c.tick - 1 < a.ta && a.path && a.path.length > 1 && a.k !== 'wander' && a.k !== 'walk') return 'Off to: ' + s[0].toLowerCase() + s.slice(1);

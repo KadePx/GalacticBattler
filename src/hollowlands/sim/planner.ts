@@ -502,6 +502,9 @@ function slots(c: Colony, adults: number, kids: number): Record<string, number> 
   };
 }
 
+/** Trades filled only after all the others: the market's bakers, butchers and potters. */
+const LATE = new Set(['baker', 'butcher', 'potter']);
+
 /** How many of each trade this colony has room for. */
 export function tradeSlots(c: Colony): Record<string, number> {
   let adults = 0;
@@ -537,7 +540,8 @@ export function assignProfs(c: Colony, quiet: boolean): void {
   if (replan) {
     const pairs: [Pawn, string, number][] = [];
     for (const p of adults) for (const def of PROF_LIST) if ((want[def.k] ?? 0) > 0) { const f = fit(p, def.k); if (f >= 1) pairs.push([p, def.k, f]); }
-    pairs.sort((x, y) => y[2] - x[2] || x[0].id - y[0].id || PROF_LIST.indexOf(PROFS[x[1]]) - PROF_LIST.indexOf(PROFS[y[1]]));
+    // (the market's own trades come last: they take whoever the fields, kitchens and building sites can spare)
+    pairs.sort((x, y) => (LATE.has(x[1]) ? 1 : 0) - (LATE.has(y[1]) ? 1 : 0) || y[2] - x[2] || x[0].id - y[0].id || PROF_LIST.indexOf(PROFS[x[1]]) - PROF_LIST.indexOf(PROFS[y[1]]));
     const left: Record<string, number> = { ...want };
     for (const [p, k] of pairs) {
       if (next.has(p) || (left[k] ?? 0) <= 0) continue;

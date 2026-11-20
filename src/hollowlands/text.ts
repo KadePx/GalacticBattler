@@ -104,7 +104,7 @@ export const WEIGHT: Record<string, number> = {
   schism: 3, fire_spread: 3, match_sent: 3, match: 3,
   asked: 2, blackmail: 3, prosthetic: 2, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
   raidout: 3, raiders_from: 2, raidback: 3, war_declared: 3, war_on_us: 3, incident: 2, set_out: 3, pen_stocked: 2, master: 3, dream: 3, festival_set: 1, festival: 2, contest: 2, apprenticed: 2, graduated: 2, bought_beasts: 1, dogcame: 2, adopted: 2, dogdied: 2, dogbark: 2, slaughter: 1, warband: 3, peace_sued: 3, peace_made: 3, spotted: 2, brokeup: 1, berserk_hit: 3, subdued: 3, subdue_failed: 2,
-  market: 2, market_first: 3, market_sale: 2, carter: 1,
+  market: 2, market_first: 3, market_sale: 2, carter: 1, alms: 1, feast_paid: 2,
   feast_set: 2, audience: 2, prosper: 2, home_lost: 2, razed: 1, castle: 3, walls: 3, siege: 3, breach: 3, mended: 2,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
@@ -321,10 +321,13 @@ export function evText(c: Colony, e: Ev): string {
     case 'trader': return e.s ? `A caravan from ${e.s} stopped for the day.` : 'A trader\'s caravan stopped for the day.';
     case 'market_first': return `The first market was held in the square: ${e.n ?? 'a few'} stalls under bright awnings, and half the town came to look.`;
     case 'market': return marketText(c, e);
+    case 'alms': return `After the market the treasury gave alms to the ${e.n ?? 'few'} poorest in the town.`;
+    case 'feast_paid': return `The treasury paid ${e.n ?? 'a good deal of'} silver for the ${e.s === 'festival' ? 'festival' : 'feast'}: roast meat, white bread and wine for everyone.`;
     case 'market_sale': return `${a} paid ${e.n ?? 'a good deal of'} silver for the best ${WARE_ONE[e.s ?? ''] ?? 'thing'} on ${b}'s stall.`;
     case 'carter': {
       const [what, from] = (e.s ?? '').split('|');
       const whence = from ? ` from ${from}` : '';
+      if (what === 'grain') return `A grain cart${whence} came in on market day. The treasury bought ${e.n ?? 'its'} sacks for the granary against a hard winter.`;
       return what === 'wood' ? `A timber cart${whence} came in on market day. The colony bought ${e.n ?? 'its'} logs off it.` : `A carter${whence} brought ${e.n ?? 'a load of'} stone to market. The colony bought the lot for its building.`;
     }
     case 'spotted': { const many = (e.n ?? 1) > 1; const f = many ? FOE_MANY[e.s ?? ''] ?? e.s : FOE_ONE[e.s ?? ''] ?? e.s; return `${a} saw ${many ? e.n + ' ' + f : (/^[aeiou]/.test(f ?? '') ? 'an ' : 'a ') + f} coming and raised the alarm.`; }

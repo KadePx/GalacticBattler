@@ -681,6 +681,7 @@ export class MapView {
     let key = '';
     if (open) {
       for (const s of m!.st) {
+        if (!s.o) continue;
         const w = WARES[s.k];
         const left = Math.max(0, Math.min(4, Math.ceil(onHand(c, w) / Math.max(1, w.per * c.pawns.length * 0.25))));
         key += `${s.k}:${s.x},${s.y},${s.dx},${s.dy},${left}|`;
@@ -719,6 +720,8 @@ export class MapView {
       return;
     }
     for (const s of m!.st) {
+      // a stall whose keeper is gone is packed away
+      if (!s.o) continue;
       const w = WARES[s.k];
       const hue = AWNING[w.k] ?? 0xa8323a;
       const left = Math.max(0, Math.min(4, Math.ceil(onHand(c, w) / Math.max(1, w.per * c.pawns.length * 0.25))));
@@ -773,6 +776,12 @@ export class MapView {
       g.roundRect(x - 16, y - 5, 32, 11, 2).fill(0x7a5434).stroke({ width: 1, color: 0x2a1d12 });
       if (k === 'stone') {
         for (let r = 0; r < 2; r++) for (let q = 0; q < 4 - r; q++) g.roundRect(x - 14 + q * 7 + r * 3.5, y - 9 - r * 5, 6.4, 5, 1).fill(0x9da1aa).stroke({ width: 0.7, color: 0x4b4f58 });
+      } else if (k === 'grain') {
+        for (let r = 0; r < 2; r++) for (let q = 0; q < 4 - r; q++) {
+          const sx = x - 12 + q * 7 + r * 3.5;
+          const sy = y - 8 - r * 5;
+          g.roundRect(sx - 3, sy - 3.5, 6.5, 6.5, 2.4).fill(0xd9c08a).stroke({ width: 0.7, color: 0x6b4c2c });
+        }
       } else {
         for (let r = 0; r < 2; r++) for (let q = 0; q < 2; q++) {
           g.roundRect(x - 15, y - 9 - r * 4 - q * 0, 30, 3.6, 1.8).fill(0x8a6440).stroke({ width: 0.7, color: 0x3a2716 });
