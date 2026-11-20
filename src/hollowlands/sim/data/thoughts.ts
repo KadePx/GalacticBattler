@@ -328,6 +328,12 @@ export const TH_LIST: ThDef[] = [
   h('newfaces', 'Traders brought news and new faces', 3, DAY * 2),
   h('craving', 'Needs a drink', -8, 0),
   h('plaguefear', 'There is plague in the colony', -6, 0),
+  h('besieged', 'An enemy host is camped outside the walls', -8, 0),
+  h('rations', 'Short rations while the gates are shut', -4, 0),
+  h('safewalls', 'Safe behind the town walls', 3, 0),
+  h('siegelifted', 'The siege is over', 10, DAY * 6),
+  h('siegepaid', 'We paid them to go away', -5, DAY * 8),
+  h('sallied', 'Rode out of the gate against the host', 8, DAY * 6),
   h('pox', 'Covered in sores', -4, 0),
 
   // Mind

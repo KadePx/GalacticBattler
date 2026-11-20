@@ -158,7 +158,7 @@ function report(): void {
   }
 
   console.log(`\nSlowest season ${slowest.toFixed(0)} ms (a year is 4 seasons; budget 5000 ms per year at 90 colonists)`);
-  console.log(`Paths: ${pathStats.calls} searches, ${pathStats.fails} failed, ${(pathStats.nodes / Math.max(1, pathStats.calls)).toFixed(0)} tiles looked at each; map cache rebuilt ${cacheStats.rebuilds} times, ${cacheStats.lists} feature lists`);
+  console.log(`Paths: ${pathStats.calls} searches (${pathStats.foe} by foes), ${pathStats.fails} failed (${pathStats.early} at once, ${pathStats.failNodes} tiles looked at in the rest), ${(pathStats.nodes / Math.max(1, pathStats.calls)).toFixed(0)} tiles looked at each; map cache rebuilt ${cacheStats.rebuilds} times, ${cacheStats.lists} feature lists`);
   console.log('\nCounters:');
   console.log('  ' + Object.keys(c.stats).sort().map((k) => `${k} ${Math.round(c.stats[k])}`).join(', '));
   console.log('\nHow adults spent their time:');

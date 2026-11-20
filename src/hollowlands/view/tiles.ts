@@ -405,7 +405,10 @@ const BLANKET = [0x8a4a4a, 0x4f6fa8, 0x4f8a62, 0x7a5a9a, 0xa8763f, 0x3f8a8a];
 /** Each bed keeps its own blanket colour; the sleeper is drawn under the same one. */
 export const blanketColor = (tile: number): number => BLANKET[Math.floor(hash2(tile, 17, 9) * BLANKET.length) % BLANKET.length];
 
-const isWall = (s: number): boolean => s === B.WALL_WOOD || s === B.WALL_STONE || s === B.DOOR || s === B.CWALL || s === B.CTOWER;
+const isWall = (s: number): boolean => s === B.WALL_WOOD || s === B.WALL_STONE || s === B.DOOR || s === B.CWALL || s === B.CTOWER || s === B.GATE;
+/** A tile of the town wall or its gates, for the gates to line up with. */
+const isLine = (s: number): boolean => s === B.PALISADE || s === B.CWALL || s === B.CTOWER || s === B.GATE || s === B.RUBBLE;
+const WALL_PARTS = new Set(['twall', 'wtower', 'tgate']);
 const isCastleWall = (s: number): boolean => s === B.CWALL || s === B.CTOWER;
 /** Things of the castle's rooms that stand on a floor. */
 const CASTLE_FURN = new Set<number>([B.THRONE, B.BANNER, B.TAPESTRY, B.HAY]);
@@ -436,6 +439,20 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
   g.clear();
   const W = c.w;
   const stAt = (x: number, y: number): number => (x < 0 || y < 0 || x >= W || y >= c.h ? 0 : c.st[y * W + x]);
+  // the ditch in front of the town wall: a dark trench on the open ground just outside the line
+  const ditch = (x: number, y: number): void => {
+    const dx = x - c.cx;
+    const dy = y - c.cy;
+    const ax = Math.abs(dx);
+    const ay = Math.abs(dy);
+    const ox = ax >= ay * 0.4142 ? Math.sign(dx) : 0;
+    const oy = ay >= ax * 0.4142 ? Math.sign(dy) : 0;
+    if (stAt(x + ox, y + oy)) return;
+    const qx = (x + ox) * TS;
+    const qy = (y + oy) * TS;
+    g.rect(qx, qy, TS, TS).fill({ color: 0x2a2216, alpha: 0.32 });
+    g.rect(qx + 3, qy + 3, TS - 6, TS - 6).fill({ color: 0x1a140c, alpha: 0.28 });
+  };
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       const i = y * W + x;
@@ -593,8 +610,57 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           }
           break;
         }
+        case B.GATE: {
+          // a gate in the town wall: a way through, its heavy leaves swung back by day, shut and
+          // barred at night and whenever there is trouble
+          const shut = !!c.walls?.shut;
+          const across = isLine(stAt(x - 1, y)) || isLine(stAt(x + 1, y));
+          const down = !across && (isLine(stAt(x, y - 1)) || isLine(stAt(x, y + 1)));
+          const stoneG = !!b && b.mat === 1;
+          g.rect(px, py, TS, TS).fill(stoneG ? 0xcfc4aa : 0x8a7a5e);
+          if (stoneG) g.rect(px, py + 11.5, TS, 1).rect(px + 11.5, py, 1, TS).fill({ color: 0x9a907a, alpha: 0.6 });
+          const oak = 0x6a4426;
+          const band = 0x2c2f36;
+          if (shut) {
+            // the leaves closed, planked, iron-banded, and a beam across them
+            if (across || !down) {
+              g.rect(px, py + 5, TS, 14).fill(oak).stroke({ width: 1, color: 0x2a1d12 });
+              for (let n = 1; n < 4; n++) g.rect(px + n * 6, py + 5, 0.8, 14).fill({ color: 0x2a1d12, alpha: 0.6 });
+              g.rect(px, py + 8, TS, 1.4).rect(px, py + 15, TS, 1.4).fill(band);
+              g.rect(px, py + 11, TS, 2.4).fill(0x4a2e18);
+            } else {
+              g.rect(px + 5, py, 14, TS).fill(oak).stroke({ width: 1, color: 0x2a1d12 });
+              for (let n = 1; n < 4; n++) g.rect(px + 5, py + n * 6, 14, 0.8).fill({ color: 0x2a1d12, alpha: 0.6 });
+              g.rect(px + 8, py, 1.4, TS).rect(px + 15, py, 1.4, TS).fill(band);
+              g.rect(px + 11, py, 2.4, TS).fill(0x4a2e18);
+            }
+          } else if (across || !down) {
+            // open: the leaves stand back against the gateway's sides
+            g.rect(px, py + 2, TS, 3).fill({ color: band, alpha: 0.85 });
+            g.rect(px + 1, py + 6, 4, 13).rect(px + TS - 5, py + 6, 4, 13).fill(oak);
+            g.rect(px + 1, py + 9, 4, 1.2).rect(px + TS - 5, py + 9, 4, 1.2).rect(px + 1, py + 16, 4, 1.2).rect(px + TS - 5, py + 16, 4, 1.2).fill(band);
+          } else {
+            g.rect(px + 2, py, 3, TS).fill({ color: band, alpha: 0.85 });
+            g.rect(px + 6, py + 1, 13, 4).rect(px + 6, py + TS - 5, 13, 4).fill(oak);
+            g.rect(px + 9, py + 1, 1.2, 4).rect(px + 9, py + TS - 5, 1.2, 4).rect(px + 16, py + 1, 1.2, 4).rect(px + 16, py + TS - 5, 1.2, 4).fill(band);
+          }
+          break;
+        }
+        case B.RUBBLE: {
+          // a breach: tumbled stones (or broken stakes) and splinters, passable with care
+          const wood = !b || !b.mat;
+          g.rect(px, py, TS, TS).fill({ color: 0x5a5146, alpha: 0.55 });
+          for (let n = 0; n < 7; n++) {
+            const rx = px + 2 + hash2(x, y, 70 + n) * 18;
+            const ry = py + 2 + hash2(x, y, 80 + n) * 18;
+            if (wood && n % 2) g.roundRect(rx - 4, ry - 1, 9, 2.6, 1).fill(0x7a5232).stroke({ width: 0.6, color: 0x2a1d12 });
+            else g.circle(rx, ry, 1.6 + hash2(x, y, 90 + n) * 2.2).fill(n % 3 ? 0x8d8e96 : 0x6e6f77).stroke({ width: 0.6, color: 0x2a2b31 });
+          }
+          break;
+        }
         case B.CWALL:
         case B.CTOWER: {
+          if (b && WALL_PARTS.has(b.k)) ditch(x, y);
           // the castle's walls: thick dressed stone, darker and heavier than any house wall, with
           // merlons along the wall-walk; the towers rounder and capped with a ring of them
           const tower = s === B.CTOWER;
@@ -624,8 +690,10 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           break;
         }
         case B.PALISADE: {
+          // the town's palisade has a ditch dug in front of it
+          if (b && WALL_PARTS.has(b.k)) ditch(x, y);
           // a ring of sharpened stakes: logs side by side along the line, points outward
-          const link = (dx: number, dy: number): boolean => { const n = stAt(x + dx, y + dy); return n === B.PALISADE || (n === B.DOOR && c.sb[(y + dy) * W + x + dx] === c.sb[i]); };
+          const link = (dx: number, dy: number): boolean => { const n = stAt(x + dx, y + dy); return n === B.PALISADE || n === B.GATE || (n === B.DOOR && c.sb[(y + dy) * W + x + dx] === c.sb[i]); };
           const along = link(-1, 0) || link(1, 0);
           g.rect(px + (along ? 0 : 6), py + (along ? 6 : 0), along ? TS : 12, along ? 12 : TS).fill({ color: 0x140c06, alpha: 0.3 });
           for (let n = 0; n < 4; n++) {

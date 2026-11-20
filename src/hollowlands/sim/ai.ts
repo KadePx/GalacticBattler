@@ -9,6 +9,8 @@ import { foodDays, hasFood, takeMeal } from './econ';
 import { variety } from './farm';
 import { bump, log } from './events';
 import { attack, canFight, isWarden, onTower, pickFoe } from './combat';
+import { insideWall } from './town';
+import { wallPosts } from './walls';
 import { throneTile } from './castle';
 import { isDown, needsRest, wound } from './health';
 import { accuse, murder } from './crime';
@@ -37,6 +39,8 @@ function moveMult(c: Colony, p: Pawn, st: number): number {
 
 /** Walk to (x,y) and do something there for dur ticks. False if there is no way to get there. */
 export function setAct(c: Colony, p: Pawn, k: ActK, x: number, y: number, dur: number, why: string, o: ActOpts = {}): boolean {
+  // while a host is camped outside, nobody goes out past the wall but to fight
+  if (c.siege && c.siege.phase !== 2 && k !== 'fight' && k !== 'flee' && !insideWall(c, x, y) && insideWall(c, p.x, p.y)) return false;
   const found = findPath(c, p.x, p.y, x, y, !!o.adj);
   if (!found) return false;
   const t = c.tick;
@@ -452,7 +456,22 @@ export function decide(c: Colony, p: Pawn): void {
   if (c.alarm && c.foes.length && st >= STAGE.CHILD && !(p.food < 12 && hasFood(c)) && c.tick - c.alarm < 150) {
     const able = canFight(c, p) && !p.brk;
     const f = able ? pickFoe(c, p) : null;
-    if (f && !f.held && Math.max(Math.abs(f.x - c.cx), Math.abs(f.y - c.cy)) > 19) {
+    const archerish = able && p.sk[1] >= 4 && (p.sk[1] > p.sk[0] + 1 || isWarden(c, p));
+    const sally = c.siege?.phase === 3;
+    if (f && !sally && archerish && c.walls && c.walls.done >= 1 && !insideWall(c, f.x, f.y)) {
+      // raiders outside the walls: archers man the towers, gatehouses and wall-walk nearest them
+      const dist = Math.max(Math.abs(f.x - p.x), Math.abs(f.y - p.y));
+      const high = onTower(c, p);
+      if (high && dist <= 13) {
+        p.act = mkAct('fight', t, p.x, p.y, 1, 'wallpost');
+        p.act.d = f.id;
+        p.act.b = 1;
+        return;
+      }
+      const post = wallPost(c, p, f);
+      if (post >= 0 && setAct(c, p, 'fight', post % c.w, Math.floor(post / c.w), 1, 'wallpost', { d: f.id, b: 1 })) return;
+    }
+    if (f && !f.held && !sally && Math.max(Math.abs(f.x - c.cx), Math.abs(f.y - c.cy)) > 19) {
       // they have not come on yet: stand together in the middle of the colony rather than run out one by one
       const s = randomSpot(c, r, c.cx, c.cy, 0, 3);
       if (s && setAct(c, p, 'fight', s[0], s[1], 2, 'muster')) return;
@@ -593,10 +612,12 @@ export function finish(c: Colony, p: Pawn): void {
   switch (a.k) {
     case 'eat': {
       const st = stage(c, p);
-      const kind = takeMeal(c, has(p, 'ironstomach') || p.race === 'goblin');
+      // short rations while a host is camped outside: thin bowls, the pot stretched to go further
+      const thin = !!c.siege && c.siege.phase !== 2 && c.tick - c.siege.t0 >= TICKS_PER_DAY;
+      const kind = thin && hasFood(c) && r.chance(0.4) ? 'meal' : takeMeal(c, has(p, 'ironstomach') || p.race === 'goblin');
       if (!kind) { bump(c, 'missedMeals'); break; }
       bump(c, 'meals');
-      p.food = Math.min(100, p.food + 62);
+      p.food = Math.min(100, p.food + (thin ? 50 : 62));
       if (has(p, 'glutton') && p.food < 90 && takeMeal(c, true)) p.food = 100;
       if (st <= STAGE.BABY) break;
       if (kind === 'feast') think(c, p, 'atefeast');
@@ -872,4 +893,20 @@ export function finish(c: Colony, p: Pawn): void {
   }
   void hasThought;
   void TICKS_PER_DAY;
+}
+
+/** The nearest free place on the town wall to shoot at a foe from (a tower, a gatehouse, the wall-walk), or -1. */
+function wallPost(c: Colony, p: Pawn, f: { x: number; y: number }): number {
+  let best = -1;
+  let bd = 1e9;
+  for (const i of wallPosts(c)) {
+    const x = i % c.w;
+    const y = (i - x) / c.w;
+    const df = Math.max(Math.abs(x - f.x), Math.abs(y - f.y));
+    if (df > 12) continue;
+    if (taken(c, p, x, y)) continue;
+    const d = df * 2 + Math.max(Math.abs(x - p.x), Math.abs(y - p.y)) * 0.25;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
 }

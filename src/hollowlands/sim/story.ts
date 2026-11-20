@@ -3,6 +3,7 @@
 // Events are sparks. What they lead to is up to the colony.
 
 import { cropsChanged } from './cache';
+import { siegeable, startSiege } from './siege';
 import { DAYS_PER_YEAR, HARD_CAP, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
 import { checkSpec, pawnFromSpec, type PawnSpec } from './create';
 import { addFact, learn } from './social';
@@ -84,7 +85,12 @@ export function applyInputs(c: Colony): void {
       // trouble sent from elsewhere may still be a day or two down the road
       if (e.delay) { c.inq.push({ ...e, t: c.tick + Number(e.delay), delay: undefined }); continue; }
       if (c.foes.length) continue;
-      spawnRaid(c, String(e.kind), Number(e.n) || 1, new Rand(c.seed, S.FIGHT, c.tick, 99));
+      const rr = new Rand(c.seed, S.FIGHT, c.tick, 99);
+      const from = e.fromId ? { id: String(e.fromId), name: String(e.fromName) } : undefined;
+      // a host come to besiege a walled town makes camp; an unwalled one it simply falls on
+      // (e.siege is the size of the host that comes if there are walls to besiege; e.n the band that comes if not)
+      const sieged = !!e.siege && siegeable(c) && startSiege(c, String(e.kind), Number(e.siege) || 1, String(e.name ?? e.fromName ?? ''), rr, from);
+      if (!sieged) spawnRaid(c, String(e.kind), Number(e.n) || 1, rr);
       if (e.fromId) {
         c.raidFrom = { id: String(e.fromId), name: String(e.fromName), loot0: c.stats.looted ?? 0, slain0: c.stats.foesSlain ?? 0, died0: c.stats.deaths ?? 0 };
         const g = (c.grudge ??= {});

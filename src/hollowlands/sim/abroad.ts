@@ -92,7 +92,9 @@ export function dailyAbroad(c: Colony): void {
   // the marshal leads, else the champion, else the best fighter
   const captain = pawnById(c, c.gov.titles.marshal ?? 0) ?? pawnById(c, c.gov.titles.champion ?? 0) ?? c.pawns.filter((p) => canFight(c, p) && !p.owner).sort((a, b) => b.sk[0] - a.sk[0])[0];
   c.story.raid = c.tick;
-  c.out.push({ k: 'raid', to: target.id, kind: 'raider', n, fromId: c.id, fromName: c.name });
+  // a strong colony at war sends a host to lay siege, should the enemy be walled
+  const host = enemy && fighters >= 14 && r.chance(0.4) ? Math.min(12, fighters - 5) : 0;
+  c.out.push({ k: 'raid', to: target.id, kind: 'raider', n, fromId: c.id, fromName: c.name, ...(host ? { siege: host, name: c.name } : {}) });
   if (enemy) {
     wars[enemy].sent++;
     log(c, 'warband', captain?.id ?? ruler.id, undefined, target.name, n);

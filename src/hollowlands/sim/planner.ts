@@ -4,7 +4,7 @@
 import { DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
 import { cacheOf, dropFeat, touch, touchAt } from './cache';
 import { BACKS } from './data/backstories';
-import { CASTLE_KINDS, CROPS, HOMES, SHAPES, TPL, cellCode, cells, isDecor, shapeOf, spots } from './data/buildings';
+import { CASTLE_KINDS, CROPS, HOMES, SHAPES, TPL, WALL_KINDS, cellCode, cells, isDecor, shapeOf, spots, wallCost } from './data/buildings';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
 import { OUTSIDE, WALL_W, Z, frame, lotScore, octo, onKeep, passableThing, pave } from './town';
@@ -15,6 +15,7 @@ import { bury } from './life';
 import { think } from './mood';
 import { STAGE, pawnById, stage } from './pawn';
 import { hash32, S } from './rng';
+import { gateWays } from './walls';
 import { B, F, T, type Bld, type Colony, type Pawn } from './types';
 
 /** Lay out a template's tiles as far as it has been built. */
@@ -23,16 +24,19 @@ export function syncTiles(c: Colony, b: Bld): void {
   const n = b.built ? list.length : Math.floor(b.prog * list.length);
   for (let i = 0; i < n; i++) {
     const cell = list[i];
-    const code = cellCode(b.k, cell.ch, b.mat);
+    // a breach in the town wall lies in rubble until it is mended
+    const code = b.br && b.br.includes(i) ? B.RUBBLE : cellCode(b.k, cell.ch, b.mat);
     if (code === B.NONE) continue;
     const ti = (b.y + cell.dy) * c.w + b.x + cell.dx;
-    if (c.st[ti] !== code && c.st[ti] !== B.GRAVE && !(cell.ch === '.' && isDecor(c.st[ti]))) { c.st[ti] = code; touchAt(c, ti); }
+    if (c.st[ti] !== code && c.st[ti] !== B.GRAVE && !(cell.ch === '.' && isDecor(c.st[ti]))) { c.st[ti] = code; touchAt(c, ti, false); }
   }
 }
 
 export function placeBuilding(c: Colony, k: string, x: number, y: number, instant: boolean, mat = 0, shape = k): Bld {
   const t = TPL[shape];
-  const cost = TPL[k];
+  // a piece of the town wall costs what its own plan does
+  const wall = WALL_KINDS.has(k);
+  const cost = wall ? t : TPL[k];
   const w = t.rows[0].length;
   const h = t.rows.length;
   const wood = mat ? Math.round(cost.wood * 0.3) : cost.wood;
@@ -46,6 +50,7 @@ export function placeBuilding(c: Colony, k: string, x: number, y: number, instan
       const i = (y + dy) * c.w + x + dx;
       // a space in the plan is outside: the land there stays the colony's, not the building's
       if (t.rows[dy][dx] !== ' ') c.sb[i] = b.id;
+      else if (wall) continue;
       const f = c.feat[i];
       if (f === F.TREE || f === F.PINE) c.stock.wood += 4;
       else if (f === F.BOULDER) c.stock.stone += 4;
@@ -82,6 +87,7 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
   const maxR = field ? (far ? edge : WALL + 18) : far ? edge - 2 : planned ? (out ? WALL + 14 : WALL + 2) : WALL + 9;
   const TOP = 24;
   const top: [number, number, number][] = [];
+  const keep = gateWays(c);
   const doors = cells(shape).filter((q) => q.ch === '+' || q.ch === 'g');
   // only the ground within reach of the plan is looked at, not the whole map
   const y0 = Math.max(3, Math.floor(c.cy - maxR - h));
@@ -113,6 +119,8 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
           if (inside && onKeep(c, xx, yy)) { ok = false; break; }
           if (inside && ter === T.SOIL) soil++;
           if (!inside || t.rows[yy - y][xx - x] === ' ') continue;
+          // the avenue and the ways through the town wall's gates are never built over
+          if (zone[i] === Z.AVENUE || (keep && keep[i])) { ok = false; break; }
           const od = octo(xx - c.cx, yy - c.cy);
           // the line where the town wall will stand is kept clear, whatever else gives
           if (od >= WALL && od < WALL + WALL_W) { ok = false; break; }
@@ -275,8 +283,10 @@ export function build(c: Colony, k: string, instant = false, crop?: string): Bld
 /** Put work into a building. Returns false if it is stalled for want of materials. */
 export function advanceBuild(c: Colony, b: Bld, hours: number, p: Pawn): boolean {
   if (b.built) return false;
-  const t = TPL[b.k];
-  let dp = hours / (t.work * 1.6);
+  const wall = WALL_KINDS.has(b.k);
+  const t = wall ? wallCost(b) : TPL[b.k];
+  // rebuilding a stretch of the town wall in stone is slow, heavy work
+  let dp = hours / (t.work * (wall && b.mat ? 2.5 : 1) * 1.6);
   if (b.prog + dp > 1) dp = 1 - b.prog;
   const left = 1 - b.prog;
   for (const res of ['wood', 'stone'] as const) {
@@ -357,11 +367,12 @@ export function assignBeds(c: Colony, quiet: boolean): void {
     if (b.k !== 'barracks') continue;
     for (let i = 0; i < b.beds.length; i++) {
       const o = b.beds[i] ? pawnById(c, b.beds[i]) : undefined;
-      if (o && (!isWardenProf(o) || o.sp)) { o.home = 0; b.beds[i] = 0; }
+      if (o && (!isWardenProf(o) || o.sp || hasYoung(c, o))) { o.home = 0; b.beds[i] = 0; }
     }
     for (const p of c.pawns) {
       if (b.beds.indexOf(0) < 0) break;
-      if (p.gone || p.home === b.id || !isWardenProf(p) || p.sp || stage(c, p) < STAGE.ADULT) continue;
+      // (not a widowed guard with children still at home: they stay with their young)
+      if (p.gone || p.home === b.id || !isWardenProf(p) || p.sp || stage(c, p) < STAGE.ADULT || hasYoung(c, p)) continue;
       const cur = p.home ? homes.find((x) => x.id === p.home) : undefined;
       if (cur?.own === p.id) continue;
       move(p, b);
@@ -402,6 +413,9 @@ export function assignBeds(c: Colony, quiet: boolean): void {
 }
 
 const isWardenProf = (p: Pawn): boolean => p.prof === 'guard' || p.prof === 'scout';
+
+/** Has this colonist children not yet grown? */
+const hasYoung = (c: Colony, p: Pawn): boolean => c.pawns.some((o) => (o.mo === p.id || o.fa === p.id) && !o.gone && stage(c, o) < STAGE.ADULT);
 
 const isKin = (a: Pawn, b: Pawn): boolean => a.sp === b.id || a.mo === b.id || a.fa === b.id || b.mo === a.id || b.fa === a.id || (!!a.mo && a.mo === b.mo);
 
@@ -562,7 +576,7 @@ export function plan(c: Colony): void {
   const pop = c.pawns.length;
   if (!pop) return;
   // (the castle goes up alongside the town, at its own pace: it does not hold up the town's building)
-  const pending = c.blds.filter((b) => !b.built && !CASTLE_KINDS.has(b.k));
+  const pending = c.blds.filter((b) => !b.built && !CASTLE_KINDS.has(b.k) && !WALL_KINDS.has(b.k));
   // no stone to be had for weeks: build it in timber instead
   for (const b of pending) {
     if (b.need.stone > 0.01 && c.stock.stone < 1 && c.tick - b.made > 240 * 5) {

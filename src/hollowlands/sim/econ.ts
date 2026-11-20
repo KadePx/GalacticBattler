@@ -21,18 +21,21 @@ export const hasFood = (c: Colony): boolean => foodUnits(c) >= 1;
 
 /** Mouths to feed, counted in adult humans. */
 export function mouths(c: Colony): number {
+  const m = mouthMemo.get(c);
+  if (m && m[0] === c.tick) return m[1];
   let n = 0;
   for (const p of c.pawns) n += stat(p, 'appetite') * (stage(c, p) <= STAGE.CHILD ? 0.8 : 1);
-  return Math.max(1, n);
+  n = Math.max(1, n);
+  mouthMemo.set(c, [c.tick, n]);
+  return n;
 }
 
+/** Mouths to feed, counted once a tick (every colonist looking for work asks). */
 const mouthMemo = new WeakMap<Colony, [number, number]>();
 
 /** Days of food in the stores at the rate the colony eats. */
 export function foodDays(c: Colony): number {
-  let m = mouthMemo.get(c);
-  if (!m || m[0] !== c.tick) { m = [c.tick, mouths(c)]; mouthMemo.set(c, m); }
-  return foodUnits(c) / (m[1] * 1.75);
+  return foodUnits(c) / (mouths(c) * 1.75);
 }
 
 /** Take one helping of the best food going. Returns what was eaten, or '' if the stores are bare. */

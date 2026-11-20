@@ -5,7 +5,7 @@
 // outside it. Worked out from the colony's land each time (nothing stored), so older colonies
 // follow it for whatever they build next.
 
-import { dropFeat, touch } from './cache';
+import { dropFeat, touchAt } from './cache';
 import { hash32, S } from './rng';
 import { B, F, T, isStreetThing, type Colony } from './types';
 
@@ -337,6 +337,8 @@ export function pave(c: Colony, n: number): void {
         if (ft !== F.NONE) { c.feat[i] = F.NONE; c.fg[i] = 0; }
         done++;
         changed = true;
+        // open ground stays open: only this tile's cost needs redoing (the features it had are dropped below)
+        touchAt(c, i, false);
       }
     }
   }
@@ -364,8 +366,9 @@ export function pave(c: Colony, n: number): void {
     }
     c.st[i] = code;
     changed = true;
+    touchAt(c, i, false);
   }
-  if (changed) { touch(c); for (const ft of [F.FLOWERS, F.BUSH, F.HERB, F.MUSHROOM, F.SAPLING]) dropFeat(c, ft); }
+  if (changed) { for (const ft of [F.FLOWERS, F.BUSH, F.HERB, F.MUSHROOM, F.SAPLING]) dropFeat(c, ft); }
 }
 
 function builtNear(c: Colony, x: number, y: number): boolean {

@@ -29,6 +29,9 @@ export const B = {
   LAMPPOST: 60, SEAT: 61, SIGNPOST: 62, FOUNTAIN: 63, WAYSHRINE: 64, PUMP: 65,
   // the castle: its heavy walls and towers, the palisade before them, and the things of a lord's hall
   CWALL: 66, CTOWER: 67, PALISADE: 68, THRONE: 69, BANNER: 70, TAPESTRY: 71, HAY: 72,
+  // the town wall: a gate in it (always open to colonists; shut against foes at night and in alarms),
+  // and the rubble of a breach
+  GATE: 73, RUBBLE: 74,
 } as const;
 
 /** Street furniture: stands on its own, outside any building. */
@@ -118,6 +121,8 @@ export interface Foe {
   band: number;
   /** tick until which they hang back at the edge of the map */
   wait: number;
+  /** the tile of town wall they are breaking at, if any */
+  wt?: number;
 }
 
 /** A war with another colony: since when, and how it is going. */
@@ -289,6 +294,8 @@ export interface Bld {
   vac?: number;
   /** a home: when its family bought it or moved in, so the move has time to happen */
   got?: number;
+  /** a stretch of town wall: the cells (indexes into its plan's cells) broken through, until it is mended */
+  br?: number[];
 }
 
 export interface Ev { t: number; k: string; a?: Id; b?: Id; s?: string; n?: number }
@@ -368,6 +375,10 @@ export interface Colony {
   nosite: Record<string, number>;
   /** the castle on the rise: stages finished (0-3), the stage being built (0 none), which way it faces, and when each stage was finished */
   castle?: { stage: number; work: number; turn: number; at: number[] };
+  /** the town wall: the stage being raised (1 ditch and palisade, 2 stone), the stage finished, whether the gates are shut, and when each stage was finished */
+  walls?: { stage: number; done: number; shut: number; at: number[]; /** the wall's pieces, worked out when it was begun (see walls.ts) */ pl: { k: string; s: string; x: number; y: number; b: number }[] };
+  /** a warlord's host camped outside the walls: whose, its band, when it came, where it camps, days of supplies left, ladders and ram made, and how it stands (0 camped, 1 assault, 2 gone home) */
+  siege?: { name: string; band: number; t0: number; x: number; y: number; sup: number; ladders: number; ram: number; phase: number; /** the hour each day the host makes up its mind */ hr: number; /** how many came, and the colony's tally of foes slain when they did */ n?: number; s0?: number; from?: string; fromId?: string; paid?: number };
   /** the latest wave of the grey plague: when it began, its last new case, how many lived here then, how many it took */
   plague?: { t: number; last: number; n0: number; dead: number };
   /** passing conditions: [kind, until tick] */

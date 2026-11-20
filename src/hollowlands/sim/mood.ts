@@ -188,6 +188,8 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
   else if (ache > 22) add('hurting');
   if (p.ill) add(p.ill.k === 'pox' ? 'pox' : 'sick');
   else if (st >= STAGE.TEEN && c.pawns.some((o) => o.ill?.k === 'plague')) add('plaguefear');
+  if (c.siege && c.siege.phase < 2 && st >= STAGE.CHILD) { add('besieged'); if (c.siege.sup >= 0 && c.siege.t0 + 240 <= c.tick) add('rations'); }
+  else if (c.walls && c.walls.done >= 2 && st >= STAGE.TEEN && (c.stats.raids ?? 0) > 0) add('safewalls');
   if (has(p, 'drunkard') && c.stock.ale < 1 && p.drunk <= 0) add('craving');
 
   const inside = indoors(c, p);
@@ -208,21 +210,24 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
   p.sit = out;
 }
 
+/** Scratch space for moodTarget (insertion order, as the plain object it replaced kept it). */
+const BY_KEY = new Map<string, number>();
+
 export function moodTarget(c: Colony, p: Pawn): number {
   let m = 35 + stat(p, 'moodBase');
   // The same kind of thought about many people only counts for so much
-  const byKey: Record<string, number> = {};
+  const byKey = BY_KEY;
+  byKey.clear();
   for (const t of p.th) {
     if (t.x <= c.tick) continue;
     const d = TH[t.k];
     if (!d) continue;
     const v = d.m * (1 + 0.5 * Math.min(3, (t.n ?? 1) - 1));
     if (!t.o) { m += v; continue; }
-    byKey[t.k] = (byKey[t.k] ?? 0) + v;
+    byKey.set(t.k, (byKey.get(t.k) ?? 0) + v);
   }
-  for (const k in byKey) {
+  for (const [k, v] of byKey) {
     const cap = Math.abs(TH[k].m) * 2;
-    const v = byKey[k];
     m += v > cap ? cap : v < -cap ? -cap : v;
   }
   for (const s of p.sit) m += s[1];

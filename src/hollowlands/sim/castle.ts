@@ -9,7 +9,7 @@
 // colony's builders, from its stores. The ruler and their family live in it; audiences and feasts
 // are held in its hall; the guards sleep and drill in its barracks; its towers are walls to shoot from.
 
-import { TICKS_PER_DAY } from '../config';
+import { TICKS_PER_DAY, dayOf } from '../config';
 import { touch } from './cache';
 import { CASTLE_AT, CASTLE_KINDS, CASTLE_N, TPL, shapeOf, spots } from './data/buildings';
 import { log } from './events';
@@ -29,6 +29,8 @@ const SILVER = [0, 0, 60, 100];
 const STONE = [0, 0, 120, 150];
 /** Days between one stage finishing and the next being begun: the work is spread over years. */
 const REST_DAYS = 55;
+/** Days a colony must have stood before its ruler begins a castle. */
+const MIN_AGE_DAYS = 30;
 
 /** Can this colony's land hold a castle at all (the old, small maps cannot)? */
 export const castleLand = (c: Colony): boolean => !!c.keep && keepR(c) >= 13;
@@ -152,13 +154,21 @@ export function dailyCastle(c: Colony): void {
     // the town's own needs first: its hall and stores up, nobody sleeping rough, timber to spare
     let roofless = 0;
     for (const p of c.pawns) if (!p.home) roofless++;
+    // and a colony settled in a while, with some stone laid by: no lord starts a castle on the first day
     if (!c.blds.some((b) => b.k === 'hall' && b.built) || c.stock.wood < 90 || roofless > 2) return;
+    if (dayOf(c.tick) < MIN_AGE_DAYS || c.stock.stone < 40) return;
     c.castle = { stage: 0, work: 1, turn: castleTurn(c), at: [] };
     for (const k of STAGE_PARTS[1]) placePart(c, k, c.castle.turn);
     log(c, 'castle', ruler.id, undefined, 'begun', 1);
     return;
   }
   const parts = castleParts(c);
+  // a part of a finished stage lost (burned, pulled down) is laid out again, unless a later stage has
+  // built over it (the palisade under the curtain wall, the timber hall under the barracks)
+  if (!cs.work) {
+    const over = cs.stage >= 3 ? new Set(['palisade', 'motte']) : new Set<string>();
+    for (let s = 1; s <= cs.stage; s++) for (const k of STAGE_PARTS[s]) if (!over.has(k) && !parts.some((b) => b.k === k)) { placePart(c, k, cs.turn); log(c, 'castle', ruler?.id, undefined, 'rebuild', s); }
+  }
   if (cs.work) {
     // a part lost (burned, pulled down) is laid out again
     for (const k of STAGE_PARTS[cs.work]) if (!parts.some((b) => b.k === k)) placePart(c, k, cs.turn);

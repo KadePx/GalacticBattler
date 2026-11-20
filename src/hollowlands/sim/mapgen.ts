@@ -6,6 +6,9 @@ import { Rand, S, hash32 } from './rng';
 import { keepR, reach } from './town';
 import { F, T, type Colony } from './types';
 
+/** Sixteen directions round a circle (unit vectors, written out so every browser agrees on them). */
+const ROUND: [number, number][] = [[1, 0], [0.92388, 0.38268], [0.70711, 0.70711], [0.38268, 0.92388], [0, 1], [-0.38268, 0.92388], [-0.70711, 0.70711], [-0.92388, 0.38268], [-1, 0], [-0.92388, -0.38268], [-0.70711, -0.70711], [-0.38268, -0.92388], [0, -1], [0.38268, -0.92388], [0.70711, -0.70711], [0.92388, -0.38268]];
+
 export const BIOMES = ['valley', 'hills', 'marsh', 'coast', 'forest', 'highland'] as const;
 
 /** How each kind of land is put together. */
@@ -171,13 +174,25 @@ export function genMap(c: Colony): void {
   let ky = 0;
   let bestWet = Infinity;
   const KEEP_R = keepR(c);
-  for (const dd of [kd, kd + 3, kd - 2, kd + 6]) {
-    // the castle stays inside the line of the town wall
+  // the castle and all the ground kept for it stay inside the line of the town wall (the band
+  // starts at reach + 3, measured the town plan's octagonal way)
+  const wallIn = reach(c) + 3;
+  const inside = (x: number, y: number): boolean => {
+    for (const [ux, uy] of ROUND) {
+      const ax = Math.abs(x + ux * KEEP_R - cx);
+      const ay = Math.abs(y + uy * KEEP_R - cy);
+      if (Math.max(ax, ay, (ax + ay) * 0.72) >= wallIn - 0.5) return false;
+    }
+    return true;
+  };
+  for (let pass = 0; pass < 2 && !kx; pass++) for (const dd of [kd, kd + 3, kd - 2, kd + 6]) {
     if (dd !== kd && dd + KEEP_R > reach(c) + 2) continue;
     for (const [l1, l2] of [[lat, lat2], [-lat, -lat2], [0, 0], [lat + 5, lat2 + 5], [-lat - 5, -lat2 - 5]]) {
       const x = Math.round(cx + SIDE_DX[away] * dd + SIDE_DX[(away + 1) % 4] * side * l1);
       const y = Math.round(cy + SIDE_DY[away] * dd + SIDE_DY[(away + 1) % 4] * side * l2);
       if (x < KEEP_R + 2 || y < KEEP_R + 2 || x > W - KEEP_R - 3 || y > H - KEEP_R - 3) continue;
+      // (the second pass, if nothing fitted, takes the old way: whatever is driest)
+      if (pass === 0 && !inside(x, y)) continue;
       let wet = 0;
       const R = KEEP_R + 1;
       for (let yy = y - R; yy <= y + R; yy++) for (let xx = x - R; xx <= x + R; xx++) if ((xx - x) * (xx - x) + (yy - y) * (yy - y) < R * R && wetAt(xx, yy)) wet++;
@@ -305,20 +320,19 @@ export function genMap(c: Colony): void {
   // ---------- Rocky outcrops: bare rock with ore in it, stony ground and boulders round about ----------
   const crag = new Uint8Array(N);
   const nCrag = r.range(P.outcrops[0], P.outcrops[1]);
-  for (let k = 0, tries = 0; k < nCrag && tries < 120; tries++) {
-    // the first is always a short walk from the town, so there is stone to be had
+  const addCrag = (k: number, near: number, far: number): boolean => {
     const ux = r.float() * 2 - 1;
     const uy = r.float() * 2 - 1;
     const ul = Math.sqrt(ux * ux + uy * uy);
-    if (ul < 0.2 || ul > 1) continue;
-    const dist = k === 0 ? r.range(Math.round(16 * K), Math.round(20 * K)) : r.range(Math.round(17 * K), Math.round(33 * K));
+    if (ul < 0.2 || ul > 1) return false;
+    const dist = r.range(near, far);
     const x = Math.round(cx + (ux / ul) * dist);
     const y = Math.round(cy + (uy / ul) * dist);
     const or = r.range(Math.round(1.6 * K), Math.round((c.biome === 'highland' || c.biome === 'hills' ? 3.6 : 2.8) * K));
-    if (x < or + 4 || y < or + 4 || x >= W - or - 4 || y >= H - or - 4) continue;
-    if (nearRoad(x, y, or + 4) || c.ter[y * W + x] === T.DEEP || c.ter[y * W + x] === T.SHALLOW) continue;
+    if (x < or + 4 || y < or + 4 || x >= W - or - 4 || y >= H - or - 4) return false;
+    if (nearRoad(x, y, or + 4) || c.ter[y * W + x] === T.DEEP || c.ter[y * W + x] === T.SHALLOW) return false;
     // nor on the rise kept for the keep
-    if (Math.sqrt((x - kx) * (x - kx) + (y - ky) * (y - ky)) < or + Math.max(5 * K, KEEP_R + 3)) continue;
+    if (Math.sqrt((x - kx) * (x - kx) + (y - ky) * (y - ky)) < or + Math.max(5 * K, KEEP_R + 3)) return false;
     for (let yy = y - or - 4; yy <= y + or + 4; yy++) {
       for (let xx = x - or - 4; xx <= x + or + 4; xx++) {
         const i = yy * W + xx;
@@ -329,8 +343,22 @@ export function genMap(c: Colony): void {
         else if (d > -2.8) { if (t !== T.ROCK) c.ter[i] = T.STONE; crag[i] = 1; }
       }
     }
-    k++;
+    return true;
+  };
+  for (let k = 0, tries = 0; k < nCrag && tries < 120; tries++) {
+    // the first is always a short walk from the town, so there is stone to be had
+    if (addCrag(k, k === 0 ? Math.round(16 * K) : Math.round(17 * K), k === 0 ? Math.round(20 * K) : Math.round(33 * K))) k++;
   }
+  // every land has stone enough within reach for a castle and a town wall: where the outcrops came
+  // out small, more are raised a fair walk from the town
+  const rockNear = (): number => {
+    let n = 0;
+    const R2 = 40 * K * 40 * K;
+    for (let i = 0; i < N; i++) { if (c.ter[i] !== T.ROCK) continue; const x = i % W; const y = (i - x) / W; if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= R2) n++; }
+    return n;
+  };
+  const MIN_ROCK = Math.round(110 * K * K);
+  for (let k = nCrag, tries = 0; tries < 60 && rockNear() < MIN_ROCK; tries++) if (addCrag(k, Math.round(17 * K), Math.round(28 * K))) k++;
 
   // the road is laid last, over everything; where it meets water it fords it
   for (const i of road) {

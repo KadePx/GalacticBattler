@@ -245,14 +245,15 @@ export const CASTLE_TPL: Tpl[] = [
   tpl('motte', 'Timber hall', 55, 0, 45, [
     '##+##',
     '#bNb#',
+    '#b.b#',
     '#cth#',
     '#####',
   ]),
   tpl('keep', 'Keep', 60, 260, 300, [
     'XXXXXXXXX',
     'Xbbb#.A.X',
-    'Xb.O#p.pX',
-    'Xh.e#p.pX',
+    'Xb.b#p.pX',
+    'Xh.O#p.pX',
     'X#+###+#X',
     'XV.NJN.VX',
     'Xh.....hX',
@@ -322,6 +323,51 @@ for (const t of CASTLE_TPL) {
     TPL[t.k + '~r' + n] = { ...t, rows };
   }
 }
+
+/**
+ * The town wall, raised in pieces round the octagon of the town plan's wall band (see walls.ts):
+ * stretches of wall ('twall': a palisade of stakes behind a ditch, later rebuilt in stone), towers
+ * ('wtower') and gates ('tgate': a timber gate in the palisade, later a stone gatehouse). A piece's
+ * plan depends on its length and which way it runs, so every plan is made here up front: their costs
+ * are the plan's own (a long stretch costs more than a short one), not the kind's.
+ *   twall~h<n> / ~v<n>: a straight run across or down; ~d<n> / ~a<n>: a diagonal run (down-right,
+ *   down-left). wtower~s/e/n/w: a tower on a straight side, its door on the town side;
+ *   wtower~se/ne/nw/sw: a smaller tower on a diagonal side. tgate~h/v: a timber gate in the
+ *   palisade; tgate~H/V: the stone gatehouse; tgate~p: a postern, one gate wide.
+ */
+export const WALL_KINDS = new Set(['twall', 'wtower', 'tgate']);
+export const WALL_MAX = 48;
+{
+  const add = (key: string, base: string, name: string, wood: number, stone: number, work: number, rows: string[]): void => {
+    TPL[key] = tpl(base, name, wood, stone, work, rows);
+  };
+  add('twall', 'twall', 'Town wall', 3, 0, 1.6, ['P']);
+  add('wtower', 'wtower', 'Wall tower', 10, 40, 40, ['Z+Z', 'Z.Z', 'ZZZ']);
+  add('tgate', 'tgate', 'Town gate', 25, 0, 14, ['PgggP']);
+  for (let n = 1; n <= WALL_MAX; n++) {
+    const diag = (down: boolean): string[] => Array.from({ length: n }, (_, i) => { const col = down ? i : n - 1 - i; return ' '.repeat(col) + 'P' + ' '.repeat(n - 1 - col); });
+    add('twall~h' + n, 'twall', 'Town wall', 3 * n, 0, 1.6 * n, ['P'.repeat(n)]);
+    add('twall~v' + n, 'twall', 'Town wall', 3 * n, 0, 1.6 * n, Array.from({ length: n }, () => 'P'));
+    add('twall~d' + n, 'twall', 'Town wall', 3 * n, 0, 1.6 * n, diag(true));
+    add('twall~a' + n, 'twall', 'Town wall', 3 * n, 0, 1.6 * n, diag(false));
+  }
+  add('wtower~s', 'wtower', 'Wall tower', 10, 40, 40, ['Z+Z', 'Z.Z', 'ZZZ']);
+  add('wtower~n', 'wtower', 'Wall tower', 10, 40, 40, ['ZZZ', 'Z.Z', 'Z+Z']);
+  add('wtower~e', 'wtower', 'Wall tower', 10, 40, 40, ['ZZZ', '+.Z', 'ZZZ']);
+  add('wtower~w', 'wtower', 'Wall tower', 10, 40, 40, ['ZZZ', 'Z.+', 'ZZZ']);
+  add('wtower~se', 'wtower', 'Wall tower', 6, 25, 25, ['.Z', 'ZZ']);
+  add('wtower~ne', 'wtower', 'Wall tower', 6, 25, 25, ['ZZ', '.Z']);
+  add('wtower~nw', 'wtower', 'Wall tower', 6, 25, 25, ['ZZ', 'Z.']);
+  add('wtower~sw', 'wtower', 'Wall tower', 6, 25, 25, ['Z.', 'ZZ']);
+  add('tgate~h', 'tgate', 'Town gate', 25, 0, 14, ['PgggP']);
+  add('tgate~v', 'tgate', 'Town gate', 25, 0, 14, ['P', 'g', 'g', 'g', 'P']);
+  add('tgate~H', 'tgate', 'Gatehouse', 25, 60, 50, ['Z,,,Z', 'ZgggZ', 'Z,,,Z']);
+  add('tgate~V', 'tgate', 'Gatehouse', 25, 60, 50, ['ZZZ', ',g,', ',g,', ',g,', 'ZZZ']);
+  add('tgate~p', 'tgate', 'Postern', 6, 0, 4, ['g']);
+}
+
+/** What one piece of the town wall costs and takes to raise: its own plan's figures. */
+export const wallCost = (b: { k: string; s?: string }): Tpl => TPL[b.s ?? b.k];
 
 /**
  * Other floor plans for some kinds of building, so a colony is not all boxes. Keys are
@@ -481,6 +527,9 @@ export const PURPOSE: Record<string, string> = {
   gatehouse: 'The way into the castle, facing the town: two gates and a guardroom either side, where wardens keep watch.',
   barracks: 'Where the castle\'s guards sleep and drill. It serves as the guardhouse.',
   stables: 'Stalls, mangers and hay for the castle\'s horses.',
+  twall: 'A stretch of the town wall. Raiders have to come through a gate or break a way in, and a breach must be mended.',
+  wtower: 'A tower on the town wall. Wardens keep watch from it, and archers inside shoot further and are safe behind stone.',
+  tgate: 'A gate in the town wall: open by day, shut at night and whenever the alarm is raised. It always opens for the colony\'s own people.',
 };
 
 export interface Cell { dx: number; dy: number; ch: string }
@@ -528,6 +577,14 @@ export const isDecor = (s: number): boolean => DECOR.includes(s);
 
 /** What a template cell becomes on the map. Floors lie under furniture, so furniture reports itself. */
 export function cellCode(k: string, ch: string, mat: number): number {
+  if (k === 'twall' || k === 'tgate' || k === 'wtower') {
+    // the town wall: stakes and timber first, stone later
+    if (ch === 'P') return mat ? B.CWALL : B.PALISADE;
+    if (ch === 'Z') return mat ? B.CTOWER : B.PALISADE;
+    if (ch === 'g') return B.GATE;
+    if (ch === ',') return B.PAVING;
+    if (ch === '.') return mat ? B.FLOOR_STONE : B.FLOOR_WOOD;
+  }
   if (ch === '#') return mat ? B.WALL_STONE : B.WALL_WOOD;
   if (ch === '+' || ch === 'g') return B.DOOR;
   if (ch === '=') return B.FENCE;

@@ -15,7 +15,9 @@ import { advanceBuild, canBuild, syncTiles } from './planner';
 import { homeCap } from './homes';
 import { BEAST_KINDS, plantAround, plantSpot } from './wild';
 import { herdNeed, herdWork, livestock } from './herd';
-import { CASTLE_KINDS, TPL } from './data/buildings';
+import { CASTLE_KINDS, TPL, WALL_KINDS } from './data/buildings';
+import { mended, wallStone } from './walls';
+import { inWallBand } from './town';
 import { castleStone } from './castle';
 import { STAGE, gainXp, has, mkAct, pawnById, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
@@ -61,11 +63,11 @@ const CROWD: Record<WorkK, number> = { farm: 0.2, forage: 0.6, hunt: 1, fish: 1,
 
 interface FieldNeed { b: Bld; op: number; n: number }
 
-// How each field's plots stand (ripe, bare, growing), counted once per tick: every colonist
-// looking for work asks.
+// How each field's plots stand (ripe, bare, growing), counted once until a crop is sown, reaped,
+// ripens or is lost (cropsChanged): every colonist looking for work asks.
 function fieldCounts(c: Colony, b: Bld): [number, number, number] {
   let m = fieldMemo.get(c);
-  if (!m || m.t !== c.tick) { m = { t: c.tick, n: new Map() }; fieldMemo.set(c, m); }
+  if (!m) { m = { t: c.tick, n: new Map() }; fieldMemo.set(c, m); }
   let got = m.n.get(b.id);
   if (got) return got;
   let ripe = 0;
@@ -134,7 +136,46 @@ function towardOre(c: Colony): number {
 }
 
 function bldOf(c: Colony, k: string): Bld | undefined {
-  return c.blds.find((b) => b.k === k && b.built);
+  return scan(c).first.get(k);
+}
+
+/**
+ * What every colonist looking for work asks about the colony's buildings, worked out once a tick
+ * (a few colonists decide each tick, and the answers barely change between them).
+ */
+interface Scan { t: number; first: Map<string, Bld>; needWood: number; needStone: number; timber?: Bld; worn?: Bld; onCastle: number; onWall: number }
+const scans = new WeakMap<Colony, Scan>();
+function scan(c: Colony): Scan {
+  const got = scans.get(c);
+  if (got && got.t === c.tick) return got;
+  const first = new Map<string, Bld>();
+  let needWood = 0;
+  let needStone = 0;
+  let timber: Bld | undefined;
+  let worn: Bld | undefined;
+  // (nobody goes to mend the wall while raiders are at it)
+  const fighting = c.alarm > 0 && c.foes.length > 0;
+  const ids = new Map<number, Bld>();
+  for (const b of c.blds) {
+    ids.set(b.id, b);
+    if (b.built) {
+      if (!first.has(b.k)) first.set(b.k, b);
+      if (!timber && !b.mat && b.k !== 'field' && b.k !== 'well' && b.k !== 'graveyard' && !CASTLE_KINDS.has(b.k) && !WALL_KINDS.has(b.k)) timber = b;
+      if (b.dmg >= 12 && (!worn || b.dmg > worn.dmg) && !(fighting && WALL_KINDS.has(b.k)) && !(b.mat && WALL_KINDS.has(b.k) && c.stock.stone < 2)) worn = b;
+    } else { needWood += b.need.wood; needStone += b.need.stone; }
+  }
+  let onCastle = 0;
+  let onWall = 0;
+  for (const o of c.pawns) {
+    if (o.act.k !== 'work' || o.act.w !== 'build' || !o.act.b) continue;
+    const ob = ids.get(o.act.b);
+    if (!ob || ob.built) continue;
+    if (CASTLE_KINDS.has(ob.k)) onCastle++;
+    else if (WALL_KINDS.has(ob.k)) onWall++;
+  }
+  const s: Scan = { t: c.tick, first, needWood, needStone, timber, worn, onCastle, onWall };
+  scans.set(c, s);
+  return s;
 }
 
 function spotTile(c: Colony, b: Bld, chars: string, r: Rand): number {
@@ -203,6 +244,15 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
       // the tower first, if nobody is up there
       const tower = c.blds.find((b) => b.k === 'tower' && b.built);
       if (tower && !c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === tower.id)) return job('guard', spotTile(c, tower, '.', r), true, 'On watch from the tower', tower.id);
+      // then the town wall's gates and towers, the main gate first
+      if (c.walls && c.walls.done >= 1) {
+        const posts = c.blds.filter((b) => (b.k === 'tgate' || b.k === 'wtower') && b.built && !b.br && b.s !== 'tgate~p');
+        const free = posts.find((b) => !c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === b.id));
+        if (free && r.chance(0.6)) {
+          const spot = spots(shapeOf(free), free.k === 'tgate' ? ',' : '.')[0];
+          if (spot) return job('guard', (free.y + spot.dy) * c.w + free.x + spot.dx, false, free.k === 'tgate' ? 'Keeping the gate' : 'On watch from the wall', free.id);
+        }
+      }
       // then the castle's gatehouse
       const gate = c.blds.find((b) => b.k === 'gatehouse' && b.built);
       if (gate && !c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === gate.id)) return job('guard', spotTile(c, gate, '.', r), true, 'On watch at the castle gate', gate.id);
@@ -264,8 +314,19 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
     if (need > 0.3) offer('herd', Math.min(6, 1 + need), 'herd', () => job('herd', spotTile(c, pen, 'Q', r), true, 'The beasts need seeing to', pen.id));
   }
 
-  // Building
-  const site = c.blds.find((b) => canBuild(c, b));
+  // Building: the town's own buildings first. The castle and the town wall go up alongside, at their
+  // own pace: only a few hands on each at a time, so a castle takes seasons and not days.
+  let site = c.blds.find((b) => canBuild(c, b) && !CASTLE_KINDS.has(b.k) && !WALL_KINDS.has(b.k));
+  if (!site) {
+    // (the colonist deciding is not counted: whatever they were building, they have stopped)
+    const sc = scan(c);
+    const mineB = p.act.k === 'work' && p.act.w === 'build' && p.act.b ? c.blds.find((b) => b.id === p.act.b) : undefined;
+    const onCastle = sc.onCastle - (mineB && !mineB.built && CASTLE_KINDS.has(mineB.k) ? 1 : 0);
+    const onWall = sc.onWall - (mineB && !mineB.built && WALL_KINDS.has(mineB.k) ? 1 : 0);
+    // with trouble at the gates, every pair of hands goes to the wall
+    const wallCap = c.siege || c.foes.length ? 8 : 3;
+    site = c.blds.find((b) => canBuild(c, b) && ((CASTLE_KINDS.has(b.k) && onCastle < 2) || (WALL_KINDS.has(b.k) && onWall < wallCap)));
+  }
   if (site) {
     offer('build', 5.5, 'build', () => {
       const list = cells(shapeOf(site));
@@ -283,17 +344,19 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
     });
   }
 
-  let worn: Bld | undefined;
-  for (const b of c.blds) if (b.built && b.dmg >= 12 && (!worn || b.dmg > worn.dmg)) worn = b;
+  const worn = scan(c).worn;
   if (worn && c.stock.wood >= 2) {
     const wb = worn;
-    offer('build', 1.5 + wb.dmg / 12, 'repair', () => job('build', (wb.y + wb.h - 1) * c.w + wb.x + Math.floor(wb.w / 2), true, 'The ' + wb.k + ' needs mending', wb.id, 1));
+    const wall = WALL_KINDS.has(wb.k);
+    // a breach in the wall: the gap itself is where the work is
+    const cl = wall ? cells(shapeOf(wb))[wb.br?.[0] ?? 0] : undefined;
+    const tile = cl ? (wb.y + cl.dy) * c.w + wb.x + cl.dx : (wb.y + wb.h - 1) * c.w + wb.x + Math.floor(wb.w / 2);
+    const what = wall ? (wb.br ? 'The breach in the wall needs closing' : 'The town wall needs mending') : 'The ' + wb.k + ' needs mending';
+    offer('build', 1.5 + wb.dmg / 12 + (wb.br ? 3 : 0), 'repair', () => job('build', tile, true, what, wb.id, 1));
   }
 
   // Wood and stone
-  let needWood = 0;
-  let needStone = 0;
-  for (const b of c.blds) if (!b.built) { needWood += b.need.wood; needStone += b.need.stone; }
+  const { needWood, needStone } = scan(c);
   const woodTarget = 25 + pop * 3 + needWood + (season >= 2 ? pop * 5 : season === 1 ? pop * 2 : 0);
   if (c.stock.wood < woodTarget) {
     offer('wood', 1 + 6 * (1 - c.stock.wood / woodTarget), 'wood', () => {
@@ -318,8 +381,8 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
   }
   const smithy = bldOf(c, 'smithy');
   // a colony that has found its feet starts turning timber into stone
-  const timber = pop >= 10 ? c.blds.find((b) => b.built && !b.mat && b.k !== 'field' && b.k !== 'well' && b.k !== 'graveyard' && !CASTLE_KINDS.has(b.k)) : undefined;
-  const stoneTarget = 12 + needStone + (pop >= 10 ? 20 : 0) + (timber ? 45 : 0) + castleStone(c);
+  const timber = pop >= 10 ? scan(c).timber : undefined;
+  const stoneTarget = 12 + needStone + (pop >= 10 ? 20 : 0) + (timber ? 45 : 0) + castleStone(c) + wallStone(c);
   const wantOre = !!smithy && c.stock.ore < 8 && c.stock.iron < 6;
   if (c.stock.stone < stoneTarget || wantOre) {
     offer('mine', wantOre ? 3 : 0.8 + 5 * (1 - c.stock.stone / stoneTarget), 'mine', () => {
@@ -327,7 +390,8 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
       if (pick < 0 && wantOre) pick = towardOre(c);
       const stone = c.stock.stone < stoneTarget;
       if (pick < 0 && stone) pick = nearestFree(c, p, featList(c, F.BOULDER), r, 4);
-      if (pick < 0 && stone) pick = nearestFree(c, p, featList(c, ROCK_FACE), r, 4);
+      // (not the rock the town wall stands against: it is part of the wall)
+      if (pick < 0 && stone) pick = nearestFree(c, p, featList(c, ROCK_FACE), r, 4, c.walls ? (i) => !inWallBand(c, i % c.w, Math.floor(i / c.w)) : undefined);
       return pick < 0 ? null : job('mine', pick, true, wantOre ? 'The forge needs ore' : 'The colony needs stone', undefined, pick);
     });
   }
@@ -419,11 +483,11 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
 
   // Stone lasts. One building at a time, the hall first.
   // only stone to spare: new buildings waiting on stone come first
-  if (timber && !site && c.stock.stone >= 20 + needStone + castleStone(c)) {
+  if (timber && !site && c.stock.stone >= 20 + needStone + castleStone(c) + wallStone(c)) {
     const order = ['hall', 'store', 'shrine', 'tavern', 'smithy'];
     let pick = timber;
     for (const b of c.blds) {
-      if (!b.built || b.mat || b.k === 'field' || b.k === 'well' || b.k === 'graveyard' || CASTLE_KINDS.has(b.k)) continue;
+      if (!b.built || b.mat || b.k === 'field' || b.k === 'well' || b.k === 'graveyard' || CASTLE_KINDS.has(b.k) || WALL_KINDS.has(b.k)) continue;
       if (b.up) { pick = b; break; }
       if (order.indexOf(b.k) >= 0 && (order.indexOf(pick.k) < 0 || order.indexOf(b.k) < order.indexOf(pick.k))) pick = b;
     }
@@ -634,9 +698,13 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
         c.stock.wood = Math.max(0, c.stock.wood - 0.8 * hours);
         c.stock.stone = Math.max(0, c.stock.stone - 0.3 * hours);
       } else if (b.built) {
-        const fix = Math.min(b.dmg, 9 * speed * hours);
+        const wall = WALL_KINDS.has(b.k);
+        // a stone wall is mended with stone, and slowly
+        const fix = Math.min(b.dmg, (wall && b.mat ? 5 : 9) * speed * hours);
         b.dmg -= fix;
-        c.stock.wood = Math.max(0, c.stock.wood - fix * 0.12);
+        c.stock.wood = Math.max(0, c.stock.wood - fix * (wall && b.mat ? 0.03 : 0.12));
+        if (wall && b.mat) c.stock.stone = Math.max(0, c.stock.stone - fix * 0.15);
+        if (wall) mended(c, b);
       } else advanceBuild(c, b, hours * speed, p);
       break;
     }

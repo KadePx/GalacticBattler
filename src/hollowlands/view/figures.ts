@@ -342,7 +342,7 @@ export const SWINGING = new Set(['axe', 'pick', 'hoe', 'hammer', 'tongs']);
 export const BLD_ICON: Record<string, string> = {
   hall: 'eat', kitchen: 'w:cook', tavern: 'drink', brewery: 'w:brew', store: 'store', granary: 'w:farm', shrine: 'pray', smithy: 'w:smith',
   workshop: 'w:craft', infirmary: 'w:heal', herbalist: 'w:herbs', school: 'study', guardhouse: 'w:guard', tower: 'w:guard', pen: 'w:herd', bathhouse: 'bathe', gamehall: 'chess',
-  keep: 'crown', motte: 'crown', gatehouse: 'w:guard', barracks: 'w:guard', stables: 'w:herd',
+  keep: 'crown', motte: 'crown', gatehouse: 'w:guard', barracks: 'w:guard', stables: 'w:herd', tgate: 'w:guard', wtower: 'w:guard',
 };
 
 // ---------- Wild animals (facing right) ----------

@@ -4,7 +4,8 @@
 
 import { SEASON_NAMES, when } from '../config';
 import { BACKS } from '../sim/data/backstories';
-import { CROPS, PURPOSE, TPL } from '../sim/data/buildings';
+import { CROPS, PURPOSE, TPL, WALL_KINDS } from '../sim/data/buildings';
+import { wallName } from '../sim/walls';
 import { tradeSlots } from '../sim/planner';
 import { MASTER_LEVEL, MASTER_TITLES } from '../sim/guild';
 import { DREAMS } from '../sim/dreams';
@@ -404,7 +405,8 @@ export function deadCard(c: Colony, d: Dead): string {
 
 export function bldCard(c: Colony, b: Bld): string {
   const t = TPL[b.k];
-  let h = `<div class="head"><div class="hd"><div class="nm">${esc(b.name ?? t?.name ?? b.k)}</div>`;
+  const wall = WALL_KINDS.has(b.k);
+  let h = `<div class="head"><div class="hd"><div class="nm">${esc(wall ? wallName(b) : b.name ?? t?.name ?? b.k)}</div>`;
   h += `<div class="sub">${b.k === 'field' ? 'Farmland' : b.mat ? 'Stone-built' : 'Timber-built'} · ${b.built ? 'Raised ' + dateText(b.made) : 'Planned ' + dateText(b.made)}</div>`;
   h += `<div class="btns"><button class="btn sm" data-tile="${(b.y + Math.floor(b.h / 2)) * c.w + b.x + Math.floor(b.w / 2)}">Show on map</button></div></div></div>`;
 
@@ -421,6 +423,16 @@ export function bldCard(c: Colony, b: Bld): string {
     h += `<div class="hint">${qualityWord(b.q)} work${b.dmg > 60 ? ', and falling apart' : b.dmg > 25 ? ', in need of repair' : ''}.</div>`;
   }
   if (PURPOSE[b.k]) h += `<div class="hint">${esc(PURPOSE[b.k])}</div>`;
+  if (wall) {
+    // the wall's own state: a breach, the gates, the stage the whole wall has reached
+    const w = c.walls;
+    const lines: string[] = [];
+    if (b.br) lines.push('<b>Breached.</b> The gap lies in rubble until the builders close it.');
+    if (b.k === 'tgate') lines.push(w?.shut ? (c.siege && c.siege.phase < 2 ? 'Shut and barred against the host outside.' : c.alarm ? 'Shut: the alarm is up.' : "Shut for the night. The gatekeepers open it for the colony's own people.") : 'Open for the day.');
+    if (b.k === 'twall' && !b.mat && b.built) lines.push('A ditch in front, and sharpened stakes behind it.');
+    if (w) lines.push(w.done >= 2 ? 'The whole town wall stands in stone.' : w.stage >= 2 ? 'The wall is being rebuilt in stone, stretch by stretch.' : w.done >= 1 ? 'The palisade runs all the way round the town.' : 'The palisade is still going up round the town.');
+    h += `<div class="hint">${lines.join(' ')}</div>`;
+  }
   if (b.own) {
     const o = c.pawns.find((p) => p.id === b.own);
     if (o && (b.k === 'keep' || b.k === 'motte')) h += `<div class="hint">Seat of ${esc(rulerTitle(c, o))} ${esc(o.first)} ${esc(o.fam)}, and home of their family.</div>`;

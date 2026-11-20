@@ -12,7 +12,10 @@ import { findPath } from './path';
 import { STAGE, has, idleAct, pawnById, per, posAt, stage } from './pawn';
 import { Rand, S } from './rng';
 import { addFact, learn } from './social';
-import { AX, type Colony, type Foe, type Pawn } from './types';
+import { campIdle, endSiege } from './siege';
+import { insideWall } from './town';
+import { hitWall, isWallPart, wallTarget } from './walls';
+import { AX, B, type Colony, type Foe, type Pawn } from './types';
 
 export interface FoeDef {
   k: string; name: string; plural: string;
@@ -85,16 +88,28 @@ export function isWarden(c: Colony, p: Pawn): boolean {
   return p.prof === 'guard' || p.prof === 'scout' || c.gov.titles.marshal === p.id;
 }
 
-/** Kinds of building whose walls an archer can shoot from: the watchtower, the castle's towers and gatehouse. */
-const HIGH = new Set(['tower', 'curtain', 'gatehouse']);
+/** Kinds of building whose walls an archer can shoot from: the watchtower, the castle's towers and gatehouse, the town wall's towers and gates. */
+const HIGH = new Set(['tower', 'curtain', 'gatehouse', 'wtower', 'tgate']);
 
-/** Is this colonist up on the watchtower (or in a tower of the castle's walls)? */
+/**
+ * Is this colonist up on the watchtower, in a tower of the castle's or the town's walls, or up on
+ * the wall-walk of a stone town wall (standing just inside it)?
+ */
 export function onTower(c: Colony, p: Pawn): boolean {
-  const b = c.sb[p.y * c.w + p.x];
-  return !!b && c.blds.some((x) => x.id === b && HIGH.has(x.k) && x.built);
+  const i = p.y * c.w + p.x;
+  const b = c.sb[i];
+  if (b && c.blds.some((x) => x.id === b && HIGH.has(x.k) && x.built)) return true;
+  if (!c.walls || c.walls.done < 1) return false;
+  for (const j of [i - 1, i + 1, i - c.w, i + c.w]) {
+    if (c.st[j] !== B.CWALL) continue;
+    const w = c.sb[j];
+    if (w && c.blds.some((x) => x.id === w && x.k === 'twall' && x.built)) return true;
+  }
+  return false;
 }
 
-function raise(c: Colony, by?: Pawn, f?: Foe): void {
+/** Sound the alarm (shutting the gates), once. */
+export function raise(c: Colony, by?: Pawn, f?: Foe): void {
   if (c.alarm) return;
   c.alarm = c.tick;
   if (by && f) {
@@ -107,14 +122,20 @@ function raise(c: Colony, by?: Pawn, f?: Foe): void {
   for (const p of c.pawns) if (!p.gone && p.brk?.k !== 'seized') endNow(c, p);
 }
 
-function stepToward(c: Colony, f: Foe, tx: number, ty: number, adj: boolean, spd: number): boolean {
-  const path = findPath(c, f.x, f.y, tx, ty, adj);
-  if (!path) return false;
+/** A foe's step along its way: over the foes' map, where the town wall and shut gates bar the way (or the colony's own, when it is slipping out). */
+function stepToward(c: Colony, f: Foe, tx: number, ty: number, adj: boolean, spd: number, out = false): boolean {
+  return stepFoe(c, f, tx, ty, adj, spd, out) > 0;
+}
+
+/** As stepToward, telling apart "there" (1), "on the way" (0) and "no way there at all" (-1). */
+function stepFoe(c: Colony, f: Foe, tx: number, ty: number, adj: boolean, spd: number, out = false): number {
+  const path = findPath(c, f.x, f.y, tx, ty, adj, !out);
+  if (!path) return -1;
   const n = Math.min(path.path.length - 1, spd);
   const i = path.path[n];
   f.x = i % c.w;
   f.y = Math.floor(i / c.w);
-  return n >= path.path.length - 1;
+  return n >= path.path.length - 1 ? 1 : 0;
 }
 
 function defense(c: Colony, p: Pawn): number {
@@ -179,8 +200,10 @@ export function combatTick(c: Colony): void {
     f.px = f.x;
     f.py = f.y;
 
-    // spotted?
-    if (!c.alarm) {
+    // camped outside in a siege: waiting by the fires
+    if (f.mode === 3) { campIdle(c, f); continue; }
+    // spotted? (a host marching off after a siege is watched go, not cried out against)
+    if (!c.alarm && !(f.mode === 2 && c.siege?.band === f.band)) {
       for (const p of c.pawns) {
         if (p.gone) continue;
         const i = posAt(c, p, t);
@@ -194,10 +217,13 @@ export function combatTick(c: Colony): void {
     if (f.wait > t && !c.alarm) continue;
     // nobody stays for ever: after a few hours they give up, and a little later they are simply gone
     const stayed = t - f.wait;
-    if (stayed > 70 && f.mode !== 2) f.mode = 2;
+    // a host storming the walls keeps at it far longer than a band of raiders
+    const besieger = !!c.siege && c.siege.band === f.band;
+    if (stayed > (besieger ? 200 : 70) && f.mode !== 2) f.mode = 2;
     if (f.mode === 2) {
       const [ex, ey] = def.beast ? [f.x < c.w / 2 ? 1 : c.w - 2, f.y] : [c.gx, c.gy];
-      const moved = stepToward(c, f, ex, ey, true, def.spd);
+      // the way out: any gate will do, shut or not (they unbar it behind them)
+      const moved = stepToward(c, f, ex, ey, true, def.spd, true);
       const stuck = f.x === f.px && f.y === f.py && !moved;
       const there = moved || stuck || stayed > 110;
       const held = f.held ? pawnById(c, f.held) : undefined;
@@ -213,8 +239,15 @@ export function combatTick(c: Colony): void {
     if (f.mode === 1) {
       const store = c.blds.find((b) => b.k === 'store' && b.built) ?? c.blds.find((b) => b.k === 'hall' && b.built);
       if (!store) { f.mode = 2; continue; }
-      const there = stepToward(c, f, store.x + Math.floor(store.w / 2), store.y + store.h, true, def.spd);
-      if (there) {
+      const sx = store.x + Math.floor(store.w / 2);
+      const sy = store.y + store.h;
+      const go = stepFoe(c, f, sx, sy, true, def.spd);
+      if (go < 0) {
+        // no way to the stores: the wall is in the way
+        if (!assault(c, f, r)) f.mode = 2;
+        continue;
+      }
+      if (go > 0) {
         // ransacking takes a while, which gives the colony time to do something about it
         if (!c.foes.some((x) => x.band === f.band && x.loot > 0)) log(c, 'looted', undefined, undefined, f.k);
         let took = 0;
@@ -268,7 +301,14 @@ export function combatTick(c: Colony): void {
     const ty = Math.floor(ti / c.w);
     const adj = Math.abs(tx - f.x) <= 1 && Math.abs(ty - f.y) <= 1;
     if (!adj) {
-      if (!stepToward(c, f, tx, ty, true, def.spd)) { f.target = 0; if (r.chance(0.3)) f.mode = 2; }
+      const go = stepFoe(c, f, tx, ty, true, def.spd);
+      // the one they want is behind the wall: break a way in
+      if (go < 0 && assault(c, f, r)) continue;
+      if (go <= 0) {
+        f.target = 0;
+        // (a besieging host that has broken in does not lose heart on the way)
+        if (!besieger && r.chance(0.3)) f.mode = 2;
+      }
       continue;
     }
     raise(c);
@@ -299,11 +339,50 @@ export function combatTick(c: Colony): void {
   if (!c.foes.length) aftermath(c);
 }
 
+/**
+ * A foe that cannot get at what it wants for the town wall goes at the wall: the nearest shut gate
+ * or stretch of it, battering until it gives (a ram makes short work of a gate), or, with ladders,
+ * going over the top. Beasts do not, but a troll will. Returns false if there is nothing to break.
+ */
+function assault(c: Colony, f: Foe, r: Rand): boolean {
+  const def = FOES[f.k];
+  if (!c.walls || (def.beast && def.goal !== 'smash') || insideWall(c, f.x, f.y)) return false;
+  const sg = c.siege && c.siege.band === f.band ? c.siege : undefined;
+  const ram = !!sg && sg.ram > 0;
+  const ladders = !!sg && sg.ladders > 0;
+  const W = c.w;
+  const live = (i: number): boolean => { const s = c.st[i]; return (s === B.PALISADE || s === B.CWALL || s === B.CTOWER || s === B.GATE) && isWallPart(c.blds.find((b) => b.id === c.sb[i]) ?? { k: '' }); };
+  // the colony has ridden out: the host stands and waits for it rather than batter at an empty gate
+  if (sg && sg.phase === 3) return true;
+  if (!f.wt || !live(f.wt)) f.wt = wallTarget(c, f.x, f.y, ram, ladders);
+  if (!f.wt) return false;
+  const wx = f.wt % W;
+  const wy = (f.wt - wx) / W;
+  if (Math.max(Math.abs(wx - f.x), Math.abs(wy - f.y)) > 1) {
+    if (!stepToward(c, f, wx, wy, true, def.spd)) { f.wt = 0; return false; }
+    return true;
+  }
+  // at the wall: the colony knows it now
+  raise(c);
+  c.alarm = Math.max(c.alarm, c.tick - 100);
+  const before = c.stats.breaches ?? 0;
+  const over = hitWall(c, f.wt, def.dmg * (0.6 + r.float() * 0.8), ram, ladders, r.float());
+  if (over >= 0) {
+    if (!c.stats['ladder' + f.band]) log(c, 'siege', undefined, undefined, 'ladder:' + (sg?.name ?? ''), f.id);
+    c.stats['ladder' + f.band] = 1;
+    f.x = over % W;
+    f.y = (over - f.x) / W;
+    f.wt = 0;
+  } else if ((c.stats.breaches ?? 0) > before) f.wt = 0;
+  return true;
+}
+
 /** The last of them is dead or gone: count the cost. */
 export function aftermath(c: Colony): void {
   const began = c.alarm;
   c.alarm = 0;
-  for (const k of Object.keys(c.stats)) if (k.startsWith('band')) delete c.stats[k];
+  for (const k of Object.keys(c.stats)) if (k.startsWith('band') || k.startsWith('ladder')) delete c.stats[k];
+  if (c.siege) endSiege(c);
   if (c.raidFrom) {
     // what they did here is remembered
     const died = Math.max(0, (c.stats.deaths ?? 0) - (c.raidFrom.died0 ?? c.stats.deaths ?? 0));
@@ -341,6 +420,8 @@ export function pickFoe(c: Colony, p: Pawn): Foe | null {
   let best: Foe | null = null;
   let bd = 1e9;
   for (const f of c.foes) {
+    // a host in its camp is left alone, unless the colony has ridden out at it
+    if (f.mode === 3) continue;
     let d = Math.max(Math.abs(f.x - p.x), Math.abs(f.y - p.y));
     const out = Math.max(Math.abs(f.x - c.cx), Math.abs(f.y - c.cy));
     // nobody chases a beaten enemy into the woods, unless they are carrying someone off

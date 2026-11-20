@@ -15,6 +15,12 @@ export interface Cache {
   order: Int32Array;
   /** every feature list was built in one pass since the last change, so a missing one was dropped */
   all: boolean;
+  /** bumped whenever walk changes, so the foes' map knows to follow */
+  ver: number;
+  /** the foes' map: walk with the town's gates shut when they are, and which connected stretch of ground each tile is on (0 blocked) */
+  fwalk?: Uint8Array;
+  fcomp?: Int32Array;
+  fkey?: number;
 }
 
 const store = new WeakMap<object, Cache>();
@@ -37,14 +43,42 @@ export function touch(c: Colony): void {
 /**
  * One tile changed. If it is still as open (or as blocked) as it was, nothing about who can
  * reach what has changed: only its walking cost and the feature lists need redoing, which is
- * far cheaper than a whole touch().
+ * far cheaper than a whole touch(). A tile newly opened (rock quarried away) only adds to what
+ * can be reached, so that is worked out from it alone; only a tile closed calls for the lot.
+ * With feats false the caller changed nothing the feature lists look at (only what is built on
+ * the tile, not its ground, its feature or its building).
  */
-export function touchAt(c: Colony, i: number): void {
+export function touchAt(c: Colony, i: number, feats = true): void {
   const k = store.get(c);
   if (!k || k.dirty) return;
   const w = tileCost(c, i);
-  if (!w !== !k.walk[i]) { k.dirty = true; return; }
+  if (!w !== !k.walk[i]) {
+    if (!w) { k.dirty = true; return; }
+    // opened: whatever lies beyond it is reachable now too, if it is next to reached ground
+    k.walk[i] = w;
+    k.ver++;
+    const W = c.w;
+    const n = W * c.h;
+    const x0 = i % W;
+    if ((x0 > 0 && k.reach[i - 1]) || (x0 < W - 1 && k.reach[i + 1]) || (i >= W && k.reach[i - W]) || (i + W < n && k.reach[i + W])) {
+      const q: number[] = [i];
+      k.reach[i] = 1;
+      for (let h = 0; h < q.length; h++) {
+        const j = q[h];
+        const x = j % W;
+        if (x > 0 && !k.reach[j - 1] && k.walk[j - 1]) { k.reach[j - 1] = 1; q.push(j - 1); }
+        if (x < W - 1 && !k.reach[j + 1] && k.walk[j + 1]) { k.reach[j + 1] = 1; q.push(j + 1); }
+        if (j >= W && !k.reach[j - W] && k.walk[j - W]) { k.reach[j - W] = 1; q.push(j - W); }
+        if (j + W < n && !k.reach[j + W] && k.walk[j + W]) { k.reach[j + W] = 1; q.push(j + W); }
+      }
+    }
+    k.feats.clear();
+    k.all = false;
+    return;
+  }
+  if (k.walk[i] !== w) k.ver++;
   k.walk[i] = w;
+  if (!feats) return;
   k.feats.clear();
   k.all = false;
 }
@@ -57,7 +91,8 @@ export function tileCost(c: Colony, i: number): number {
   if (t === T.DEEP || t === T.ROCK) return 0;
   const f = c.feat[i];
   if (f === F.BOULDER || f === F.ORE || f === F.RUIN) return 0;
-  if (s === B.DOOR) return 9;
+  if (s === B.DOOR || s === B.GATE) return 9;
+  if (s === B.RUBBLE) return 16;
   if (s === B.FLOOR_WOOD || s === B.FLOOR_STONE || s === B.FLOOR_FINE || s === B.FLOOR_BARE) return 8;
   if (s === B.PAVING) return 7;
   if (s === B.RUG) return 8;
@@ -73,7 +108,7 @@ export function tileCost(c: Colony, i: number): number {
 export function cacheOf(c: Colony): Cache {
   let k = store.get(c);
   if (!k) {
-    k = { walk: new Uint8Array(c.w * c.h), reach: new Uint8Array(c.w * c.h), dirty: true, feats: new Map(), order: byDistance(c), all: false };
+    k = { walk: new Uint8Array(c.w * c.h), reach: new Uint8Array(c.w * c.h), dirty: true, feats: new Map(), order: byDistance(c), all: false, ver: 0 };
     store.set(c, k);
   }
   if (k.dirty) rebuild(c, k);
@@ -97,6 +132,7 @@ function byDistance(c: Colony): Int32Array {
 
 function rebuild(c: Colony, k: Cache): void {
   cacheStats.rebuilds++;
+  k.ver++;
   const n = c.w * c.h;
   for (let i = 0; i < n; i++) k.walk[i] = tileCost(c, i);
   k.reach.fill(0);
@@ -192,4 +228,46 @@ function allLists(c: Colony, k: Cache): void {
 /** Forget one feature list (after a bush is picked clean, say) without rebuilding the walk map. */
 export function dropFeat(c: Colony, f: number): void {
   store.get(c)?.feats.delete(f);
+}
+
+/**
+ * The map as raiders and beasts walk it: the town wall is blocked everywhere but its breaches, and
+ * its gates too while they are shut (colonists pass their own gates at any hour). Each tile also
+ * carries which connected stretch of ground it lies on, so a raider never searches for a way
+ * through a wall that has none.
+ */
+export function foeMap(c: Colony): { walk: Uint8Array; comp: Int32Array } {
+  const k = cacheOf(c);
+  const shut = c.walls?.shut ? 1 : 0;
+  const key = k.ver * 2 + shut;
+  if (k.fwalk && k.fcomp && k.fkey === key) return { walk: k.fwalk, comp: k.fcomp };
+  const n = c.w * c.h;
+  const fw = k.fwalk ?? new Uint8Array(n);
+  fw.set(k.walk);
+  if (shut) for (let i = 0; i < n; i++) if (c.st[i] === B.GATE) fw[i] = 0;
+  const comp = k.fcomp ?? new Int32Array(n);
+  comp.fill(0);
+  const q = new Int32Array(n);
+  let label = 0;
+  const W = c.w;
+  for (let s0 = 0; s0 < n; s0++) {
+    if (!fw[s0] || comp[s0]) continue;
+    label++;
+    let head = 0;
+    let tail = 0;
+    comp[s0] = label;
+    q[tail++] = s0;
+    while (head < tail) {
+      const i = q[head++];
+      const x = i % W;
+      if (x > 0 && !comp[i - 1] && fw[i - 1]) { comp[i - 1] = label; q[tail++] = i - 1; }
+      if (x < W - 1 && !comp[i + 1] && fw[i + 1]) { comp[i + 1] = label; q[tail++] = i + 1; }
+      if (i >= W && !comp[i - W] && fw[i - W]) { comp[i - W] = label; q[tail++] = i - W; }
+      if (i + W < n && !comp[i + W] && fw[i + W]) { comp[i + W] = label; q[tail++] = i + W; }
+    }
+  }
+  k.fwalk = fw;
+  k.fcomp = comp;
+  k.fkey = key;
+  return { walk: fw, comp };
 }

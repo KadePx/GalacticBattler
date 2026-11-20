@@ -108,6 +108,9 @@ export class MapView {
   /** the colony's stores, piled up beside the storehouse */
   private piles = new Graphics();
   private pileKey = '';
+  /** a besieging host's camp outside the walls: tents, fires, its ladders and ram */
+  private camp = new Graphics();
+  private campKey = '';
   private chunks: Chunk[] = [];
   private views = new Map<Id, PawnView>();
   private foeViews = new Map<number, { g: Graphics; stamp: number; hp?: number; flash?: number }>();
@@ -210,6 +213,9 @@ export class MapView {
     this.piles = new Graphics();
     this.structLayer.addChild(this.piles);
     this.pileKey = '';
+    this.camp = new Graphics();
+    this.pawnLayer.addChild(this.camp);
+    this.campKey = '';
     this.signKey = '';
     this.pal = null;
     this.selectBld(this.selBld);
@@ -249,6 +255,7 @@ export class MapView {
     this.syncAnimals(tf, 'herd', this.herdViews);
     this.syncSigns(c);
     this.syncPiles(c);
+    this.syncCamp(c);
     this.stepCamera(dt);
     this.cull();
     this.lighting(tf, dt);
@@ -287,8 +294,10 @@ export class MapView {
     }
 
     let fireDirty = force;
+    // the town's gates are drawn open or shut
+    const gates = c.walls?.shut ? 131 : 0;
     for (const ch of this.chunks) {
-      let s = pal.key + 7;
+      let s = pal.key + 7 + gates;
       let f = pal.key + 7;
       // walls join up with their neighbours, so the signature looks one tile past the chunk edge
       for (let y = Math.max(0, ch.y0 - 1); y < Math.min(c.h, ch.y1 + 1); y++) {
@@ -594,6 +603,63 @@ export class MapView {
     }
   }
 
+  /** A besieging host's camp: tents round two fires, a war banner, and its ladders and ram as they are made. */
+  private syncCamp(c: Colony): void {
+    const sg = c.siege && c.siege.phase < 2 ? c.siege : undefined;
+    const key = sg ? `${sg.band}|${sg.x},${sg.y}|${sg.ladders}|${sg.ram}|${sg.phase}` : '';
+    if (key === this.campKey) return;
+    this.campKey = key;
+    const g = this.camp;
+    g.clear();
+    if (!sg) return;
+    const cx = (sg.x + 0.5) * TS;
+    const cy = (sg.y + 0.5) * TS;
+    g.zIndex = cy - TS * 3;
+    // trodden ground under the camp
+    g.ellipse(cx, cy, TS * 4.6, TS * 3.4).fill({ color: 0x5a4a32, alpha: 0.35 });
+    const rnd = (n: number): number => { const v = Math.sin(sg.band * 12.9898 + n * 78.233) * 43758.5453; return v - Math.floor(v); };
+    // tents in a rough ring
+    const tents = 6;
+    for (let n = 0; n < tents; n++) {
+      const a = (n / tents) * Math.PI * 2 + rnd(n) * 0.5;
+      const tx = cx + Math.cos(a) * TS * (2.6 + rnd(n + 10) * 0.8);
+      const ty = cy + Math.sin(a) * TS * (1.9 + rnd(n + 20) * 0.6);
+      const w = TS * (0.9 + rnd(n + 30) * 0.3);
+      const hue = [0x8a6a4a, 0x7a5a3a, 0x9a7a52, 0x6a5038][n % 4];
+      g.ellipse(tx, ty + w * 0.55, w * 0.95, w * 0.28).fill({ color: 0x0b1220, alpha: 0.25 });
+      g.poly([tx - w, ty + w * 0.5, tx, ty - w * 0.75, tx + w, ty + w * 0.5]).fill(hue).stroke({ width: 1.2, color: 0x2a1d12 });
+      g.poly([tx - w * 0.25, ty + w * 0.5, tx, ty - w * 0.1, tx + w * 0.25, ty + w * 0.5]).fill(0x2a1d12);
+      g.moveTo(tx, ty - w * 0.75).lineTo(tx, ty - w * 1.05).stroke({ width: 1.2, color: 0x2a1d12 });
+    }
+    // two cook fires: a ring of stones, logs and flame
+    for (const [fx, fy] of [[cx - TS * 0.9, cy + TS * 0.2], [cx + TS * 1.0, cy - TS * 0.3]]) {
+      for (let n = 0; n < 8; n++) g.circle(fx + Math.cos(n * 0.785) * 6, fy + Math.sin(n * 0.785) * 4.5, 1.8).fill(0x77777e);
+      g.rect(fx - 6, fy - 1, 12, 2.4).fill(0x4a2e18);
+      g.circle(fx, fy - 2, 9).fill({ color: 0xffa040, alpha: 0.18 });
+      g.poly([fx - 4, fy, fx, fy - 9, fx + 4, fy]).fill(0xf0702a);
+      g.poly([fx - 2, fy, fx, fy - 5.5, fx + 2, fy]).fill(0xffd25a);
+    }
+    // the warlord's banner
+    g.moveTo(cx + 2, cy + 6).lineTo(cx + 2, cy - TS * 1.6).stroke({ width: 1.6, color: 0x3a2a1a });
+    g.poly([cx + 2, cy - TS * 1.6, cx + 16, cy - TS * 1.45, cx + 2, cy - TS * 1.05]).fill(0xa8323a).stroke({ width: 0.8, color: 0x1a0a0a });
+    // ladders, as many as they have made
+    for (let n = 0; n < Math.min(4, sg.ladders); n++) {
+      const lx = cx - TS * 2.2 + n * 7;
+      const ly = cy + TS * 1.2;
+      g.moveTo(lx, ly).lineTo(lx + 3, ly - TS * 1.4).moveTo(lx + 6, ly).lineTo(lx + 9, ly - TS * 1.4).stroke({ width: 1.3, color: 0x8a6440 });
+      for (let k = 1; k < 5; k++) g.moveTo(lx + k * 0.6, ly - k * 6.5).lineTo(lx + 6 + k * 0.6, ly - k * 6.5).stroke({ width: 1, color: 0x8a6440 });
+    }
+    // the ram: a trunk slung under a hide roof, on wheels
+    if (sg.ram) {
+      const rx = cx + TS * 1.7;
+      const ry = cy + TS * 1.4;
+      g.circle(rx - 12, ry + 5, 3.4).circle(rx + 12, ry + 5, 3.4).fill(0x3a2a1a);
+      g.roundRect(rx - 20, ry - 2, 40, 5, 2).fill(0x6a4426).stroke({ width: 1, color: 0x2a1d12 });
+      g.circle(rx + 20, ry + 0.5, 3).fill(0x2c2f36);
+      g.poly([rx - 16, ry - 2, rx - 10, ry - 12, rx + 10, ry - 12, rx + 16, ry - 2]).fill(0x7a5a3a).stroke({ width: 1, color: 0x2a1d12 });
+    }
+  }
+
   /** Woodpile, stone, sacks of food and barrels of ale beside the storehouse, as big as the stores. */
   private syncPiles(c: Colony): void {
     const s = c.stock;
@@ -665,17 +731,26 @@ export class MapView {
   /** Rebuild the signs when buildings are raised, finished or resown. */
   private syncSigns(c: Colony): void {
     let key = '';
-    // rings of wall carry no sign of their own (the gatehouse has one)
-    const unsigned = (k: string): boolean => HOMES.includes(k) || k === 'well' || k === 'graveyard' || k === 'palisade' || k === 'curtain';
-    for (const b of c.blds) if (!unsigned(b.k)) key += `${b.id}${b.built ? 'b' : 'p'}${b.crop ?? ''},`;
+    // rings of wall carry no sign of their own (the gatehouses have one; the town wall's towers and posterns do not)
+    const unsignedB = (b: Bld): boolean => HOMES.includes(b.k) || b.k === 'well' || b.k === 'graveyard' || b.k === 'palisade' || b.k === 'curtain' || b.k === 'twall' || b.k === 'wtower' || b.s === 'tgate~p';
+    for (const b of c.blds) if (!unsignedB(b)) key += `${b.id}${b.built ? 'b' : 'p'}${b.mat}${b.crop ?? ''},`;
+    const sg = c.siege && c.siege.phase < 2 ? c.siege : undefined;
+    if (sg) key += `camp${sg.band}`;
     if (key === this.signKey) return;
     this.signKey = key;
     for (const s of this.signs) { s.g.destroy(); s.label.destroy(); }
     this.signs = [];
+    if (sg) {
+      // the besiegers' camp is named on the map
+      const label = new Text({ text: `${sg.name}'s camp`, resolution: 2, style: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: 12, fontWeight: '700', fill: 0xffb4a0, stroke: { color: 0x0a0d14, width: 3, join: 'round' } } });
+      label.anchor.set(0.5, 0);
+      this.labelLayer.addChild(label);
+      this.signs.push({ g: new Graphics(), label, x: (sg.x + 0.5) * TS, y: (sg.y + 3.2) * TS, field: false });
+    }
     for (const b of c.blds) {
-      if (unsigned(b.k)) continue;
+      if (unsignedB(b)) continue;
       const field = b.k === 'field';
-      const name = field ? (b.built && b.crop ? CROPS[b.crop]?.name ?? 'Field' : 'New field') : (b.name ?? TPL[b.k]?.name ?? b.k) + (b.built ? '' : ' (being built)');
+      const name = field ? (b.built && b.crop ? CROPS[b.crop]?.name ?? 'Field' : 'New field') : (b.name ?? TPL[b.k]?.name ?? b.k) + (b.built ? (b.br ? ' (breached)' : '') : ' (being built)');
       const g = new Graphics();
       const top = TPL[shapeOf(b)]?.rows[0] ?? '';
       const l0 = top.search(/\S/);

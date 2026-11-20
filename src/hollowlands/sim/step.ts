@@ -7,6 +7,8 @@ import { dailyLife, endGathering } from './life';
 import { hourly } from './mood';
 import { plan } from './planner';
 import { dailyCastle } from './castle';
+import { dailySiege } from './siege';
+import { dailyWalls, tickGates, unstick } from './walls';
 import { aftermath, combatTick } from './combat';
 import { applyInputs, dailyStory } from './story';
 import { dailyGov } from './gov';
@@ -30,6 +32,7 @@ function daily(c: Colony): void {
   dailyLife(c);
   plan(c);
   dailyCastle(c);
+  dailyWalls(c);
   dailyStory(c);
   dailyGov(c);
   dailyCrime(c);
@@ -54,6 +57,8 @@ export function step(c: Colony): void {
   const t = c.tick;
   if (t % TICKS_PER_DAY === 0) daily(c);
   if (c.inq.length) applyInputs(c);
+  if (c.walls) tickGates(c);
+  if (c.siege) dailySiege(c);
   if (c.gath && t >= c.gath.t1) endGathering(c);
   if (c.beasts?.length) stepWild(c);
   if (c.herd?.length) stepHerd(c);
@@ -64,7 +69,7 @@ export function step(c: Colony): void {
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     if (p.gone) { gone = true; continue; }
-    if ((t + p.id) % TICKS_PER_HOUR === 0) hourly(c, p);
+    if ((t + p.id) % TICKS_PER_HOUR === 0) { hourly(c, p); unstick(c, p); }
     if (!p.gone && t >= p.act.t1) {
       finish(c, p);
       if (!p.gone) decide(c, p);

@@ -159,7 +159,7 @@ export function unfurnish(c: Colony, b: Bld): void {
   for (let n = have.length; n > want; n--) {
     const i = have[have.length - n];
     c.st[i] = cellCode(b.k, '.', b.mat);
-    touchAt(c, i);
+    touchAt(c, i, false);
   }
 }
 
