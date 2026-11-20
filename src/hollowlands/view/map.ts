@@ -15,6 +15,7 @@ import { drawSails, drawWheel } from './techart';
 import { BLD_ICON, SWINGING, WORK_HELD, drawHeld, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
 import { SHAPE, yearsAt } from './look';
 import { Fx, type FxPawn } from './fx';
+import { Life } from './life';
 import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
 
 /** Chunk size in tiles. */
@@ -130,6 +131,14 @@ export class MapView {
   private fxWork = new Graphics();
   private fxSky = new Graphics();
   private fxPawns: FxPawn[] = [];
+  /** the town at work: looms, bellows, bubbling pots, washing lines, loads carried, carts on the road, lit windows */
+  private life = new Life();
+  private lifeFloor = new Graphics();
+  private lifeLit = new Graphics();
+  /** buildings someone is working in this frame, and those with someone awake inside */
+  private busy = new Set<number>();
+  private homeIn = new Set<number>();
+  private viewB = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private beastViews = new Map<number, { g: Graphics; stamp: number; face: number }>();
   private herdViews = new Map<number, { g: Graphics; stamp: number; face: number }>();
   private blds = new Map<number, Bld>();
@@ -219,7 +228,8 @@ export class MapView {
     }
     this.night.clear().rect(0, 0, this.mw, this.mh).fill(0xffffff);
     this.overLayer.addChild(this.ring, this.mineMark);
-    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.pawnLayer, this.fxWork, this.canopyLayer, this.fxSky, this.night, this.lightLayer, this.signLayer, this.overLayer);
+    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.lifeFloor, this.pawnLayer, this.fxWork, this.canopyLayer, this.fxSky, this.night, this.lifeLit, this.lightLayer, this.signLayer, this.overLayer);
+    this.life.reset();
     // the old pile graphic went with the old chunks: start a fresh one
     this.piles = new Graphics();
     this.structLayer.addChild(this.piles);
@@ -263,12 +273,24 @@ export class MapView {
       const y0 = -this.cam.y / s / TS - 1;
       const list = this.fxPawns;
       list.length = 0;
+      const busy = this.busy;
+      const homeIn = this.homeIn;
+      busy.clear();
+      homeIn.clear();
       for (const p of c.pawns) {
         const v = this.views.get(p.id);
         if (!v || v.asleep) continue;
         list.push({ id: p.id, x: v.x, y: v.y, size: v.size, moving: v.moving, k: p.act.k, w: p.act.w, ta: p.act.ta, tx: p.act.tx, ty: p.act.ty, d: p.act.d, b: p.act.b });
+        if (!v.moving && p.act.k === 'work' && p.act.b && tf >= p.act.ta) busy.add(p.act.b);
+        const inside = c.sb[v.tile];
+        if (inside) homeIn.add(inside);
       }
-      this.fx.draw(this.fxWork, this.fxSky, c, list, this.time, tf, { x0, y0, x1: x0 + this.app.screen.width / s / TS + 2, y1: y0 + this.app.screen.height / s / TS + 2 }, s);
+      const vb = this.viewB;
+      vb.x0 = x0;
+      vb.y0 = y0;
+      vb.x1 = x0 + this.app.screen.width / s / TS + 2;
+      vb.y1 = y0 + this.app.screen.height / s / TS + 2;
+      this.fx.draw(this.fxWork, this.fxSky, c, list, this.time, tf, vb, s, busy, homeIn);
     }
     this.syncBeasts(tf);
     this.syncAnimals(tf, 'herd', this.herdViews);
@@ -280,6 +302,7 @@ export class MapView {
     this.stepCamera(dt);
     this.cull();
     this.lighting(tf, dt);
+    this.life.draw(this.lifeFloor, this.lifeLit, c, this.fxPawns, this.busy, this.homeIn, this.time, tf, this.viewB, this.cam.scale.x, this.sky[3], this.pawnLayer);
     this.weather(dt);
   }
 
@@ -475,8 +498,8 @@ export class MapView {
       } else {
         v.fig.rotation = 0;
         const bob = moving ? -Math.abs(Math.sin(this.time * 0.011 + p.id)) * 1.7 : p.act.k === 'work' ? Math.sin(this.time * 0.007 + p.id) * 0.6 : 0;
-        // at a festival they dance: a sway and a hop
-        const dancing = !moving && p.act.k === 'attend' && c.gath?.k === 'festival' && tf >= p.act.ta;
+        // at a festival they dance, and children at their games skip about: a sway and a hop
+        const dancing = !moving && ((p.act.k === 'attend' && c.gath?.k === 'festival') || p.act.k === 'play') && tf >= p.act.ta;
         v.fig.rotation = dancing ? Math.sin(this.time * 0.009 + p.id) * 0.28 : moving ? Math.sin(this.time * 0.018 + p.id) * 0.05 : 0;
         v.fig.position.set(0, bob * v.size - (dancing ? Math.abs(Math.sin(this.time * 0.009 + p.id)) * 3 : 0));
       }

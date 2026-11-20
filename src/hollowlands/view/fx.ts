@@ -5,6 +5,7 @@
 import type { Graphics } from 'pixi.js';
 import { hourOf, seasonOf } from '../config';
 import { B, F, T, type Colony } from '../sim/types';
+import { burning } from './life';
 import { TS, hash2 } from './tiles';
 
 export interface FxPawn { id: number; x: number; y: number; size: number; moving: boolean; k: string; w?: string; ta: number; tx: number; ty: number; d?: number; b?: number }
@@ -34,12 +35,12 @@ export class Fx {
       if (f === F.TREE) this.trees.push(i);
       else if (f === F.FLOWERS || f === F.BUSH) this.flowers.push(i);
       const s = c.st[i];
-      if (s === B.HEARTH || s === B.FORGE || s === B.STOVE || s === B.BRAZIER) this.fires.push(i);
+      if (s === B.HEARTH || s === B.FORGE || s === B.STOVE || s === B.BRAZIER || s === B.OVEN || s === B.KILN || s === B.GLASSFURN || s === B.BLOOMERY) this.fires.push(i);
     }
   }
 
   /** Draw this frame's effects. `work` sits just above the people; `sky` above the trees. */
-  draw(work: Graphics, sky: Graphics, c: Colony, pawns: FxPawn[], time: number, tf: number, view: Bounds, zoom: number): void {
+  draw(work: Graphics, sky: Graphics, c: Colony, pawns: FxPawn[], time: number, tf: number, view: Bounds, zoom: number, busy: Set<number>, home: Set<number>): void {
     work.clear();
     sky.clear();
     if (zoom < 0.45) return;
@@ -127,15 +128,20 @@ export class Fx {
       }
     }
 
-    // ---- smoke from hearths, stoves and forges ----
+    // ---- smoke from the fires that are lit: hearths and stoves when someone is home, at
+    // mealtimes and in the cold; the forges, ovens, kilns and furnaces while their trade works ----
     const cold = c.temp < 8 ? 1 : 0.6;
     for (const i of this.fires) {
       const x = (i % c.w + 0.5) * TS;
       const y = (Math.floor(i / c.w) + 0.3) * TS;
       if (!seen(x, y)) continue;
-      for (let k = 0; k < 3; k++) {
+      const s = c.st[i];
+      if (!burning(c, i, s, busy, home, hour)) continue;
+      // the kilns and furnaces send up a thicker, darker plume
+      const thick = s === B.KILN || s === B.GLASSFURN || s === B.BLOOMERY;
+      for (let k = 0; k < (thick ? 4 : 3); k++) {
         const ph = (time * 0.0003 + k / 3 + hash2(i, k, 3) * 0.2) % 1;
-        sky.circle(x + ph * 10 + Math.sin(ph * 6 + i) * 2, y - ph * 34, 2.6 + ph * 6).fill({ color: 0xa8adb6, alpha: (1 - ph) * 0.38 * cold });
+        sky.circle(x + ph * 10 + Math.sin(ph * 6 + i) * 2, y - ph * (thick ? 44 : 34), (thick ? 3.4 : 2.6) + ph * (thick ? 8 : 6)).fill({ color: thick ? 0x6f727a : 0x9a9fa8, alpha: (1 - ph) * (thick ? 0.5 : 0.42 * cold) });
       }
     }
 
