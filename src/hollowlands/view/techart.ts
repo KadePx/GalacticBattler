@@ -58,25 +58,11 @@ export function drawTechThing(g: Graphics, c: Colony, s: number, x: number, y: n
       break;
     }
     case B.WHEEL: {
-      // the water wheel, standing out over the river from the mill's wall
-      const ox = wet(c, x + 1, y) ? 1 : wet(c, x - 1, y) ? -1 : 0;
-      const oy = ox ? 0 : wet(c, x, y + 1) ? 1 : -1;
-      g.rect(px, py, TS, TS).fill(0x8a6440);
-      const wx = cx + ox * 17;
-      const wy = cy + oy * 17;
-      // the wheel seen from above: a long drum of paddles across the flow
-      const along = ox !== 0; // the axle runs out from the wall: the paddles lie across it
-      const ww = along ? 13 : 28;
-      const wh = along ? 28 : 13;
-      g.ellipse(wx, wy, ww * 0.75, wh * 0.75).fill({ color: 0xffffff, alpha: 0.18 });
-      g.roundRect(wx - ww / 2 - 1, wy - wh / 2 - 1, ww + 2, wh + 2, 2).fill({ color: 0xffffff, alpha: 0.25 });
-      g.roundRect(wx - ww / 2, wy - wh / 2, ww, wh, 2).fill(0x6a4426).stroke({ width: 1.2, color: INK });
-      for (let k = 0; k < 6; k++) {
-        if (along) g.rect(wx - ww / 2 + 1, wy - wh / 2 + 1.5 + k * 3.5, ww - 2, 1.4).fill(0xa47a4c);
-        else g.rect(wx - ww / 2 + 1.5 + k * 3.5, wy - wh / 2 + 1, 1.4, wh - 2).fill(0xa47a4c);
-      }
-      g.moveTo(cx, cy).lineTo(wx, wy).stroke({ width: 2.4, color: 0x3a3d45 });
-      g.circle(wx, wy, 1.8).fill(0x3a3d45);
+      // the wheel's housing in the mill wall, the axle going out over the water (the wheel itself
+      // turns above the map: see drawWheel)
+      g.rect(px, py, TS, TS).fill(0x6a4426);
+      g.rect(px + 3, py + 3, TS - 6, TS - 6).fill(0x8a6440).stroke({ width: 1, color: INK });
+      g.circle(cx, cy, 3).fill(0x3a3d45);
       break;
     }
     case B.OVEN: {
@@ -225,4 +211,27 @@ export function drawSails(g: Graphics): void {
   }
   g.circle(0, 0, 6).fill(0x6a4426).stroke({ width: 1.2, color: INK });
   g.circle(0, 0, 2).fill(0xd9b85a);
+}
+
+/** A water wheel, centred on (0,0): rim, spokes and paddles, turned by the view as the river runs. */
+export function drawWheel(g: Graphics): void {
+  g.clear();
+  const R = 21;
+  g.circle(2, 3, R + 3).fill({ color: 0x0b1220, alpha: 0.22 });
+  for (let n = 0; n < 12; n++) {
+    const a = (n * Math.PI) / 6;
+    const ux = Math.cos(a);
+    const uy = Math.sin(a);
+    // a paddle across the rim
+    g.poly([ux * (R - 4) - uy * 3, uy * (R - 4) + ux * 3, ux * (R + 4) - uy * 3, uy * (R + 4) + ux * 3, ux * (R + 4) + uy * 3, uy * (R + 4) - ux * 3, ux * (R - 4) + uy * 3, uy * (R - 4) - ux * 3]).fill(0xa47a4c).stroke({ width: 0.8, color: INK });
+  }
+  g.circle(0, 0, R).stroke({ width: 3, color: 0x6a4426 });
+  g.circle(0, 0, R - 7).stroke({ width: 1.6, color: 0x6a4426 });
+  for (let n = 0; n < 6; n++) {
+    const a = (n * Math.PI) / 3;
+    g.moveTo(0, 0).lineTo(Math.cos(a) * R, Math.sin(a) * R).stroke({ width: 2, color: 0x5a3d28 });
+  }
+  g.circle(0, 0, 4).fill(0x3a3d45).stroke({ width: 1, color: 0x15171b });
+  // white water where the paddles bite
+  g.ellipse(0, R + 2, 14, 4).fill({ color: 0xffffff, alpha: 0.35 });
 }

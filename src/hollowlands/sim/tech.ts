@@ -8,7 +8,7 @@
 // colony's chronicle.
 
 import { DAYS_PER_YEAR, TICKS_PER_DAY, dayOf } from '../config';
-import { HOMES } from './data/buildings';
+import { CASTLE_KINDS, HOMES } from './data/buildings';
 import { TECHS, TECH_BLDS, TECH_LIST, TECH_PROF, type TechDef } from './data/tech';
 import { mouths } from './econ';
 import { bump, log, note } from './events';
@@ -33,7 +33,7 @@ export const GLAZE = 77;
 export function costOf(c: Colony, d: TechDef): number {
   const t = c.tech;
   const n = t ? t.got.length : 0;
-  return Math.round((d.base + 22 * n) * (t && t.heard[d.k] ? 0.6 : 1));
+  return Math.round((d.base + 16 * n) * (t && t.heard[d.k] ? 0.6 : 1));
 }
 
 /** Can the colony work this out yet: what it needs first is known, and it has what it would need? */
@@ -126,7 +126,8 @@ function discover(c: Colony, d: TechDef): void {
   t.got.push(from ? { k: d.k, t: c.tick, a: who.id, from } : { k: d.k, t: c.tick, a: who.id });
   delete t.heard[d.k];
   think(c, who, 'discovered');
-  who.coin += 10;
+  // a purse from the treasury, if it can spare one
+  if (c.stock.silver >= 10) { c.stock.silver -= 10; who.coin += 10; }
   note(c, who, 'discovery', undefined, d.k);
   log(c, 'discovery', who.id, undefined, from ? d.k + ':' + from : d.k);
   bump(c, 'discoveries');
@@ -187,11 +188,16 @@ type Spot = (b: Bld, chars: string) => number;
 /** The trade nearest to each discovered trade, whose holders lend a hand there. */
 const NEAR_PROF: Record<string, string> = { windmill: 'farmer', watermill: 'farmer', bakery: 'cook', kiln: 'carpenter', glassworks: 'potter', tannery: 'weaver', dyeworks: 'weaver', steelworks: 'smith', jeweller: 'smith', printer: 'lorekeeper' };
 
-/** Bricks worth keeping in hand: for the homes going up, and some over. */
+/** Bricks worth keeping in hand: for the homes going up, and, while stone is short, for all the town's building. */
 function brickWant(c: Colony): number {
-  let n = 12;
-  for (const b of c.blds) if (!b.built && HOMES.includes(b.k)) n += b.need.stone;
-  return Math.min(60, n);
+  let homes = 0;
+  let all = 0;
+  for (const b of c.blds) {
+    if (b.built || CASTLE_KINDS.has(b.k)) continue;
+    all += b.need.stone;
+    if (HOMES.includes(b.k)) homes += b.need.stone;
+  }
+  return Math.min(80, 12 + (c.stock.stone < all ? all : homes));
 }
 
 /** A home that could do with glass in its windows: the finest first. */
@@ -205,7 +211,10 @@ function unglazed(c: Colony): Bld | undefined {
 }
 
 /** Work at the buildings of what the colony has discovered. Those who hold the trade come first. */
-export function techJobs(c: Colony, p: Pawn, offer: Offer, job: MkJob, spot: Spot, woodLow: boolean): void {
+export function techJobs(c: Colony, p: Pawn, offer: Offer, job: MkJob, spot: Spot, woodTarget: number): void {
+  // fuel for the ovens and the kilns only while the woodpile is healthy; pots and glass only from plenty
+  const woodLow = c.stock.wood < woodTarget * 0.6;
+  const woodRich = c.stock.wood >= woodTarget;
   const tb = techScan(c).blds;
   if (!tb.size) return;
   const s = c.stock;
@@ -220,12 +229,12 @@ export function techJobs(c: Colony, p: Pawn, offer: Offer, job: MkJob, spot: Spo
   const bakery = tb.get('bakery');
   if (bakery && s.flour >= 3 && s.bread < m * 1.5 && !woodLow) offer('cook', 3.2 * mine('bakery'), 'bake', () => job('cook', spot(bakery, 'E'), true, 'Baking bread', bakery.id));
   const kiln = tb.get('kiln');
-  if (kiln && !woodLow && (s.brick < brickWant(c) || s.goods < pop * 2)) offer('craft', 2 * mine('kiln'), 'kiln', () => job('craft', spot(kiln, 'I'), true, s.brick < brickWant(c) ? 'Firing bricks' : 'Throwing pots', kiln.id));
+  if (kiln && ((!woodLow && s.brick < brickWant(c)) || (woodRich && s.goods < pop))) offer('craft', 2 * mine('kiln'), 'kiln', () => job('craft', spot(kiln, 'I'), true, s.brick < brickWant(c) ? 'Firing bricks' : 'Throwing pots', kiln.id));
   const glass = tb.get('glassworks');
   if (glass) {
     const home = s.glass >= 2 ? unglazed(c) : undefined;
     if (home) offer('craft', 2.2 * mine('glassworks'), 'glaze', () => job('craft', (home.y + home.h - 1) * c.w + home.x + Math.floor(home.w / 2), true, 'Fitting glass in the windows', home.id, GLAZE));
-    else if (!woodLow && s.glass < 8 && unglazed(c)) offer('craft', 1.8 * mine('glassworks'), 'glass', () => job('craft', spot(glass, 'F'), true, 'Blowing glass', glass.id));
+    else if (woodRich && s.glass < 8 && unglazed(c)) offer('craft', 1.8 * mine('glassworks'), 'glass', () => job('craft', spot(glass, 'F'), true, 'Blowing glass', glass.id));
   }
   const tan = tb.get('tannery');
   if (tan && s.leather >= 3) offer('craft', 1.8 * mine('tannery'), 'tan', () => job('craft', spot(tan, 'y'), true, 'Working hides in the pits', tan.id));
@@ -281,7 +290,7 @@ export function techWork(c: Colony, p: Pawn, a: Act, b: Bld, speed: number, hour
     }
     case 'kiln': {
       fuel(0.45 * hours);
-      if (s.brick < brickWant(c)) { const n = speed * hours * 1.5; s.brick += n; made('brick', n); }
+      if (s.brick < brickWant(c) || s.goods >= pop) { const n = speed * hours * 1.5; s.brick += n; made('brick', n); }
       else { const n = speed * hours * 0.9; s.goods += n; made('goods', n); }
       break;
     }

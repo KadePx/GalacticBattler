@@ -11,7 +11,7 @@ import { CROPS, HOMES, TPL, cellCode, cells, shapeOf } from '../sim/data/buildin
 import { stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
 import { TECH_HELD } from './figures';
-import { drawSails } from './techart';
+import { drawSails, drawWheel } from './techart';
 import { BLD_ICON, SWINGING, WORK_HELD, drawHeld, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
 import { SHAPE, yearsAt } from './look';
 import { Fx, type FxPawn } from './fx';
@@ -113,6 +113,8 @@ export class MapView {
   private pileKey = '';
   /** the windmills' sails, turning over their towers */
   private sails: Graphics[] = [];
+  /** the watermills' wheels, turning in the river */
+  private wheels: Graphics[] = [];
   private sailKey = '';
   /** a besieging host's camp outside the walls: tents, fires, its ladders and ram */
   private camp = new Graphics();
@@ -224,6 +226,7 @@ export class MapView {
     this.pileKey = '';
     // (the sails went with the old canopy layer)
     this.sails = [];
+    this.wheels = [];
     this.sailKey = '';
     this.camp = new Graphics();
     this.pawnLayer.addChild(this.camp);
@@ -811,25 +814,37 @@ export class MapView {
   /** The sails of each windmill, over its cap, turning slowly (faster in a wind, not at all in a calm frost). */
   private syncSails(c: Colony, dt: number): void {
     let key = '';
-    for (const b of c.blds) if (b.k === 'windmill' && b.built) key += b.id + ',';
+    for (const b of c.blds) if ((b.k === 'windmill' || b.k === 'watermill') && b.built) key += b.id + ',';
     if (key !== this.sailKey) {
       this.sailKey = key;
-      for (const g of this.sails) g.destroy();
+      for (const g of [...this.sails, ...this.wheels]) g.destroy();
       this.sails = [];
+      this.wheels = [];
       for (const b of c.blds) {
-        if (b.k !== 'windmill' || !b.built) continue;
-        const cell = cells(shapeOf(b)).find((q) => q.ch === 'G');
+        if ((b.k !== 'windmill' && b.k !== 'watermill') || !b.built) continue;
+        const mill = b.k === 'watermill';
+        const cell = cells(shapeOf(b)).find((q) => q.ch === (mill ? 'U' : 'G'));
         if (!cell) continue;
         const g = new Graphics();
-        drawSails(g);
-        g.position.set((b.x + cell.dx + 0.5) * TS, (b.y + cell.dy + 0.5) * TS);
+        let ox = 0;
+        let oy = 0;
+        if (mill) {
+          // out over the water beside the wheel's housing
+          drawWheel(g);
+          const x = b.x + cell.dx;
+          const y = b.y + cell.dy;
+          const wet = (xx: number, yy: number): boolean => { const t = c.ter[yy * c.w + xx]; return t === 5 || t === 6; };
+          if (wet(x + 1, y)) ox = 1; else if (wet(x - 1, y)) ox = -1; else if (wet(x, y + 1)) oy = 1; else oy = -1;
+        } else drawSails(g);
+        g.position.set((b.x + cell.dx + 0.5 + ox * 1.1) * TS, (b.y + cell.dy + 0.5 + oy * 1.1) * TS);
         g.rotation = (b.id % 7) * 0.4;
         this.canopyLayer.addChild(g);
-        this.sails.push(g);
+        (mill ? this.wheels : this.sails).push(g);
       }
     }
     const wind = c.weather === 3 ? 3 : c.weather === 2 || c.weather === 1 ? 1.5 : c.weather === 5 ? 0.4 : 1;
     for (const g of this.sails) g.rotation += dt * 0.0006 * wind;
+    for (const g of this.wheels) g.rotation += dt * 0.0012;
   }
 
   /** Woodpile, stone, sacks of food and barrels of ale beside the storehouse, as big as the stores. */

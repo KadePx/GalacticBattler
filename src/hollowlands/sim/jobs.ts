@@ -527,7 +527,7 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
   }
 
   // the trades of what the colony has discovered
-  if (c.tech && c.tech.got.length) techJobs(c, p, offer, job, (b, ch) => spotTile(c, b, ch, r), c.stock.wood < woodTarget * 0.6);
+  if (c.tech && c.tech.got.length) techJobs(c, p, offer, job, (b, ch) => spotTile(c, b, ch, r), woodTarget);
 
   opts.sort((a, b) => b.s - a.s);
   for (const o of opts) {

@@ -1,5 +1,6 @@
 // Public face of the colony sim: make a colony, advance it, save and load it, fingerprint it.
 
+import { blankTech } from './tech';
 import { MAP_H, MAP_W, SIM_V, START_POP, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
 import { RACES, PLAYABLE, childRace } from './data/races';
 import { emptyStock, mouths } from './econ';
@@ -168,6 +169,8 @@ function foundColony(c: Colony, msg: SettlerMsg, r: Rand): Colony {
   // enough to see them through the first weeks
   c.stock.meal += c.pawns.length * 4;
   c.stock.wood += 40;
+  // what the old colony knew comes with them, half remembered: it comes cheaper to work out again
+  if (msg.tech?.length) { const t = (c.tech = blankTech()); for (const k of msg.tech) t.heard[k] = msg.fromName; }
   assignProfs(c, true);
   initGov(c, r);
   pave(c, 120);

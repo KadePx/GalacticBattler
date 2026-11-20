@@ -292,7 +292,7 @@ export const TPL_LIST: Tpl[] = [
     '#a.B#',
     '##+##',
   ]),
-  tpl('jeweller', "Jeweller's", 20, 12, 28, [
+  tpl('jeweller', "Jeweller's shop", 20, 12, 28, [
     '#####',
     '#jeK#',
     '#...#',

@@ -23,6 +23,8 @@ export interface SettlerMsg {
   leader: Id;
   pawns: Pawn[];
   stock: Partial<Record<ResK, number>>;
+  /** what the colony they came from had discovered: they remember how it was done */
+  tech?: string[];
 }
 
 const SHARE: ResK[] = ['grain', 'veg', 'meal', 'meat', 'wood', 'stone', 'tools', 'clothes', 'weapons', 'medicine', 'ale', 'silver', 'leather', 'cloth'];
@@ -123,7 +125,7 @@ export function dailySettle(c: Colony): void {
   for (const p of c.pawns) if (!going.has(p) && stage(c, p) >= STAGE.CHILD && (p.rel[leader.id]?.f === 1 || list.some((g) => p.rel[g.id]?.f === 1))) think(c, p, 'friendleft');
   log(c, 'settlers', leader.id, undefined, undefined, list.length);
   for (const p of list) { note(c, p, 'settled'); depart(c, p, 'settled'); }
-  c.out.push({ k: 'settlers', t: c.tick, from: c.id, fromName: c.name, leader: leader.id, pawns, stock } satisfies SettlerMsg);
+  c.out.push({ k: 'settlers', t: c.tick, from: c.id, fromName: c.name, leader: leader.id, pawns, stock, ...(c.tech?.got.length ? { tech: c.tech.got.map((g) => g.k) } : {}) } satisfies SettlerMsg);
   c.settle = 0;
   bump(c, 'parties');
   void TICKS_PER_DAY;

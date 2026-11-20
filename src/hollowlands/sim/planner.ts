@@ -9,7 +9,8 @@ import { firstBuilt, techWants } from './tech';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
 import { OUTSIDE, WALL_W, Z, frame, lotScore, octo, onKeep, passableThing, pave } from './town';
-import { household, prosper, upkeep } from './homes';
+import { TIER, household, prosper, raze, upkeep } from './homes';
+import { TECH_BLDS } from './data/tech';
 import { chooseCrop } from './farm';
 import { bump, log, note } from './events';
 import { bury } from './life';
@@ -308,6 +309,16 @@ export function build(c: Colony, k: string, instant = false, crop?: string): Bld
   // a new building may take one of its kind's other shapes; an instant one (a new colony's first) keeps the plain plan
   const opts = SHAPES[k];
   const shape = opts && !instant ? opts[hash32(c.seed, S.PLAN, 77, c.nextBld) % opts.length] : k;
+  // the workshops of the colony's discoveries stand inside the town, in the plan: if there is no lot,
+  // a poor home is cleared for one, or the colony waits and looks again later
+  if (TECH_BLDS.has(k) && k !== 'windmill' && k !== 'watermill' && !instant) {
+    const at = findSite(c, k, k, false, true) ?? makeRoom(c, k);
+    if (!at) { c.nosite[k] = c.tick; return null; }
+    delete c.nosite[k];
+    const b = placeBuilding(c, k, at[0], at[1], false, 0, k);
+    log(c, 'plan', undefined, undefined, k, b.id);
+    return b;
+  }
   // the town plan first; if nothing fits it, wherever there is room
   let use = shape;
   let site = findSite(c, k, shape, false, true);
@@ -330,6 +341,40 @@ export function build(c: Colony, k: string, instant = false, crop?: string): Bld
   return b;
 }
 
+/**
+ * No lot in the town for a new workshop: pull down a poor home inside the wall to make one (an
+ * empty one first, else one whose people have beds to go to elsewhere). Each candidate is tried by
+ * clearing its ground for a moment; the first that leaves room is pulled down for real.
+ */
+function makeRoom(c: Colony, k: string): [number, number] | null {
+  const wall = frame(c).wall;
+  let spare = 0;
+  for (const b of c.blds) if (b.built && HOMES.includes(b.k)) for (const id of b.beds) if (!id) spare++;
+  const live = (b: Bld): number => b.beds.filter((x) => x).length;
+  const cand = c.blds.filter((b) => b.built && (b.k === 'shack' || b.k === 'cottage' || b.k === 'house') && !b.own && octo(b.x + b.w / 2 - c.cx, b.y + b.h / 2 - c.cy) < wall - 2 && spare - (b.beds.length - live(b)) >= live(b))
+    .sort((a, b) => live(a) - live(b) || (TIER[a.k] ?? 2) - (TIER[b.k] ?? 2) || a.q - b.q || a.id - b.id)
+    .slice(0, 6);
+  for (const b of cand) {
+    const saved: [number, number, number][] = [];
+    for (let dy = 0; dy < b.h; dy++) for (let dx = 0; dx < b.w; dx++) {
+      const i = (b.y + dy) * c.w + b.x + dx;
+      if (c.sb[i] !== b.id) continue;
+      saved.push([i, c.sb[i], c.st[i]]);
+      c.sb[i] = 0;
+      c.st[i] = 0;
+    }
+    const site = findSite(c, k, k, false, true);
+    for (const [i, sb, st] of saved) { c.sb[i] = sb; c.st[i] = st; }
+    if (!site) continue;
+    log(c, 'cleared', undefined, undefined, b.k + ':' + k);
+    c.stock.wood += 4;
+    raze(c, b);
+    assignBeds(c, false);
+    return site;
+  }
+  return null;
+}
+
 /** Put work into a building. Returns false if it is stalled for want of materials. */
 export function advanceBuild(c: Colony, b: Bld, hours: number, p: Pawn): boolean {
   if (b.built) return false;
@@ -339,8 +384,9 @@ export function advanceBuild(c: Colony, b: Bld, hours: number, p: Pawn): boolean
   let dp = hours / (t.work * (wall && b.mat ? 2.5 : 1) * 1.6);
   if (b.prog + dp > 1) dp = 1 - b.prog;
   const left = 1 - b.prog;
-  // a home may be built of the kiln's bricks where it would have taken stone
-  const brick = HOMES.includes(b.k) ? c.stock.brick : 0;
+  // a home may be built of the kiln's bricks where it would have taken stone, and anything but the
+  // castle may when there is no stone to be had
+  const brick = HOMES.includes(b.k) || (c.stock.stone < 1 && !CASTLE_KINDS.has(b.k)) ? c.stock.brick : 0;
   const have = (res: 'wood' | 'stone'): number => (res === 'stone' ? c.stock.stone + brick : c.stock.wood);
   for (const res of ['wood', 'stone'] as const) {
     if (b.need[res] <= 0) continue;
@@ -379,7 +425,7 @@ export function advanceBuild(c: Colony, b: Bld, hours: number, p: Pawn): boolean
   return true;
 }
 
-export const canBuild = (c: Colony, b: Bld): boolean => !b.built && (b.need.wood <= 0.01 || c.stock.wood >= 1) && (b.need.stone <= 0.01 || c.stock.stone >= 1 || (c.stock.brick >= 1 && HOMES.includes(b.k)));
+export const canBuild = (c: Colony, b: Bld): boolean => !b.built && (b.need.wood <= 0.01 || c.stock.wood >= 1) && (b.need.stone <= 0.01 || c.stock.stone >= 1 || (c.stock.brick >= 1 && !CASTLE_KINDS.has(b.k)));
 
 export function assignBeds(c: Colony, quiet: boolean): void {
   const homes = c.blds.filter((b) => b.built && b.beds.length > 0);
@@ -565,7 +611,7 @@ function slots(c: Colony, adults: number, kids: number): Record<string, number> 
 }
 
 /** Trades filled only after all the others: the market's bakers, butchers and potters. */
-const LATE = new Set(['baker', 'butcher', 'potter', 'jeweller']);
+const LATE = new Set(['baker', 'butcher', 'potter', 'jeweller', 'tanner', 'dyer', 'glazier', 'printer', 'miller']);
 
 /** How many of each trade this colony has room for. */
 export function tradeSlots(c: Colony): Record<string, number> {
@@ -652,7 +698,7 @@ export function plan(c: Colony): void {
   const pending = c.blds.filter((b) => !b.built && !CASTLE_KINDS.has(b.k) && !WALL_KINDS.has(b.k));
   // no stone to be had for weeks: build it in timber instead
   for (const b of pending) {
-    if (b.need.stone > 0.01 && c.stock.stone < 1 && !(HOMES.includes(b.k) && c.stock.brick >= 1) && c.tick - b.made > 240 * 5) {
+    if (b.need.stone > 0.01 && c.stock.stone < 1 && c.stock.brick < 1 && c.tick - b.made > 240 * 5) {
       b.need.wood += b.need.stone * 1.5;
       b.need.stone = 0;
     }
