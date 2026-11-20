@@ -6,7 +6,7 @@
 
 import { TICKS_PER_DAY, dayOf } from '../config';
 import { touch, touchAt } from './cache';
-import { DECOR, cellCode, isDecor, shapeOf, spots } from './data/buildings';
+import { CASTLE_KINDS, DECOR, cellCode, isDecor, shapeOf, spots } from './data/buildings';
 import { log } from './events';
 import { RANK } from './gov';
 import { think } from './mood';
@@ -72,6 +72,8 @@ export function prosper(c: Colony): boolean {
     const rank = Math.max(p.rank, o?.rank ?? 0);
     const fam = household(c, p);
     const home = p.home ? c.blds.find((b) => b.id === p.home) : undefined;
+    // the ruler's family, housed in the castle, wants for nothing in the town
+    if (home && CASTLE_KINDS.has(home.k)) continue;
     // sharing a roof with strangers counts as having nowhere of one's own
     const cur = home && !sharesWithStrangers(c, p) ? TIER[home.k] ?? 2 : -1;
     let k = '';
@@ -89,7 +91,7 @@ export function prosper(c: Colony): boolean {
   const size = household(c, best).length;
   let buy: Bld | undefined;
   for (const b of c.blds) {
-    if (!b.built || b.own || !b.beds.length || b.beds.some((x) => x) || (TIER[b.k] ?? 2) < want || b.beds.length < size) continue;
+    if (!b.built || b.own || !b.beds.length || b.beds.some((x) => x) || (TIER[b.k] ?? 2) < want || b.beds.length < size || CASTLE_KINDS.has(b.k) || b.k === 'infirmary') continue;
     if (!buy || b.q - b.dmg > buy.q - buy.dmg) buy = b;
   }
   if (buy) {
@@ -123,7 +125,7 @@ export function prosper(c: Colony): boolean {
 function spareBeds(c: Colony): number {
   let n = 0;
   for (const b of c.blds) {
-    if (!b.built || !b.beds.length) continue;
+    if (!b.built || !b.beds.length || CASTLE_KINDS.has(b.k)) continue;
     for (const id of b.beds) if (!id) n++;
   }
   return n;
@@ -181,7 +183,7 @@ export function upkeep(c: Colony): void {
   let free = spareBeds(c);
   let razed = false;
   for (const b of c.blds.slice()) {
-    if (!b.built || !b.beds.length || b.k === 'infirmary') continue;
+    if (!b.built || !b.beds.length || b.k === 'infirmary' || CASTLE_KINDS.has(b.k)) continue;
     const lived = b.beds.some((x) => x);
     if (lived) b.vac = undefined;
     else if (b.vac === undefined) b.vac = c.tick;

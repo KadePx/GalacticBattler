@@ -85,10 +85,13 @@ export function isWarden(c: Colony, p: Pawn): boolean {
   return p.prof === 'guard' || p.prof === 'scout' || c.gov.titles.marshal === p.id;
 }
 
-/** Is this colonist up on the watchtower? */
+/** Kinds of building whose walls an archer can shoot from: the watchtower, the castle's towers and gatehouse. */
+const HIGH = new Set(['tower', 'curtain', 'gatehouse']);
+
+/** Is this colonist up on the watchtower (or in a tower of the castle's walls)? */
 export function onTower(c: Colony, p: Pawn): boolean {
   const b = c.sb[p.y * c.w + p.x];
-  return !!b && c.blds.some((x) => x.id === b && x.k === 'tower' && x.built);
+  return !!b && c.blds.some((x) => x.id === b && HIGH.has(x.k) && x.built);
 }
 
 function raise(c: Colony, by?: Pawn, f?: Foe): void {

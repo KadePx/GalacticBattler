@@ -9,6 +9,7 @@ import { foodDays, hasFood, takeMeal } from './econ';
 import { variety } from './farm';
 import { bump, log } from './events';
 import { attack, canFight, isWarden, onTower, pickFoe } from './combat';
+import { throneTile } from './castle';
 import { isDown, needsRest, wound } from './health';
 import { accuse, murder } from './crime';
 import { die } from './life';
@@ -124,12 +125,22 @@ function goSleep(c: Colony, p: Pawn, why: string): boolean {
 function attend(c: Colony, p: Pawn, r: Rand): boolean {
   const g = c.gath!;
   const k = cacheOf(c);
+  const keep = g.b ? c.blds.find((b) => b.id === g.b && b.k === 'keep') : undefined;
+  // the ruler hears petitions from the throne
+  if (keep && g.k === 'audience' && p.id === g.a) {
+    const th = throneTile(c, keep);
+    if (th >= 0 && setAct(c, p, 'attend', th % c.w, Math.floor(th / c.w), Math.max(1, g.t1 - c.tick), g.k)) { p.act.t1 = g.t1 + 1; return true; }
+  }
+  // a feast in the keep fills the great hall and spills out into the courtyard
+  const spread = keep && g.k === 'feast' ? 4 : 2;
   for (let tries = 0; tries < 8; tries++) {
-    const x = g.x + r.range(-2, 2);
-    const y = g.y + r.range(-2, 2);
+    const x = g.x + r.range(-spread, spread);
+    const y = g.y + r.range(-spread, spread);
     if (x < 0 || y < 0 || x >= c.w || y >= c.h) continue;
     const i = y * c.w + x;
     if (!k.walk[i] || !k.reach[i]) continue;
+    // not in the lord's chambers or the chapel: the great hall, or out in the courtyard
+    if (keep && c.sb[i] === keep.id && Math.max(Math.abs(x - g.x), Math.abs(y - g.y)) > 2) continue;
     if (setAct(c, p, 'attend', x, y, Math.max(1, g.t1 - c.tick), g.k)) { p.act.t1 = g.t1 + 1; return true; }
   }
   return false;

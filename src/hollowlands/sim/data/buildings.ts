@@ -5,6 +5,7 @@
 // k cauldron  v brewing vat  n grain bin  d desk  K bookshelf  R weapon rack  T bath  C chess table
 // D dartboard  m music bench  H drying rack  L lamp  u rug  O wardrobe  Y brazier
 // - low garden wall  % garden bed
+// The castle: X castle wall  Z tower wall  P palisade  J throne  N banner  V tapestry  q hay
 // (a space is outside the building: shapes need not be rectangles)
 // A shack's floor is bare earth and its beds are straw; a townhouse's and a manor's floors are fine.
 
@@ -231,7 +232,96 @@ export const TPL_LIST: Tpl[] = [
   ]),
 ];
 
-export const TPL: Record<string, Tpl> = Object.fromEntries(TPL_LIST.map((x) => [x.k, x]));
+/**
+ * The castle on the rise, raised in stages, every part laid out on one 19 by 19 plan with its gate
+ * toward the town (drawn here with the town to the south): a palisade and a timber hall first, then
+ * the stone keep (great hall and throne, the lord's chambers, a chapel), then the curtain wall with
+ * its corner towers and gatehouse, barracks where the timber hall stood, and stables.
+ */
+export const CASTLE_N = 19;
+const C_SP = ' '.repeat(17);
+export const CASTLE_TPL: Tpl[] = [
+  tpl('palisade', 'Palisade', 70, 0, 55, ['P'.repeat(19), ...Array.from({ length: 17 }, () => 'P' + C_SP + 'P'), 'P'.repeat(9) + 'g' + 'P'.repeat(9)]),
+  tpl('motte', 'Timber hall', 55, 0, 45, [
+    '##+##',
+    '#bNb#',
+    '#cth#',
+    '#####',
+  ]),
+  tpl('keep', 'Keep', 60, 260, 300, [
+    'XXXXXXXXX',
+    'Xbbb#.A.X',
+    'Xb.O#p.pX',
+    'Xh.e#p.pX',
+    'X#+###+#X',
+    'XV.NJN.VX',
+    'Xh.....hX',
+    'Xctc.ctcX',
+    'XXXX+XXXX',
+  ]),
+  tpl('curtain', 'Castle walls', 30, 300, 320, [
+    'ZZZ' + 'X'.repeat(13) + 'ZZZ',
+    'Z.Z' + ' '.repeat(13) + 'Z.Z',
+    'Z+Z' + ' '.repeat(13) + 'Z+Z',
+    ...Array.from({ length: 13 }, () => 'X' + C_SP + 'X'),
+    'ZZZ' + ' '.repeat(13) + 'ZZZ',
+    'Z.+' + ' '.repeat(13) + '+.Z',
+    'ZZZXXXX     XXXXZZZ',
+  ]),
+  tpl('gatehouse', 'Gatehouse', 30, 80, 90, [
+    'ZZgZZ',
+    'Z.,.Z',
+    'Z.,.Z',
+    'ZZgZZ',
+  ]),
+  tpl('barracks', 'Barracks', 30, 50, 60, [
+    '##+##',
+    '#b.b#',
+    '#bRb#',
+    '#####',
+  ]),
+  tpl('stables', 'Stables', 50, 0, 45, [
+    '##+##',
+    '#q.Q#',
+    '#qxQ#',
+    '#####',
+  ]),
+];
+
+/** Where each part stands on the castle's plan (gate to the south), and the stage that raises it. */
+export const CASTLE_AT: Record<string, { x: number; y: number; stage: number; mat: number }> = {
+  palisade: { x: 0, y: 0, stage: 1, mat: 0 },
+  motte: { x: 1, y: 12, stage: 1, mat: 0 },
+  keep: { x: 5, y: 2, stage: 2, mat: 1 },
+  curtain: { x: 0, y: 0, stage: 3, mat: 1 },
+  gatehouse: { x: 7, y: 15, stage: 3, mat: 1 },
+  barracks: { x: 1, y: 12, stage: 3, mat: 1 },
+  stables: { x: 13, y: 12, stage: 3, mat: 0 },
+};
+export const CASTLE_KINDS = new Set(Object.keys(CASTLE_AT));
+
+/** A floor plan turned a quarter clockwise. */
+export const turnRows = (rows: string[]): string[] => {
+  const h = rows.length;
+  const w = rows[0].length;
+  const out: string[] = [];
+  for (let y = 0; y < w; y++) {
+    let s = '';
+    for (let x = 0; x < h; x++) s += rows[h - 1 - x][y] ?? ' ';
+    out.push(s);
+  }
+  return out;
+};
+
+export const TPL: Record<string, Tpl> = Object.fromEntries([...TPL_LIST, ...CASTLE_TPL].map((x) => [x.k, x]));
+// each castle part turned to face its gate toward the town: '~r1' west, '~r2' north, '~r3' east
+for (const t of CASTLE_TPL) {
+  let rows = t.rows;
+  for (let n = 1; n < 4; n++) {
+    rows = turnRows(rows);
+    TPL[t.k + '~r' + n] = { ...t, rows };
+  }
+}
 
 /**
  * Other floor plans for some kinds of building, so a colony is not all boxes. Keys are
@@ -384,6 +474,13 @@ export const PURPOSE: Record<string, string> = {
   townhouse: 'A narrow house of the inner streets for a family doing well. Costly to keep.',
   manor: 'A great house by the keep, with a walled garden. Only the rich can keep one up.',
   graveyard: 'Where the dead are laid to rest.',
+  palisade: 'A ring of sharpened stakes round the rise: the first wall of a castle.',
+  motte: "The ruler's first hall on the rise, timber and thatch, where they live and hold court until a keep is raised.",
+  keep: 'The stone heart of the castle: the great hall and the throne where the ruler holds audiences and feasts, the ruler\'s chambers above, and a chapel.',
+  curtain: 'The castle\'s curtain wall, with a tower at each corner. Archers in the towers shoot further, safe behind stone.',
+  gatehouse: 'The way into the castle, facing the town: two gates and a guardroom either side, where wardens keep watch.',
+  barracks: 'Where the castle\'s guards sleep and drill. It serves as the guardhouse.',
+  stables: 'Stalls, mangers and hay for the castle\'s horses.',
 };
 
 export interface Cell { dx: number; dy: number; ch: string }
@@ -403,7 +500,7 @@ export function cells(k: string): Cell[] {
       const ch = t.rows[dy][dx];
       if (ch === ' ') continue;
       const cell = { dx, dy, ch };
-      if (ch === '#' || ch === '+' || ch === '=' || ch === 'g' || ch === '-') walls.push(cell);
+      if (ch === '#' || ch === '+' || ch === '=' || ch === 'g' || ch === '-' || ch === 'X' || ch === 'Z' || ch === 'P') walls.push(cell);
       else if (ch === '.' || ch === ',') floors.push(cell);
       else furn.push(cell);
     }
@@ -422,6 +519,7 @@ const FURN: Record<string, number> = {
   b: B.BED, t: B.TABLE, c: B.CHAIR, h: B.HEARTH, s: B.STOVE, w: B.BENCH, a: B.ANVIL, f: B.FORGE, x: B.CRATE, r: B.BARREL,
   A: B.ALTAR, p: B.PEW, l: B.LOOM, W: B.WELL, e: B.SHELF, o: B.COT, S: B.STATUE,
   k: B.CAULDRON, v: B.VAT, n: B.BIN, d: B.DESK, K: B.BOOKS, R: B.RACK, T: B.BATH, C: B.CHESS, D: B.DARTS, m: B.MUSIC, H: B.DRYRACK, L: B.LAMP, u: B.RUG, O: B.WARDROBE, Y: B.BRAZIER, Q: B.TROUGH, '%': B.GARDEN,
+  X: B.CWALL, Z: B.CTOWER, P: B.PALISADE, J: B.THRONE, N: B.BANNER, V: B.TAPESTRY, q: B.HAY,
 };
 
 /** Things a home gains as it is made finer. They sit on floor tiles and are kept when the floor is relaid. */
@@ -435,7 +533,7 @@ export function cellCode(k: string, ch: string, mat: number): number {
   if (ch === '=') return B.FENCE;
   if (ch === '-') return B.LOWWALL;
   if (ch === '.') return k === 'shack' ? B.FLOOR_BARE : k === 'townhouse' || k === 'manor' ? B.FLOOR_FINE : mat ? B.FLOOR_STONE : B.FLOOR_WOOD;
-  if (ch === ',') return k === 'field' ? B.TILLED : k === 'manor' ? B.PAVING : B.NONE;
+  if (ch === ',') return k === 'field' ? B.TILLED : k === 'manor' || k === 'gatehouse' ? B.PAVING : B.NONE;
   if (ch === 'b' && k === 'shack') return B.STRAW;
   return FURN[ch] ?? B.NONE;
 }

@@ -27,6 +27,8 @@ export const B = {
   FLOOR_BARE: 51, FLOOR_FINE: 52, STRAW: 53, GARDEN: 54, LOWWALL: 55, PAVING: 56,
   // street furniture (placed by the town plan on street corners and squares, belonging to no building)
   LAMPPOST: 60, SEAT: 61, SIGNPOST: 62, FOUNTAIN: 63, WAYSHRINE: 64, PUMP: 65,
+  // the castle: its heavy walls and towers, the palisade before them, and the things of a lord's hall
+  CWALL: 66, CTOWER: 67, PALISADE: 68, THRONE: 69, BANNER: 70, TAPESTRY: 71, HAY: 72,
 } as const;
 
 /** Street furniture: stands on its own, outside any building. */
@@ -364,6 +366,10 @@ export interface Colony {
   trials: { a: Id; k: string; f: number; by: Id }[];
   /** building kinds the planner found no room for, and when it last looked */
   nosite: Record<string, number>;
+  /** the castle on the rise: stages finished (0-3), the stage being built (0 none), which way it faces, and when each stage was finished */
+  castle?: { stage: number; work: number; turn: number; at: number[] };
+  /** the latest wave of the grey plague: when it began, its last new case, how many lived here then, how many it took */
+  plague?: { t: number; last: number; n0: number; dead: number };
   /** passing conditions: [kind, until tick] */
   mods: [string, number][];
   /** animals out in the wild */

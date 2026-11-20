@@ -6,6 +6,7 @@ import { dailyLand } from './econ';
 import { dailyLife, endGathering } from './life';
 import { hourly } from './mood';
 import { plan } from './planner';
+import { dailyCastle } from './castle';
 import { aftermath, combatTick } from './combat';
 import { applyInputs, dailyStory } from './story';
 import { dailyGov } from './gov';
@@ -28,6 +29,7 @@ function daily(c: Colony): void {
   dailyDreams(c);
   dailyLife(c);
   plan(c);
+  dailyCastle(c);
   dailyStory(c);
   dailyGov(c);
   dailyCrime(c);

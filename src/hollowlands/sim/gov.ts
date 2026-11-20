@@ -1,6 +1,7 @@
 // Who rules, how they came to rule, what they decree, and where everyone else stands.
 // Colonies start small and free; crowns and noble houses grow out of what happens.
 
+import { castleHall, hallSpot } from './castle';
 import { festivalName, festivalToday } from './festivals';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, dayOf } from '../config';
 import { RACES } from './data/races';
@@ -257,8 +258,10 @@ export function dailyGov(c: Colony): void {
   // the year's gatherings: a harvest feast and a midwinter one when the larder allows, and the ruler's audiences
   if (!c.gath) {
     const doy = day % 60;
+    // the ruler's own hall in the castle once there is one, else the colony's great hall
+    const seat = castleHall(c);
     const hall = c.blds.find((b) => b.k === 'hall' && b.built);
-    const at = hall ? { b: hall.id, x: hall.x + Math.floor(hall.w / 2), y: hall.y + Math.floor(hall.h / 2) } : { b: 0, x: c.cx, y: c.cy };
+    const at = seat ? hallSpot(c, seat) : hall ? { b: hall.id, x: hall.x + Math.floor(hall.w / 2), y: hall.y + Math.floor(hall.h / 2) } : { b: 0, x: c.cx, y: c.cy };
     const fest = festivalToday(doy);
     if (fest && adults.length >= 6 && foodDays(c) > 4) {
       // out in the open, in the middle of the colony

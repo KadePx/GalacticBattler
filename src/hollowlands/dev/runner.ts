@@ -19,6 +19,8 @@ import { ROCK_FACE, SHORE, cacheStats, featList } from '../sim/cache';
 import { F } from '../sim/types';
 import { STAGE, ageYears, fullName, stage } from '../sim/pawn';
 import { WEIGHT, dateText, evText } from '../text';
+import { infect } from '../sim/health';
+import { Rand } from '../sim/rng';
 
 declare const process: { argv: string[]; exit(code: number): never };
 declare const performance: { now(): number };
@@ -35,7 +37,61 @@ if (args[0] === 'golden') await golden(args.includes('--update'));
 else if (args[0] === 'size') await size();
 else if (args[0] === 'many') many();
 else if (args[0] === 'land') land();
+else if (args[0] === 'plague') plagueTest();
+else if (args[0] === 'castle') castleTest();
 else report();
+
+//   npm run hl -- plague 8 1 60     8 seeds from 1, 60 colonists: a year and a half, then the grey plague; deaths in 60 days
+function plagueTest(): void {
+  const n = Number(args[1]) || 8;
+  const from = Number(args[2]) || 1;
+  const pop = Number(args[3]) || 60;
+  let tot0 = 0;
+  let totDead = 0;
+  for (let seed = from; seed < from + n; seed++) {
+    const c = createColony({ seed, pop });
+    const t1 = c.tick + 90 * TICKS_PER_DAY;
+    while (c.tick < t1) step(c);
+    const before = c.pawns.length;
+    const d0 = c.stats.death_sick_plague ?? 0;
+    const s0 = c.stats.sick_plague ?? 0;
+    const r = new Rand(seed, 999);
+    for (let k = 0; k < 2; k++) infect(c, r.pick(c.pawns), 'plague');
+    const t2 = c.tick + 60 * TICKS_PER_DAY;
+    while (c.tick < t2) step(c);
+    const dead = (c.stats.death_sick_plague ?? 0) - d0;
+    tot0 += before;
+    totDead += dead;
+    console.log(`${pad(seed, 4)} ${pad(c.name, 16)} pop ${lpad(before, 3)} -> ${lpad(c.pawns.length, 3)}  fell ill ${lpad((c.stats.sick_plague ?? 0) - s0, 3)}  died of plague ${lpad(dead, 3)} (${((100 * dead) / before).toFixed(0)}%)`);
+  }
+  console.log(`all: ${totDead} of ${tot0} died of plague (${((100 * totDead) / tot0).toFixed(1)}%)`);
+}
+
+//   npm run hl -- castle 6 4 1 45   a lord's colony: 6 years, 4 seeds from 1, 45 colonists; the castle's stage each year
+function castleTest(): void {
+  const years = Number(args[1]) || 6;
+  const n = Number(args[2]) || 4;
+  const from = Number(args[3]) || 1;
+  const pop = Number(args[4]) || 45;
+  const t0 = performance.now();
+  for (let seed = from; seed < from + n; seed++) {
+    const c = createColony({ seed, pop });
+    c.gov.k = 'lord';
+    const row: string[] = [];
+    for (let y = 1; y <= years; y++) {
+      const end = c.tick + 60 * TICKS_PER_DAY;
+      while (c.tick < end && c.pawns.length) step(c);
+      const cs = (c as unknown as { castle?: { stage: number } }).castle;
+      row.push(`y${y}:${cs ? cs.stage : '-'}`);
+    }
+    const cs = (c as unknown as { castle?: { stage: number; at?: number[] } }).castle;
+    const parts = c.blds.filter((b) => ['motte', 'palisade', 'keep', 'curtain', 'gatehouse', 'barracks', 'stables'].includes(b.k)).map((b) => `${b.k}${b.built ? '' : '(' + Math.round(b.prog * 100) + '%)'}`);
+    const deaths = Object.keys(c.stats).filter((k) => k.startsWith('death_')).sort((a, b) => c.stats[b] - c.stats[a]).slice(0, 4).map((k) => k.slice(6) + ' ' + c.stats[k]).join(', ');
+    console.log(`     deaths: ${deaths || '-'}; left ${c.stats.left ?? 0}, settlers ${c.stats.settlers ?? 0}`);
+    console.log(`${pad(seed, 4)} ${pad(c.name, 16)} pop ${lpad(c.pawns.length, 3)} gov ${pad(c.gov.k, 7)} ${row.join(' ')}  at ${cs?.at?.map((t) => (t / (60 * TICKS_PER_DAY)).toFixed(1)).join('/') ?? '-'}  stone ${Math.round(c.stock.stone)} silver ${Math.round(c.stock.silver)}  ${parts.join(' ')}`);
+  }
+  console.log(`${((performance.now() - t0) / (n * years)).toFixed(0)} ms per colony-year`);
+}
 
 function avgMood(c: Colony): [number, number] {
   let sum = 0;
@@ -200,6 +256,9 @@ function many(): void {
     console.log([pad(seed, 6), pad(c.name, 16), c.pawns.length, avgMood(c)[0].toFixed(0), sick(c), slain(c), ...keys.map((k) => Math.round(c.stats[k] ?? 0))].map((s, i) => (i > 1 ? lpad(s, 8) : s)).join(' '));
     const homeless = c.pawns.filter((p) => !p.home).length;
     town.push(`  ${pad(seed, 6)} ${pad(c.name, 16)} pop ${lpad(c.pawns.length, 3)} (avg ${(popSum / Math.max(1, days)).toFixed(0)}, peak ${peak})  buildings ${lpad(c.blds.filter((b) => b.built).length, 3)}/${lpad(c.blds.length, 3)}  beds ${lpad(c.blds.reduce((a, b) => a + (b.built ? b.beds.length : 0), 0), 3)}  homeless now ${homeless}, person-days ${homelessDays}, longest ${longest} d  no room for: ${Object.keys(c.nosite).join(' ') || '-'}`);
+    const ills = Object.keys(c.stats).filter((k) => k.startsWith('death_sick_')).sort().map((k) => k.slice(11) + ' ' + c.stats[k]).join(', ');
+    const cs = (c as unknown as { castle?: { stage: number; at?: number[] } }).castle;
+    town.push(`         sick deaths: ${ills || '-'}${cs ? `  castle stage ${cs.stage}${cs.at?.length ? ' (years ' + cs.at.map((t) => (t / (60 * TICKS_PER_DAY)).toFixed(1)).join(', ') + ')' : ''}` : ''}`);
   }
   console.log(`${((performance.now() - t0) / (n * years)).toFixed(0)} ms per colony-year`);
   console.log('Towns:');

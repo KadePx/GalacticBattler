@@ -5,7 +5,7 @@
 import type { Graphics } from 'pixi.js';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR, TICKS_PER_DAY } from '../config';
 import { riseAt } from '../sim/mapgen';
-import { Z, frame } from '../sim/town';
+import { Z, frame, onKeep } from '../sim/town';
 import { B, F, T, type Bld, type Colony } from '../sim/types';
 import { css, darken, lighten, mix } from './look';
 
@@ -184,8 +184,10 @@ export function bakeTerrain(c: Colony, cv: HTMLCanvasElement, pal: Pal): void {
       const z = zone[i];
       // the town's laid ground: the squares and the avenue in cobbles, the streets in packed gravel
       // with a kerb where they meet the lots, so the plan reads even from far off
-      if (z !== Z.NONE && z !== Z.BAND && (t === T.STONE || t === T.PATH)) {
-        const cob = t === T.STONE && (z === Z.SQUARE || z === Z.PLAZA || z === Z.AVENUE);
+      // the castle's courtyard, flagged once its walls are up
+      const court = t === T.STONE && z === Z.NONE && (c.castle?.stage ?? 0) >= 3 && onKeep(c, x, y);
+      if ((z !== Z.NONE && z !== Z.BAND && (t === T.STONE || t === T.PATH)) || court) {
+        const cob = t === T.STONE && (z === Z.SQUARE || z === Z.PLAZA || z === Z.AVENUE || court);
         g.fillStyle = cob ? (snowy ? '#d9d6cc' : '#c7bca3') : snowy ? '#cfc8b8' : '#c4ad84';
         g.fillRect(px, py, TS, TS);
         if (cob) {
@@ -196,7 +198,7 @@ export function bakeTerrain(c: Colony, cv: HTMLCanvasElement, pal: Pal): void {
           g.fillStyle = 'rgba(120,98,66,0.5)';
           g.fillRect(px + hash2(x, y, 32) * 20, py + hash2(x, y, 33) * 20, 2, 2);
         }
-        const lot = (xx: number, yy: number): boolean => xx >= 0 && yy >= 0 && xx < W && yy < H && zone[yy * W + xx] === Z.NONE;
+        const lot = (xx: number, yy: number): boolean => !court && xx >= 0 && yy >= 0 && xx < W && yy < H && zone[yy * W + xx] === Z.NONE;
         g.fillStyle = 'rgba(70,56,38,0.35)';
         if (lot(x, y - 1)) g.fillRect(px, py, TS, 2);
         if (lot(x, y + 1)) g.fillRect(px, py + TS - 2, TS, 2);
@@ -403,7 +405,21 @@ const BLANKET = [0x8a4a4a, 0x4f6fa8, 0x4f8a62, 0x7a5a9a, 0xa8763f, 0x3f8a8a];
 /** Each bed keeps its own blanket colour; the sleeper is drawn under the same one. */
 export const blanketColor = (tile: number): number => BLANKET[Math.floor(hash2(tile, 17, 9) * BLANKET.length) % BLANKET.length];
 
-const isWall = (s: number): boolean => s === B.WALL_WOOD || s === B.WALL_STONE || s === B.DOOR;
+const isWall = (s: number): boolean => s === B.WALL_WOOD || s === B.WALL_STONE || s === B.DOOR || s === B.CWALL || s === B.CTOWER;
+const isCastleWall = (s: number): boolean => s === B.CWALL || s === B.CTOWER;
+/** Things of the castle's rooms that stand on a floor. */
+const CASTLE_FURN = new Set<number>([B.THRONE, B.BANNER, B.TAPESTRY, B.HAY]);
+
+/** Heraldic colours, field and charge, for a ruling house: worked out from its name, so they never change. */
+const TINCTURES = [0xa8323a, 0x2f4f9a, 0x2f7a4a, 0x6a3a8a, 0x1f1f24, 0xc9862a];
+const METALS = [0xe8c75a, 0xeeeae0];
+export function houseColours(c: Colony): [number, number] {
+  const r = c.pawns.find((p) => p.id === c.gov.ruler);
+  const name = r ? r.fam : c.name;
+  let h = 7;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return [TINCTURES[h % TINCTURES.length], METALS[(h >>> 4) % METALS.length]];
+}
 const OPEN_AIR = new Set(['well', 'field', 'graveyard']);
 
 /** A tile where firelight comes from, for the night lighting. 0 if none, else the radius in tiles. */
@@ -431,7 +447,7 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
       if (!s) {
         const want = plan[i];
         if (want) {
-          const wall = want === B.WALL_WOOD || want === B.WALL_STONE || want === B.FENCE;
+          const wall = want === B.WALL_WOOD || want === B.WALL_STONE || want === B.FENCE || want === B.CWALL || want === B.CTOWER || want === B.PALISADE;
           g.rect(px + 2, py + 2, TS - 4, TS - 4).fill({ color: 0xa5b0ff, alpha: wall ? 0.2 : 0.07 }).stroke({ width: 1, color: 0xa5b0ff, alpha: wall ? 0.5 : 0.28 });
         }
         continue;
@@ -465,7 +481,7 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
       const shade = (sx: number, sy: number, w: number, h: number, r: number): void => {
         g.roundRect(sx + 1.5, sy + 2, w, h, r).fill({ color: 0x140c06, alpha: 0.28 });
       };
-      if (s >= B.BED && roofed && s !== B.GRAVE && (s < B.FLOOR_BARE || s === B.STRAW)) floor();
+      if (s >= B.BED && roofed && s !== B.GRAVE && (s < B.FLOOR_BARE || s === B.STRAW || CASTLE_FURN.has(s))) floor();
 
       switch (s) {
         case B.FLOOR_WOOD:
@@ -534,6 +550,23 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           break;
         }
         case B.DOOR: {
+          if (b && (b.k === 'gatehouse' || b.k === 'palisade')) {
+            // a castle gate: a flagged way through, with heavy oak leaves swung back and an iron portcullis drawn up
+            const across = isWall(stAt(x - 1, y)) || isWall(stAt(x + 1, y)) || stAt(x - 1, y) === B.PALISADE || stAt(x + 1, y) === B.PALISADE;
+            g.rect(px, py, TS, TS).fill(b.k === 'palisade' ? 0x8a7a5e : 0xcfc4aa);
+            if (across) {
+              g.rect(px, py + 2, TS, 3).fill({ color: 0x2c2f36, alpha: 0.85 });
+              for (let n = 0; n < 6; n++) g.rect(px + 1.5 + n * 4, py + 1, 1.2, 5).fill(0x2c2f36);
+              g.rect(px + 1, py + 6, 5, 14).rect(px + TS - 6, py + 6, 5, 14).fill(0x6a4426);
+              g.rect(px + 1, py + 9, 5, 1.2).rect(px + TS - 6, py + 9, 5, 1.2).rect(px + 1, py + 16, 5, 1.2).rect(px + TS - 6, py + 16, 5, 1.2).fill(0x2c2f36);
+            } else {
+              g.rect(px + 2, py, 3, TS).fill({ color: 0x2c2f36, alpha: 0.85 });
+              for (let n = 0; n < 6; n++) g.rect(px + 1, py + 1.5 + n * 4, 5, 1.2).fill(0x2c2f36);
+              g.rect(px + 6, py + 1, 14, 5).rect(px + 6, py + TS - 6, 14, 5).fill(0x6a4426);
+              g.rect(px + 9, py + 1, 1.2, 5).rect(px + 9, py + TS - 6, 1.2, 5).rect(px + 16, py + 1, 1.2, 5).rect(px + 16, py + TS - 6, 1.2, 5).fill(0x2c2f36);
+            }
+            break;
+          }
           if (b && b.k === 'graveyard') {
             g.rect(px + 1, py + 10, 22, 3).fill(0x9a7a50);
             g.circle(px + 2.5, cy, 3).circle(px + 21.5, cy, 3).fill(0x5a4030);
@@ -558,6 +591,93 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
             g.roundRect(px + 3, py + 3, 14, 3.5, 1).fill(0x6a4426).stroke({ width: 1, color: 0x2a1d12 });
             g.rect(px + 6, py + 3, 1.2, 3.5).rect(px + 13, py + 3, 1.2, 3.5).fill(0x2c2f36);
           }
+          break;
+        }
+        case B.CWALL:
+        case B.CTOWER: {
+          // the castle's walls: thick dressed stone, darker and heavier than any house wall, with
+          // merlons along the wall-walk; the towers rounder and capped with a ring of them
+          const tower = s === B.CTOWER;
+          const edge = 0x1c1d22;
+          const face = tower ? 0x55555c : 0x5f6068;
+          const top = tower ? 0x8d8e96 : 0x9a9ba3;
+          g.rect(px, py, TS, TS).fill(edge);
+          const l = isWall(stAt(x - 1, y)) ? 0 : 1.5;
+          const r = isWall(stAt(x + 1, y)) ? 0 : 1.5;
+          const u = isWall(stAt(x, y - 1)) ? 0 : 1.5;
+          const d = isWall(stAt(x, y + 1)) ? 0 : 8;
+          g.rect(px + l, py + u, TS - l - r, TS - u - (d ? 1.5 : 0)).fill(face);
+          g.rect(px + l, py + u, TS - l - r, TS - u - d).fill(top);
+          // coursed blocks on the face
+          if (d) g.rect(px + l, py + TS - 5, TS - l - r, 1).rect(px + l + ((x & 1) ? 5 : 11), py + TS - 9.5, 1, 4).fill({ color: 0x2a2b31, alpha: 0.7 });
+          // the wall-walk: a darker strip down the middle, merlons along the open sides
+          const ns = isCastleWall(stAt(x, y - 1)) || isCastleWall(stAt(x, y + 1));
+          const ew = isCastleWall(stAt(x - 1, y)) || isCastleWall(stAt(x + 1, y));
+          const walk = tower ? 0x6e6f77 : 0x7d7e86;
+          if (ew || !ns) g.rect(px + l, cy - 3, TS - l - r, 6).fill(walk);
+          if (ns) g.rect(cx - 3, py + u, 6, TS - u - d).fill(walk);
+          const merlon = (mx: number, my: number): void => { g.rect(mx, my, 4.5, 4.5).fill(tower ? 0xa9aab2 : 0xb6b7bf).stroke({ width: 0.8, color: edge }); };
+          if (ew || !ns) for (const mx of [px + 2, px + 9.5, px + 17]) { if (!isCastleWall(stAt(x, y - 1))) merlon(mx, py + u + 0.5); if (!isCastleWall(stAt(x, y + 1))) merlon(mx, py + TS - d - 5); }
+          if (ns) for (const my of [py + 2, py + 9.5, py + 17]) { if (!isCastleWall(stAt(x - 1, y))) merlon(px + l + 0.5, my); if (!isCastleWall(stAt(x + 1, y))) merlon(px + TS - r - 5, my); }
+          if (tower) g.rect(px + l, py + u, TS - l - r, TS - u - d).stroke({ width: 1.2, color: 0x3a3b42, alpha: 0.6 });
+          if (pal.snow > 0.5) g.rect(px + l, py + u, TS - l - r, 3).fill({ color: 0xf2f5f7, alpha: 0.55 });
+          break;
+        }
+        case B.PALISADE: {
+          // a ring of sharpened stakes: logs side by side along the line, points outward
+          const link = (dx: number, dy: number): boolean => { const n = stAt(x + dx, y + dy); return n === B.PALISADE || (n === B.DOOR && c.sb[(y + dy) * W + x + dx] === c.sb[i]); };
+          const along = link(-1, 0) || link(1, 0);
+          g.rect(px + (along ? 0 : 6), py + (along ? 6 : 0), along ? TS : 12, along ? 12 : TS).fill({ color: 0x140c06, alpha: 0.3 });
+          for (let n = 0; n < 4; n++) {
+            const o = 3 + n * 6;
+            if (along) {
+              g.roundRect(px + o - 2.6, py + 5, 5.2, 13, 2).fill(n % 2 ? 0x7a5232 : 0x8a6440).stroke({ width: 0.9, color: 0x2a1d12 });
+              g.circle(px + o, py + 6.5, 1.6).fill(0xc9a27a);
+            } else {
+              g.roundRect(px + 5, py + o - 2.6, 13, 5.2, 2).fill(n % 2 ? 0x7a5232 : 0x8a6440).stroke({ width: 0.9, color: 0x2a1d12 });
+              g.circle(px + 6.5, py + o, 1.6).fill(0xc9a27a);
+            }
+          }
+          break;
+        }
+        case B.THRONE: {
+          // a high-backed seat on a dais, cushioned in the house's colour
+          const [field, metal] = houseColours(c);
+          g.roundRect(px + 1, py + 1, 22, 22, 3).fill(0x8a7a5e).stroke({ width: 1, color: 0x3a3226 });
+          shade(px + 5, py + 3, 14, 18, 2);
+          g.roundRect(px + 5, py + 2, 14, 18, 2).fill(0x6a4426).stroke({ width: 1.2, color: 0x2a1d12 });
+          g.roundRect(px + 5.5, py + 2, 13, 6, 2).fill(metal).stroke({ width: 0.8, color: 0x2a1d12 });
+          g.roundRect(px + 7, py + 9, 10, 9, 1.5).fill(field);
+          g.circle(cx, py + 5, 1.6).fill(field);
+          break;
+        }
+        case B.BANNER: {
+          // a banner on a staff, in the ruling house's colours
+          const [field, metal] = houseColours(c);
+          g.rect(px + 3, py + 2, 18, 2.2).fill(0x5a3d28);
+          g.circle(px + 3, py + 3.1, 1.6).circle(px + 21, py + 3.1, 1.6).fill(0xd9b85a);
+          g.poly([px + 6, py + 4, px + 18, py + 4, px + 18, py + 20, cx, py + 16.5, px + 6, py + 20]).fill(field).stroke({ width: 0.9, color: 0x1a120a });
+          g.rect(cx - 1.4, py + 4, 2.8, 12.5).fill(metal);
+          g.circle(cx, py + 9.5, 2.6).fill(metal).stroke({ width: 0.7, color: field });
+          break;
+        }
+        case B.TAPESTRY: {
+          // a long hanging against the wall: a hunt worked in wool
+          const [field] = houseColours(c);
+          g.rect(px + 1, py + 1, 22, 2).fill(0x5a3d28);
+          g.rect(px + 2, py + 3, 20, 11).fill(mix(field, 0x6a5a3a, 0.45)).stroke({ width: 0.8, color: 0x2a1d12 });
+          g.rect(px + 3, py + 4.5, 18, 8).stroke({ width: 0.8, color: 0xd9b85a, alpha: 0.8 });
+          g.ellipse(px + 9, py + 9, 3, 1.6).fill(0xe8dcc0);
+          g.circle(px + 15, py + 8.5, 1.4).fill(0x3f6a3a);
+          for (let n = 0; n < 5; n++) g.rect(px + 3 + n * 4, py + 14, 1, 2).fill(0xd9b85a);
+          break;
+        }
+        case B.HAY: {
+          // a bale of hay
+          shade(px + 3, py + 4, 18, 15, 2);
+          g.roundRect(px + 3, py + 4, 18, 15, 2).fill(0xd9b85a).stroke({ width: 1, color: 0x8a6a2a });
+          g.rect(px + 3, py + 8.5, 18, 1.4).rect(px + 3, py + 14, 18, 1.4).fill(0x8a6a2a);
+          for (let n = 0; n < 5; n++) g.moveTo(px + 5 + n * 3.5, py + 5).lineTo(px + 6 + n * 3.5, py + 18).stroke({ width: 0.6, color: 0xb8963a, alpha: 0.8 });
           break;
         }
         case B.FENCE: {

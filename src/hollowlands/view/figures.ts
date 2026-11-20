@@ -342,6 +342,7 @@ export const SWINGING = new Set(['axe', 'pick', 'hoe', 'hammer', 'tongs']);
 export const BLD_ICON: Record<string, string> = {
   hall: 'eat', kitchen: 'w:cook', tavern: 'drink', brewery: 'w:brew', store: 'store', granary: 'w:farm', shrine: 'pray', smithy: 'w:smith',
   workshop: 'w:craft', infirmary: 'w:heal', herbalist: 'w:herbs', school: 'study', guardhouse: 'w:guard', tower: 'w:guard', pen: 'w:herd', bathhouse: 'bathe', gamehall: 'chess',
+  keep: 'crown', motte: 'crown', gatehouse: 'w:guard', barracks: 'w:guard', stables: 'w:herd',
 };
 
 // ---------- Wild animals (facing right) ----------
@@ -592,6 +593,10 @@ export function drawActivity(g: Graphics, key: string): void {
     case 'study': // a closed book
       g.roundRect(-3.2, -3.6, 6.4, 7.2, 1).fill(0x4f6fa8);
       g.rect(-2.2, -3.6, 1, 7.2).fill(0x2f4f88);
+      break;
+    case 'crown': // the ruler's seat
+      g.poly([-4, 2.8, -4, -2.6, -2, -0.4, 0, -3.8, 2, -0.4, 4, -2.6, 4, 2.8]).fill(0xe8c75a).stroke({ width: 0.7, color: 0x8a6a2a });
+      g.circle(0, 0.8, 0.9).fill(0xd2445a);
       break;
     case 'store': // a crate
       g.rect(-3.6, -3.4, 7.2, 6.8).fill(0xc9a27a);

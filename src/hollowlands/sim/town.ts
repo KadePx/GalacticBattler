@@ -11,8 +11,12 @@ import { B, F, T, isStreetThing, type Colony } from './types';
 
 /** Distance between streets; the blocks between them are BLOCK - 1 tiles across. */
 export const BLOCK = 12;
-/** Radius of the ground on the rise kept clear for a keep. */
-export const KEEP_R = 7;
+/**
+ * Radius of the ground on the rise kept clear for the castle: room on a 128-tile map for the whole
+ * castle (19 tiles square, see CASTLE_N) with a little open ground round it; a small keep's worth on
+ * the old 72-tile maps.
+ */
+export const keepR = (c: { w: number; h: number }): number => (Math.min(c.w, c.h) >= 100 ? 13 : 7);
 /** Half the width of the market square. */
 export const SQUARE = 5;
 /** Half the width of the temple's little square. */
@@ -26,7 +30,8 @@ export function onKeep(c: Colony, x: number, y: number): boolean {
   if (!k) return false;
   const dx = x - k.x;
   const dy = y - k.y;
-  return dx * dx + dy * dy <= KEEP_R * KEEP_R;
+  const R = keepR(c);
+  return dx * dx + dy * dy <= R * R;
 }
 
 /** The lane round the foot of the keep's rise. */
@@ -36,7 +41,8 @@ function keepRing(c: Colony, x: number, y: number): boolean {
   const dx = x - k.x;
   const dy = y - k.y;
   const d2 = dx * dx + dy * dy;
-  return d2 > KEEP_R * KEEP_R && d2 <= 72;
+  const R = keepR(c);
+  return d2 > R * R && d2 <= (R + 1.5) * (R + 1.5);
 }
 
 /**
@@ -111,6 +117,8 @@ export function frame(c: Colony): Frame {
       const across = dx * gy - dy * gx;
       let z: number = Z.NONE;
       if (keepRing(c, x, y)) z = Z.LANE;
+      // the castle's ground is its own: no streets run across it
+      else if (onKeep(c, x, y)) z = Z.NONE;
       else if (Math.abs(dx) <= SQUARE && Math.abs(dy) <= SQUARE) z = Z.SQUARE;
       else if (Math.abs(x - tx) <= PLAZA && Math.abs(y - ty) <= PLAZA) z = Z.PLAZA;
       else if (along > 0 && along < wall + WALL_W && Math.abs(across) <= 1) z = Z.AVENUE;
@@ -186,7 +194,7 @@ export function quarter(c: Colony, k: string): Pref {
     case 'shrine': return { near: 15, spread: 1, dx: -f.px, dy: -f.py, aw: 6 };
     case 'school': case 'infirmary': return { near: 19, spread: 0.9, dx: -f.px, dy: -f.py, aw: 4 };
     // the castle quarter
-    case 'guardhouse': return { near: Math.max(12, f.kd - KEEP_R - 4), spread: 0.8, dx: f.kx, dy: f.ky, aw: 5 };
+    case 'guardhouse': return { near: Math.max(12, f.kd - keepR(c) - 4), spread: 0.8, dx: f.kx, dy: f.ky, aw: 5 };
     case 'tower': return { near: f.wall - 8, spread: 0.3 };
     // outside the wall: farms, pens and the dead
     case 'field': return { near: out + 3, spread: 0.8 };
@@ -221,7 +229,7 @@ export function lotScore(c: Colony, k: string, x: number, y: number, w: number, 
   // the ground between the square and the keep is held for the great families' houses
   if (!FINE.has(k) && d > 9) {
     const f = frame(c);
-    if (d < f.kd + KEEP_R + 4 && (ddx * f.kx + ddy * f.ky) / d > 0.5) s -= 9;
+    if (d < f.kd + keepR(c) + 4 && (ddx * f.kx + ddy * f.ky) / d > 0.5) s -= 9;
   }
   // the door (or a garden gate) opens onto a street or a square
   for (let dy = 0; dy < rows.length; dy++) {

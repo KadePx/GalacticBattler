@@ -4,7 +4,7 @@
 import { DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
 import { cacheOf, dropFeat, touch, touchAt } from './cache';
 import { BACKS } from './data/backstories';
-import { CROPS, HOMES, SHAPES, TPL, cellCode, cells, isDecor, shapeOf, spots } from './data/buildings';
+import { CASTLE_KINDS, CROPS, HOMES, SHAPES, TPL, cellCode, cells, isDecor, shapeOf, spots } from './data/buildings';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
 import { OUTSIDE, WALL_W, Z, frame, lotScore, octo, onKeep, passableThing, pave } from './town';
@@ -63,7 +63,7 @@ export function placeBuilding(c: Colony, k: string, x: number, y: number, instan
 
 const OPEN = new Set<number>([T.GRASS, T.DIRT, T.SOIL, T.SAND, T.STONE, T.MARSH]);
 /** What a new building may stand flush against: another's wall, fence or garden wall. */
-const PARTY = new Set<number>([B.WALL_WOOD, B.WALL_STONE, B.FENCE, B.LOWWALL]);
+const PARTY = new Set<number>([B.WALL_WOOD, B.WALL_STONE, B.FENCE, B.LOWWALL, B.CWALL, B.CTOWER, B.PALISADE]);
 
 /** Best free plot for a building, or null if the land is full. */
 export function findSite(c: Colony, k: string, shape = k, far = false, planned = false): [number, number] | null {
@@ -337,7 +337,8 @@ export function assignBeds(c: Colony, quiet: boolean): void {
     if (!head || head.gone) continue;
     // a couple who each hold a home live in one of them, not moved back and forth
     const cur = head.home ? homes.find((x) => x.id === head.home) : undefined;
-    if (cur && cur !== b && cur.own && (cur.own === head.sp || cur.own === head.id) && (b.got ?? 0) <= (cur.got ?? 0)) continue;
+    // (the castle's hall comes before any house: a ruler lives in their castle)
+    if (cur && cur !== b && cur.own && (cur.own === head.sp || cur.own === head.id) && (CASTLE_KINDS.has(cur.k) || (!CASTLE_KINDS.has(b.k) && (b.got ?? 0) <= (cur.got ?? 0)))) continue;
     const fam = household(c, head);
     for (const p of fam) {
       if (p.home === b.id || p.gone) continue;
@@ -348,6 +349,21 @@ export function assignBeds(c: Colony, quiet: boolean): void {
         if (out) out.home = 0;
         b.beds[j] = 0;
       }
+      move(p, b);
+    }
+  }
+  // the castle's barracks are for its wardens: guards and scouts without a family of their own
+  for (const b of homes) {
+    if (b.k !== 'barracks') continue;
+    for (let i = 0; i < b.beds.length; i++) {
+      const o = b.beds[i] ? pawnById(c, b.beds[i]) : undefined;
+      if (o && (!isWardenProf(o) || o.sp)) { o.home = 0; b.beds[i] = 0; }
+    }
+    for (const p of c.pawns) {
+      if (b.beds.indexOf(0) < 0) break;
+      if (p.gone || p.home === b.id || !isWardenProf(p) || p.sp || stage(c, p) < STAGE.ADULT) continue;
+      const cur = p.home ? homes.find((x) => x.id === p.home) : undefined;
+      if (cur?.own === p.id) continue;
       move(p, b);
     }
   }
@@ -365,7 +381,7 @@ export function assignBeds(c: Colony, quiet: boolean): void {
       let bestN = 999;
       for (const b of homes) {
         const f = free(b);
-        if (f <= 0) continue;
+        if (f <= 0 || b.k === 'barracks' || b.k === 'keep' || b.k === 'motte') continue;
         const n = b.beds.length - f + (b.own ? 100 : 0);
         if (n < bestN) { bestN = n; pick = b; }
       }
@@ -380,10 +396,12 @@ export function assignBeds(c: Colony, quiet: boolean): void {
     if (!o || !o.home || o.home === p.home) continue;
     const a = homes.find((x) => x.id === p.home);
     const b = homes.find((x) => x.id === o.home);
-    if (a && free(a) > 0) move(o, a);
-    else if (b && free(b) > 0) move(p, b);
+    if (a && free(a) > 0 && a.k !== 'barracks') move(o, a);
+    else if (b && free(b) > 0 && b.k !== 'barracks') move(p, b);
   }
 }
+
+const isWardenProf = (p: Pawn): boolean => p.prof === 'guard' || p.prof === 'scout';
 
 const isKin = (a: Pawn, b: Pawn): boolean => a.sp === b.id || a.mo === b.id || a.fa === b.id || b.mo === a.id || b.fa === a.id || (!!a.mo && a.mo === b.mo);
 
@@ -402,7 +420,7 @@ export function sharesWithStrangers(c: Colony, p: Pawn): boolean {
 /** When a home stands empty, the people who most need a place of their own move in. */
 function rehouse(c: Colony, homes: Bld[], move: (p: Pawn, b: Bld) => void): void {
   for (const b of homes) {
-    if (b.own || b.beds.some((x) => x)) continue;
+    if (b.own || b.beds.some((x) => x) || CASTLE_KINDS.has(b.k)) continue;
     let done = false;
     if (b.beds.length >= 2) {
       for (const p of c.pawns) {
@@ -445,7 +463,8 @@ function slots(c: Colony, adults: number, kids: number): Record<string, number> 
     smith: has('smithy') ? 1 : 0,
     weaver: has('workshop') ? 1 : 0,
     healer: adults >= 8 ? 1 : 0,
-    guard: adults >= 20 ? 2 : adults >= 10 ? 1 : 0,
+    // a castle keeps a small garrison of its own in its barracks
+    guard: (adults >= 20 ? 2 : adults >= 10 ? 1 : 0) + (has('barracks') ? 2 : 0),
     priest: has('shrine') ? 1 : 0,
     lorekeeper: kids >= 3 && adults >= 8 ? 1 : 0,
     herbalist: adults >= 14 ? 1 : 0,
@@ -542,7 +561,8 @@ export function plan(c: Colony): void {
   assignProfs(c, false);
   const pop = c.pawns.length;
   if (!pop) return;
-  const pending = c.blds.filter((b) => !b.built);
+  // (the castle goes up alongside the town, at its own pace: it does not hold up the town's building)
+  const pending = c.blds.filter((b) => !b.built && !CASTLE_KINDS.has(b.k));
   // no stone to be had for weeks: build it in timber instead
   for (const b of pending) {
     if (b.need.stone > 0.01 && c.stock.stone < 1 && c.tick - b.made > 240 * 5) {

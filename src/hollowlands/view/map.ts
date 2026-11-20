@@ -665,13 +665,15 @@ export class MapView {
   /** Rebuild the signs when buildings are raised, finished or resown. */
   private syncSigns(c: Colony): void {
     let key = '';
-    for (const b of c.blds) if (!HOMES.includes(b.k) && b.k !== 'well' && b.k !== 'graveyard') key += `${b.id}${b.built ? 'b' : 'p'}${b.crop ?? ''},`;
+    // rings of wall carry no sign of their own (the gatehouse has one)
+    const unsigned = (k: string): boolean => HOMES.includes(k) || k === 'well' || k === 'graveyard' || k === 'palisade' || k === 'curtain';
+    for (const b of c.blds) if (!unsigned(b.k)) key += `${b.id}${b.built ? 'b' : 'p'}${b.crop ?? ''},`;
     if (key === this.signKey) return;
     this.signKey = key;
     for (const s of this.signs) { s.g.destroy(); s.label.destroy(); }
     this.signs = [];
     for (const b of c.blds) {
-      if (HOMES.includes(b.k) || b.k === 'well' || b.k === 'graveyard') continue;
+      if (unsigned(b.k)) continue;
       const field = b.k === 'field';
       const name = field ? (b.built && b.crop ? CROPS[b.crop]?.name ?? 'Field' : 'New field') : (b.name ?? TPL[b.k]?.name ?? b.k) + (b.built ? '' : ' (being built)');
       const g = new Graphics();

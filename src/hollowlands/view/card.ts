@@ -423,7 +423,8 @@ export function bldCard(c: Colony, b: Bld): string {
   if (PURPOSE[b.k]) h += `<div class="hint">${esc(PURPOSE[b.k])}</div>`;
   if (b.own) {
     const o = c.pawns.find((p) => p.id === b.own);
-    if (o) h += `<div class="hint">Home of the ${esc(o.fam)} family (${esc(o.first)} ${esc(o.fam)}).</div>`;
+    if (o && (b.k === 'keep' || b.k === 'motte')) h += `<div class="hint">Seat of ${esc(rulerTitle(c, o))} ${esc(o.first)} ${esc(o.fam)}, and home of their family.</div>`;
+    else if (o) h += `<div class="hint">Home of the ${esc(o.fam)} family (${esc(o.first)} ${esc(o.fam)}).</div>`;
   }
 
   if (b.k === 'field') {

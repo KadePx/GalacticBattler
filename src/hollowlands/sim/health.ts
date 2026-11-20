@@ -22,7 +22,7 @@ export interface IllDef { k: string; name: string; sev: number; imm: number; spr
 export const ILLS: Record<string, IllDef> = {
   flux: { k: 'flux', name: 'the flux', sev: 1.25, imm: 1.45, spread: 0.012, start: 8 },
   fever: { k: 'fever', name: 'rot fever', sev: 1.45, imm: 1.25, spread: 0, start: 12 },
-  plague: { k: 'plague', name: 'the grey plague', sev: 1.6, imm: 0.82, spread: 0.035, start: 8 },
+  plague: { k: 'plague', name: 'the grey plague', sev: 1.75, imm: 0.92, spread: 0.07, start: 8 },
   cough: { k: 'cough', name: 'lung-cough', sev: 0.66, imm: 0.75, spread: 0.014, start: 6 },
   pox: { k: 'pox', name: 'goblin pox', sev: 0.8, imm: 1.3, spread: 0.02, start: 6 },
 };
@@ -39,8 +39,21 @@ export function isDown(p: Pawn): boolean {
 }
 
 export function needsRest(p: Pawn): boolean {
-  return isDown(p) || p.hp < 45 || pain(p) > 40 || (!!p.ill && p.ill.sev > 30);
+  // the plague-sick keep to their beds early: it is the best cure there is, and it keeps them from others
+  return isDown(p) || p.hp < 45 || pain(p) > 40 || (!!p.ill && (p.ill.sev > 30 || (p.ill.k === 'plague' && p.ill.sev > 14)));
 }
+
+/**
+ * A wave of the grey plague: when it began, how many lived here then, and how many it has taken.
+ * Once it has taken its share the worst is over: the rest pull through, weak but alive.
+ */
+const WAVE = 20 * TICKS_PER_DAY;
+const plagueWave = (c: Colony): NonNullable<Colony['plague']> => {
+  // a wave lasts until twenty days pass with nobody newly taken ill
+  if (!c.plague || c.tick - c.plague.last > WAVE) c.plague = { t: c.tick, last: c.tick, n0: c.pawns.length, dead: 0 };
+  return c.plague;
+};
+const plagueSpent = (c: Colony): boolean => !!c.plague && c.plague.dead >= Math.max(2, Math.ceil(c.plague.n0 * 0.15));
 
 export const needsTending = (p: Pawn, tick: number): boolean => p.inj.some((i) => !i.tend) || (!!p.ill && tick - p.ill.tend > TICKS_PER_DAY);
 
@@ -89,6 +102,7 @@ export function infect(c: Colony, p: Pawn, k: string): boolean {
   if (p.ill || p.gone) return false;
   if (k === 'pox' && p.race === 'goblin') return false;
   if (p.perm.includes('had_' + k)) return false;
+  if (k === 'plague') plagueWave(c).last = c.tick;
   p.ill = { k, sev: ILLS[k].start, imm: 0, t: c.tick, tend: -99999 };
   log(c, 'sick', p.id, undefined, k);
   note(c, p, 'sick', undefined, k);
@@ -142,16 +156,21 @@ export function hourlyHealth(c: Colony, p: Pawn): void {
     const def = ILLS[ill.k];
     const st = stage(c, p);
     const age = st === STAGE.ELDER ? 0.72 : st <= STAGE.CHILD ? 0.85 : 1;
-    const tended = t - ill.tend < TICKS_PER_DAY ? 1.3 : 1;
-    ill.imm += def.imm * immune * age * (resting ? 1.25 : 1) * tended * (p.food < 15 ? 0.7 : 1);
+    const tended = t - ill.tend < TICKS_PER_DAY ? (ill.k === 'plague' ? 1.15 : 1.3) : 1;
+    // a sickbed in the infirmary, warm and watched over, does more than straw at home
+    const sickbed = resting && p.act.b !== undefined && c.blds.some((b) => b.id === p.act.b && b.k === 'infirmary');
+    ill.imm += def.imm * immune * age * (resting ? (sickbed ? 1.45 : 1.25) : 1) * tended * (p.food < 15 ? 0.7 : 1);
     ill.sev += def.sev * (ill.imm > 65 ? 0.35 : 1);
+    // once a wave of plague has taken its share, the rest pull through
+    if (ill.k === 'plague' && ill.sev >= 97 && plagueSpent(c)) { ill.sev = 97; ill.imm += 1.5; }
     if (ill.imm >= 100) {
       p.ill = undefined;
-      if (ill.k === 'plague' || ill.k === 'pox') p.perm.push('had_' + ill.k);
+      if (ill.k === 'plague' || ill.k === 'pox' || ill.k === 'flux') p.perm.push('had_' + ill.k);
       if (ill.k === 'pox' && !p.perm.includes('scar_face')) { p.perm.push('scar_face'); p.look.marks.push(9); }
       think(c, p, 'recovered');
       log(c, 'recovered', p.id, undefined, ill.k);
     } else if (ill.sev >= 100) {
+      if (ill.k === 'plague' && c.plague) c.plague.dead++;
       die(c, p, 'sick_' + ill.k);
       return;
     } else if (def.spread > 0) {
@@ -159,12 +178,19 @@ export function hourlyHealth(c: Colony, p: Pawn): void {
       const pi = posAt(c, p, t);
       const px = pi % c.w;
       const py = Math.floor(pi / c.w);
+      // the sick in their beds pass it on far less (the infirmary least of all), and those who
+      // tend them know to keep a cloth over their mouths
+      const abed = resting ? (sickbed ? 0.2 : 0.4) : 1;
       for (const o of c.pawns) {
         if (o === p || o.ill || o.gone) continue;
         const oi = posAt(c, o, t);
-        const near = Math.abs((oi % c.w) - px) <= 2 && Math.abs(Math.floor(oi / c.w) - py) <= 2;
-        if (!near) continue;
-        if (r.chance(def.spread / Math.max(0.3, stat(o, 'immune')))) infect(c, o, ill.k);
+        const dx = Math.abs((oi % c.w) - px);
+        const dy = Math.abs(Math.floor(oi / c.w) - py);
+        if (dx > 2 || dy > 2) continue;
+        // breath carries a pace or so; two paces off, much less
+        const close = dx <= 1 && dy <= 1 ? 1 : 0.3;
+        const care = o.act.k === 'work' && o.act.w === 'heal' ? 0.5 : 1;
+        if (r.chance((def.spread * abed * close * care) / Math.max(0.3, stat(o, 'immune')))) infect(c, o, ill.k);
       }
     }
   }

@@ -7,6 +7,7 @@ import { PROFS, PROF_LIST } from './sim/data/professions';
 import { RACES } from './sim/data/races';
 import { TH } from './sim/data/thoughts';
 import { person } from './sim/pawn';
+import { rulerTitle } from './sim/gov';
 import type { Colony, Ev, Id } from './sim/types';
 
 /** "Day 13 of Autumn, Year 3", optionally with the time of day. */
@@ -103,10 +104,26 @@ export const WEIGHT: Record<string, number> = {
   schism: 3, fire_spread: 3, match_sent: 3, match: 3,
   asked: 2, blackmail: 3, prosthetic: 2, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
   raidout: 3, raiders_from: 2, raidback: 3, war_declared: 3, war_on_us: 3, incident: 2, set_out: 3, pen_stocked: 2, master: 3, dream: 3, festival_set: 1, festival: 2, contest: 2, apprenticed: 2, graduated: 2, bought_beasts: 1, dogcame: 2, adopted: 2, dogdied: 2, dogbark: 2, slaughter: 1, warband: 3, peace_sued: 3, peace_made: 3, spotted: 2, brokeup: 1, berserk_hit: 3, subdued: 3, subdue_failed: 2,
-  feast_set: 2, audience: 2, prosper: 2, home_lost: 2, razed: 1,
+  feast_set: 2, audience: 2, prosper: 2, home_lost: 2, razed: 1, castle: 3,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
+
+/** The castle's stages in the chronicle: begun (e.s 'begun') and finished ('done'), stage in e.n. */
+function castleText(c: Colony, e: Ev): string {
+  const p = e.a ? person(c, e.a) : undefined;
+  const lord = p ? 'the ' + rulerTitle(c, p).toLowerCase() : 'the colony';
+  const Lord = lord.charAt(0).toUpperCase() + lord.slice(1);
+  const name = p ? first(c, e.a) : '';
+  if (e.s === 'begun') {
+    if (e.n === 1) return `${Lord} has begun a keep on the hill: first a ring of sharpened stakes, and a timber hall inside it.`;
+    if (e.n === 2) return `Masons are at work on the hill. ${p ? rulerTitle(c, p) + ' ' + name : 'The colony'} will have a keep of stone.`;
+    return 'Work has begun on the castle walls: a curtain of stone, a tower at each corner, and a gatehouse facing the town.';
+  }
+  if (e.n === 1) return `The palisade stands on the hill, and the timber hall within it.${name ? ` ${name} has moved up from the town.` : ''}`;
+  if (e.n === 2) return `The keep stands in stone. Banners hang in its great hall${name ? `, and ${name} sits on the throne` : ''}.`;
+  return 'The castle walls are finished. The gates are hung, the towers stand ready, and the courtyard is laid with stone.';
+}
 
 export function evText(c: Colony, e: Ev): string {
   const a = first(c, e.a);
@@ -157,6 +174,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'plan': return `Work begins on a ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'}.`;
     case 'prosper': return `${e.b ? `${a} and ${b} have` : `${a} has`} put ${e.n ?? 'some'} silver toward a ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'home'} of their own.`;
     case 'home_lost': return `${a} can no longer keep up the ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'house'}. It goes to whoever needs a roof.`;
+    case 'castle': return castleText(c, e);
     case 'razed': return `The empty ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'house'} had fallen in, and was pulled down for its timber.`;
     case 'harvest': return `${a} brought in the last of the ${e.s === 'grain' ? 'barley' : e.s === 'flax' ? 'flax' : 'roots'}.`;
     case 'hunt': return `${a} came back with a fine kill.`;

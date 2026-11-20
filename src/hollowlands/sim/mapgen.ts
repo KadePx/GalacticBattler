@@ -3,7 +3,7 @@
 // woods with clearings, a coast on coast maps, and a road in from the edge of the world.
 
 import { Rand, S, hash32 } from './rng';
-import { KEEP_R, reach } from './town';
+import { keepR, reach } from './town';
 import { F, T, type Colony } from './types';
 
 export const BIOMES = ['valley', 'hills', 'marsh', 'coast', 'forest', 'highland'] as const;
@@ -170,7 +170,10 @@ export function genMap(c: Colony): void {
   let kx = 0;
   let ky = 0;
   let bestWet = Infinity;
+  const KEEP_R = keepR(c);
   for (const dd of [kd, kd + 3, kd - 2, kd + 6]) {
+    // the castle stays inside the line of the town wall
+    if (dd !== kd && dd + KEEP_R > reach(c) + 2) continue;
     for (const [l1, l2] of [[lat, lat2], [-lat, -lat2], [0, 0], [lat + 5, lat2 + 5], [-lat - 5, -lat2 - 5]]) {
       const x = Math.round(cx + SIDE_DX[away] * dd + SIDE_DX[(away + 1) % 4] * side * l1);
       const y = Math.round(cy + SIDE_DY[away] * dd + SIDE_DY[(away + 1) % 4] * side * l2);
@@ -315,7 +318,7 @@ export function genMap(c: Colony): void {
     if (x < or + 4 || y < or + 4 || x >= W - or - 4 || y >= H - or - 4) continue;
     if (nearRoad(x, y, or + 4) || c.ter[y * W + x] === T.DEEP || c.ter[y * W + x] === T.SHALLOW) continue;
     // nor on the rise kept for the keep
-    if (Math.sqrt((x - kx) * (x - kx) + (y - ky) * (y - ky)) < or + 5 * K) continue;
+    if (Math.sqrt((x - kx) * (x - kx) + (y - ky) * (y - ky)) < or + Math.max(5 * K, KEEP_R + 3)) continue;
     for (let yy = y - or - 4; yy <= y + or + 4; yy++) {
       for (let xx = x - or - 4; xx <= x + or + 4; xx++) {
         const i = yy * W + xx;
