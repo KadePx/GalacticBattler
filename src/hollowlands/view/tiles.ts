@@ -8,6 +8,8 @@ import { riseAt } from '../sim/mapgen';
 import { Z, frame, onKeep } from '../sim/town';
 import { B, F, T, type Bld, type Colony } from '../sim/types';
 import { css, darken, lighten, mix } from './look';
+import { knows } from '../sim/known';
+import { drawFieldWorks, drawPennant, drawTechThing, drawWindow, isTechThing } from './techart';
 
 /** Tile size in world pixels at zoom 1. */
 export const TS = 24;
@@ -427,7 +429,7 @@ const OPEN_AIR = new Set(['well', 'field', 'graveyard']);
 
 /** A tile where firelight comes from, for the night lighting. 0 if none, else the radius in tiles. */
 export function lightOf(st: number): number {
-  return st === B.HEARTH ? 4.2 : st === B.FORGE ? 3.2 : st === B.TORCH ? 3 : st === B.STOVE ? 2 : st === B.LAMP ? 2.4 : st === B.BRAZIER ? 3.6 : st === B.CAULDRON ? 1.6
+  return st === B.HEARTH ? 4.2 : st === B.FORGE ? 3.2 : st === B.OVEN || st === B.KILN || st === B.GLASSFURN ? 2.4 : st === B.BLOOMERY ? 3 : st === B.TORCH ? 3 : st === B.STOVE ? 2 : st === B.LAMP ? 2.4 : st === B.BRAZIER ? 3.6 : st === B.CAULDRON ? 1.6
     : st === B.LAMPPOST ? 3.4 : st === B.WAYSHRINE ? 1.4 : 0;
 }
 
@@ -437,6 +439,13 @@ export function lightOf(st: number): number {
  */
 export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: number, y1: number, plan: Uint8Array, blds: Map<number, Bld>, pal: Pal): void {
   g.clear();
+  // what the colony's discoveries add to things already standing: ditches and clover by the
+  // fields, pennants on the towers (drawn last, over the tiles below them)
+  const ditchK = knows(c, 'irrigation');
+  const cloverK = knows(c, 'rotation');
+  let dyed = false;
+  for (const b of blds.values()) if (b.k === 'dyeworks' && b.built) { dyed = true; break; }
+  const late: (() => void)[] = [];
   const W = c.w;
   const stAt = (x: number, y: number): number => (x < 0 || y < 0 || x >= W || y >= c.h ? 0 : c.st[y * W + x]);
   // the ditch in front of the town wall: a dark trench on the open ground just outside the line
@@ -498,7 +507,7 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
       const shade = (sx: number, sy: number, w: number, h: number, r: number): void => {
         g.roundRect(sx + 1.5, sy + 2, w, h, r).fill({ color: 0x140c06, alpha: 0.28 });
       };
-      if (s >= B.BED && roofed && s !== B.GRAVE && (s < B.FLOOR_BARE || s === B.STRAW || CASTLE_FURN.has(s))) floor();
+      if (s >= B.BED && roofed && s !== B.GRAVE && (s < B.FLOOR_BARE || s === B.STRAW || CASTLE_FURN.has(s) || (isTechThing(s) && s !== B.WHEEL))) floor();
 
       switch (s) {
         case B.FLOOR_WOOD:
@@ -547,6 +556,12 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
             g.rect(px + l, py + 8, TS - l - r, 1).fill({ color: 0x3a3d44, alpha: 0.7 });
             g.rect(px + off, py + u, 1, 8 - u).rect(px + ((off + 8) % 20) + 2, py + 9, 1, Math.max(0, TS - d - 9)).fill({ color: 0x3a3d44, alpha: 0.7 });
             g.rect(px + l, py + u, TS - l - r, 1).fill({ color: 0xb8bcc6, alpha: 0.5 });
+          }
+          // a glazed home: glass in every other stretch of straight wall
+          if (b?.gl) {
+            const ew = isWall(stAt(x - 1, y)) && isWall(stAt(x + 1, y)) && !isWall(stAt(x, y - 1)) && !isWall(stAt(x, y + 1));
+            const ns = isWall(stAt(x, y - 1)) && isWall(stAt(x, y + 1)) && !isWall(stAt(x - 1, y)) && !isWall(stAt(x + 1, y));
+            if ((ew && x % 2 === 0) || (ns && y % 2 === 0)) drawWindow(g, x, y, ew, false);
           }
           if (pal.snow > 0.5) g.rect(px + l, py + u, TS - l - r, 3).fill({ color: 0xf2f5f7, alpha: 0.55 });
           // a wall that steps diagonally (round towers, cut corners) is joined by a slanted piece
@@ -686,6 +701,13 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           if (ew || !ns) for (const mx of [px + 2, px + 9.5, px + 17]) { if (!isCastleWall(stAt(x, y - 1))) merlon(mx, py + u + 0.5); if (!isCastleWall(stAt(x, y + 1))) merlon(mx, py + TS - d - 5); }
           if (ns) for (const my of [py + 2, py + 9.5, py + 17]) { if (!isCastleWall(stAt(x - 1, y))) merlon(px + l + 0.5, my); if (!isCastleWall(stAt(x + 1, y))) merlon(px + TS - r - 5, my); }
           if (tower) g.rect(px + l, py + u, TS - l - r, TS - u - d).stroke({ width: 1.2, color: 0x3a3b42, alpha: 0.6 });
+          // a pennant on each tower, once the colony can dye cloth
+          // (at the top corner of each tower: over the middle of a square tower, on top of a narrow one)
+          if (tower && dyed && stAt(x - 1, y) !== B.CTOWER && stAt(x, y - 1) !== B.CTOWER) {
+            const [field, metal] = houseColours(c);
+            const sq = stAt(x + 2, y) === B.CTOWER && stAt(x, y + 2) === B.CTOWER;
+            late.push(() => drawPennant(g, sq ? x + 1 : x, sq ? y + 1 : y, field, metal));
+          }
           if (pal.snow > 0.5) g.rect(px + l, py + u, TS - l - r, 3).fill({ color: 0xf2f5f7, alpha: 0.55 });
           break;
         }
@@ -762,6 +784,7 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           const frozen = pal.snow > 0.5;
           g.rect(px, py, TS, TS).fill(frozen ? 0x8f887e : 0x5d4630);
           g.rect(px, py + 3, TS, 2).rect(px, py + 11, TS, 2).rect(px, py + 19, TS, 2).fill({ color: frozen ? 0x7a746b : 0x473424, alpha: 0.9 });
+          if (b && (ditchK || cloverK)) drawFieldWorks(g, b, x, y, ditchK, cloverK, frozen);
           const v = c.crop[i];
           if (!v) break;
           const kind = b?.crop ?? 'grain';
@@ -1101,8 +1124,10 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           g.circle(cx, cy + 1.5, 1.6).fill(0xffd27a);
           break;
         default:
+          if (isTechThing(s)) drawTechThing(g, c, s, x, y);
           break;
       }
     }
   }
+  for (const f of late) f();
 }

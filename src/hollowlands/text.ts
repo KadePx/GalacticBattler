@@ -3,6 +3,7 @@
 
 import { SEASON_NAMES, when } from './config';
 import { TPL } from './sim/data/buildings';
+import { TECHS } from './sim/data/tech';
 import { PROFS, PROF_LIST } from './sim/data/professions';
 import { RACES } from './sim/data/races';
 import { TH } from './sim/data/thoughts';
@@ -106,6 +107,7 @@ export const WEIGHT: Record<string, number> = {
   raidout: 3, raiders_from: 2, raidback: 3, war_declared: 3, war_on_us: 3, incident: 2, set_out: 3, pen_stocked: 2, master: 3, dream: 3, festival_set: 1, festival: 2, contest: 2, apprenticed: 2, graduated: 2, bought_beasts: 1, dogcame: 2, adopted: 2, dogdied: 2, dogbark: 2, slaughter: 1, warband: 3, peace_sued: 3, peace_made: 3, spotted: 2, brokeup: 1, berserk_hit: 3, subdued: 3, subdue_failed: 2,
   market: 2, market_first: 3, market_sale: 2, carter: 1, alms: 1, feast_paid: 2,
   feast_set: 2, audience: 2, prosper: 2, home_lost: 2, razed: 1, castle: 3, walls: 3, siege: 3, breach: 3, mended: 2,
+  discovery: 3, firstbuilt: 3, chronicle: 2, tech_trader: 1, glazed_first: 2, jewels_first: 2,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
@@ -228,6 +230,12 @@ export function evText(c: Colony, e: Ev): string {
     case 'trade': return `${a} is now the colony's ${PROFS[e.s ?? '']?.name.toLowerCase() ?? e.s}.`;
     case 'stonework': return `The ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'} stands in stone now. ${a} set the last block.`;
     case 'built': return `${a} finished the ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'}.`;
+    case 'discovery': return discoveryText(c, e);
+    case 'firstbuilt': return `${full(c, e.a)} built the first ${bldName(e.s)} in ${c.name}.`;
+    case 'tech_trader': { const [k, from] = (e.s ?? ':').split(':'); return `The traders from ${from} talked of ${(TECHS[k]?.name ?? 'their new ways').toLowerCase()} all evening, and people here listened.`; }
+    case 'glazed_first': return `${a} fitted the colony's first glass windows, in a ${bldName(e.s)}. People keep stopping to look through them.`;
+    case 'jewels_first': return `${a} has made the colony's first piece of jewellery: a silver ring for ${b}.`;
+    case 'chronicle': return (e.n ?? 1) <= 1 ? `${a} has printed the first volume of the Chronicle of ${c.name}. Copies are going from hand to hand.` : `The press has finished volume ${e.n} of the Chronicle of ${c.name}.`;
     case 'plan': return `Work begins on a ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'}.`;
     case 'prosper': return `${e.b ? `${a} and ${b} have` : `${a} has`} put ${e.n ?? 'some'} silver toward a ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'home'} of their own.`;
     case 'home_lost': return `${a} can no longer keep up the ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'house'}. It goes to whoever needs a roof.`;
@@ -284,7 +292,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'drunkard': return `${a} cannot stay away from the barrel any more.`;
     case 'settlers': return `${full(c, e.a)} has led ${(e.n ?? 2) - 1} others out to found a new colony.`;
     case 'founded': return `${full(c, e.a)} and ${(e.n ?? 2) - 1} others from ${e.s} raised the first roof here.`;
-    case 'news': { const [what, name] = (e.s ?? '').split(':'); const who = (e.s ?? '').split(':')[2]; return what === 'founded' ? `Word has come back: the settlers have founded ${name}.` : what === 'ruler' ? `News from ${name}: ${who || 'someone new'} rules there now.` : what === 'coup' ? `News from ${name}: the seat was taken by force.` : what === 'outbreak' ? `News from ${name}: sickness has broken out there.` : what === 'warlord' ? `Riders on the road: ${name} is on the march with a host.` : what === 'saint' ? `News from ${name}: they are praying to ${who || 'one of their dead'}.` : `News from ${name}.`; }
+    case 'news': { const [what, name] = (e.s ?? '').split(':'); const who = (e.s ?? '').split(':')[2]; return what === 'founded' ? `Word has come back: the settlers have founded ${name}.` : what === 'ruler' ? `News from ${name}: ${who || 'someone new'} rules there now.` : what === 'coup' ? `News from ${name}: the seat was taken by force.` : what === 'outbreak' ? `News from ${name}: sickness has broken out there.` : what === 'warlord' ? `Riders on the road: ${name} is on the march with a host.` : what === 'saint' ? `News from ${name}: they are praying to ${who || 'one of their dead'}.` : what === 'tech' ? techNews(name, who) : `News from ${name}.`; }
     case 'captured': return `${e.s === 'orc' ? 'An' : 'A'} ${FOE_ONE[e.s ?? ''] ?? 'raider'} was taken alive and put in chains: ${full(c, e.a)}.`;
     case 'ransomed': return 'A captured raider was ransomed back for silver.';
     case 'freed': return e.s === 'law' ? `${full(c, e.a)} is a thrall no longer: the new rule keeps no chains.` : `${full(c, e.a)} has earned their freedom.`;
@@ -395,4 +403,23 @@ export function whyText(why: string): string {
 
 export function raceName(k: string): string {
   return RACES[k as keyof typeof RACES]?.name ?? k;
+}
+
+const bldName = (k: string | undefined): string => (TPL[k ?? '']?.name ?? 'building').toLowerCase();
+
+/** A discovery, told in full: who worked it out, and what the colony will build for it. */
+function discoveryText(c: Colony, e: Ev): string {
+  const [k, from] = (e.s ?? '').split(':');
+  const d = TECHS[k];
+  if (!d) return `${full(c, e.a)} has worked something out.`;
+  const told = from ? ` Word of it had come from ${from}, but it took one of our own to make it work.` : '';
+  const what = d.bld.length ? ` The colony will build its first ${k === 'milling' ? 'mill' : bldName(d.bld[0])}.` : k === 'irrigation' ? ' Ditches are being dug along the fields.' : k === 'rotation' ? ' The headlands are being sown with clover.' : '';
+  return `${full(c, e.a)} has ${d.idea}.${told}${what}`;
+}
+
+/** News of a neighbour's discovery ('milling|Tamoc Ash' in who). */
+function techNews(name: string, who: string | undefined): string {
+  const [k, by] = (who ?? '').split('|');
+  const d = TECHS[k];
+  return `News from ${name}: ${by || 'someone there'} has worked out ${(d?.name ?? 'something new').toLowerCase()}. Our own people are talking about how it is done.`;
 }

@@ -2,6 +2,8 @@
 // lines, faith and resource names. Display only; nothing here feeds back into a colony.
 
 import { PROFS } from '../sim/data/professions';
+import { TECHS } from '../sim/data/tech';
+import { TPL } from '../sim/data/buildings';
 import { breakLine } from '../sim/mood';
 import { person } from '../sim/pawn';
 import type { Bio, Colony, Dead, Id, Pawn } from '../sim/types';
@@ -23,6 +25,7 @@ export const RES_NAMES: Record<string, string> = {
   grain: 'Grain', veg: 'Vegetables', meat: 'Meat', fish: 'Fish', berries: 'Berries', meal: 'Meals', feast: 'Feast dishes', ale: 'Ale',
   wood: 'Wood', stone: 'Stone', ore: 'Ore', iron: 'Iron', leather: 'Leather', cloth: 'Cloth', herbs: 'Herbs', medicine: 'Medicine',
   tools: 'Tools', clothes: 'Clothes', weapons: 'Weapons', silver: 'Silver', goods: 'Goods', hops: 'Hops', mushrooms: 'Mushrooms', eggs: 'Eggs', milk: 'Milk',
+  flour: 'Flour', bread: 'Bread', brick: 'Bricks', glass: 'Glass',
 };
 
 const WORK: Record<string, string> = {
@@ -100,6 +103,9 @@ export function bioText(c: Colony, b: Bio): string {
     case 'lost': return `Lost their ${LOST[b.s ?? ''] ?? 'friend'}, ${o}.`;
     case 'adult': return 'Came of age.';
     case 'masterwork': return `Made ${b.s ?? 'a masterwork'}.`;
+    case 'discovery': return `Worked out ${(TECHS[b.s ?? '']?.name ?? 'something new').toLowerCase()}, the first in the colony to do it.`;
+    case 'firstbuilt': return `Built the colony's first ${(TPL[b.s ?? '']?.name ?? 'building').toLowerCase()}.`;
+    case 'chronicle': return "Printed the first volume of the colony's chronicle.";
     case 'inspired': return b.s === 'frenzy' ? 'Worked for days like someone possessed.' : b.s === 'insight' ? 'Saw everything clearly for a while.' : 'Was struck by an idea for something beautiful.';
     case 'convert': return `Took up ${o}'s faith${b.s ? ', ' + faithName(b.s) : ''}.`;
     case 'affair': return `Began an affair with ${o}.`;

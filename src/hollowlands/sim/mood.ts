@@ -2,6 +2,7 @@
 // all gets too much (or goes wonderfully well).
 
 import { TICKS_PER_DAY, TICKS_PER_HOUR, dayOf, hourOf, seasonOf, DAYS_PER_SEASON } from '../config';
+import { techBld, techScan } from './known';
 import { RACES } from './data/races';
 import { TH } from './data/thoughts';
 import { foodDays, hasFood } from './econ';
@@ -84,7 +85,12 @@ export function indoors(c: Colony, p: Pawn): boolean {
 export function feltTemp(c: Colony, p: Pawn, inside: boolean): number {
   const h = hourOf(c.tick);
   let t = c.temp + (h < 6 || h >= 21 ? -4 : h >= 11 && h < 16 ? 2 : 0);
-  if (inside) t = c.stock.wood > 0 ? Math.max(t + 14, 14) : t + 5;
+  if (inside) {
+    t = c.stock.wood > 0 ? Math.max(t + 14, 14) : t + 5;
+    // glass in the windows keeps the warmth in
+    const gl = techScan(c).glazed;
+    if (gl.size && gl.has(c.sb[posAt(c, p, c.tick)])) t += 3;
+  }
   else if (c.weather === 3 || c.weather === 4) t -= 3;
   return t + RACES[p.race].cold + (p.cloth > 25 ? 6 : 0);
 }
@@ -129,6 +135,7 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
         }
         if (b.q - b.dmg >= 58) add('finehome');
         else if (b.q - b.dmg < 30) add('shabbyhome');
+        if (b.gl) add('glazedhome');
       }
     }
     const days = foodDays(c);
@@ -181,6 +188,7 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
   }
   if (p.preg) add('pregnant');
   if (p.cloth < 25) add('ragged');
+  else if (p.cloth >= 50 && st >= STAGE.CHILD && techBld(c, 'dyeworks')) add('colours');
   if (p.drunk > 30) add('tipsy');
   if (p.insp) add('inspired');
   const ache = pain(p);

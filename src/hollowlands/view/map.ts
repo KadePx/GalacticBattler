@@ -10,6 +10,8 @@ import { TOOL_FOR } from '../sim/jobs';
 import { CROPS, HOMES, TPL, cellCode, cells, shapeOf } from '../sim/data/buildings';
 import { stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
+import { TECH_HELD } from './figures';
+import { drawSails } from './techart';
 import { BLD_ICON, SWINGING, WORK_HELD, drawHeld, WILD_SIZE, drawBeast, FOE_SIZE, STAGE_SIZE, drawBubble, drawFigure, drawFoe, drawMark, figureKey, activityKey, drawActivity, SWINGS } from './figures';
 import { SHAPE, yearsAt } from './look';
 import { Fx, type FxPawn } from './fx';
@@ -109,6 +111,9 @@ export class MapView {
   /** the colony's stores, piled up beside the storehouse */
   private piles = new Graphics();
   private pileKey = '';
+  /** the windmills' sails, turning over their towers */
+  private sails: Graphics[] = [];
+  private sailKey = '';
   /** a besieging host's camp outside the walls: tents, fires, its ladders and ram */
   private camp = new Graphics();
   private campKey = '';
@@ -217,6 +222,9 @@ export class MapView {
     this.piles = new Graphics();
     this.structLayer.addChild(this.piles);
     this.pileKey = '';
+    // (the sails went with the old canopy layer)
+    this.sails = [];
+    this.sailKey = '';
     this.camp = new Graphics();
     this.pawnLayer.addChild(this.camp);
     // a new colony: its market is drawn afresh
@@ -263,6 +271,7 @@ export class MapView {
     this.syncAnimals(tf, 'herd', this.herdViews);
     this.syncSigns(c);
     this.syncPiles(c);
+    this.syncSails(c, dt);
     this.syncCamp(c);
     this.syncMarket(c);
     this.stepCamera(dt);
@@ -305,8 +314,12 @@ export class MapView {
     let fireDirty = force;
     // the town's gates are drawn open or shut
     const gates = c.walls?.shut ? 131 : 0;
+    // what the colony has discovered changes how things already standing are drawn (glazed
+    // windows, ditches by the fields, pennants on the towers)
+    let techSig = (c.tech?.got.length ?? 0) * 7919;
+    for (const b of c.blds) if (b.gl || (b.k === 'dyeworks' && b.built)) techSig += b.id * 31;
     for (const ch of this.chunks) {
-      let s = pal.key + 7 + gates;
+      let s = pal.key + 7 + gates + techSig;
       let f = pal.key + 7;
       // walls join up with their neighbours, so the signature looks one tile past the chunk edge
       for (let y = Math.max(0, ch.y0 - 1); y < Math.min(c.h, ch.y1 + 1); y++) {
@@ -407,6 +420,8 @@ export class MapView {
     const showNames = s >= 1.15;
     // zoomed out, people grow a little so they do not vanish into the ground
     const boost = s < 1 ? Math.min(1.75, Math.pow(1 / s, 0.75)) : 1;
+    // once there is a dye works, everyone goes about in fast colours
+    const dyed = c.blds.some((b) => b.k === 'dyeworks' && b.built);
     let sel: PawnView | undefined;
     let mine: PawnView | undefined;
     for (const p of c.pawns) {
@@ -417,7 +432,7 @@ export class MapView {
       if (v.keyTick !== c.tick) {
         v.keyTick = c.tick;
         const st = stage(c, p);
-        const spec = { race: p.race, look: p.look, sex: p.sex, stage: st, years: yearsAt(p.born, c.tick) };
+        const spec = { race: p.race, look: p.look, sex: p.sex, stage: st, years: yearsAt(p.born, c.tick), dyed };
         const key = figureKey(spec);
         if (key !== v.key) {
           v.key = key;
@@ -492,7 +507,7 @@ export class MapView {
       }
       v.bubble.visible = talking;
       // what is in their hand: the tool for the work, a weapon in a fight, a guard's spear
-      const hk = asleep || inBed || stage(c, p) <= 1 || p.brk?.k === 'seized' ? '' : heldFor(p);
+      const hk = asleep || inBed || stage(c, p) <= 1 || p.brk?.k === 'seized' ? '' : heldFor(p, this.blds);
       if (hk !== v.heldKey) { v.heldKey = hk; drawHeld(v.held, hk); }
       v.held.visible = !!hk && s >= 0.5;
       if (v.held.visible) {
@@ -793,6 +808,30 @@ export class MapView {
     });
   }
 
+  /** The sails of each windmill, over its cap, turning slowly (faster in a wind, not at all in a calm frost). */
+  private syncSails(c: Colony, dt: number): void {
+    let key = '';
+    for (const b of c.blds) if (b.k === 'windmill' && b.built) key += b.id + ',';
+    if (key !== this.sailKey) {
+      this.sailKey = key;
+      for (const g of this.sails) g.destroy();
+      this.sails = [];
+      for (const b of c.blds) {
+        if (b.k !== 'windmill' || !b.built) continue;
+        const cell = cells(shapeOf(b)).find((q) => q.ch === 'G');
+        if (!cell) continue;
+        const g = new Graphics();
+        drawSails(g);
+        g.position.set((b.x + cell.dx + 0.5) * TS, (b.y + cell.dy + 0.5) * TS);
+        g.rotation = (b.id % 7) * 0.4;
+        this.canopyLayer.addChild(g);
+        this.sails.push(g);
+      }
+    }
+    const wind = c.weather === 3 ? 3 : c.weather === 2 || c.weather === 1 ? 1.5 : c.weather === 5 ? 0.4 : 1;
+    for (const g of this.sails) g.rotation += dt * 0.0006 * wind;
+  }
+
   /** Woodpile, stone, sacks of food and barrels of ale beside the storehouse, as big as the stores. */
   private syncPiles(c: Colony): void {
     const s = c.stock;
@@ -897,7 +936,9 @@ export class MapView {
       const top = TPL[shapeOf(b)]?.rows[0] ?? '';
       const l0 = top.search(/\S/);
       const l1 = top.length - [...top].reverse().join('').search(/\S/);
-      const x = (b.x + (field || l0 < 0 ? b.w / 2 : (l0 + l1) / 2)) * TS;
+      // (a watermill's sign hangs clear of its wheel)
+      const wheelTop = b.k === 'watermill' && top.includes('U');
+      const x = (b.x + (wheelTop ? 1.2 : field || l0 < 0 ? b.w / 2 : (l0 + l1) / 2)) * TS;
       const y = b.y * TS + (field ? TS * 0.5 : 2);
       if (!field) {
         // a hanging wooden board with the building's picture on it
@@ -1300,8 +1341,15 @@ function drawWare(g: Graphics, k: string, x: number, y: number, n: number): void
 }
 
 /** What a colonist has in hand right now ('' for nothing). */
-function heldFor(p: Pawn): string {
+function heldFor(p: Pawn, blds: Map<number, Bld>): string {
   const a = p.act;
+  // at the mill, the ovens, the kiln, the press: the things of that trade (glazing a home: the glass)
+  if (a.k === 'work' && a.b && a.w !== 'build') {
+    if (a.d === 77) return 'sheet';
+    const k = blds.get(a.b)?.k;
+    const t = k ? TECH_HELD[k] : undefined;
+    if (t) return t;
+  }
   if (a.k === 'fight') return a.b === 1 ? 'bow' : p.prof === 'guard' || p.prof === 'scout' ? 'spear' : 'sword';
   if (a.k === 'subdue') return '';
   if (a.k === 'music') return 'lute';

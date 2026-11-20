@@ -36,6 +36,13 @@ export const PROF_LIST: ProfDef[] = [
   p('baker', 'Baker', 'cook', 5, 'Up before dawn at the ovens; sells the bread on market day.'),
   p('butcher', 'Butcher', 'cook', 5, 'Dresses the meat, and keeps the meat stall on market day.'),
   p('potter', 'Potter', 'craft', 6, 'Throws pots and bowls and sells them in the square.'),
+  // the trades of the colony's discoveries (see tech.ts)
+  p('miller', 'Miller', 'farm', 4, 'Grinds the grain at the mill, and is always white to the elbows.'),
+  p('tanner', 'Tanner', 'craft', 6, 'Cures hides in the bark pits. You can smell the tannery from the square.'),
+  p('dyer', 'Dyer', 'craft', 6, 'Stirs the dye vats, with hands blue to the wrist.'),
+  p('glazier', 'Glazier', 'craft', 6, "Blows glass at the furnace and fits windows into people's homes."),
+  p('jeweller', 'Jeweller', 'craft', 6, 'Sets stones in silver for those who can pay.'),
+  p('printer', 'Printer', 'teach', 11, "Sets the letters and pulls the press: the colony's chronicle, page by page."),
 ];
 
 export const PROFS: Record<string, ProfDef> = Object.fromEntries(PROF_LIST.map((x) => [x.k, x]));

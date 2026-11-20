@@ -10,12 +10,12 @@ import { HAIR, SHAPE, darken, garbOf, hairIndex, lighten, skinOf } from './look'
 /** How big each life stage is drawn next to an adult (baby, child, youth, adult, elder). */
 export const STAGE_SIZE = [0.5, 0.66, 0.88, 1, 0.97];
 
-export interface FigureSpec { race: RaceK; look: Look; sex: 0 | 1; stage: number; years: number }
+export interface FigureSpec { race: RaceK; look: Look; sex: 0 | 1; stage: number; years: number; /** in fast-dyed cloth (the colony has a dye works) */ dyed?: boolean }
 
 /** Changes when the figure needs redrawing. */
 export function figureKey(f: FigureSpec): string {
   const l = f.look;
-  return `${f.race}${f.sex}${f.stage}${hairIndex(f.race, l, f.years)}|${l.skin},${l.hair},${l.body},${l.beard},${l.garb},${l.marks.length}`;
+  return `${f.race}${f.sex}${f.stage}${hairIndex(f.race, l, f.years)}|${l.skin},${l.hair},${l.body},${l.beard},${l.garb},${l.marks.length}${f.dyed ? 'd' : ''}`;
 }
 
 /** Draw a figure centred on (0,0), feet slightly below. Sized for a 24 px tile. */
@@ -26,7 +26,7 @@ export function drawFigure(g: Graphics, f: FigureSpec): void {
   const skin = skinOf(f.race, l);
   const skinD = darken(skin, 0.18);
   const hair = HAIR[hairIndex(f.race, l, f.years)];
-  const garb = garbOf(l);
+  const garb = garbOf(l, f.dyed);
   const w = sh.wide * (0.92 + l.body * 0.04);
   const kid = f.stage <= 1;
   const hr = kid ? 4.7 : 4.3; // head radius: children have big heads
@@ -305,6 +305,38 @@ export function drawHeld(g: Graphics, k: string): void {
       haft(8, 0x9a8a6a, 1.1);
       g.circle(0, -6.6, 2).fill(0x8a9099);
       break;
+    // the tools of the discovered trades
+    case 'sack':
+      g.roundRect(-3.4, -5, 6.8, 7.4, 2.6).fill(0xe9e1cc).stroke({ width: 0.6, color: DARK });
+      g.rect(-1.6, -5.6, 3.2, 1.4).fill(0xc9b98a);
+      break;
+    case 'peel':
+      haft(10, 0xb48a54, 1.3);
+      g.roundRect(-3, -12, 6, 4.4, 1.4).fill(0xb48a54).stroke({ width: 0.6, color: DARK });
+      g.ellipse(0, -10, 2.4, 1.3).fill(0xd9a85a);
+      break;
+    case 'pot':
+      g.ellipse(0, -2, 3.4, 3.8).fill(0xc9845a).stroke({ width: 0.6, color: DARK });
+      g.rect(-2, -6.2, 4, 1.6).fill(0xa86a44);
+      break;
+    case 'pipe':
+      haft(11, 0x6b7280, 1.1);
+      g.circle(0, -10, 2.6).fill({ color: 0xffb35a, alpha: 0.95 });
+      break;
+    case 'hide':
+      g.poly([-4, -7, 4, -7.6, 3.4, 1.6, -3.6, 2]).fill(0xc9a27a).stroke({ width: 0.6, color: DARK });
+      break;
+    case 'paddle':
+      haft(11, 0x9a7a50, 1.3);
+      g.roundRect(-1.6, -11, 3.2, 4, 1).fill(0x2f5fa8);
+      break;
+    case 'gem':
+      g.poly([0, -6, 2.4, -3.4, 0, -0.8, -2.4, -3.4]).fill(0x5ad2c9).stroke({ width: 0.6, color: DARK });
+      break;
+    case 'sheet':
+      g.rect(-3, -6, 6, 7.5).fill(0xf4efe4).stroke({ width: 0.6, color: DARK });
+      g.rect(-2, -4.6, 4, 0.7).rect(-2, -3, 4, 0.7).rect(-2, -1.4, 3, 0.7).fill(0x2a2422);
+      break;
     case 'basket':
       g.moveTo(-3.4, -3).arc(0, -3, 3.4, Math.PI, 0).stroke({ width: 0.9, color: WOOD });
       g.roundRect(-4, -3, 8, 5, 1.5).fill(0xc9a27a).stroke({ width: 0.6, color: DARK });
@@ -334,7 +366,9 @@ export function drawHeld(g: Graphics, k: string): void {
 /** Work that has its own thing in hand even without a tool from the stores. */
 export const WORK_HELD: Record<string, string> = { herd: 'basket', cook: 'ladle', teach: 'book', preach: 'book', forage: 'basket', herbs: 'herbs', heal: 'satchel', brew: 'mug', guard: 'spear' };
 /** Held items that swing while the work goes on. */
-export const SWINGING = new Set(['axe', 'pick', 'hoe', 'hammer', 'tongs']);
+export const SWINGING = new Set(['axe', 'pick', 'hoe', 'hammer', 'tongs', 'peel', 'paddle', 'pipe']);
+/** What is in hand at each of the discovered trades' buildings. */
+export const TECH_HELD: Record<string, string> = { windmill: 'sack', watermill: 'sack', bakery: 'peel', kiln: 'pot', glassworks: 'pipe', tannery: 'hide', dyeworks: 'paddle', steelworks: 'tongs', jeweller: 'gem', printer: 'sheet' };
 
 // ---------- Building signs ----------
 
@@ -342,6 +376,7 @@ export const SWINGING = new Set(['axe', 'pick', 'hoe', 'hammer', 'tongs']);
 export const BLD_ICON: Record<string, string> = {
   hall: 'eat', kitchen: 'w:cook', tavern: 'drink', brewery: 'w:brew', store: 'store', granary: 'w:farm', shrine: 'pray', smithy: 'w:smith',
   workshop: 'w:craft', infirmary: 'w:heal', herbalist: 'w:herbs', school: 'study', guardhouse: 'w:guard', tower: 'w:guard', pen: 'w:herd', bathhouse: 'bathe', gamehall: 'chess',
+  windmill: 'w:farm', watermill: 'w:farm', bakery: 'w:cook', kiln: 'w:craft', glassworks: 'w:craft', tannery: 'w:craft', dyeworks: 'w:craft', steelworks: 'w:smith', jeweller: 'w:craft', printer: 'study',
   keep: 'crown', motte: 'crown', gatehouse: 'w:guard', barracks: 'w:guard', stables: 'w:herd', tgate: 'w:guard', wtower: 'w:guard',
 };
 

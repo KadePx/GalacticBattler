@@ -2,6 +2,7 @@
 // and the comfortable, backs off after a tragedy, and never arrives twice in quick succession.
 // Events are sparks. What they lead to is up to the colony.
 
+import { heardOf, traderTalk } from './tech';
 import { cropsChanged } from './cache';
 import { siegeable, startSiege } from './siege';
 import { WALL_KINDS } from './data/buildings';
@@ -113,6 +114,8 @@ export function applyInputs(c: Colony): void {
     else if (e.k === 'nudge') nudge(c, e);
     else if (e.k === 'news') {
       log(c, 'news', undefined, undefined, String(e.what) + ':' + String(e.name) + ':' + String(e.who ?? ''));
+      // something a neighbour has worked out: our own people start puzzling over it too
+      if (e.what === 'tech') heardOf(c, String(e.who ?? '').split('|')[0], String(e.name));
       // sickness travels with the news
       if (e.what === 'outbreak' && e.who === 'plague') {
         const r = new Rand(c.seed, S.HEALTH, c.tick, 41);
@@ -402,6 +405,9 @@ function trade(c: Colony, r: Rand): void {
   const beasts = r.chance(0.5) ? buyBeasts(c, r) : '';
   if (beasts) log(c, 'bought_beasts', undefined, undefined, beasts);
   for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, 'newfaces');
-  log(c, 'trader', undefined, undefined, c.near?.length ? r.pick(c.near).name : undefined, Math.round(bought));
+  const from = c.near?.length ? r.pick(c.near).name : undefined;
+  log(c, 'trader', undefined, undefined, from, Math.round(bought));
+  // traders from a neighbour who knows something we do not: they talk about it
+  traderTalk(c, from);
   bump(c, 'traders');
 }

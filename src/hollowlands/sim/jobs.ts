@@ -21,6 +21,8 @@ import { inWallBand } from './town';
 import { castleStone } from './castle';
 import { STAGE, gainXp, has, mkAct, pawnById, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
+import { harvestMult, steel, techBld } from './known';
+import { addLore, isTechWork, techJobs, techWork } from './tech';
 import { B, F, T, type Act, type Bld, type Colony, type Pawn, type WorkK } from './types';
 
 export interface Job { w: WorkK; x: number; y: number; adj: boolean; dur: number; b?: number; d?: number; o?: number; why: string }
@@ -52,10 +54,11 @@ export function equip(c: Colony, p: Pawn, w: WorkK): void {
 }
 
 /** How much the right tool (or the lack of it) changes the pace of this work. */
-export function toolMult(p: Pawn, w: WorkK): number {
+export function toolMult(p: Pawn, w: WorkK, c?: Colony): number {
   const k = TOOL_FOR[w];
   if (!k) return 1;
-  return p.tool && p.tool[0] === k ? 1.15 : 0.82;
+  // a steel edge does the work faster still
+  return p.tool && p.tool[0] === k ? (c && steel(c) ? 1.25 : 1.15) : 0.82;
 }
 
 const DUR: Record<WorkK, number> = { farm: 10, forage: 8, hunt: 36, fish: 16, wood: 12, mine: 14, cook: 10, build: 12, craft: 14, smith: 14, brew: 12, heal: 10, teach: 12, preach: 12, guard: 20, herbs: 8, herd: 10 };
@@ -523,6 +526,9 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
     if (kids) offer('teach', 2.2, 'teach', () => (school ? job('teach', spotTile(c, school, 'K', r), true, 'Teaching the young', school.id) : job('teach', spotTile(c, hall!, 't', r), true, 'Teaching the young', hall!.id)));
   }
 
+  // the trades of what the colony has discovered
+  if (c.tech && c.tech.got.length) techJobs(c, p, offer, job, (b, ch) => spotTile(c, b, ch, r), c.stock.wood < woodTarget * 0.6);
+
   opts.sort((a, b) => b.s - a.s);
   for (const o of opts) {
     if (o.s < 1) break;
@@ -553,12 +559,12 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
   if (hours <= 0) return;
   const sk = workSkillOf(w);
   const lv = p.sk[sk];
-  const tm = toolMult(p, w);
+  const tm = toolMult(p, w, c);
   const speed = workSpeed(c, p, sk) * tm * placeMult(c, w, a.b);
   const r = new Rand(c.seed, S.JOB, c.tick, p.id);
   if (tm > 1 && p.tool) {
     // tools wear with use; a skilled hand is easier on them
-    p.tool[1] -= hours * (0.5 - Math.min(0.2, lv0(p, w) * 0.01));
+    p.tool[1] -= hours * (0.5 - Math.min(0.2, lv0(p, w) * 0.01)) * (steel(c) ? 0.55 : 1);
     if (p.tool[1] <= 0) { p.tool = undefined; think(c, p, 'brokentool'); bump(c, 'toolsBroken'); }
   }
   gainXp(p, sk, hours);
@@ -566,6 +572,9 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
   const made = (k: string, n: number): void => bump(c, 'made_' + k, n);
   const lucky = has(p, 'lucky') ? 1.25 : has(p, 'jinxed') ? 0.75 : 1;
   const tile = a.d ?? -1;
+  // the mill, the ovens, the kiln, the press: the trades of the colony's discoveries
+  const tb = isTechWork(c, a);
+  if (tb) { techWork(c, p, a, tb, speed, hours, r, made); return; }
 
   switch (w) {
     case 'farm': {
@@ -595,7 +604,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
         else if (op === 1 && c.crop[i] === 255) {
           c.crop[i] = 0;
           n--;
-          got += def.yield * (c.ter[i] === T.SOIL ? 1.2 : 1) * (0.75 + 0.025 * lv) * (has(p, 'greenthumb') ? 1.15 : 1);
+          got += def.yield * (c.ter[i] === T.SOIL ? 1.2 : 1) * (0.75 + 0.025 * lv) * (has(p, 'greenthumb') ? 1.15 : 1) * harvestMult(c);
         }
       }
       if (got > 0) {
@@ -666,17 +675,19 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       const kitchen = c.blds.find((x) => x.id === a.b)?.k === 'kitchen';
       const fine = rich && lv >= 4 && r.chance(0.1 + lv * 0.035 + Math.max(0, kinds - 3) * 0.04 + (kitchen ? 0.08 : 0));
       let used = 0;
-      const order: ('meat' | 'fish' | 'berries' | 'veg' | 'grain' | 'mushrooms' | 'eggs' | 'milk')[] = ['fish', 'meat', 'eggs', 'milk', 'mushrooms', 'berries', 'veg', 'grain'];
+      const order: ('meat' | 'fish' | 'berries' | 'veg' | 'grain' | 'mushrooms' | 'eggs' | 'milk' | 'flour')[] = ['fish', 'meat', 'eggs', 'milk', 'mushrooms', 'berries', 'veg', 'flour', 'grain'];
       let guard = 0;
+      let flour = 0;
       while (n > 0.5 && guard++ < 40) {
         let took = false;
         for (const k of order) {
           if (n <= 0.5) break;
-          if (s[k] >= 1) { s[k] -= 1; n--; used++; took = true; }
+          if (s[k] >= 1) { s[k] -= 1; n--; used++; took = true; if (k === 'flour') flour++; }
         }
         if (!took) break;
       }
-      const out = used * (1.1 + Math.min(0.2, kinds * 0.03));
+      // flour goes further in the pot than whole grain
+      const out = used * (1.1 + Math.min(0.2, kinds * 0.03)) + flour * 0.3;
       if (fine) { s.feast += out; made('feast', out); } else { s.meal += out; made('meal', out); }
       break;
     }
@@ -727,7 +738,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
         c.beasts = c.beasts!.filter((b) => b !== prey);
         const meat = Math.round((def.meat[0] + r.int(def.meat[1] - def.meat[0] + 1)) * (0.8 + 0.02 * lv));
         c.stock.meat += meat;
-        c.stock.leather += def.hide;
+        c.stock.leather += def.hide + (techBld(c, 'tannery') && def.hide ? 1 : 0);
         c.game = Math.max(0, c.game - 4);
         made('meat', meat);
         gainXp(p, 9, hours * 0.5);
@@ -738,7 +749,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       if (r.chance(chance)) {
         const meat = Math.round((9 + r.int(14)) * (0.8 + 0.02 * lv));
         c.stock.meat += meat;
-        c.stock.leather += 1 + r.int(2);
+        c.stock.leather += 1 + r.int(2) + (techBld(c, 'tannery') ? 1 : 0);
         c.game = Math.max(0, c.game - 5);
         made('meat', meat);
         gainXp(p, 9, hours * 0.5);
@@ -869,6 +880,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       break;
     }
     case 'teach': {
+      addLore(c, 0.015 * hours * (0.5 + p.sk[11] * 0.08));
       for (const o of c.pawns) {
         const s = stage(c, o);
         if (s !== STAGE.CHILD && s !== STAGE.TEEN) continue;

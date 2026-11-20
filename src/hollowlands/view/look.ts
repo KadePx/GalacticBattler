@@ -74,7 +74,9 @@ export const skinOf = (race: RaceK, look: Look): number => {
   const list = SKIN[race] ?? SKIN.human;
   return list[look.skin % list.length];
 };
-export const garbOf = (look: Look): number => GARB[look.garb % GARB.length];
+/** The same outfits in fast dyes, once the colony has a dye works: deeper and brighter. */
+export const DYED = [0x2f55c8, 0xb8262e, 0x2a9a4a, 0xc98a1a, 0x6a2ab0, 0x1a9aa8, 0xc8407a, 0x3a4a6a];
+export const garbOf = (look: Look, dyed = false): number => (dyed ? DYED : GARB)[look.garb % GARB.length];
 
 /** Mix two colours (0 = a, 1 = b). */
 export function mix(a: number, b: number, t: number): number {

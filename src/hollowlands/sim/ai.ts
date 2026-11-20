@@ -17,6 +17,7 @@ import { accuse, murder } from './crime';
 import { die } from './life';
 import { MARKET_POP, buy, goMarket, marketOpen, pickShop } from './market';
 import { bedFor, equip, findJob, finishWork } from './jobs';
+import { addLore } from './tech';
 import { endBreak, feltTemp, hasThought, think } from './mood';
 import { findPath, walkTicks } from './path';
 import { STAGE, gainXp, has, idleAct, mkAct, pawnById, per, posAt, stage, stat } from './pawn';
@@ -635,6 +636,7 @@ export function finish(c: Colony, p: Pawn): void {
       if (st <= STAGE.BABY) break;
       if (kind === 'feast') think(c, p, 'atefeast');
       else if (kind === 'raw') think(c, p, 'ateraw');
+      else if (kind === 'bread') think(c, p, 'atebread');
       if (kind !== 'raw') {
         const v = variety(c);
         if (v >= 5) think(c, p, 'variedfare');
@@ -748,6 +750,7 @@ export function finish(c: Colony, p: Pawn): void {
     }
     case 'read': {
       gainXp(p, 11, spent / TICKS_PER_HOUR);
+      addLore(c, 0.02 * (spent / TICKS_PER_HOUR));
       think(c, p, 'readbook');
       break;
     }
@@ -757,6 +760,7 @@ export function finish(c: Colony, p: Pawn): void {
       const hrs = (spent / TICKS_PER_HOUR) * (taught ? 1.6 : 0.8);
       gainXp(p, 11, hrs * 0.8);
       gainXp(p, r.int(11), hrs * 0.3);
+      addLore(c, 0.01 * hrs);
       if (taught && r.chance(0.2)) think(c, p, 'learnedsomething');
       break;
     }

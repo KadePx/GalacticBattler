@@ -4,7 +4,8 @@
 import { DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
 import { cacheOf, dropFeat, touch, touchAt } from './cache';
 import { BACKS } from './data/backstories';
-import { CASTLE_KINDS, CROPS, HOMES, SHAPES, TPL, WALL_KINDS, cellCode, cells, isDecor, shapeOf, spots, wallCost } from './data/buildings';
+import { CASTLE_KINDS, CROPS, HOMES, MILL_TURNS, SHAPES, TPL, WALL_KINDS, cellCode, cells, isDecor, shapeOf, spots, wallCost } from './data/buildings';
+import { firstBuilt, techWants } from './tech';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
 import { OUTSIDE, WALL_W, Z, frame, lotScore, octo, onKeep, passableThing, pave } from './town';
@@ -89,6 +90,8 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
   const top: [number, number, number][] = [];
   const keep = gateWays(c);
   const doors = cells(shape).filter((q) => q.ch === '+' || q.ch === 'g');
+  // a watermill's wheel must hang over the river: the ground beside it is water, not open land
+  const wheel = k === 'watermill' ? cells(shape).find((q) => q.ch === 'U') : undefined;
   // only the ground within reach of the plan is looked at, not the whole map
   const y0 = Math.max(3, Math.floor(c.cy - maxR - h));
   const y1 = Math.min(c.h - h - 3, Math.ceil(c.cy + maxR));
@@ -102,11 +105,22 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
       if (d < minR || d > maxR) continue;
       let ok = true;
       let soil = 0;
+      let wet = 0;
       for (let yy = y - 1; yy <= y + h && ok; yy++) {
         for (let xx = x - 1; xx <= x + w; xx++) {
           const i = yy * c.w + xx;
           const inside = xx >= x && xx < x + w && yy >= y && yy < y + h;
           const ter = c.ter[i];
+          // (the whole of the wheel's side may be river; the water must reach the wheel itself)
+          if (wheel && !inside && ((wheel.dx === w - 1 && xx === x + w) || (wheel.dx === 0 && xx === x - 1) || (wheel.dy === h - 1 && yy === y + h) || (wheel.dy === 0 && yy === y - 1))) {
+            const water = (ter === T.SHALLOW || ter === T.DEEP) && !c.sb[i] && !c.st[i];
+            if (Math.abs(xx - x - wheel.dx) + Math.abs(yy - y - wheel.dy) === 1) {
+              if (!water) { ok = false; break; }
+              wet++;
+              continue;
+            }
+            if (water) continue;
+          }
           // town buildings may share a wall with a neighbour (a row of houses), but never stand in
           // front of its door; a lamp or a bench may stand beside a building, not in it
           if (!inside && c.sb[i]) { if (out || !PARTY.has(c.st[i])) { ok = false; break; } continue; }
@@ -130,7 +144,7 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
           if (out ? od < WALL + WALL_W : !far && od >= WALL) { ok = false; break; }
         }
       }
-      if (!ok) continue;
+      if (!ok || (wheel && (!wet || !narrow(c, x + wheel.dx, y + wheel.dy, wheel.dx === w - 1 ? 1 : wheel.dx === 0 ? -1 : 0, wheel.dy === h - 1 ? 1 : wheel.dy === 0 ? -1 : 0)))) continue;
       // every way in opens onto ground that can be walked
       for (const dc of doors) {
         let open = false;
@@ -168,6 +182,18 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
   if (field) return top.length ? [top[0][1], top[0][2]] : null;
   for (const [, x, y] of top) if (keepsWays(c, shape, x, y)) return [x, y];
   return null;
+}
+
+/** Is the water beyond a mill's wheel a river (land again within a few paces), not the open sea or a lake? */
+function narrow(c: Colony, x: number, y: number, ox: number, oy: number): boolean {
+  for (let k = 1; k <= 8; k++) {
+    const xx = x + ox * k;
+    const yy = y + oy * k;
+    if (xx < 0 || yy < 0 || xx >= c.w || yy >= c.h) return false;
+    const t = c.ter[yy * c.w + xx];
+    if (t !== T.SHALLOW && t !== T.DEEP) return k >= 3;
+  }
+  return false;
 }
 
 /**
@@ -254,6 +280,27 @@ function keepsWays(c: Colony, shape: string, x: number, y: number): boolean {
 }
 
 
+/** A watermill, turned so its wheel hangs over the river: the first way round that fits the town plan. */
+function buildMill(c: Colony): Bld | null {
+  if (c.nosite.watermill && c.tick - c.nosite.watermill < 240 * 12) return null;
+  const n = MILL_TURNS.length;
+  const start = hash32(c.seed, S.PLAN, 78, c.nextBld) % n;
+  // (only where the town plan allows: with no such bank, the colony builds a windmill instead)
+  for (const pass of [0, 1]) {
+    for (let j = 0; j < n; j++) {
+      const shape = MILL_TURNS[(start + j) % n];
+      const site = pass === 0 ? findSite(c, 'watermill', shape, false, true) : findSite(c, 'watermill', shape, true, true);
+      if (!site) continue;
+      delete c.nosite.watermill;
+      const b = placeBuilding(c, 'watermill', site[0], site[1], false, 0, shape);
+      log(c, 'plan', undefined, undefined, 'watermill', b.id);
+      return b;
+    }
+  }
+  c.nosite.watermill = c.tick;
+  return null;
+}
+
 export function build(c: Colony, k: string, instant = false, crop?: string): Bld | null {
   // no point measuring the same crowded ground every morning
   // homes are looked for more often: someone is sleeping on the floor
@@ -278,7 +325,7 @@ export function build(c: Colony, k: string, instant = false, crop?: string): Bld
   const b = placeBuilding(c, k, site[0], site[1], instant, mat, use);
   if (k === 'field') { b.crop = crop ?? 'veg'; b.tend = 40; }
   // a home is not left waiting on stone the colony does not have: it goes up in timber
-  if (!instant && HOMES.includes(k) && b.need.stone > c.stock.stone) { b.need.wood += b.need.stone * 1.5; b.need.stone = 0; }
+  if (!instant && HOMES.includes(k) && b.need.stone > c.stock.stone + c.stock.brick) { b.need.wood += b.need.stone * 1.5; b.need.stone = 0; }
   if (!instant) log(c, 'plan', undefined, undefined, k, b.id);
   return b;
 }
@@ -292,16 +339,23 @@ export function advanceBuild(c: Colony, b: Bld, hours: number, p: Pawn): boolean
   let dp = hours / (t.work * (wall && b.mat ? 2.5 : 1) * 1.6);
   if (b.prog + dp > 1) dp = 1 - b.prog;
   const left = 1 - b.prog;
+  // a home may be built of the kiln's bricks where it would have taken stone
+  const brick = HOMES.includes(b.k) ? c.stock.brick : 0;
+  const have = (res: 'wood' | 'stone'): number => (res === 'stone' ? c.stock.stone + brick : c.stock.wood);
   for (const res of ['wood', 'stone'] as const) {
     if (b.need[res] <= 0) continue;
     const want = (b.need[res] * dp) / left;
-    if (c.stock[res] < want) dp = Math.min(dp, (c.stock[res] / b.need[res]) * left);
+    if (have(res) < want) dp = Math.min(dp, (have(res) / b.need[res]) * left);
   }
   if (dp <= 0.0005) return false;
   for (const res of ['wood', 'stone'] as const) {
     if (b.need[res] <= 0) continue;
-    const use = Math.min(c.stock[res], (b.need[res] * dp) / left);
-    c.stock[res] -= use;
+    const use = Math.min(have(res), (b.need[res] * dp) / left);
+    if (res === 'stone' && brick > 0) {
+      const br = Math.min(c.stock.brick, use);
+      c.stock.brick -= br;
+      c.stock.stone -= use - br;
+    } else c.stock[res] -= use;
     b.need[res] -= use;
   }
   b.q += (20 + p.sk[2] * 5.5) * dp;
@@ -319,12 +373,13 @@ export function advanceBuild(c: Colony, b: Bld, hours: number, p: Pawn): boolean
     if (b.own) b.got = c.tick;
     if (b.beds.length) assignBeds(c, false);
     if (b.k === 'graveyard') bury(c);
+    firstBuilt(c, b, p);
   }
   syncTiles(c, b);
   return true;
 }
 
-export const canBuild = (c: Colony, b: Bld): boolean => !b.built && (b.need.wood <= 0.01 || c.stock.wood >= 1) && (b.need.stone <= 0.01 || c.stock.stone >= 1);
+export const canBuild = (c: Colony, b: Bld): boolean => !b.built && (b.need.wood <= 0.01 || c.stock.wood >= 1) && (b.need.stone <= 0.01 || c.stock.stone >= 1 || (c.stock.brick >= 1 && HOMES.includes(b.k)));
 
 export function assignBeds(c: Colony, quiet: boolean): void {
   const homes = c.blds.filter((b) => b.built && b.beds.length > 0);
@@ -496,14 +551,21 @@ function slots(c: Colony, adults: number, kids: number): Record<string, number> 
     quartermaster: adults >= 20 ? 1 : 0,
     herder: has('pen') ? (c.herd && c.herd.length > 12 ? 2 : 1) : 0,
     // the market's trades, once the town is big enough to keep a market
-    baker: has('kitchen') && adults >= 22 ? 1 : 0,
+    baker: has('bakery') || (has('kitchen') && adults >= 22) ? 1 : 0,
     butcher: has('pen') && adults >= 26 ? 1 : 0,
-    potter: has('workshop') && adults >= 24 ? 1 : 0,
+    potter: has('kiln') || (has('workshop') && adults >= 24) ? 1 : 0,
+    // the trades of the colony's discoveries, once their buildings stand
+    miller: has('windmill') || has('watermill') ? 1 : 0,
+    tanner: has('tannery') ? 1 : 0,
+    dyer: has('dyeworks') ? 1 : 0,
+    glazier: has('glassworks') ? 1 : 0,
+    jeweller: has('jeweller') && adults >= 20 ? 1 : 0,
+    printer: has('printer') ? 1 : 0,
   };
 }
 
 /** Trades filled only after all the others: the market's bakers, butchers and potters. */
-const LATE = new Set(['baker', 'butcher', 'potter']);
+const LATE = new Set(['baker', 'butcher', 'potter', 'jeweller']);
 
 /** How many of each trade this colony has room for. */
 export function tradeSlots(c: Colony): Record<string, number> {
@@ -590,7 +652,7 @@ export function plan(c: Colony): void {
   const pending = c.blds.filter((b) => !b.built && !CASTLE_KINDS.has(b.k) && !WALL_KINDS.has(b.k));
   // no stone to be had for weeks: build it in timber instead
   for (const b of pending) {
-    if (b.need.stone > 0.01 && c.stock.stone < 1 && c.tick - b.made > 240 * 5) {
+    if (b.need.stone > 0.01 && c.stock.stone < 1 && !(HOMES.includes(b.k) && c.stock.brick >= 1) && c.tick - b.made > 240 * 5) {
       b.need.wood += b.need.stone * 1.5;
       b.need.stone = 0;
     }
@@ -654,6 +716,11 @@ export function plan(c: Colony): void {
     ['tower', pop >= 18 || (pop >= 12 && (c.stats.raids ?? 0) >= 2)],
   ];
   for (const [k, ok] of want) if (ok && !count(k)) { if (build(c, k)) return; }
+  // what the colony has discovered wants a building of its own (a mill on the river if one fits, else a windmill)
+  for (const k of techWants(c)) {
+    if (k === 'watermill') { if (!count('watermill') && !count('windmill') && (buildMill(c) || build(c, 'windmill'))) return; continue; }
+    if (!count(k)) { if (build(c, k)) return; }
+  }
 
   // With the needs met, people want homes of their own
   if (!pending.length && c.stock.wood >= 30) {

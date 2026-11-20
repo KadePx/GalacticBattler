@@ -1,6 +1,7 @@
 // Trouble arrives: bandits, slavers, warbands, wolves, worse. Each tick is one exchange of
 // blows. Colonists who can fight do; the rest run for the hall.
 
+import { steel } from './known';
 import { cacheOf } from './cache';
 import { RACES } from './data/races';
 import { bump, log, note } from './events';
@@ -460,6 +461,7 @@ export function attack(c: Colony, p: Pawn, foeId: number, ranged: boolean): void
   if (dist > 1) return;
   p.sk[0] = Math.min(20, p.sk[0] + 0.012);
   if (r.chance(0.5 + (p.sk[0] - def.atk) * 0.035 + lucky + (p.drunk > 50 ? -0.1 : 0))) {
-    strike(c, p, f, (8 + 9 * armed) * RACES[p.race].size * (0.6 + r.float() * 0.8) * (has(p, 'bloodlust') ? 1.15 : 1) * (warden ? 1.2 : 1));
+    // a steel blade bites deeper
+    strike(c, p, f, (8 + 9 * armed * (armed > 0.5 && steel(c) ? 1.25 : 1)) * RACES[p.race].size * (0.6 + r.float() * 0.8) * (has(p, 'bloodlust') ? 1.15 : 1) * (warden ? 1.2 : 1));
   }
 }

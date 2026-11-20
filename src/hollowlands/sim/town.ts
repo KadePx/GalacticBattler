@@ -163,10 +163,10 @@ export const publicGround = (c: Colony, x: number, y: number): boolean => { cons
 export const reserved = (c: Colony, x: number, y: number): boolean => zoneAt(c, x, y) !== Z.NONE;
 
 /** Kinds that belong in the castle quarter. */
-const FINE = new Set(['manor', 'townhouse', 'guardhouse']);
+const FINE = new Set(['manor', 'townhouse', 'guardhouse', 'jeweller']);
 
 /** Kinds of building that stand outside the wall. */
-export const OUTSIDE = new Set(['field', 'pen', 'graveyard']);
+export const OUTSIDE = new Set(['field', 'pen', 'graveyard', 'windmill']);
 
 interface Pref { near: number; spread: number; dx?: number; dy?: number; aw?: number }
 
@@ -189,6 +189,14 @@ export function quarter(c: Colony, k: string): Pref {
     case 'smithy': case 'workshop': case 'brewery': case 'herbalist': case 'granary':
       return { near: 18, spread: 0.8, dx: cx, dy: cy, aw: 5 };
     case 'tavern': return { near: 14, spread: 1, dx: f.gx, dy: f.gy, aw: 4 };
+    // the trades of the colony's discoveries: the ovens and kilns in the crafts quarter, the smelly
+    // tannery and dye vats out by the wall, the jeweller among the fine houses, the press by the school
+    case 'bakery': return { near: 13, spread: 1, dx: cx, dy: cy, aw: 3 };
+    case 'kiln': case 'glassworks': case 'steelworks': case 'watermill': return { near: 20, spread: 0.8, dx: cx, dy: cy, aw: 4 };
+    case 'tannery': case 'dyeworks': return { near: f.wall - 5, spread: 0.8, dx: cx, dy: cy, aw: 3 };
+    case 'jeweller': return { near: 13, spread: 1, dx: f.kx, dy: f.ky, aw: 2 };
+    case 'printer': return { near: 18, spread: 0.9, dx: -f.px, dy: -f.py, aw: 4 };
+    case 'windmill': return { near: out + 5, spread: 0.6 };
     case 'gamehall': case 'bathhouse': { const [x, y] = unit(f.gx - f.px, f.gy - f.py); return { near: 16, spread: 0.9, dx: x, dy: y, aw: 3 }; }
     // the temple district, round its little square
     case 'shrine': return { near: 15, spread: 1, dx: -f.px, dy: -f.py, aw: 6 };

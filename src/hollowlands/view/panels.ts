@@ -16,6 +16,8 @@ import type { Colony, Dead, Ev, Id, Pawn } from '../sim/types';
 import { WEIGHT, clockText, dateText, evText, raceName, wareName } from '../text';
 import { bldCard, deadCard, face, linkNames, pawnCard, shortDate, type CardUi } from './card';
 import { MARKET_POP, WARES, daysToMarket, marketOpen, priceMult, priceOf } from '../sim/market';
+import { TECHS, TECH_LIST } from '../sim/data/tech';
+import { costOf, nextTech } from '../sim/tech';
 import { RES_NAMES, WEATHER, actText, causeText, esc, moodColor } from './words';
 
 export type Sel = { k: 'pawn'; id: Id } | { k: 'dead'; id: Id } | { k: 'bld'; id: number } | null;
@@ -368,6 +370,8 @@ export class Panels {
     }
     h += trades || '<div class="hint">Nobody holds a trade yet.</div>';
 
+    h += discoveriesBlock(c);
+
     h += marketBlock(c);
 
     h += '<h3>Stores</h3><div class="store">';
@@ -451,6 +455,46 @@ function marketBlock(c: Colony): string {
   if (coins.length >= 5) {
     const at = (q: number): number => Math.round(coins[Math.min(coins.length - 1, Math.floor(q * coins.length))]);
     h += `<div class="th"><span title="Silver in hand: the poorest tenth, the middle, the richest tenth">Purses</span><b>${at(0.1)} · ${at(0.5)} · ${at(0.9)} silver</b></div>`;
+  }
+  return h;
+}
+
+/**
+ * What the colony has discovered, in the order it came: who worked it out and when, what it does,
+ * and whether its building stands yet; then the lore gathering toward the next, and what the
+ * neighbours have told of.
+ */
+function discoveriesBlock(c: Colony): string {
+  const t = c.tech;
+  const got = t?.got ?? [];
+  let h = `<h3>Discoveries <span class="legend">${got.length} of ${TECH_LIST.length}</span></h3>`;
+  if (!got.length) h += "<div class=\"hint\">Nothing yet. Lore gathers from the elders, the learned, the books on people's shelves and the schoolhouse; in time someone will work something out.</div>";
+  for (const g of got) {
+    const d = TECHS[g.k];
+    if (!d) continue;
+    const who = person(c, g.a);
+    // its building: standing, going up, or not yet begun
+    let b = undefined as (typeof c.blds)[number] | undefined;
+    for (const k of d.bld) { b = c.blds.find((x) => x.k === k && x.built) ?? c.blds.find((x) => x.k === k); if (b) break; }
+    const bname = b ? (TPL[b.k]?.name ?? b.k).toLowerCase() : d.bld.length ? (g.k === 'milling' ? 'mill' : (TPL[d.bld[0]]?.name ?? '').toLowerCase()) : '';
+    const where = !d.bld.length ? (g.k === 'irrigation' ? 'Ditches along the fields' : 'Clover on the headlands') : !b ? `No ${bname} yet` : b.built ? `The ${bname} stands` : `The ${bname} is going up, ${Math.round(b.prog * 100)}%`;
+    const by = who ? `<a class="who" data-p="${who.id}">${esc(fullName(who))}</a>` : 'someone now gone';
+    const from = g.from ? ` (heard of from ${esc(g.from)})` : '';
+    h += `<div class="row disc"${b ? ` data-b="${b.id}"` : ''}><div class="n"><b>${esc(d.name)}</b><small class="wrap">Worked out by ${by}${from} · ${esc(where)}</small><small class="plain wrap">${esc(d.blurb)}</small></div><div class="yr">${shortDate(g.t)}</div></div>`;
+  }
+  if (t) {
+    const next = nextTech(c);
+    if (next) {
+      const cost = costOf(c, next);
+      const pct = Math.max(0, Math.min(100, Math.round((t.lore / cost) * 100)));
+      h += `<div class="lore" title="Lore gathers from the elders, the learned, the books on people's shelves, the schoolhouse${t.vol || got.some((g) => g.k === 'printing') ? ' and the press' : ''}."><div class="th dimrow"><span>Toward the next discovery</span><b>${pct}%</b></div><div class="bar"><i style="width:${pct}%"></i></div></div>`;
+    } else if (got.length < TECH_LIST.length) h += '<div class="hint">Nothing new is within reach until the colony has more to build on.</div>';
+    const heard = Object.entries(t.heard);
+    if (heard.length) h += `<div class="hint">Talked of by the neighbours: ${heard.map(([k, from]) => `${esc((TECHS[k]?.name ?? k).toLowerCase())} (${esc(from)})`).join(', ')}. What others already know comes easier.</div>`;
+    if (t.vol) h += `<div class="th"><span>The Chronicle of ${esc(c.name)}</span><b>${t.vol} ${t.vol === 1 ? 'volume' : 'volumes'}</b></div>`;
+    let glazed = 0;
+    for (const b of c.blds) if (b.gl) glazed++;
+    if (glazed) h += `<div class="th"><span>Homes with glass in the windows</span><b>${glazed}</b></div>`;
   }
   return h;
 }

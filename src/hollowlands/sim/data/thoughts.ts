@@ -37,6 +37,8 @@ export const TH_LIST: ThDef[] = [
   h('nobed', 'No bed of my own', -5, 0),
   h('crowded', 'Sharing a room with strangers', -3, 0),
   h('finehome', 'A fine home', 4, 0),
+  h('glazedhome', 'Glass in the windows at home', 2, 0),
+  h('colours', 'Dressed in good dyed cloth', 2, 0),
   h('shabbyhome', 'A draughty, shabby home', -2, 0),
   h('larderlow', 'The stores are nearly empty', -6, 0),
   h('larderfull', 'The stores are full', 3, 0),
@@ -230,6 +232,9 @@ export const TH_LIST: ThDef[] = [
 
   // Work and pride
   h('masterwork', 'Made something to be proud of', 10, DAY * 6),
+  h('discovered', 'Worked out something nobody here knew', 14, DAY * 12),
+  h('atebread', 'Fresh bread', 3, DAY),
+  h('newjewels', 'Wearing new jewellery', 6, DAY * 15),
   h('goodharvest', 'The harvest is in', 6, DAY * 4),
   h('builtit', 'Built with my own hands', 4, DAY * 3),
   h('lovework', 'Lost in work I love', 4, 12),

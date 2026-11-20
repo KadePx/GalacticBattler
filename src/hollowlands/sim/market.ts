@@ -42,7 +42,7 @@ export interface WareDef {
 }
 
 export const WARES: WareDef[] = [
-  { k: 'bread', profs: ['baker', 'cook', 'quartermaster'], skill: 5, res: ['meal'], base: 0.5, per: 2, keep: 0.3, shop: 'kitchen' },
+  { k: 'bread', profs: ['baker', 'cook', 'quartermaster'], skill: 5, res: ['bread', 'meal'], base: 0.5, per: 2, keep: 0.3, shop: 'kitchen' },
   { k: 'meat', profs: ['butcher', 'hunter'], skill: 5, res: ['meat'], base: 0.7, per: 0.3, keep: 0, shop: '' },
   { k: 'cloth', profs: ['weaver'], skill: 6, res: ['clothes'], base: 2.2, per: 0.3, keep: 0.2, shop: 'workshop' },
   { k: 'pots', profs: ['potter', 'carpenter'], skill: 6, res: ['goods'], base: 1.4, per: 0.4, keep: 0, shop: 'workshop' },
@@ -79,6 +79,7 @@ const PAY: Record<string, number> = {
   smith: 0.7, mason: 0.65, healer: 0.65, midwife: 0.55, herbalist: 0.55, priest: 0.55, lorekeeper: 0.55, quartermaster: 0.6, tavernkeeper: 0.55, bard: 0.45,
   carpenter: 0.5, weaver: 0.45, potter: 0.45, baker: 0.45, butcher: 0.45, brewer: 0.45, builder: 0.4, miner: 0.4, cook: 0.4, guard: 0.4, scout: 0.4,
   farmer: 0.3, herder: 0.3, fisher: 0.3, hunter: 0.3, woodcutter: 0.3, gravedigger: 0.22, ratcatcher: 0.2,
+  jeweller: 0.6, printer: 0.55, glazier: 0.5, dyer: 0.45, tanner: 0.4, miller: 0.4,
 };
 
 /** A colonist's day's wage: their trade, how good they are at it, and the ruler's cut. */

@@ -280,7 +280,7 @@ async function digest(force = false): Promise<void> {
   const own = inWindow.filter((e) => theirs(e) && (WEIGHT[e.k] ?? 0) >= 1);
   const near = inWindow.filter((e) => kin(e) && (WEIGHT[e.k] ?? 0) >= 2);
   // the colony at large: only what everyone would be talking about
-  const BIG = new Set(['raid', 'death', 'looted', 'seized', 'rescued', 'hero', 'rout', 'war_declared', 'war_on_us', 'warband', 'peace_sued', 'peace_made', 'settlers', 'founded', 'ruler', 'usurped', 'coup', 'election', 'outbreak', 'fire', 'fire_spread', 'berserk_hit', 'murder', 'trial', 'saint', 'schism', 'joined', 'blight', 'raidout', 'raidback', 'match']);
+  const BIG = new Set(['raid', 'death', 'looted', 'seized', 'rescued', 'hero', 'rout', 'war_declared', 'war_on_us', 'warband', 'peace_sued', 'peace_made', 'settlers', 'founded', 'ruler', 'usurped', 'coup', 'election', 'outbreak', 'fire', 'fire_spread', 'berserk_hit', 'murder', 'trial', 'saint', 'schism', 'joined', 'blight', 'raidout', 'raidback', 'match', 'discovery', 'firstbuilt']);
   const colony = inWindow.filter((e) => !theirs(e) && !kin(e) && BIG.has(e.k));
   if (!own.length && !near.length && !colony.length) { if (force) toast('Nothing much has happened lately.'); return; }
   const count = (k: string): number => inWindow.filter((e) => e.k === k).length;

@@ -7,6 +7,7 @@ import { CROPS, cells } from './data/buildings';
 import { bump, log } from './events';
 import { STAGE, stage, stat } from './pawn';
 import { Rand, S } from './rng';
+import { knows, techScan } from './known';
 import { B, F, RAW_FOOD, RES, T, type Colony, type ResK } from './types';
 
 export function emptyStock(): Record<ResK, number> {
@@ -15,8 +16,8 @@ export function emptyStock(): Record<ResK, number> {
   return s;
 }
 
-export const rawFood = (c: Colony): number => c.stock.grain + c.stock.veg + c.stock.meat + c.stock.fish + c.stock.berries + c.stock.mushrooms + c.stock.eggs + c.stock.milk;
-export const foodUnits = (c: Colony): number => rawFood(c) + c.stock.meal + c.stock.feast;
+export const rawFood = (c: Colony): number => c.stock.grain + c.stock.veg + c.stock.meat + c.stock.fish + c.stock.berries + c.stock.mushrooms + c.stock.eggs + c.stock.milk + c.stock.flour;
+export const foodUnits = (c: Colony): number => rawFood(c) + c.stock.meal + c.stock.feast + c.stock.bread;
 export const hasFood = (c: Colony): boolean => foodUnits(c) >= 1;
 
 /** Mouths to feed, counted in adult humans. */
@@ -42,14 +43,16 @@ export function foodDays(c: Colony): number {
 export function takeMeal(c: Colony, ironStomach: boolean): string {
   const s = c.stock;
   if (s.feast >= 1) { s.feast -= 1; return 'feast'; }
+  // fresh bread from the bakery, before a bowl of whatever is in the pot
+  if (s.bread >= 1) { s.bread -= 1; return 'bread'; }
   if (s.meal >= 1) { s.meal -= 1; return 'meal'; }
-  for (const k of ['berries', 'milk', 'eggs', 'mushrooms', 'veg', 'fish', 'meat', 'grain'] as const) {
+  for (const k of ['berries', 'milk', 'eggs', 'mushrooms', 'veg', 'fish', 'meat', 'grain', 'flour'] as const) {
     if (s[k] >= 1) { s[k] -= 1; return ironStomach || k === 'berries' ? 'meal' : 'raw'; }
   }
   // scraps of this and that
   if (foodUnits(c) < 1) return '';
   let need = 1;
-  for (const k of ['feast', 'meal', 'berries', 'milk', 'eggs', 'mushrooms', 'veg', 'fish', 'meat', 'grain'] as const) {
+  for (const k of ['feast', 'bread', 'meal', 'berries', 'milk', 'eggs', 'mushrooms', 'veg', 'fish', 'meat', 'grain', 'flour'] as const) {
     const n = Math.min(need, s[k]);
     s[k] -= n;
     need -= n;
@@ -92,6 +95,7 @@ export function dailyLand(c: Colony): void {
 
   // Crops
   const firstFrost = c.temp < -1 && prevTemp >= -1 && season >= 2;
+  const irrigated = knows(c, 'irrigation');
   for (const b of c.blds) {
     if (b.k !== 'field' || !b.built || !b.crop) continue;
     const def = CROPS[b.crop];
@@ -99,7 +103,8 @@ export function dailyLand(c: Colony): void {
     const wx = c.weather === 2 ? 1.15 : c.weather === 3 ? 0.9 : 1;
     // hardy crops keep growing, slowly, into the cold
     const chill = def.hardy ? (c.temp < -3 ? 0 : season === 3 || c.temp < 2 ? 0.5 : 1) : season === 3 || c.temp < 2 ? 0 : 1;
-    const grow = chill * (200 / def.days) * care * wx * (drought ? 0.2 : 1);
+    // the ditches keep water on the fields through a drought
+    const grow = chill * (200 / def.days) * care * wx * (drought ? (irrigated ? 0.6 : 0.2) : 1);
     for (const cell of cells('field')) {
       const i = (b.y + cell.dy) * c.w + b.x + cell.dx;
       const v = c.crop[i];
@@ -167,11 +172,15 @@ export function dailyLand(c: Colony): void {
   rot('hops', 0.004, 0.002);
   rot('meal', 0.08, 0.02);
   rot('feast', 0.1, 0.02);
+  rot('bread', 0.05, 0.02);
+  rot('flour', 0.004, 0.002);
 
   // Hearths burn through wood when it is cold
   if (c.temp < 6) {
     let homes = 0;
-    for (const b of c.blds) if (b.built && b.beds.some((x) => x)) homes++;
+    // a home with glass in its windows keeps its heat
+    const glazed = techScan(c).glazed;
+    for (const b of c.blds) if (b.built && b.beds.some((x) => x)) homes += glazed.has(b.id) ? 0.65 : 1;
     const burn = Math.min(c.stock.wood, (1.5 + homes * 0.7) * (c.temp < -4 ? 1.6 : 1));
     c.stock.wood -= burn;
     bump(c, 'woodBurned', burn);

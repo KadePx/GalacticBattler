@@ -5,6 +5,8 @@
 // k cauldron  v brewing vat  n grain bin  d desk  K bookshelf  R weapon rack  T bath  C chess table
 // D dartboard  m music bench  H drying rack  L lamp  u rug  O wardrobe  Y brazier
 // - low garden wall  % garden bed
+// The trades a colony discovers: M millstone  G windmill sails  U water wheel  E oven  I kiln
+// F glass furnace  y tanning vat  z dye vat  B steel furnace  j jeweller's bench  i printing press
 // The castle: X castle wall  Z tower wall  P palisade  J throne  N banner  V tapestry  q hay
 // (a space is outside the building: shapes need not be rectangles)
 // A shack's floor is bare earth and its beds are straw; a townhouse's and a manor's floors are fine.
@@ -230,6 +232,80 @@ export const TPL_LIST: Tpl[] = [
     '=,,,,,=',
     '===g===',
   ]),
+  // The trades a colony discovers (see tech.ts), each with a building of its own.
+  // a round stone tower out among the fields, its sails turning over the millstone
+  tpl('windmill', 'Windmill', 30, 10, 36, [
+    ' ### ',
+    '#nGn#',
+    '#.M.#',
+    '#x..#',
+    '##+##',
+  ]),
+  // a mill on the river bank, its wheel turned by the water (the wheel on the east side here; it is
+  // turned to face whichever way the water lies). The trades' workshops are small, to fit the town's lots.
+  tpl('watermill', 'Watermill', 32, 14, 38, [
+    '#####',
+    '#M.n#',
+    '#...U',
+    '#x.n#',
+    '##+##',
+  ]),
+  tpl('bakery', 'Bakery', 22, 12, 28, [
+    '#####',
+    '#EEn#',
+    '#...#',
+    '#t.x#',
+    '##+##',
+  ]),
+  tpl('kiln', "Potter's kiln", 18, 16, 28, [
+    '#####',
+    '#I.I#',
+    '#...#',
+    '#w.x#',
+    '##+##',
+  ]),
+  tpl('glassworks', 'Glassworks', 22, 16, 32, [
+    '#####',
+    '#F.e#',
+    '#...#',
+    '#w.F#',
+    '##+##',
+  ]),
+  tpl('tannery', 'Tannery', 24, 4, 26, [
+    '#####',
+    '#y.y#',
+    '#...#',
+    '#H.y#',
+    '##+##',
+  ]),
+  tpl('dyeworks', 'Dye works', 24, 4, 26, [
+    '#####',
+    '#z.z#',
+    '#...#',
+    '#zlH#',
+    '##+##',
+  ]),
+  tpl('steelworks', 'Steelworks', 20, 24, 36, [
+    '#####',
+    '#B.f#',
+    '#...#',
+    '#a.B#',
+    '##+##',
+  ]),
+  tpl('jeweller', "Jeweller's", 20, 12, 28, [
+    '#####',
+    '#jeK#',
+    '#...#',
+    '#cjx#',
+    '##+##',
+  ]),
+  tpl('printer', 'Print shop', 28, 6, 30, [
+    '#####',
+    '#i.K#',
+    '#...#',
+    '#i.d#',
+    '##+##',
+  ]),
 ];
 
 /**
@@ -323,6 +399,17 @@ for (const t of CASTLE_TPL) {
     TPL[t.k + '~r' + n] = { ...t, rows };
   }
 }
+// the watermill turned so its wheel can face the water on any side
+{
+  const t = TPL.watermill;
+  let rows = t.rows;
+  for (let n = 1; n < 4; n++) {
+    rows = turnRows(rows);
+    TPL['watermill~r' + n] = { ...t, rows };
+  }
+}
+/** The watermill's four ways round (its wheel east, south, west, north). */
+export const MILL_TURNS = ['watermill', 'watermill~r1', 'watermill~r2', 'watermill~r3'];
 
 /**
  * The town wall, raised in pieces round the octagon of the town plan's wall band (see walls.ts):
@@ -521,6 +608,16 @@ export const PURPOSE: Record<string, string> = {
   townhouse: 'A narrow house of the inner streets for a family doing well. Costly to keep.',
   manor: 'A great house by the keep, with a walled garden. Only the rich can keep one up.',
   graveyard: 'Where the dead are laid to rest.',
+  windmill: 'The wind turns the sails and the sails turn the millstone: grain in, flour out. Bread and porridge of flour go further than grain.',
+  watermill: 'The river turns the wheel and the wheel turns the millstone: grain in, flour out, faster than any windmill.',
+  bakery: 'The ovens turn flour into bread: a loaf feeds more than the grain it came from, and people like it better than porridge.',
+  kiln: "Clay from the river bank fired hard: pots for the market stall, and bricks that stand in for stone in people's homes.",
+  glassworks: 'Sand melted into glass. Glazed windows keep a home warmer and its hearth burns less wood.',
+  tannery: 'Hides cured in oak-bark pits: leather that lasts, and clothes that wear out more slowly.',
+  dyeworks: 'Madder red, woad blue and weld yellow: the colony goes about in colour, and its dyed cloth sells well.',
+  steelworks: 'Iron folded with charcoal into steel: tools that hold an edge far longer, and blades that bite deeper.',
+  jeweller: 'Silver and stones worked into rings and brooches. Where the rich spend what they cannot eat.',
+  printer: "Letters cut in wood and inked onto paper: the colony's chronicle, a volume at a time, and more for everyone to read.",
   palisade: 'A ring of sharpened stakes round the rise: the first wall of a castle.',
   motte: "The ruler's first hall on the rise, timber and thatch, where they live and hold court until a keep is raised.",
   keep: 'The stone heart of the castle: the great hall and the throne where the ruler holds audiences and feasts, the ruler\'s chambers above, and a chapel.',
@@ -570,6 +667,7 @@ const FURN: Record<string, number> = {
   A: B.ALTAR, p: B.PEW, l: B.LOOM, W: B.WELL, e: B.SHELF, o: B.COT, S: B.STATUE,
   k: B.CAULDRON, v: B.VAT, n: B.BIN, d: B.DESK, K: B.BOOKS, R: B.RACK, T: B.BATH, C: B.CHESS, D: B.DARTS, m: B.MUSIC, H: B.DRYRACK, L: B.LAMP, u: B.RUG, O: B.WARDROBE, Y: B.BRAZIER, Q: B.TROUGH, '%': B.GARDEN,
   X: B.CWALL, Z: B.CTOWER, P: B.PALISADE, J: B.THRONE, N: B.BANNER, V: B.TAPESTRY, q: B.HAY,
+  M: B.MILLSTONE, G: B.SAILS, U: B.WHEEL, E: B.OVEN, I: B.KILN, F: B.GLASSFURN, y: B.TANVAT, z: B.DYEVAT, B: B.BLOOMERY, j: B.JEWELBENCH, i: B.PRESS,
 };
 
 /** Things a home gains as it is made finer. They sit on floor tiles and are kept when the floor is relaid. */

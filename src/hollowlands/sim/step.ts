@@ -22,6 +22,7 @@ import { dailyHerd, stepHerd } from './herd';
 import { dailyGuild } from './guild';
 import { dailyDreams } from './dreams';
 import { dailyMarket, tickMarket } from './market';
+import { dailyTech } from './tech';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
@@ -29,6 +30,7 @@ function daily(c: Colony): void {
   dailyWild(c);
   dailyHerd(c);
   dailyGuild(c);
+  dailyTech(c);
   dailyDreams(c);
   dailyLife(c);
   plan(c);

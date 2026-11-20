@@ -32,12 +32,16 @@ export const B = {
   // the town wall: a gate in it (always open to colonists; shut against foes at night and in alarms),
   // and the rubble of a breach
   GATE: 73, RUBBLE: 74,
+  // the things of the trades a colony discovers (see tech.ts): a millstone, a windmill's sails, a
+  // water wheel, a baker's oven, a potter's kiln, a glass furnace, tanning and dye vats, a steel
+  // furnace, a jeweller's bench, a printing press
+  MILLSTONE: 75, SAILS: 76, WHEEL: 77, OVEN: 78, KILN: 79, GLASSFURN: 80, TANVAT: 81, DYEVAT: 82, BLOOMERY: 83, JEWELBENCH: 84, PRESS: 85,
 } as const;
 
 /** Street furniture: stands on its own, outside any building. */
 export const isStreetThing = (s: number): boolean => s >= B.LAMPPOST && s <= B.PUMP;
 
-export const RES = ['grain', 'veg', 'meat', 'fish', 'berries', 'meal', 'feast', 'ale', 'wood', 'stone', 'ore', 'iron', 'leather', 'cloth', 'herbs', 'medicine', 'tools', 'clothes', 'weapons', 'silver', 'goods', 'hops', 'mushrooms', 'eggs', 'milk'] as const;
+export const RES = ['grain', 'veg', 'meat', 'fish', 'berries', 'meal', 'feast', 'ale', 'wood', 'stone', 'ore', 'iron', 'leather', 'cloth', 'herbs', 'medicine', 'tools', 'clothes', 'weapons', 'silver', 'goods', 'hops', 'mushrooms', 'eggs', 'milk', 'flour', 'bread', 'brick', 'glass'] as const;
 export type ResK = (typeof RES)[number];
 export const RAW_FOOD: readonly ResK[] = ['grain', 'veg', 'meat', 'fish', 'berries', 'mushrooms', 'eggs', 'milk'];
 
@@ -297,6 +301,8 @@ export interface Bld {
   got?: number;
   /** a stretch of town wall: the cells (indexes into its plan's cells) broken through, until it is mended */
   br?: number[];
+  /** a home with glass in its windows (once the colony can make glass): warmer, and it burns less wood */
+  gl?: 1;
 }
 
 export interface Ev { t: number; k: string; a?: Id; b?: Id; s?: string; n?: number }
@@ -401,6 +407,13 @@ export interface Colony {
    * today, whether the day's grand sale has been told, and price multipliers at the opening (x100)
    */
   mkt?: { t0: number; t1: number; n: number; st: { k: number; o: Id; x: number; y: number; dx: number; dy: number; n: number; e: number }[]; went: Id[]; carts: string[]; coin: number; sale: number; pr: number[] };
+  /**
+   * What the colony knows (see tech.ts): lore gathered toward the next discovery, each discovery in
+   * the order made (what, when, who worked it out, and the colony it was heard of from), what
+   * neighbours have told of (kind -> their name), when the first of each new kind of building was
+   * finished, the jeweller's orders, and the printed chronicle (volumes, pages toward the next).
+   */
+  tech?: { lore: number; got: { k: string; t: number; a: Id; from?: string }[]; heard: Record<string, string>; first: Record<string, number>; ord: Id[]; vol: number; pg: number };
   /** the colony's festivals: its own name for each, how many years held, and this year's champion */
   trad?: Partial<Record<'spring' | 'summer', { name: string; n: number; champ?: Id }>>;
 }

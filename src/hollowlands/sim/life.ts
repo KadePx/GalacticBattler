@@ -1,6 +1,7 @@
 // The long arcs of a life: love, marriage, children, growing up, growing old, dying, and the
 // gatherings (weddings, funerals) that mark them.
 
+import { techBld } from './known';
 import { endFestival } from './festivals';
 import { HARD_CAP, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
 import { touch } from './cache';
@@ -268,6 +269,7 @@ function spotIn(c: Colony, b: Bld | undefined): [number, number] {
 
 /** Once a day: age, births, deaths of old age, couples drifting together or apart, gatherings. */
 export function dailyLife(c: Colony): void {
+  const tanned = !!techBld(c, 'tannery');
   const t = c.tick;
   const dayYears = TICKS_PER_DAY / TICKS_PER_YEAR;
   for (const p of c.pawns.slice()) {
@@ -284,7 +286,8 @@ export function dailyLife(c: Colony): void {
       if (new Rand(c.seed, S.DEATH, t, p.id).chance(chance)) { die(c, p, 'age'); continue; }
     }
     dailyHealth(c, p);
-    p.cloth = Math.max(0, p.cloth - (stage(c, p) <= STAGE.CHILD ? 0.2 : 0.4));
+    // tanned leather and good cloth wear more slowly
+    p.cloth = Math.max(0, p.cloth - (stage(c, p) <= STAGE.CHILD ? 0.2 : 0.4) * (tanned ? 0.75 : 1));
     if (p.cloth < 30 && c.stock.clothes >= 1) { c.stock.clothes -= 1; p.cloth = 100; }
   }
 

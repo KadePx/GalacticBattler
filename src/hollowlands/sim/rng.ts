@@ -94,4 +94,5 @@ export const S = {
   CRIME: 20,
   WILD: 21,
   MARKET: 22,
+  TECH: 23,
 } as const;
