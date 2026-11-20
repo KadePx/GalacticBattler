@@ -51,13 +51,14 @@ export function touchAt(c: Colony, i: number): void {
 
 export function tileCost(c: Colony, i: number): number {
   const s = c.st[i];
-  if (s === B.WALL_WOOD || s === B.WALL_STONE || s === B.FENCE || s === B.WELL || s === B.STATUE) return 0;
+  if (s === B.WALL_WOOD || s === B.WALL_STONE || s === B.FENCE || s === B.WELL || s === B.STATUE || s === B.LOWWALL || s === B.FOUNTAIN || s === B.PUMP) return 0;
   const t = c.ter[i];
   if (t === T.DEEP || t === T.ROCK) return 0;
   const f = c.feat[i];
   if (f === F.BOULDER || f === F.ORE || f === F.RUIN) return 0;
   if (s === B.DOOR) return 9;
-  if (s === B.FLOOR_WOOD || s === B.FLOOR_STONE) return 8;
+  if (s === B.FLOOR_WOOD || s === B.FLOOR_STONE || s === B.FLOOR_FINE || s === B.FLOOR_BARE) return 8;
+  if (s === B.PAVING) return 7;
   if (s === B.RUG) return 8;
   if (s >= B.BED) return 26;
   let cost = t === T.PATH ? 7 : t === T.SAND ? 12 : t === T.MARSH ? 18 : t === T.SHALLOW ? 26 : 10;

@@ -46,8 +46,8 @@ export function createColony(o: CreateOpts): Colony {
   const r = new Rand(seed, S.GEN, 9);
   const c = blank(seed);
   if (o.id) c.id = o.id;
-  c.name = o.name ?? colonyName(r);
-  for (let k = 0; k < 8 && o.avoid?.includes(c.name); k++) c.name = colonyName(r);
+  // a name of its own: never one already taken in its world (nor the ruin it is built over)
+  c.name = o.name ?? colonyName(r, [...(o.avoid ?? []), ...(o.ruinsOf ? [o.ruinsOf] : [])]);
   c.biome = o.biome ?? r.pick(BIOMES);
   genMap(c);
   if (o.ruinsOf) {
@@ -117,13 +117,16 @@ export function createColony(o: CreateOpts): Colony {
   build(c, 'hall', true);
   for (let k = 0; k < Math.max(1, Math.round(pop / 24)); k++) build(c, 'store', true);
   if (pop >= 24) build(c, 'kitchen', true);
+  // the better off in houses; the poorest in shacks and longhouses on the edge of town
   let singles = 0;
+  const purse = (h: Pawn[]): number => h.reduce((a, p) => a + p.coin, 0);
   for (const h of households) {
-    if (h.length >= 3) build(c, 'bighouse', true);
-    else if (h.length === 2) build(c, 'house', true);
+    const poor = purse(h) < 7;
+    if (h.length >= 3) build(c, poor ? 'longhouse' : 'bighouse', true);
+    else if (h.length === 2) build(c, poor ? 'shack' : 'house', true);
     else singles++;
   }
-  for (let k = 0; k < Math.ceil(singles / 2); k++) build(c, 'house', true);
+  for (let k = 0; k < Math.ceil(singles / 2); k++) build(c, k % 2 ? 'house' : 'shack', true);
   for (let k = 0; k < Math.max(1, Math.round(pop / 30)); k++) build(c, 'well', true);
   const fields = Math.ceil(mouths(c) * 0.4);
   const first = ['wheat', 'potato', 'grain', 'beans', 'oats', 'onion', 'cabbage', 'turnip'];

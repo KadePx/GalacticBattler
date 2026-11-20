@@ -2,12 +2,13 @@
 // (Later the ruler and council will steer this; for now it is common sense.)
 
 import { DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
-import { dropFeat, touch, touchAt } from './cache';
+import { cacheOf, dropFeat, touch, touchAt } from './cache';
 import { BACKS } from './data/backstories';
 import { CROPS, HOMES, SHAPES, TPL, cellCode, cells, isDecor, shapeOf, spots } from './data/buildings';
 import { PROFS, PROF_LIST } from './data/professions';
 import { mouths } from './econ';
-import { onKeep, reach, lotScore, pave, reserved } from './town';
+import { OUTSIDE, WALL_W, Z, frame, lotScore, octo, onKeep, passableThing, pave } from './town';
+import { household, prosper, upkeep } from './homes';
 import { chooseCrop } from './farm';
 import { bump, log, note } from './events';
 import { bury } from './life';
@@ -61,6 +62,8 @@ export function placeBuilding(c: Colony, k: string, x: number, y: number, instan
 }
 
 const OPEN = new Set<number>([T.GRASS, T.DIRT, T.SOIL, T.SAND, T.STONE, T.MARSH]);
+/** What a new building may stand flush against: another's wall, fence or garden wall. */
+const PARTY = new Set<number>([B.WALL_WOOD, B.WALL_STONE, B.FENCE, B.LOWWALL]);
 
 /** Best free plot for a building, or null if the land is full. */
 export function findSite(c: Colony, k: string, shape = k, far = false, planned = false): [number, number] | null {
@@ -68,13 +71,19 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
   const w = t.rows[0].length;
   const h = t.rows.length;
   const field = k === 'field';
-  const REACH = reach(c);
-  const minR = planned ? (field ? REACH - 6 : 0) : field ? 14 : k === 'graveyard' ? 24 : k === 'tower' ? 20 : k === 'hall' ? 0 : 3;
+  const fr = frame(c);
+  const zone = fr.zone;
+  const WALL = fr.wall;
+  // farms, pens and the graveyard go outside the wall's line; everything else inside it
+  const out = OUTSIDE.has(k);
+  const minR = planned ? (out ? WALL : 0) : field ? 14 : k === 'graveyard' ? 24 : k === 'tower' ? 20 : k === 'hall' ? 0 : 3;
   // a crowded colony builds further out, almost to the edge of its land
   const edge = Math.min(c.w, c.h) / 2 - 6;
-  const maxR = field ? (far ? edge : REACH + 18) : far ? edge - 2 : REACH + 12;
+  const maxR = field ? (far ? edge : WALL + 18) : far ? edge - 2 : planned ? (out ? WALL + 14 : WALL + 2) : WALL + 9;
   let best: [number, number] | null = null;
   let bestScore = -1e9;
+  const top: [number, number, number][] = [];
+  const doors = cells(shape).filter((q) => q.ch === '+' || q.ch === 'g');
   // only the ground within reach of the plan is looked at, not the whole map
   const y0 = Math.max(3, Math.floor(c.cy - maxR - h));
   const y1 = Math.min(c.h - h - 3, Math.ceil(c.cy + maxR));
@@ -93,16 +102,41 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
           const i = yy * c.w + xx;
           const inside = xx >= x && xx < x + w && yy >= y && yy < y + h;
           const ter = c.ter[i];
-          if (c.sb[i] || c.st[i] || c.feat[i] === F.RUIN || c.feat[i] === F.ORE) { ok = false; break; }
-          // the plan builds only on open ground; when nothing fits it, a worn path will do too
-          if (inside ? !OPEN.has(ter) && (planned || ter !== T.PATH) : !OPEN.has(ter) && ter !== T.PATH) { ok = false; break; }
+          // town buildings may share a wall with a neighbour (a row of houses), but never stand in
+          // front of its door; a lamp or a bench may stand beside a building, not in it
+          if (!inside && c.sb[i]) { if (out || !PARTY.has(c.st[i])) { ok = false; break; } continue; }
+          if (c.sb[i] || (c.st[i] && (inside || !passableThing(c.st[i]))) || c.feat[i] === F.RUIN || c.feat[i] === F.ORE) { ok = false; break; }
+          // the plan builds on open ground, and on paths worn across the lots inside the wall (not
+          // on the road out); when nothing fits it, any worn path will do
+          if (inside ? !OPEN.has(ter) && (ter !== T.PATH || (planned && (zone[i] !== Z.NONE || octo(xx - c.cx, yy - c.cy) >= WALL))) : !OPEN.has(ter) && ter !== T.PATH) { ok = false; break; }
           if (Math.abs(xx - c.cx) <= 1 && Math.abs(yy - c.cy) <= 1 && inside) { ok = false; break; }
           // the rise is kept for the keep
           if (inside && onKeep(c, xx, yy)) { ok = false; break; }
           if (inside && ter === T.SOIL) soil++;
-          // the plan keeps the streets and the square open
-          if (planned && inside && t.rows[yy - y][xx - x] !== ' ' && reserved(c, xx, yy)) { ok = false; break; }
+          if (!inside || t.rows[yy - y][xx - x] === ' ') continue;
+          const od = octo(xx - c.cx, yy - c.cy);
+          // the line where the town wall will stand is kept clear, whatever else gives
+          if (od >= WALL && od < WALL + WALL_W) { ok = false; break; }
+          if (!planned) continue;
+          // the plan keeps the streets and the squares open
+          if (zone[i] !== Z.NONE) { ok = false; break; }
+          if (out ? od < WALL + WALL_W : !far && od >= WALL) { ok = false; break; }
         }
+      }
+      if (!ok) continue;
+      // every way in opens onto ground that can be walked
+      for (const dc of doors) {
+        let open = false;
+        let edge = false;
+        for (const [ox, oy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+          const nx = dc.dx + ox;
+          const ny = dc.dy + oy;
+          if (nx >= 0 && ny >= 0 && nx < w && ny < h && t.rows[ny][nx] !== ' ') continue;
+          edge = true;
+          const n = (y + ny) * c.w + x + nx;
+          if (!c.sb[n] && c.ter[n] !== T.DEEP && c.ter[n] !== T.ROCK && (!c.st[n] || passableThing(c.st[n]))) open = true;
+        }
+        if (edge && !open) { ok = false; break; }
       }
       if (!ok) continue;
       // a tower stands out along the road, where trouble comes from
@@ -111,13 +145,106 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
       const road = k === 'tower' ? Math.sqrt(rdx * rdx + rdy * rdy) : 0;
       let score = planned
         ? lotScore(c, k, x, y, w, h, t.rows) + (field ? soil * 0.3 : 0) - (k === 'tower' ? road * 0.5 : 0)
-        : field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - REACH) : k === 'tower' ? -road : -d;
+        : field ? soil * 0.3 - d * 0.55 : k === 'graveyard' ? -Math.abs(d - WALL) : k === 'tower' ? -road : -d;
       score += (hash32(c.seed, S.PLAN, x, y, c.nextBld) / 4294967296) * 1.6;
+      void best;
       if (score > bestScore) { bestScore = score; best = [x, y]; }
+      // the few best plots are kept, in case the very best would wall someone in
+      if (top.length < 8 || score > top[top.length - 1][0]) {
+        top.push([score, x, y]);
+        top.sort((a, b) => b[0] - a[0] || a[2] - b[2] || a[1] - b[1]);
+        if (top.length > 8) top.pop();
+      }
     }
   }
-  return best;
+  if (field) return top.length ? [top[0][1], top[0][2]] : null;
+  for (const [, x, y] of top) if (keepsWays(c, shape, x, y)) return [x, y];
+  return null;
 }
+
+/**
+ * Would a building here still leave every door nearby (its own and its neighbours') a way out to
+ * the streets? A row of houses wall to wall must not close a yard that someone's door opens into.
+ */
+function keepsWays(c: Colony, shape: string, x: number, y: number): boolean {
+  const t = TPL[shape];
+  const w = t.rows[0].length;
+  const h = t.rows.length;
+  const M = 14;
+  const x0 = Math.max(1, x - M);
+  const y0 = Math.max(1, y - M);
+  const x1 = Math.min(c.w - 2, x + w + M);
+  const y1 = Math.min(c.h - 2, y + h + M);
+  const RW = x1 - x0 + 1;
+  const RH = y1 - y0 + 1;
+  const k = cacheOf(c);
+  const fr = frame(c);
+  const mine = (xx: number, yy: number): boolean => xx >= x && yy >= y && xx < x + w && yy < y + h && t.rows[yy - y][xx - x] !== ' ';
+  const seen = new Uint8Array(RW * RH);
+  const q: number[] = [];
+  // the streets, and the edge of the patch looked at, count as ways out
+  for (let yy = y0; yy <= y1; yy++) {
+    for (let xx = x0; xx <= x1; xx++) {
+      const i = yy * c.w + xx;
+      if (!k.walk[i] || mine(xx, yy)) continue;
+      const edge = xx === x0 || yy === y0 || xx === x1 || yy === y1;
+      if (!edge && fr.zone[i] === Z.NONE) continue;
+      seen[(yy - y0) * RW + xx - x0] = 1;
+      q.push(xx, yy);
+    }
+  }
+  for (let h0 = 0; h0 < q.length; h0 += 2) {
+    const qx = q[h0];
+    const qy = q[h0 + 1];
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = qx + ox;
+      const ny = qy + oy;
+      if (nx < x0 || ny < y0 || nx > x1 || ny > y1) continue;
+      const r = (ny - y0) * RW + nx - x0;
+      if (seen[r] || !k.walk[ny * c.w + nx] || mine(nx, ny)) continue;
+      seen[r] = 1;
+      q.push(nx, ny);
+    }
+  }
+  const out = (xx: number, yy: number): boolean => xx >= x0 && yy >= y0 && xx <= x1 && yy <= y1 && seen[(yy - y0) * RW + xx - x0] === 1;
+  // a door is fine if some tile in front of it (not in its own building) is still on a way out
+  const doorOk = (dx: number, dy: number, id: number): boolean => {
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = dx + ox;
+      const ny = dy + oy;
+      if (id ? c.sb[ny * c.w + nx] === id : mine(nx, ny)) continue;
+      if (out(nx, ny)) return true;
+    }
+    return false;
+  };
+  for (const cell of cells(shape)) if ((cell.ch === '+' || cell.ch === 'g') && !doorOk(x + cell.dx, y + cell.dy, 0)) {
+    // an inner door (a manor's front door inside its garden) leads through its own floor
+    let inner = true;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!mine(x + cell.dx + ox, y + cell.dy + oy)) inner = false;
+    if (!inner) return false;
+  }
+  for (const b of c.blds) {
+    if (b.k === 'field' || b.x > x1 || b.y > y1 || b.x + b.w < x0 || b.y + b.h < y0) continue;
+    for (const cell of cells(shapeOf(b))) {
+      if (cell.ch !== '+' && cell.ch !== 'g') continue;
+      const dx = b.x + cell.dx;
+      const dy = b.y + cell.dy;
+      if (dx <= x0 || dy <= y0 || dx >= x1 || dy >= y1) continue;
+      let had = false;
+      let inner = true;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = (dy + oy) * c.w + dx + ox;
+        if (c.sb[n] === b.id) continue;
+        inner = false;
+        if (k.reach[n]) had = true;
+      }
+      // only a door that has a way out now can be shut in by the new building
+      if (!inner && had && !doorOk(dx, dy, b.id)) return false;
+    }
+  }
+  return true;
+}
+
 
 export function build(c: Colony, k: string, instant = false, crop?: string): Bld | null {
   // no point measuring the same crowded ground every morning
@@ -203,8 +330,26 @@ export function assignBeds(c: Colony, quiet: boolean): void {
     b.beds[b.beds.indexOf(0)] = p.id;
     const was = p.home;
     p.home = b.id;
-    if (!quiet && !was && stage(c, p) >= STAGE.TEEN) think(c, p, 'newhome');
+    if (!quiet && (!was || b.own) && stage(c, p) >= STAGE.TEEN) think(c, p, 'newhome');
   };
+  // a family's own home is theirs first: anyone else living there makes room for them
+  for (const b of homes) {
+    if (!b.own) continue;
+    const head = pawnById(c, b.own);
+    if (!head || head.gone) continue;
+    const fam = household(c, head);
+    for (const p of fam) {
+      if (p.home === b.id || p.gone) continue;
+      if (b.beds.indexOf(0) < 0) {
+        const j = b.beds.findIndex((id) => id && !fam.some((f) => f.id === id));
+        if (j < 0) break;
+        const out = pawnById(c, b.beds[j]);
+        if (out) out.home = 0;
+        b.beds[j] = 0;
+      }
+      move(p, b);
+    }
+  }
   for (const p of c.pawns) {
     if (p.home || p.gone) continue;
     let pick: Bld | undefined;
@@ -215,11 +360,12 @@ export function assignBeds(c: Colony, quiet: boolean): void {
       if (b && free(b) > 0) { pick = b; break; }
     }
     if (!pick) {
-      let bestN = 99;
+      // the emptiest home, but not a family's own while there is room elsewhere
+      let bestN = 999;
       for (const b of homes) {
         const f = free(b);
         if (f <= 0) continue;
-        const n = b.beds.length - f;
+        const n = b.beds.length - f + (b.own ? 100 : 0);
         if (n < bestN) { bestN = n; pick = b; }
       }
     }
@@ -255,7 +401,7 @@ export function sharesWithStrangers(c: Colony, p: Pawn): boolean {
 /** When a home stands empty, the people who most need a place of their own move in. */
 function rehouse(c: Colony, homes: Bld[], move: (p: Pawn, b: Bld) => void): void {
   for (const b of homes) {
-    if (b.beds.some((x) => x)) continue;
+    if (b.own || b.beds.some((x) => x)) continue;
     let done = false;
     if (b.beds.length >= 2) {
       for (const p of c.pawns) {
@@ -286,7 +432,8 @@ function rehouse(c: Colony, homes: Bld[], move: (p: Pawn, b: Bld) => void): void
 function slots(c: Colony, adults: number, kids: number): Record<string, number> {
   const has = (k: string): boolean => c.blds.some((b) => b.k === k && b.built);
   return {
-    farmer: Math.max(1, Math.round(adults * 0.24)),
+    // the fields lie outside the wall now, a longer walk: a few more hands for them
+    farmer: Math.max(1, Math.round(adults * 0.3)),
     cook: adults >= 16 ? 2 : 1,
     builder: adults >= 12 ? 2 : 1,
     woodcutter: adults >= 14 ? 2 : adults >= 4 ? 1 : 0,
@@ -389,6 +536,7 @@ export function assignProfs(c: Colony, quiet: boolean): void {
 /** Once a day: beds, trades, and the next thing worth building. */
 export function plan(c: Colony): void {
   pave(c, 8);
+  upkeep(c);
   assignBeds(c, false);
   assignProfs(c, false);
   const pop = c.pawns.length;
@@ -425,10 +573,14 @@ export function plan(c: Colony): void {
     let rough = 0;
     for (const p of c.pawns) if (p.race === 'orc' || p.race === 'goblin') rough++;
     const need = homeless - beds;
-    const k = need >= 4 ? (rough / pop > 0.5 ? 'longhouse' : 'bighouse') : need >= 2 ? 'house' : 'cottage';
+    // whoever is left without a roof and has nothing to pay with gets a shack on the edge of town
+    let purse = 0;
+    for (const p of c.pawns) if (!p.home && stage(c, p) >= STAGE.ADULT) purse = Math.max(purse, p.coin);
+    const poor = purse < 12 || c.stock.wood < 26;
+    const k = need >= 4 ? (rough / pop > 0.5 ? 'longhouse' : 'bighouse') : need >= 2 ? (poor ? 'shack' : 'house') : poor ? 'shack' : 'cottage';
     if (build(c, k)) return;
     // no room for that: something smaller may still fit
-    for (const smaller of ['house', 'cottage']) if (smaller !== k && build(c, smaller)) return;
+    for (const smaller of ['house', 'cottage', 'shack']) if (smaller !== k && build(c, smaller)) return;
   }
   // the graveyard's plot is claimed early, before the land fills up
   if ((c.dead.some((d) => !d.left) || pop >= 12) && !count('graveyard')) { if (build(c, 'graveyard')) return; }
@@ -474,6 +626,8 @@ export function plan(c: Colony): void {
       else if (single) { if (build(c, 'cottage')) return; }
     }
   }
+  // families with silver to spare build homes of their own
+  if (dayOf(c.tick) % 3 === 0) prosper(c);
   void HOMES;
   void CROPS;
   void dropFeat;

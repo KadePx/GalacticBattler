@@ -69,6 +69,10 @@ export function step(c: Colony): void {
     }
     if (p.gone) gone = true;
   }
-  if (gone) c.pawns = c.pawns.filter((p) => !p.gone);
+  if (gone) {
+    // a plot dies with the one who led it
+    if (c.plot && c.pawns.some((p) => p.gone && p.id === c.plot!.lead)) c.plot = undefined;
+    c.pawns = c.pawns.filter((p) => !p.gone);
+  }
   c.tick = t + 1;
 }

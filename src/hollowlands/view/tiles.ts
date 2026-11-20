@@ -5,6 +5,7 @@
 import type { Graphics } from 'pixi.js';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR, TICKS_PER_DAY } from '../config';
 import { riseAt } from '../sim/mapgen';
+import { Z, frame } from '../sim/town';
 import { B, F, T, type Bld, type Colony } from '../sim/types';
 import { css, darken, lighten, mix } from './look';
 
@@ -172,12 +173,37 @@ export function bakeTerrain(c: Colony, cv: HTMLCanvasElement, pal: Pal): void {
   g.imageSmoothingEnabled = true;
   g.drawImage(small, 0, 0, W * TS, H * TS);
   // Small details: tufts, pebbles, ripples, rock faces.
+  const zone = frame(c).zone;
+  const snowy = pal.snow > 0.5;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x;
       const t = c.ter[i];
       const px = x * TS;
       const py = y * TS;
+      const z = zone[i];
+      // the town's laid ground: the squares and the avenue in cobbles, the streets in packed gravel
+      // with a kerb where they meet the lots, so the plan reads even from far off
+      if (z !== Z.NONE && z !== Z.BAND && (t === T.STONE || t === T.PATH)) {
+        const cob = t === T.STONE && (z === Z.SQUARE || z === Z.PLAZA || z === Z.AVENUE);
+        g.fillStyle = cob ? (snowy ? '#d9d6cc' : '#c7bca3') : snowy ? '#cfc8b8' : '#c4ad84';
+        g.fillRect(px, py, TS, TS);
+        if (cob) {
+          g.fillStyle = snowy ? 'rgba(120,115,105,0.35)' : 'rgba(110,98,78,0.45)';
+          for (let r = 0; r < 4; r++) g.fillRect(px, py + r * 6, TS, 1);
+          for (let r = 0; r < 4; r++) for (let q = 0; q < 3; q++) g.fillRect(px + ((q * 8 + (r & 1) * 4 + x * 3) % TS), py + r * 6, 1, 6);
+        } else if (hash2(x, y, 31) < 0.5) {
+          g.fillStyle = 'rgba(120,98,66,0.5)';
+          g.fillRect(px + hash2(x, y, 32) * 20, py + hash2(x, y, 33) * 20, 2, 2);
+        }
+        const lot = (xx: number, yy: number): boolean => xx >= 0 && yy >= 0 && xx < W && yy < H && zone[yy * W + xx] === Z.NONE;
+        g.fillStyle = 'rgba(70,56,38,0.35)';
+        if (lot(x, y - 1)) g.fillRect(px, py, TS, 2);
+        if (lot(x, y + 1)) g.fillRect(px, py + TS - 2, TS, 2);
+        if (lot(x - 1, y)) g.fillRect(px, py, 2, TS);
+        if (lot(x + 1, y)) g.fillRect(px + TS - 2, py, 2, TS);
+        continue;
+      }
       const h = hash2(x, y, 2);
       const ox = 3 + hash2(x, y, 7) * (TS - 8);
       const oy = 4 + hash2(x, y, 8) * (TS - 9);
@@ -382,7 +408,8 @@ const OPEN_AIR = new Set(['well', 'field', 'graveyard']);
 
 /** A tile where firelight comes from, for the night lighting. 0 if none, else the radius in tiles. */
 export function lightOf(st: number): number {
-  return st === B.HEARTH ? 4.2 : st === B.FORGE ? 3.2 : st === B.TORCH ? 3 : st === B.STOVE ? 2 : st === B.LAMP ? 2.4 : st === B.BRAZIER ? 3.6 : st === B.CAULDRON ? 1.6 : 0;
+  return st === B.HEARTH ? 4.2 : st === B.FORGE ? 3.2 : st === B.TORCH ? 3 : st === B.STOVE ? 2 : st === B.LAMP ? 2.4 : st === B.BRAZIER ? 3.6 : st === B.CAULDRON ? 1.6
+    : st === B.LAMPPOST ? 3.4 : st === B.WAYSHRINE ? 1.4 : 0;
 }
 
 /**
@@ -412,8 +439,18 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
       const b = blds.get(c.sb[i]);
       const stone = !!b && b.mat === 1;
       const roofed = !!b && !OPEN_AIR.has(b.k);
-      const floor = (asStone: boolean = stone): void => {
-        if (asStone) {
+      // a shack's floor is bare earth; a townhouse's or a manor's is fine red tile
+      const kind = b ? (b.k === 'shack' ? 2 : b.k === 'townhouse' || b.k === 'manor' ? 3 : stone ? 1 : 0) : 0;
+      const floor = (asStone: boolean = stone, fk: number = kind): void => {
+        if (fk === 2) {
+          g.rect(px, py, TS, TS).fill(0x7d6a52);
+          for (let n = 0; n < 5; n++) g.circle(px + 3 + hash2(x, y, 40 + n) * 18, py + 3 + hash2(x, y, 50 + n) * 18, 0.8 + hash2(x, y, 60 + n) * 1.2).fill({ color: n % 2 ? 0x5e4e3b : 0x9a8668, alpha: 0.8 });
+        } else if (fk === 3) {
+          // glazed tiles, laid on the diagonal in two reds, with pale grout
+          g.rect(px, py, TS, TS).fill((x + y) & 1 ? 0xa2503c : 0xb8664a);
+          g.rect(px, py + 11.5, TS, 1).rect(px + 11.5, py, 1, TS).fill({ color: 0xead7b4, alpha: 0.55 });
+          g.poly([px + 12, py + 4, px + 20, py + 12, px + 12, py + 20, px + 4, py + 12]).fill({ color: 0xd88a5e, alpha: 0.35 });
+        } else if (asStone) {
           // pale, warm flagstones: clearly lighter than the walls around them
           g.rect(px, py, TS, TS).fill(0xc2b8a3);
           g.rect(px, py + 11.5, TS, 1).rect(px + ((x + y) & 1 ? 7 : 15), py, 1, 11.5).rect(px + ((x + y) & 1 ? 15 : 7), py + 12, 1, 12).fill({ color: 0x8c8270, alpha: 0.6 });
@@ -428,21 +465,31 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
       const shade = (sx: number, sy: number, w: number, h: number, r: number): void => {
         g.roundRect(sx + 1.5, sy + 2, w, h, r).fill({ color: 0x140c06, alpha: 0.28 });
       };
-      if (s >= B.BED && roofed && s !== B.GRAVE) floor();
+      if (s >= B.BED && roofed && s !== B.GRAVE && (s < B.FLOOR_BARE || s === B.STRAW)) floor();
 
       switch (s) {
         case B.FLOOR_WOOD:
         case B.FLOOR_STONE:
-          floor(s === B.FLOOR_STONE);
+          floor(s === B.FLOOR_STONE, kind >= 2 ? kind : s === B.FLOOR_STONE ? 1 : 0);
+          break;
+        case B.FLOOR_BARE:
+          floor(false, 2);
+          break;
+        case B.FLOOR_FINE:
+          floor(false, 3);
           break;
         case B.WALL_WOOD:
         case B.WALL_STONE: {
           // walls are dark and raised: a near-black outline, a darker face on the south side,
           // and a top that runs on into neighbouring walls so they read as one thick wall
           const wood = s === B.WALL_WOOD;
-          const edge = wood ? 0x2e1f14 : 0x2a2c32;
-          const face = wood ? 0x5a3c26 : 0x50545d;
-          const top = wood ? 0x86603d : 0x7b808b;
+          const poorWall = kind === 2;
+          const fineWall = kind === 3 && wood;
+          // a fine house in stone is of pale dressed ashlar, not grey rubble
+          const ashlar = kind === 3 && !wood;
+          const edge = poorWall ? 0x2f2a24 : wood ? 0x2e1f14 : ashlar ? 0x3a3630 : 0x2a2c32;
+          const face = poorWall ? 0x5d5446 : fineWall ? 0x8a7a62 : wood ? 0x5a3c26 : ashlar ? 0xa3967c : 0x50545d;
+          const top = poorWall ? 0x857a66 : fineWall ? 0xe2d6bc : wood ? 0x86603d : ashlar ? 0xdacdb0 : 0x7b808b;
           g.rect(px, py, TS, TS).fill(edge);
           const l = isWall(stAt(x - 1, y)) ? 0 : 2;
           const r = isWall(stAt(x + 1, y)) ? 0 : 2;
@@ -450,7 +497,15 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           const d = isWall(stAt(x, y + 1)) ? 0 : 7;
           g.rect(px + l, py + u, TS - l - r, TS - u - (d ? 2 : 0)).fill(face);
           g.rect(px + l, py + u, TS - l - r, TS - u - d).fill(top);
-          if (wood) {
+          if (poorWall) {
+            // odd boards, gapped and patched
+            g.rect(px + l, py + 6 + ((x * 3 + y) % 3), TS - l - r, 1).rect(px + l, py + 13 + ((x + y * 5) % 3), TS - l - r, 1).fill({ color: 0x2f2a24, alpha: 0.6 });
+            if (hash2(x, y, 71) < 0.3) g.rect(px + 5 + hash2(x, y, 72) * 10, py + u + 2, 6, 5).fill({ color: 0x6e5a44, alpha: 0.9 });
+          } else if (fineWall) {
+            // limewash between dark timbers
+            g.rect(px + l, py + u, TS - l - r, 2).rect(px + l, py + TS - d - 2, TS - l - r, 2).fill({ color: 0x4a3322, alpha: 0.85 });
+            if ((x + y) % 2 === 0) g.rect(cx - 1, py + u, 2, TS - u - d).fill({ color: 0x4a3322, alpha: 0.85 });
+          } else if (wood) {
             // log ends and grain
             g.rect(px + l, py + 7, TS - l - r, 1).rect(px + l, py + 14, TS - l - r, 1).fill({ color: 0x3a2716, alpha: 0.55 });
           } else {
@@ -774,6 +829,88 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
             g.ellipse(px + 4.5 + n * 5, py + 12, 2.2, 3.6).fill(n % 2 ? 0x6f9a4a : 0x8aa85a);
             g.circle(px + 4.5 + n * 5, py + 15, 1).fill(n % 2 ? 0xd9c9f2 : 0xf2e08a);
           }
+          break;
+        case B.STRAW:
+          // a heap of straw with a coarse blanket thrown over it
+          g.ellipse(cx + 1, cy + 1.5, 10, 9).fill({ color: 0x140c06, alpha: 0.2 });
+          g.ellipse(cx, cy, 9.5, 9).fill(0xd2b25a);
+          for (let n = 0; n < 6; n++) g.moveTo(px + 4 + n * 3, py + 5 + (n % 3)).lineTo(px + 6 + n * 3, py + 16 + (n % 2) * 2).stroke({ width: 0.8, color: 0xa88a3a, alpha: 0.8 });
+          g.roundRect(px + 6, py + 11, 12, 8, 2).fill(0x7f7a6a);
+          break;
+        case B.GARDEN: {
+          // a flower bed edged with clipped box
+          const snowy = pal.snow > 0.5;
+          g.rect(px, py, TS, TS).fill(snowy ? 0xc9d0cc : 0x557f3c);
+          g.rect(px + 1, py + 1, TS - 2, TS - 2).stroke({ width: 2, color: snowy ? 0xa9b4ad : 0x3d6630 });
+          if (!snowy) {
+            const cols = [0xe8b84a, 0xd9667a, 0xf2ead6, 0xa77ad0, 0xe2803a];
+            for (let n = 0; n < 6; n++) g.circle(px + 5 + hash2(x, y, 80 + n) * 14, py + 5 + hash2(x, y, 90 + n) * 14, 1.6).fill(cols[(n + x + y) % cols.length]);
+          }
+          break;
+        }
+        case B.PAVING:
+          g.rect(px, py, TS, TS).fill(0xcfc4aa);
+          g.rect(px, py + 11.5, TS, 1).rect(px + ((x + y) & 1 ? 8 : 15), py, 1, 11.5).rect(px + ((x + y) & 1 ? 14 : 6), py + 12, 1, 12).fill({ color: 0x9a8f78, alpha: 0.7 });
+          break;
+        case B.LOWWALL: {
+          // a low garden wall of dressed stone, capped
+          const link = (dx: number, dy: number): boolean => { const n = stAt(x + dx, y + dy); return n === B.LOWWALL || n === B.DOOR; };
+          const seg = (sx: number, sy: number, w: number, h: number): void => { g.rect(sx, sy, w, h).fill(0x8c877c); g.rect(sx, sy, w, Math.min(h, 2.5)).fill(0xc9c3b4); };
+          if (link(-1, 0)) seg(px, cy - 3.5, 12, 7);
+          if (link(1, 0)) seg(cx, cy - 3.5, 12, 7);
+          if (link(0, -1)) seg(cx - 3.5, py, 7, 12);
+          if (link(0, 1)) seg(cx - 3.5, cy, 7, 12);
+          g.rect(cx - 4, cy - 4, 8, 8).fill(0x8c877c).stroke({ width: 1, color: 0x4b4840 });
+          g.rect(cx - 4, cy - 4, 8, 2.5).fill(0xd6d0c0);
+          break;
+        }
+        case B.LAMPPOST:
+          // seen from above: the lantern on its post, and its glow on the ground
+          g.circle(cx, cy, 11).fill({ color: 0xffd27a, alpha: 0.12 });
+          g.ellipse(cx + 3, cy + 4, 4, 2.4).fill({ color: 0x0b1220, alpha: 0.28 });
+          g.circle(cx, cy, 2).fill(0x2c2f36);
+          g.roundRect(cx - 3.6, cy - 5.6, 7.2, 7.2, 1.5).fill(0x2c2f36).stroke({ width: 1, color: 0x15171b });
+          g.rect(cx - 2.2, cy - 4.2, 4.4, 4.4).fill(0xffd27a);
+          g.circle(cx - 0.6, cy - 2.6, 0.9).fill(0xfff6d8);
+          break;
+        case B.SEAT:
+          // a street bench of planks on two stone feet
+          g.roundRect(px + 2.5, cy - 1, 19, 8, 1.5).fill({ color: 0x140c06, alpha: 0.22 });
+          g.rect(px + 4, cy - 3, 3, 8).rect(px + 17, cy - 3, 3, 8).fill(0x8c877c);
+          g.roundRect(px + 2, cy - 4.5, 20, 7, 1.5).fill(0x9a6e42).stroke({ width: 1.1, color: 0x2a1d12 });
+          g.rect(px + 2.5, cy - 1.5, 19, 0.8).fill({ color: 0x5d4028, alpha: 0.6 });
+          break;
+        case B.SIGNPOST:
+          // a post with boards pointing down the streets
+          g.ellipse(cx + 3, cy + 4, 4, 2.4).fill({ color: 0x0b1220, alpha: 0.28 });
+          g.poly([cx - 1, cy - 7, cx + 9, cy - 7, cx + 11.5, cy - 4.5, cx + 9, cy - 2, cx - 1, cy - 2]).fill(0xb8915c).stroke({ width: 1, color: 0x2a1d12 });
+          g.poly([cx + 1, cy + 1, cx - 9, cy + 1, cx - 11.5, cy + 3.5, cx - 9, cy + 6, cx + 1, cy + 6]).fill(0xa47a4c).stroke({ width: 1, color: 0x2a1d12 });
+          g.circle(cx, cy, 2.4).fill(0x5d4028).stroke({ width: 1, color: 0x2a1d12 });
+          break;
+        case B.FOUNTAIN:
+          // a round stone basin with a spout in the middle
+          g.ellipse(cx + 2, cy + 3, 12, 10).fill({ color: 0x0b1220, alpha: 0.22 });
+          g.circle(cx, cy, 11.5).fill(0xa9a49a).stroke({ width: 1.2, color: 0x4b4840 });
+          g.circle(cx, cy, 8.6).fill(pal.snow > 0.5 ? 0xd8e4ea : 0x4f9ac0);
+          if (pal.snow <= 0.5) g.circle(cx, cy, 8.6).stroke({ width: 1.2, color: 0x8cc6dc, alpha: 0.6 });
+          g.circle(cx, cy, 3).fill(0xc9c3b4).stroke({ width: 1, color: 0x4b4840 });
+          g.circle(cx - 0.7, cy - 0.7, 1.2).fill(0xf2f8fb);
+          break;
+        case B.PUMP:
+          // a town pump over a stone trough
+          g.roundRect(px + 2, py + 9, 20, 10, 2).fill(0x8c877c).stroke({ width: 1.1, color: 0x4b4840 });
+          g.roundRect(px + 4, py + 11, 16, 6, 1.5).fill(0x4f9ac0);
+          g.roundRect(cx - 3.5, py + 1.5, 7, 9, 1.5).fill(0x3a3d45).stroke({ width: 1, color: 0x15171b });
+          g.moveTo(cx + 3, py + 4).lineTo(cx + 9, py + 1).stroke({ width: 1.6, color: 0x3a3d45 });
+          break;
+        case B.WAYSHRINE:
+          // a little roadside shrine: a stone niche with a candle burning in it
+          g.circle(cx, cy, 8).fill({ color: 0xffd27a, alpha: 0.12 });
+          g.ellipse(cx + 2, cy + 4, 8, 5).fill({ color: 0x0b1220, alpha: 0.25 });
+          g.poly([cx - 8, cy + 6, cx - 8, cy - 3, cx, cy - 9, cx + 8, cy - 3, cx + 8, cy + 6]).fill(0x8c877c).stroke({ width: 1.1, color: 0x3a3830 });
+          g.poly([cx - 8, cy - 3, cx, cy - 9, cx + 8, cy - 3, cx, cy - 6]).fill(0x6e5a44);
+          g.roundRect(cx - 3, cy - 2, 6, 7, 2).fill(0x3a3830);
+          g.circle(cx, cy + 1.5, 1.6).fill(0xffd27a);
           break;
         default:
           break;

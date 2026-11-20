@@ -23,7 +23,14 @@ export const B = {
   NONE: 0, WALL_WOOD: 1, WALL_STONE: 2, DOOR: 3, FLOOR_WOOD: 4, FLOOR_STONE: 5, FENCE: 6, TILLED: 7,
   BED: 16, TABLE: 17, CHAIR: 18, HEARTH: 19, STOVE: 20, BENCH: 21, ANVIL: 22, CRATE: 23, BARREL: 24, ALTAR: 25, PEW: 26, LOOM: 27, WELL: 28, GRAVE: 29, FORGE: 30, SHELF: 31, COT: 32, STATUE: 33, TORCH: 34,
   RUG: 35, WARDROBE: 36, LAMP: 37, BOOKS: 38, DESK: 39, RACK: 40, CAULDRON: 41, VAT: 42, BIN: 43, BATH: 44, CHESS: 45, DARTS: 46, MUSIC: 47, DRYRACK: 48, BRAZIER: 49, TROUGH: 50,
+  // homes of the poor and the rich
+  FLOOR_BARE: 51, FLOOR_FINE: 52, STRAW: 53, GARDEN: 54, LOWWALL: 55, PAVING: 56,
+  // street furniture (placed by the town plan on street corners and squares, belonging to no building)
+  LAMPPOST: 60, SEAT: 61, SIGNPOST: 62, FOUNTAIN: 63, WAYSHRINE: 64, PUMP: 65,
 } as const;
+
+/** Street furniture: stands on its own, outside any building. */
+export const isStreetThing = (s: number): boolean => s >= B.LAMPPOST && s <= B.PUMP;
 
 export const RES = ['grain', 'veg', 'meat', 'fish', 'berries', 'meal', 'feast', 'ale', 'wood', 'stone', 'ore', 'iron', 'leather', 'cloth', 'herbs', 'medicine', 'tools', 'clothes', 'weapons', 'silver', 'goods', 'hops', 'mushrooms', 'eggs', 'milk'] as const;
 export type ResK = (typeof RES)[number];
@@ -274,6 +281,10 @@ export interface Bld {
   up?: number;
   /** the floor plan, when it is not the kind's usual one (see SHAPES) */
   s?: string;
+  /** a home a family built (or bought) for themselves: the head of that family */
+  own?: Id;
+  /** a home: the tick it was last found standing empty (unset while lived in) */
+  vac?: number;
 }
 
 export interface Ev { t: number; k: string; a?: Id; b?: Id; s?: string; n?: number }

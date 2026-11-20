@@ -3,7 +3,7 @@
 // woods with clearings, a coast on coast maps, and a road in from the edge of the world.
 
 import { Rand, S, hash32 } from './rng';
-import { KEEP_R } from './town';
+import { KEEP_R, reach } from './town';
 import { F, T, type Colony } from './types';
 
 export const BIOMES = ['valley', 'hills', 'marsh', 'coast', 'forest', 'highland'] as const;
@@ -228,7 +228,10 @@ export function genMap(c: Colony): void {
     const st = roadV ? sy : sx;
     const base = roadV ? cx : cy;
     const lim = roadV ? W : H;
-    const wig = (a: number): number => Math.max(3, Math.min(lim - 4, Math.round(base + (vnoise(seed, 7, 0, a, 12) - vnoise(seed, 7, 0, a0, 12)) * 12)));
+    // through the town the road runs straight down the main avenue; out past the wall it wanders
+    const town = reach(c) + 6;
+    const ramp = (a: number): number => Math.max(0, Math.min(1, (Math.abs(a - a0) - town) / 14));
+    const wig = (a: number): number => Math.max(3, Math.min(lim - 4, Math.round(base + (vnoise(seed, 7, 0, a, 12) - vnoise(seed, 7, 0, a0, 12)) * 12 * ramp(a))));
     let prev = wig(a0);
     const put = (a: number, b: number): void => {
       for (let w = 0; w <= 1; w++) {

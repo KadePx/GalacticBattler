@@ -103,7 +103,7 @@ export const WEIGHT: Record<string, number> = {
   schism: 3, fire_spread: 3, match_sent: 3, match: 3,
   asked: 2, blackmail: 3, prosthetic: 2, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
   raidout: 3, raiders_from: 2, raidback: 3, war_declared: 3, war_on_us: 3, incident: 2, set_out: 3, pen_stocked: 2, master: 3, dream: 3, festival_set: 1, festival: 2, contest: 2, apprenticed: 2, graduated: 2, bought_beasts: 1, dogcame: 2, adopted: 2, dogdied: 2, dogbark: 2, slaughter: 1, warband: 3, peace_sued: 3, peace_made: 3, spotted: 2, brokeup: 1, berserk_hit: 3, subdued: 3, subdue_failed: 2,
-  feast_set: 2, audience: 2,
+  feast_set: 2, audience: 2, prosper: 2, home_lost: 2, razed: 1,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
@@ -155,6 +155,9 @@ export function evText(c: Colony, e: Ev): string {
     case 'stonework': return `The ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'} stands in stone now. ${a} set the last block.`;
     case 'built': return `${a} finished the ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'}.`;
     case 'plan': return `Work begins on a ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'building'}.`;
+    case 'prosper': return `${e.b ? `${a} and ${b} have` : `${a} has`} put ${e.n ?? 'some'} silver toward a ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'home'} of their own.`;
+    case 'home_lost': return `${a} can no longer keep up the ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'house'}. It goes to whoever needs a roof.`;
+    case 'razed': return `The empty ${TPL[e.s ?? '']?.name.toLowerCase() ?? 'house'} had fallen in, and was pulled down for its timber.`;
     case 'harvest': return `${a} brought in the last of the ${e.s === 'grain' ? 'barley' : e.s === 'flax' ? 'flax' : 'roots'}.`;
     case 'hunt': return `${a} came back with a fine kill.`;
     case 'frost': return 'The first hard frost. Anything still in the fields is lost.';

@@ -98,15 +98,37 @@ export function familyName(r: Rand, race: RaceK): string {
 
 const PLACE_A = ['Hollow', 'Ash', 'Grey', 'Black', 'Cold', 'Raven', 'Thorn', 'Mire', 'Stone', 'Wolf', 'Crow', 'Red', 'Salt', 'Bleak', 'Gallows', 'Widow', 'Bitter', 'Drown', 'Rook', 'Hag', 'Iron', 'Fallow', 'Dusk', 'Lantern'];
 const PLACE_B = ['ford', 'mere', 'hold', 'stead', 'wick', 'march', 'fell', 'moor', 'reach', 'barrow', 'haven', 'rest', 'watch', 'cross', 'water', 'gate', 'den', 'holt', 'well', 'field'];
-const PLACE_OF = ['Last Hearth', 'Three Stones', 'Hangman\'s Rest', 'Sorrow\'s End', 'Dead Man\'s Ford', 'Old Bones', 'Wit\'s End', 'The Dregs', 'Mercy', 'Small Hope', 'Crooked Mile', 'Nowhere'];
+const PLACE_OF = ['Last Hearth', 'Three Stones', 'Hangman\'s Rest', 'Sorrow\'s End', 'Dead Man\'s Ford', 'Old Bones', 'Wit\'s End', 'Small Hope', 'Crooked Mile', 'Weeping Cross', 'Long Barrow', 'Saltmarsh End'];
 
-export function colonyName(r: Rand): string {
-  if (r.chance(0.1)) return r.pick(PLACE_OF);
-  for (let k = 0; k < 8; k++) {
+const fine = (a: string, b: string): boolean => !(a.toLowerCase().endsWith(b.charAt(0)) && a.toLowerCase().endsWith(b.slice(0, 2)));
+
+/**
+ * A name for a new colony, never one of `avoid` (the names already taken in its world). Drawn at
+ * random first; if luck keeps landing on taken names, the first free one in a fixed order.
+ */
+export function colonyName(r: Rand, avoid: readonly string[] = []): string {
+  const taken = new Set(avoid.map((s) => s.toLowerCase()));
+  const free = (s: string): boolean => !taken.has(s.toLowerCase());
+  for (let k = 0; k < 24; k++) {
+    if (r.chance(0.1)) {
+      const s = r.pick(PLACE_OF);
+      if (free(s)) return s;
+      continue;
+    }
     const a = r.pick(PLACE_A);
     const b = r.pick(PLACE_B);
-    if (a.toLowerCase().endsWith(b.charAt(0)) && a.toLowerCase().endsWith(b.slice(0, 2))) continue;
-    return a + b;
+    if (fine(a, b) && free(a + b)) return a + b;
   }
-  return 'Hollowmere';
+  const all = PLACE_A.length * PLACE_B.length;
+  const start = r.int(all);
+  for (let n = 0; n < all; n++) {
+    const j = (start + n) % all;
+    const a = PLACE_A[Math.floor(j / PLACE_B.length)];
+    const b = PLACE_B[j % PLACE_B.length];
+    if (fine(a, b) && free(a + b)) return a + b;
+  }
+  for (let n = 0; ; n++) {
+    const s = 'New ' + PLACE_A[n % PLACE_A.length] + PLACE_B[Math.floor(n / PLACE_A.length) % PLACE_B.length];
+    if (free(s) || n > all * 4) return s;
+  }
 }

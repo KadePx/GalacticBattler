@@ -4,7 +4,9 @@
 // A altar  p pew  l loom  W well  e shelf  o sickbed  S statue
 // k cauldron  v brewing vat  n grain bin  d desk  K bookshelf  R weapon rack  T bath  C chess table
 // D dartboard  m music bench  H drying rack  L lamp  u rug  O wardrobe  Y brazier
+// - low garden wall  % garden bed
 // (a space is outside the building: shapes need not be rectangles)
+// A shack's floor is bare earth and its beds are straw; a townhouse's and a manor's floors are fine.
 
 import { B } from '../types';
 
@@ -21,6 +23,13 @@ export interface Tpl {
 const tpl = (k: string, name: string, wood: number, stone: number, work: number, rows: string[]): Tpl => ({ k, name, rows, wood, stone, work });
 
 export const TPL_LIST: Tpl[] = [
+  // the poorest roof there is: a hut of rough boards on bare earth, straw to sleep on
+  tpl('shack', 'Shack', 7, 0, 8, [
+    '####',
+    '#bb#',
+    '#..#',
+    '#+##',
+  ]),
   tpl('cottage', 'Cottage', 14, 2, 14, [
     '####',
     '#bx#',
@@ -47,6 +56,27 @@ export const TPL_LIST: Tpl[] = [
     '#.......#',
     '#b.h..xb#',
     '####+####',
+  ]),
+  // a narrow house of the inner streets, for a family doing well
+  tpl('townhouse', 'Townhouse', 30, 12, 34, [
+    '####',
+    '#bb#',
+    '#.u#',
+    '#K.#',
+    '#ch#',
+    '#+##',
+  ]),
+  // a great family's house by the keep, with a walled garden in front
+  tpl('manor', 'Manor', 70, 30, 80, [
+    '#########',
+    '#b.b.b.b#',
+    '#.......#',
+    '#K.u.u.O#',
+    '#h..tc..#',
+    '####+####',
+    '-%%%,%%%-',
+    '-%%%,%%%-',
+    '----g----',
   ]),
   tpl('hall', 'Great hall', 50, 12, 55, [
     '#########',
@@ -208,6 +238,30 @@ export const TPL: Record<string, Tpl> = Object.fromEntries(TPL_LIST.map((x) => [
  * 'kind~name'; each also comes mirrored ('~m'). Same kind, same cost, different shape.
  */
 const OTHER_SHAPES: Record<string, string[]> = {
+  'shack~lean': [
+    '#####',
+    '#b.b#',
+    '##+##',
+  ],
+  'townhouse~b': [
+    '####',
+    '#bK#',
+    '#..#',
+    '#ub#',
+    '#.h#',
+    '#+##',
+  ],
+  'manor~court': [
+    '-----------',
+    '-%#######%-',
+    '-%#b.b.b#%-',
+    '-%#.u.u.#%-',
+    '-%#b.h.K#%-',
+    '-%#t.c.O#%-',
+    '-%###+###%-',
+    '-%%%,,,%%%-',
+    '-----g-----',
+  ],
   'cottage~oct': [
     ' #### ',
     '#b..x#',
@@ -300,7 +354,7 @@ for (const [key, rows] of Object.entries(OTHER_SHAPES)) {
 /** The floor plan a building was laid out from. */
 export const shapeOf = (b: { k: string; s?: string }): string => b.s ?? b.k;
 
-export const HOMES = ['cottage', 'house', 'bighouse', 'longhouse'];
+export const HOMES = ['shack', 'cottage', 'house', 'bighouse', 'longhouse', 'townhouse', 'manor'];
 
 /** What a building is for, in one line, for its card. */
 export const PURPOSE: Record<string, string> = {
@@ -342,7 +396,7 @@ export function cells(k: string): Cell[] {
       const ch = t.rows[dy][dx];
       if (ch === ' ') continue;
       const cell = { dx, dy, ch };
-      if (ch === '#' || ch === '+' || ch === '=' || ch === 'g') walls.push(cell);
+      if (ch === '#' || ch === '+' || ch === '=' || ch === 'g' || ch === '-') walls.push(cell);
       else if (ch === '.' || ch === ',') floors.push(cell);
       else furn.push(cell);
     }
@@ -360,7 +414,7 @@ export function spots(k: string, ch: string): Cell[] {
 const FURN: Record<string, number> = {
   b: B.BED, t: B.TABLE, c: B.CHAIR, h: B.HEARTH, s: B.STOVE, w: B.BENCH, a: B.ANVIL, f: B.FORGE, x: B.CRATE, r: B.BARREL,
   A: B.ALTAR, p: B.PEW, l: B.LOOM, W: B.WELL, e: B.SHELF, o: B.COT, S: B.STATUE,
-  k: B.CAULDRON, v: B.VAT, n: B.BIN, d: B.DESK, K: B.BOOKS, R: B.RACK, T: B.BATH, C: B.CHESS, D: B.DARTS, m: B.MUSIC, H: B.DRYRACK, L: B.LAMP, u: B.RUG, O: B.WARDROBE, Y: B.BRAZIER, Q: B.TROUGH,
+  k: B.CAULDRON, v: B.VAT, n: B.BIN, d: B.DESK, K: B.BOOKS, R: B.RACK, T: B.BATH, C: B.CHESS, D: B.DARTS, m: B.MUSIC, H: B.DRYRACK, L: B.LAMP, u: B.RUG, O: B.WARDROBE, Y: B.BRAZIER, Q: B.TROUGH, '%': B.GARDEN,
 };
 
 /** Things a home gains as it is made finer. They sit on floor tiles and are kept when the floor is relaid. */
@@ -372,8 +426,10 @@ export function cellCode(k: string, ch: string, mat: number): number {
   if (ch === '#') return mat ? B.WALL_STONE : B.WALL_WOOD;
   if (ch === '+' || ch === 'g') return B.DOOR;
   if (ch === '=') return B.FENCE;
-  if (ch === '.') return mat ? B.FLOOR_STONE : B.FLOOR_WOOD;
-  if (ch === ',') return k === 'field' ? B.TILLED : B.NONE;
+  if (ch === '-') return B.LOWWALL;
+  if (ch === '.') return k === 'shack' ? B.FLOOR_BARE : k === 'townhouse' || k === 'manor' ? B.FLOOR_FINE : mat ? B.FLOOR_STONE : B.FLOOR_WOOD;
+  if (ch === ',') return k === 'field' ? B.TILLED : k === 'manor' ? B.PAVING : B.NONE;
+  if (ch === 'b' && k === 'shack') return B.STRAW;
   return FURN[ch] ?? B.NONE;
 }
 

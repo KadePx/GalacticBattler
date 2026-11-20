@@ -12,6 +12,7 @@ import { bump, log, note } from './events';
 import { isDown, needsTending, tend } from './health';
 import { think, workSkillOf } from './mood';
 import { advanceBuild, canBuild, syncTiles } from './planner';
+import { homeCap } from './homes';
 import { BEAST_KINDS, plantAround, plantSpot } from './wild';
 import { herdNeed, herdWork, livestock } from './herd';
 import { TPL } from './data/buildings';
@@ -416,8 +417,9 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
   // Making good homes better
   if (c.stock.wood >= woodTarget * 0.6) {
     let poor: Bld | undefined;
+    // each home only as fine as its kind: a shack stays a shack, a manor is fitted out in style
     const cap = 38 + p.sk[2] * 4;
-    for (const b of c.blds) if (b.built && b.beds.length && b.q < cap && b.q < 92 && (!poor || b.q < poor.q)) poor = b;
+    for (const b of c.blds) if (b.built && b.beds.length && b.q < cap && b.q < homeCap(b.k) && (!poor || b.q < poor.q)) poor = b;
     if (poor) {
       const pb = poor;
       offer('build', 1.6, 'improve', () => job('build', (pb.y + pb.h - 1) * c.w + pb.x + Math.floor(pb.w / 2), true, 'Making a home a little finer', pb.id, 2));
@@ -610,7 +612,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
           log(c, 'stonework', p.id, undefined, b.k);
         }
       } else if (b.built && a.d === 2) {
-        b.q = Math.min(92, b.q + 0.9 * speed * hours);
+        b.q = Math.min(homeCap(b.k), b.q + 0.9 * speed * hours);
         furnish(c, b);
         c.stock.wood = Math.max(0, c.stock.wood - 0.8 * hours);
         c.stock.stone = Math.max(0, c.stock.stone - 0.3 * hours);
@@ -838,7 +840,7 @@ export function furnish(c: Colony, b: Bld): void {
     const y = b.y + cell.dy;
     const i = y * c.w + x;
     const s = c.st[i];
-    if (s !== B.FLOOR_WOOD && s !== B.FLOOR_STONE) continue;
+    if (s !== B.FLOOR_WOOD && s !== B.FLOOR_STONE && s !== B.FLOOR_FINE) continue;
     let walls = 0;
     let door = false;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {

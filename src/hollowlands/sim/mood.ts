@@ -127,7 +127,7 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
             if (o && o.mo !== p.id && o.fa !== p.id && p.mo !== o.id && p.fa !== o.id && !(p.mo && p.mo === o.mo)) { add('crowded'); break; }
           }
         }
-        if (b.q - b.dmg >= 70) add('finehome');
+        if (b.q - b.dmg >= 58) add('finehome');
         else if (b.q - b.dmg < 30) add('shabbyhome');
       }
     }
