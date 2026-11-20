@@ -42,6 +42,8 @@ export class Life {
   private scan = -1;
   private nb = -1;
   private layer: Container | null = null;
+  /** cart routes that found no way, and when to try them again */
+  private failed = new Map<string, number>();
 
   /** Forget everything (a new colony): carts are removed from their layer. */
   reset(): void {
@@ -53,6 +55,7 @@ export class Life {
     this.scan = -1;
     this.nb = -1;
     this.layer = null;
+    this.failed.clear();
   }
 
   /** Re-read where the working things, windows and washing lines are, every few seconds. */
@@ -73,7 +76,7 @@ export class Life {
       const i = y * W + x;
       const t = c.ter[i];
       // any bare ground but the street itself (and not in the water)
-      return c.st[i] === B.NONE && t !== T.PATH && t !== T.SHALLOW && t !== T.DEEP && t !== T.ROCK && (c.feat[i] === F.NONE || c.feat[i] === F.FLOWERS);
+      return c.st[i] === B.NONE && c.wear[i] <= 40 && t !== T.PATH && t !== T.SHALLOW && t !== T.DEEP && t !== T.ROCK && (c.feat[i] === F.NONE || c.feat[i] === F.FLOWERS);
     };
     for (const b of c.blds) {
       this.blds.set(b.id, b);
@@ -117,11 +120,11 @@ export class Life {
         }
       }
     }
-    this.planRoutes(c, layer);
+    this.planRoutes(c, layer, time);
   }
 
   /** Where the carts run: from a field or two to the granary, and from the gate to the market. */
-  private planRoutes(c: Colony, layer: Container): void {
+  private planRoutes(c: Colony, layer: Container, time: number): void {
     const want: { kind: 'field' | 'market'; from: [number, number]; to: [number, number]; seed: number }[] = [];
     const gran = c.blds.find((b) => b.built && b.k === 'granary') ?? c.blds.find((b) => b.built && b.k === 'store');
     if (gran) {
@@ -162,8 +165,9 @@ export class Life {
       const key = `${w.kind}:${w.from}:${w.to}`;
       const old = this.routes.find((r) => r.key === key && !keep.includes(r));
       if (old) { keep.push(old); continue; }
+      if ((this.failed.get(key) ?? -1) > time) continue;
       const path = route(c, w.from[0], w.from[1], w.to[0], w.to[1]);
-      if (!path || path.length < 2) continue;
+      if (!path || path.length < 2) { this.failed.set(key, time + 60000); continue; }
       const n = path.length;
       const xs = new Float32Array(n);
       const ys = new Float32Array(n);
@@ -252,7 +256,7 @@ export class Life {
             const pump = on ? (Math.sin(ph * 4) + 1) / 2 : 0;
             const fy = sp.s === B.FORGE ? cy : cy - 1;
             // the coals brighten as the bellows breathe
-            floor.circle(cx, fy, 3 + pump * 2.2).fill({ color: 0xffd36a, alpha: 0.35 + pump * 0.45 });
+            if (burning(c, sp.y * c.w + sp.x, sp.s, busy, home, hour)) floor.circle(cx, fy, 3 + pump * 2.2).fill({ color: 0xffd36a, alpha: 0.35 + pump * 0.45 });
             if (sp.s === B.FORGE) {
               // the bellows at the forge's side
               const bw = 4 + (1 - pump) * 3;
@@ -338,7 +342,7 @@ export class Life {
           }
           case B.OVEN: {
             // the fire flickers in its mouth; when the baker is in, the peel slides loaves in and out
-            floor.roundRect(cx - 3.5, py + 15, 7, 4, 2).fill({ color: 0xffd36a, alpha: 0.3 + 0.3 * Math.abs(Math.sin(time * 0.006 + sp.x)) });
+            if (burning(c, sp.y * c.w + sp.x, sp.s, busy, home, hour)) floor.roundRect(cx - 3.5, py + 15, 7, 4, 2).fill({ color: 0xffd36a, alpha: 0.3 + 0.3 * Math.abs(Math.sin(time * 0.006 + sp.x)) });
             if (on) {
               const u = (Math.sin(ph * 1.6) + 1) / 2;
               const ey = py + 17 + u * 9;
@@ -447,7 +451,7 @@ export class Life {
     // ---- loads carried to work, children's games ----
     for (const p of pawns) {
       if (p.x < view.x0 * TS || p.x > view.x1 * TS || p.y < view.y0 * TS || p.y > view.y1 * TS) continue;
-      if (p.k === 'play' && !p.moving && tf >= p.ta) {
+      if (p.k === 'play' && p.kid && !p.moving && tf >= p.ta) {
         // a ball tossed up and caught
         const q = (time * 0.0016 + p.id * 0.37) % 1;
         floor.circle(p.x + 6 * p.size, p.y - 4 * p.size - Math.sin(q * Math.PI) * 12, 1.8).fill(0xe86a6a).stroke({ width: 0.6, color: 0xffffff });
@@ -473,8 +477,11 @@ export class Life {
         if (w.gl) {
           if (w.h) lit.rect(px + 6, py + 6, 12, 6).fill({ color: 0xffd27a, alpha: a }).rect(px + 11.5, py + 6, 1, 6).fill({ color: 0x2a1d12, alpha: a });
           else lit.rect(px + 9, py + 5, 6, 12).fill({ color: 0xffd27a, alpha: a }).rect(px + 9, py + 10.5, 6, 1).fill({ color: 0x2a1d12, alpha: a });
-        } else if (w.h) lit.rect(px + 9, py + 7, 6, 4).fill({ color: 0xffb35c, alpha: a * 0.8 });
-        else lit.rect(px + 10, py + 9, 4, 6).fill({ color: 0xffb35c, alpha: a * 0.8 });
+        } else {
+          lit.circle(px + 12, py + 12, 6).fill({ color: 0xffb35c, alpha: a * 0.25 });
+          if (w.h) lit.rect(px + 8, py + 9.5, 8, 5).fill({ color: 0xffb35c, alpha: a * 0.85 });
+          else lit.rect(px + 9.5, py + 8, 5, 8).fill({ color: 0xffb35c, alpha: a * 0.85 });
+        }
       }
     }
 
@@ -612,14 +619,19 @@ function carry(g: Graphics, k: string, x: number, y: number, size: number, mat: 
 /** A cart drawn facing +x, an ox in the shafts. */
 function drawCart(g: Graphics, market: boolean): void {
   g.ellipse(2, 3, 20, 8).fill({ color: 0x0b1220, alpha: 0.2 });
-  // the ox
+  // the ox: four legs, its body, a darker head
+  for (const [lx, ly] of [[10, -4.6], [10, 4.6], [17.5, -4.2], [17.5, 4.2]] as const) g.roundRect(lx - 1, ly - 1.4, 2, 2.8, 0.8).fill(0x3a2716);
   g.ellipse(14, 0, 6.5, 4.6).fill(market ? 0x6a4a32 : 0x8a6a4a).stroke({ width: 0.8, color: 0x2a1d12 });
-  g.circle(20, 0, 3).fill(market ? 0x5a3d28 : 0x7a5a3a).stroke({ width: 0.7, color: 0x2a1d12 });
+  g.circle(20, 0, 3).fill(market ? 0x3f2a1a : 0x4f3a26).stroke({ width: 0.7, color: 0x1a120a });
   g.moveTo(19.5, -2.6).lineTo(21.5, -4.6).moveTo(19.5, 2.6).lineTo(21.5, 4.6).stroke({ width: 1, color: 0xe9e3d5 });
   // shafts and the bed of the cart
   g.moveTo(-2, -4).lineTo(10, -3).moveTo(-2, 4).lineTo(10, 3).stroke({ width: 1.2, color: 0x5a3d28 });
-  g.rect(-1, -9, 3, 2.6).rect(-1, 6.4, 3, 2.6).fill(0x2a1d12);
   g.roundRect(-13, -7, 14, 14, 1.5).fill(0xa47a4c).stroke({ width: 1, color: 0x3a2716 });
+  // the wheels, standing out either side of the bed
+  for (const wy of [-9.6, 9.6]) {
+    g.roundRect(-10, wy - 1.6, 9, 3.2, 1.4).fill(0x4a3220).stroke({ width: 0.7, color: 0x1a120a });
+    g.circle(-5.5, wy, 1).fill(0x9a9fa8);
+  }
   g.rect(-12, -1, 12, 1).fill({ color: 0x5a3d28, alpha: 0.7 });
 }
 
@@ -685,7 +697,7 @@ export function route(c: Colony, sx: number, sy: number, tx: number, ty: number)
       const u = at(nx, ny);
       if (u !== goal && u !== s0 && !passable(c, gi)) continue;
       const t = c.ter[gi];
-      const road = t === T.PATH || t === T.STONE || c.st[gi] === B.PAVING || c.st[gi] === B.GATE;
+      const road = t === T.PATH || t === T.STONE || c.wear[gi] > 40 || c.st[gi] === B.PAVING || c.st[gi] === B.GATE;
       // (a ford through the shallows if there is no other way)
       const nd = cur + (road ? 2 : t === T.SHALLOW ? 12 : 5);
       if (nd >= dist[u]) continue;
@@ -721,7 +733,18 @@ export function route(c: Colony, sx: number, sy: number, tx: number, ty: number)
       const d = Math.abs((bx - ax) * (ay - py) - (ax - px) * (by - ay)) / len;
       if (d > far) { far = d; at = k; }
     }
-    if (at >= 0 && far > 0.75) {
+    // a straight run is kept only if every tile it crosses is open
+    let clear = true;
+    if (at >= 0 && far <= 0.75) {
+      const n = Math.ceil(len * 2);
+      for (let k = 1; k < n && clear; k++) {
+        const qx = Math.round(ax + ((bx - ax) * k) / n);
+        const qy = Math.round(ay + ((by - ay) * k) / n);
+        const qi = qy * W + qx;
+        if (qi !== out[a] && qi !== out[b] && !passable(c, qi)) clear = false;
+      }
+    }
+    if (at >= 0 && (far > 0.75 || !clear)) {
       keep[at] = 1;
       simplify(a, at);
       simplify(at, b);

@@ -1,7 +1,7 @@
 // Work: what needs doing, who is best placed to do it, and what comes of an hour's labour.
 
 import { reach } from './town';
-import { DAYS_PER_YEAR, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
+import { DAYS_PER_YEAR, TICKS_PER_HOUR, dayOf, hourOf, seasonOf } from '../config';
 import { ROCK_FACE, SHORE, cacheOf, cropsChanged, dropFeat, featList, fieldMemo, touch, touchAt } from './cache';
 import { BACKS } from './data/backstories';
 import { CROPS, DECOR, cells, isDecor, spots, shapeOf } from './data/buildings';
@@ -22,7 +22,8 @@ import { castleStone } from './castle';
 import { STAGE, gainXp, has, mkAct, pawnById, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
 import { harvestMult, steel, techBld } from './known';
-import { addLore, isTechWork, techJobs, techWork } from './tech';
+import { NEAR_PROF, addLore, isTechWork, techJobs, techWork } from './tech';
+import { TECH_PROF } from './data/tech';
 import { B, F, T, type Act, type Bld, type Colony, type Pawn, type WorkK } from './types';
 
 export interface Job { w: WorkK; x: number; y: number; adj: boolean; dur: number; b?: number; d?: number; o?: number; why: string }
@@ -529,6 +530,30 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
   // the trades of what the colony has discovered
   if (c.tech && c.tech.got.length) techJobs(c, p, offer, job, (b, ch) => spotTile(c, b, ch, r), woodTarget);
 
+  // shop hours: through the working day a trade's keeper minds their own shop when nothing more
+  // pressing calls (and a near trade minds a shop whose own trade nobody in the colony follows)
+  const hr = hourOf(c.tick);
+  if (p.prof && hr >= 8 && hr < 17 && PROFS[p.prof]) {
+    const w = PROFS[p.prof].work;
+    const shops: [Bld, string][] = [];
+    const own = SHOP_OF[p.prof];
+    if (own) for (const k of own[0]) { const b = bldOf(c, k); if (b) { shops.push([b, own[1]]); break; } }
+    for (const k in NEAR_PROF) {
+      if (NEAR_PROF[k] !== p.prof) continue;
+      const b = bldOf(c, k);
+      const keep = TECH_PROF[k];
+      if (!b || !keep || c.pawns.some((o) => o.prof === keep)) continue;
+      const ch = SHOP_CHARS[k];
+      if (ch) shops.push([b, ch]);
+    }
+    for (const [b, ch] of shops) {
+      // one keeper at a time: nobody minds a shop someone is already working in
+      if (c.pawns.some((o) => o !== p && o.act.k === 'work' && o.act.b === b.id)) continue;
+      offer(w, 1.3, 'shop', () => job(w, spotTile(c, b, ch, r), true, 'Minding the shop', b.id, SHOP));
+      break;
+    }
+  }
+
   opts.sort((a, b) => b.s - a.s);
   for (const o of opts) {
     if (o.s < 1) break;
@@ -537,6 +562,17 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
   }
   return null;
 }
+
+/** The work code (act.d) of minding a shop: time at the trade's own bench, nothing made. */
+export const SHOP = -7;
+/** Each trade's shop, and the furniture its keeper stands at. */
+const SHOP_OF: Record<string, [string[], string]> = {
+  smith: [['smithy'], 'a'], brewer: [['brewery'], 'v'], weaver: [['workshop'], 'wl'], baker: [['bakery'], 'E'], potter: [['kiln'], 'I'],
+  miller: [['watermill', 'windmill'], 'M'], tanner: [['tannery'], 'y'], dyer: [['dyeworks'], 'z'], glazier: [['glassworks'], 'F'],
+  jeweller: [['jeweller'], 'j'], printer: [['printer'], 'i'],
+};
+/** The furniture to stand at in each discovered trade's shop, for a near trade minding it. */
+const SHOP_CHARS: Record<string, string> = { windmill: 'M', watermill: 'M', bakery: 'E', kiln: 'I', glassworks: 'F', tannery: 'y', dyeworks: 'z', steelworks: 'B', jeweller: 'j', printer: 'i' };
 
 const smithyHasIron = (c: Colony): boolean => c.stock.iron >= 2 && c.blds.some((b) => b.k === 'smithy' && b.built);
 
@@ -573,6 +609,8 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
   const lucky = has(p, 'lucky') ? 1.25 : has(p, 'jinxed') ? 0.75 : 1;
   const tile = a.d ?? -1;
   // the mill, the ovens, the kiln, the press: the trades of the colony's discoveries
+  // minding the shop: the hours sharpen the hand, but nothing is made
+  if (a.d === SHOP) return;
   const tb = isTechWork(c, a);
   if (tb) { techWork(c, p, a, tb, speed, hours, r, made); return; }
 

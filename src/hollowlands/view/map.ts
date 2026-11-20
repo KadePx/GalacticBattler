@@ -8,7 +8,7 @@ import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
 import { TOOL_FOR } from '../sim/jobs';
 import { CROPS, HOMES, TPL, cellCode, cells, shapeOf } from '../sim/data/buildings';
-import { stage } from '../sim/pawn';
+import { STAGE, stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
 import { TECH_HELD } from './figures';
 import { drawSails, drawWheel } from './techart';
@@ -280,7 +280,7 @@ export class MapView {
       for (const p of c.pawns) {
         const v = this.views.get(p.id);
         if (!v || v.asleep) continue;
-        list.push({ id: p.id, x: v.x, y: v.y, size: v.size, moving: v.moving, k: p.act.k, w: p.act.w, ta: p.act.ta, tx: p.act.tx, ty: p.act.ty, d: p.act.d, b: p.act.b });
+        list.push({ id: p.id, x: v.x, y: v.y, size: v.size, moving: v.moving, k: p.act.k, w: p.act.w, ta: p.act.ta, tx: p.act.tx, ty: p.act.ty, d: p.act.d, b: p.act.b, kid: p.act.k === 'play' && stage(c, p) === STAGE.CHILD });
         if (!v.moving && p.act.k === 'work' && p.act.b && tf >= p.act.ta) busy.add(p.act.b);
         const inside = c.sb[v.tile];
         if (inside) homeIn.add(inside);
@@ -499,7 +499,7 @@ export class MapView {
         v.fig.rotation = 0;
         const bob = moving ? -Math.abs(Math.sin(this.time * 0.011 + p.id)) * 1.7 : p.act.k === 'work' ? Math.sin(this.time * 0.007 + p.id) * 0.6 : 0;
         // at a festival they dance, and children at their games skip about: a sway and a hop
-        const dancing = !moving && ((p.act.k === 'attend' && c.gath?.k === 'festival') || p.act.k === 'play') && tf >= p.act.ta;
+        const dancing = !moving && ((p.act.k === 'attend' && c.gath?.k === 'festival') || (p.act.k === 'play' && stage(c, p) === STAGE.CHILD)) && tf >= p.act.ta;
         v.fig.rotation = dancing ? Math.sin(this.time * 0.009 + p.id) * 0.28 : moving ? Math.sin(this.time * 0.018 + p.id) * 0.05 : 0;
         v.fig.position.set(0, bob * v.size - (dancing ? Math.abs(Math.sin(this.time * 0.009 + p.id)) * 3 : 0));
       }

@@ -186,7 +186,7 @@ type MkJob = (w: WorkK, tile: number, adj: boolean, why: string, b?: number, d?:
 type Spot = (b: Bld, chars: string) => number;
 
 /** The trade nearest to each discovered trade, whose holders lend a hand there. */
-const NEAR_PROF: Record<string, string> = { windmill: 'farmer', watermill: 'farmer', bakery: 'cook', kiln: 'carpenter', glassworks: 'potter', tannery: 'weaver', dyeworks: 'weaver', steelworks: 'smith', jeweller: 'smith', printer: 'lorekeeper' };
+export const NEAR_PROF: Record<string, string> = { windmill: 'farmer', watermill: 'farmer', bakery: 'cook', kiln: 'carpenter', glassworks: 'potter', tannery: 'weaver', dyeworks: 'weaver', steelworks: 'smith', jeweller: 'smith', printer: 'lorekeeper' };
 
 /** Bricks worth keeping in hand: for the homes going up, and, while stone is short, for all the town's building. */
 function brickWant(c: Colony): number {

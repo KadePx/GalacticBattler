@@ -8,7 +8,7 @@ import { B, F, T, type Colony } from '../sim/types';
 import { burning } from './life';
 import { TS, hash2 } from './tiles';
 
-export interface FxPawn { id: number; x: number; y: number; size: number; moving: boolean; k: string; w?: string; ta: number; tx: number; ty: number; d?: number; b?: number }
+export interface FxPawn { id: number; x: number; y: number; size: number; moving: boolean; k: string; w?: string; ta: number; tx: number; ty: number; d?: number; b?: number; kid?: boolean }
 export interface Bounds { x0: number; y0: number; x1: number; y1: number }
 
 /** Parabolic flight from (x,y): out by (vx,vy) over the phase, falling under gravity. */
@@ -141,7 +141,7 @@ export class Fx {
       const thick = s === B.KILN || s === B.GLASSFURN || s === B.BLOOMERY;
       for (let k = 0; k < (thick ? 4 : 3); k++) {
         const ph = (time * 0.0003 + k / 3 + hash2(i, k, 3) * 0.2) % 1;
-        sky.circle(x + ph * 10 + Math.sin(ph * 6 + i) * 2, y - ph * (thick ? 44 : 34), (thick ? 3.4 : 2.6) + ph * (thick ? 8 : 6)).fill({ color: thick ? 0x6f727a : 0x9a9fa8, alpha: (1 - ph) * (thick ? 0.5 : 0.42 * cold) });
+        sky.circle(x + ph * 10 + Math.sin(ph * 6 + i) * 2, y - ph * (thick ? 44 : 34), (thick ? 3.4 : 2.6) + ph * (thick ? 8 : 6)).fill({ color: thick ? 0x6f727a : 0x7d828c, alpha: (1 - ph) * (thick ? 0.5 : 0.42 * cold) });
       }
     }
 
