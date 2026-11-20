@@ -174,6 +174,8 @@ function walk(c: Colony, v: Visitor, x: number, y: number, adj: boolean): boolea
 }
 
 const OFFS = [[1, 0], [-1, 0], [0, 1], [1, 1], [-1, 1], [0, -1]];
+/** The mule keeps its distance, so it does not stand on the merchant's toes. */
+const MULE_OFFS = [[2, 0], [-2, 0], [2, 1], [-2, 1], [1, 1], [0, 2]];
 
 /** The whole party walks to (x, y): the leader there, the rest close by. */
 function go(c: Colony, v: Visitor, x: number, y: number): boolean {
@@ -182,8 +184,9 @@ function go(c: Colony, v: Visitor, x: number, y: number): boolean {
   for (const m of partyOf(c, v)) {
     if (m === v) continue;
     let ok = false;
-    for (let k = 0; k < OFFS.length && !ok; k++) {
-      const [dx, dy] = OFFS[(n + k) % OFFS.length];
+    const offs = m.k === 'mule' ? MULE_OFFS : OFFS;
+    for (let k = 0; k < offs.length && !ok; k++) {
+      const [dx, dy] = offs[(n + k) % offs.length];
       const tx = v.x + dx;
       const ty = v.y + dy;
       if (tx > 0 && ty > 0 && tx < c.w - 1 && ty < c.h - 1 && isOpen(c, ty * c.w + tx)) ok = walk(c, m, tx, ty, false);
@@ -409,11 +412,12 @@ export function dailyVisitors(c: Colony): void {
     // the king does not forget a refusal
     V.wrath = 0;
     const n = 3 + Math.floor(c.pawns.length / 18);
-    c.inq.push({ t: c.tick + (8 + r.int(6)) * H + r.int(H), k: 'raid', kind: 'soldier', n, king: 1 });
+    c.inq.push({ t: c.tick + (8 + r.int(6)) * H + r.int(H), k: 'raid', kind: 'soldier', n, king: 1, due: c.stats.kingDue ?? 40 });
   }
   // guests eat: those who can pay at the tavern, the refugees on the colony's charity
+  const lean = foodDays(c) < 1.5;
   for (const v of V.l) {
-    if (v.k === 'mule' || v.m === 2) continue;
+    if (lean || v.k === 'mule' || v.m === 2) continue;
     const meal = takeMeal(c, true);
     if (meal && v.k !== 'refugee') c.stock.silver += 1;
   }
@@ -464,7 +468,7 @@ function decide(c: Colony, v: Visitor): void {
   }
   if (v.m === 0) {
     if (t < v.ta) { v.t1 = v.ta; return; }
-    v.m = 1;
+    for (const m of party) m.m = 1;
   }
   const hour = hourOf(t);
   // fighting: under a roof until it is over, and on their way soon after
@@ -849,6 +853,7 @@ function taxFate(c: Colony, v: Visitor, r: Rand): void {
       vlog(c, v, 'refused', lord?.id, undefined, 'feud:' + near.name, due);
     } else {
       V.wrath = dayOf(c.tick) + 20 + r.int(20);
+      c.stats.kingDue = due;
       vlog(c, v, 'refused', lord?.id, undefined, 'soldiers', due);
     }
     if (lord) note(c, lord, 'v_tax_no', undefined, `${v.k}|${v.first} ${v.fam}|${v.f}`);
@@ -911,14 +916,15 @@ function hunt(c: Colony, v: Visitor, r: Rand): void {
     // a fight in the street
     const win = q.sk[0] + r.float() * 10 > 7 + r.float() * 10;
     if (win) {
-      think(c, q, 'slewfoe');
+      think(c, q, 'beathunter');
       vnote(c, q, v, 'beathunter');
       vlog(c, v, 'beaten', q.id);
       say(c, v, 'ouch');
       return;
     }
+    // a player's colonist takes a beating, never a wound that bleeds them out
+    if (q.owner) { wound(c, q, 'bruise', 10 + r.int(8), r); vlog(c, v, 'wounded', q.id); return; }
     wound(c, q, 'cut', 18 + r.int(16), r);
-    if (q.owner) { vlog(c, v, 'wounded', q.id); return; }
   } else if (per(q, AX.BRAVE) < 0 || r.chance(0.4)) {
     vlog(c, v, 'fled', q.id);
     depart(c, q, 'fled_hunter');
@@ -1045,7 +1051,7 @@ export function metGuest(c: Colony, p: Pawn, id: number, r: Rand): void {
       break;
     }
     case 'refugee': {
-      if (takeMeal(c, true)) think(c, p, 'helpedrefugees');
+      if (foodDays(c) >= 1.5 && takeMeal(c, true)) think(c, p, 'helpedrefugees');
       break;
     }
     case 'hunter': {

@@ -89,7 +89,7 @@ export function applyInputs(c: Colony): void {
       if (e.delay) { c.inq.push({ ...e, t: c.tick + Number(e.delay), delay: undefined }); continue; }
       if (c.foes.length) {
         // a host on the march waits a day for the trouble already here to clear (for a few days at most)
-        if (e.siege && Number(e.waits ?? 0) < 5) c.inq.push({ ...e, t: c.tick + TICKS_PER_DAY, waits: Number(e.waits ?? 0) + 1 });
+        if ((e.siege || e.king) && Number(e.waits ?? 0) < 5) c.inq.push({ ...e, t: c.tick + TICKS_PER_DAY, waits: Number(e.waits ?? 0) + 1 });
         continue;
       }
       const rr = new Rand(c.seed, S.FIGHT, c.tick, 99);
@@ -101,7 +101,7 @@ export function applyInputs(c: Colony): void {
       for (const p of c.pawns) if (canFight(c, p)) fighters++;
       const host = Math.min(Number(e.siege) || 1, 10, 6 + Math.floor(fighters / 6));
       // the king's soldiers, come for the tax that was refused
-      if (e.king) log(c, 'v_kingmen', undefined, undefined, undefined, Number(e.n) || 1);
+      if (e.king) { log(c, 'v_kingmen', undefined, undefined, undefined, Number(e.n) || 1); c.stats.kingLoot = Math.round((Number(e.due) || 40) * 1.5); }
       const sieged = !!e.siege && siegeable(c) && startSiege(c, String(e.kind), host, String(e.name ?? e.fromName ?? ''), rr, from);
       if (!sieged) spawnRaid(c, String(e.kind), Number(e.n) || 1, rr);
       if (e.fromId) {

@@ -303,6 +303,10 @@ export class Panels {
       h += `<div class="note">${linkNames(c, what, [c.gath.a, c.gath.o])}: ${dateText(c.gath.t0, true)}.</div>`;
     }
 
+    // who is passing through
+    const here = guests(c);
+    if (here.length) h += `<div class="note">Guests in the colony: ${here.map((g) => `<a class="who" data-g="${g.id}">${esc(g.first + ' ' + g.fam)}</a> (${esc((VIS_INFO[g.k]?.name ?? g.k).toLowerCase())})`).join(', ')}.</div>`;
+
     // who rules, and how
     const ruler = pawnById(c, c.gov.ruler);
     const gov = GOVS[c.gov.k];

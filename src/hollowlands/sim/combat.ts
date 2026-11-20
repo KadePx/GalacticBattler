@@ -264,6 +264,11 @@ export function combatTick(c: Colony): void {
           c.stock[k] -= n;
           took += n;
         }
+        // once they have half again what was owed, they march home with it
+        if (kings) {
+          c.stats.kingLoot = (c.stats.kingLoot ?? 0) - took;
+          if (c.stats.kingLoot <= 0) { c.stats.kingLoot = 0; for (const x of c.foes) if (x.band === f.band) x.mode = 2; }
+        }
         f.loot += 1;
         bump(c, 'looted', took);
         if (f.loot >= 6) f.mode = 2;

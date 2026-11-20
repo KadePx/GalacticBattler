@@ -695,7 +695,7 @@ export class MapView {
       }
       const isSel = v.id === this.selectedGuest || v.g === this.selectedGuest;
       if (v.id === this.selectedGuest) sel = g;
-      g.label.visible = !mule && (s >= 0.55 || isSel) && (v.g === v.id || s >= 1.1);
+      g.label.visible = !mule && v.g === v.id && (s >= 0.55 || isSel);
       // a few words over their head for an hour or so after they say them
       const say = v.say && tf - v.say[1] < TICKS_PER_HOUR * 1.5 && tf >= v.say[1] - 1 ? v.say[0] : '';
       if (say !== g.sayKey) { g.sayKey = say; g.talk.text = VIS_SAY[say] ?? ''; }

@@ -440,8 +440,9 @@ function visitText(c: Colony, e: Ev): string {
     case 'saint': return `The pilgrims knelt at the grave of ${fa} and left ${n} silver for the shrine.`;
     case 'offering': return `The pilgrims prayed at the shrine and left ${n} silver as an offering.`;
     case 'converted': return `${fa} has taken up the pilgrims' faith: ${FAITH_NAME[f] ?? f}.`;
-    case 'takenin': return `The ${fam} family have been taken in. ${n} new ${n === 1 ? 'soul' : 'souls'}, fleeing ${f}, now call ${c.name} home.`;
-    case 'turnedaway': return x === 'full' ? `There is no room left for the ${fam} family. They took the road again.` : `${e.a ? a + ' would' : 'The colony would'} not take the ${fam} family in. They took the road again, slowly.`;
+    case 'takenin': if (n <= 1) return `${name} has been taken in. Fleeing ${f}, they now call ${c.name} home.`;
+      return `The ${fam} family have been taken in. ${n} new ${n === 1 ? 'soul' : 'souls'}, fleeing ${f}, now call ${c.name} home.`;
+    case 'turnedaway': { const who = n <= 1 ? name : `the ${fam} family`; return x === 'full' ? `There is no room left for ${who}. They took the road again.` : `${e.a ? a + ' would' : 'The colony would'} not take ${who} in. They took the road again, slowly.`; }
     case 'healed': return `${name} laid hands on ${fa}, and by morning ${a} was mending.`;
     case 'blessed': return `${name} blessed the baby ${a}. A lucky child, they say now.`;
     case 'fields': return `${name} walked the fields at dusk, muttering. By morning the crops stood taller.`;
@@ -456,7 +457,7 @@ function visitText(c: Colony, e: Ev): string {
     case 'bought': return `${name} found ${fa}, the ${f}. ${e.b ? b : 'The colony'} paid ${n} silver to let them be.`;
     case 'beaten': return `${name} found ${fa}, the ${f}, and lost the fight that followed. The hunter limped away.`;
     case 'wounded': return `${name} found ${fa}, the ${f}. There was a fight, and ${a} was hurt, but would not be taken.`;
-    case 'fled': return `${name} found out ${fa}, the ${f}, but ${a} fled into the night before they could be taken.`;
+    case 'fled': return `${name} found out ${fa}, the ${f}, but ${a} slipped away before they could be taken, and has not come back.`;
     case 'taken': return `${name} found ${fa}, the ${f}, and took them away in chains.`;
     default: return `${name ?? 'A visitor'} passed through.`;
   }

@@ -356,6 +356,7 @@ export const TH_LIST: ThDef[] = [
   h('defiedking', 'We sent the king\'s man away with nothing', 4, DAY * 6),
   h('kingwrath', 'The king will not forget this', -3, DAY * 12),
   h('hunted', 'A bounty hunter is asking after me', -14, DAY * 3),
+  h('beathunter', 'Beat the bounty hunter who came for me', 8, DAY * 8),
   h('hunterwent', 'The hunter left without me', 10, DAY * 4),
   h('exposed', 'Everyone knows what I was', -10, DAY * 15),
   h('savedfromhunter', '{o} would not hand me over', 8, DAY * 20, { op: 35 }),

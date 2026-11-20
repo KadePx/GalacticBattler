@@ -574,6 +574,14 @@ export function decide(c: Colony, p: Pawn): void {
   if (st >= STAGE.TEEN && !p.brk && !night && marketOpen(c) && goMarket(c, p, r, (x, y, k, dur, why, o, d) => setAct(c, p, k, x, y, dur, why, { o: o || undefined, d }))) return;
 
   if (st === STAGE.CHILD) {
+    // a minstrel or a wizard in town: the children follow them about
+    if (c.vis && c.vis.l.length) {
+      const gc = guestCall(c, p, st, hour);
+      if (gc && (gc[0].k === 'minstrel' || gc[0].k === 'wizard') && r.chance(0.35)) {
+        const s = guestSpot(c, gc[0], r);
+        if (s && setAct(c, p, 'listen', s[0], s[1], 8 + r.int(8), 'guest', { d: gc[0].id })) return;
+      }
+    }
     const school = bldOf(c, 'school');
     if (school && hour >= 8 && hour < 13 && r.chance(0.8)) {
       const [x, y] = seat(c, p, school, 'c', r);
