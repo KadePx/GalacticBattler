@@ -47,7 +47,8 @@ export type ActK =
   | 'fight' | 'flee' | 'hide' | 'tend' | 'train' | 'stalk'
   | 'idle' | 'wander' | 'sleep' | 'eat' | 'work' | 'drink' | 'relax' | 'walk' | 'pray' | 'dice' | 'hobby' | 'play' | 'visit' | 'sulk' | 'binge' | 'tantrum' | 'rave'
   | 'court' | 'wed' | 'attend' | 'mourn' | 'labour' | 'rest' | 'perform' | 'listen' | 'stargaze' | 'bathe'
-  | 'chess' | 'darts' | 'music' | 'read' | 'study' | 'berserk' | 'subdue';
+  | 'chess' | 'darts' | 'music' | 'read' | 'study' | 'berserk' | 'subdue'
+  | 'shop' | 'sell';
 
 export interface Act {
   k: ActK;
@@ -393,6 +394,13 @@ export interface Colony {
   fresh?: Record<string, number>;
   /** planned gathering (wedding, funeral, feast) */
   gath?: { k: string; t0: number; t1: number; b: number; a?: Id; o?: Id; x: number; y: number; /** which festival */ f?: string };
+  /**
+   * The weekly market (see market.ts): today's hours (0 when there is none), market days held, the
+   * stalls set out (ware index, keeper, the tile they stand on, the way they face, sold, earned),
+   * who has been round the stalls today, the carters' carts in the square, silver that changed hands
+   * today, whether the day's grand sale has been told, and price multipliers at the opening (x100)
+   */
+  mkt?: { t0: number; t1: number; n: number; st: { k: number; o: Id; x: number; y: number; dx: number; dy: number; n: number; e: number }[]; went: Id[]; carts: string[]; coin: number; sale: number; pr: number[] };
   /** the colony's festivals: its own name for each, how many years held, and this year's champion */
   trad?: Partial<Record<'spring' | 'summer', { name: string; n: number; champ?: Id }>>;
 }

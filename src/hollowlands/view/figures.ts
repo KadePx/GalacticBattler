@@ -606,6 +606,21 @@ export function drawActivity(g: Graphics, key: string): void {
     case 'bathe': // a drop
       g.moveTo(0, -4).quadraticCurveTo(3.4, 1, 0, 3.6).quadraticCurveTo(-3.4, 1, 0, -4).fill(0x5fb4e8);
       break;
+    case 'shop': // a purse of coin
+      g.ellipse(0, 1.2, 3.6, 3).fill(0xb8864e);
+      g.poly([-1.8, -1.4, 1.8, -1.4, 2.6, -3.6, -2.6, -3.6]).fill(0x9a6a3c);
+      g.circle(2.6, 2.6, 1.6).fill(0xe8c75a).stroke({ width: 0.6, color: 0x8a6a2a });
+      break;
+    case 'sell': // a pair of scales
+      line([0, -3.8, 0, 3.6], 0xc9ced8, 1.1);
+      line([-3.8, -2.2, 3.8, -2.2], 0xc9ced8, 1.1);
+      g.moveTo(-4.6, 0.6).arc(-2.8, 0.6, 1.8, 0, Math.PI).fill(0xe8c75a);
+      g.moveTo(1, 0.6).arc(2.8, 0.6, 1.8, 0, Math.PI).fill(0xe8c75a);
+      line([-2.8, -2.2, -4.4, 0.6], 0xc9ced8, 0.6);
+      line([-2.8, -2.2, -1.2, 0.6], 0xc9ced8, 0.6);
+      line([2.8, -2.2, 1.2, 0.6], 0xc9ced8, 0.6);
+      line([2.8, -2.2, 4.4, 0.6], 0xc9ced8, 0.6);
+      break;
     case 'tantrum':
     case 'rave':
     case 'berserk':

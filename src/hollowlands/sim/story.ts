@@ -25,6 +25,7 @@ import { think } from './mood';
 import { STAGE, has, makePawn, mkAct, per, stage } from './pawn';
 import { Rand, S } from './rng';
 import { AX, type Colony, type Pawn, type RaceK } from './types';
+import { stoneWant } from './market';
 
 export const hasMod = (c: Colony, k: string): boolean => c.mods.some((m) => m[0] === k && m[1] > c.tick);
 
@@ -389,8 +390,13 @@ function trade(c: Colony, r: Rand): void {
   if (s.grain + s.veg + s.meal < pop * 8) buy('grain', pop * 14, 0.3);
   buy('weapons', pop * 0.25, 5);
   buy('iron', 4, 2);
-  if (s.stone < 10) buy('stone', 30, 0.4);
+  // stone and timber by the cartload, for whatever the town is waiting to build (half the treasury at most)
+  const want = stoneWant(c);
+  const keep = silver * 0.5;
+  silver -= keep;
+  if (s.stone < 10 || want > s.stone + 10) buy('stone', Math.max(30, Math.min(want, s.stone + 80)), 0.4);
   if (s.wood < pop * 4) buy('wood', pop * 8, 0.2);
+  silver += keep;
   buy('clothes', 1 + pop * 0.15, 2.5);
   s.silver = silver;
   const beasts = r.chance(0.5) ? buyBeasts(c, r) : '';

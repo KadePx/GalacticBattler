@@ -691,7 +691,7 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
         c.stock.stone = Math.max(0, c.stock.stone - need * dp);
         b.up = (b.up ?? 0) + dp;
         if (b.up >= 0.999) {
-          b.up = undefined;
+          delete b.up;
           b.mat = 1;
           b.q = Math.min(100, b.q + 10);
           b.dmg = 0;

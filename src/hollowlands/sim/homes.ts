@@ -185,15 +185,15 @@ export function upkeep(c: Colony): void {
   for (const b of c.blds.slice()) {
     if (!b.built || !b.beds.length || b.k === 'infirmary' || CASTLE_KINDS.has(b.k)) continue;
     const lived = b.beds.some((x) => x);
-    if (lived) b.vac = undefined;
+    if (lived) delete b.vac;
     else if (b.vac === undefined) b.vac = c.tick;
     const tier = TIER[b.k] ?? 2;
     if (b.own) {
       const o = pawnById(c, b.own);
       // the family moved on to somewhere better, or died out: it is anyone's now
-      if (!o) b.own = heirOf(c, b, b.own);
+      if (!o) { const h = heirOf(c, b, b.own); if (h) b.own = h; else delete b.own; }
       // (a family that has only just bought or finished it has a few days to move in)
-      else if (o.home !== b.id && b.beds.every((x) => x !== o.id) && c.tick - (b.got ?? 0) > GRACE) b.own = undefined;
+      else if (o.home !== b.id && b.beds.every((x) => x !== o.id) && c.tick - (b.got ?? 0) > GRACE) delete b.own;
     }
     if (!lived) {
       b.q = Math.max(8, b.q - 0.6);
@@ -208,8 +208,8 @@ export function upkeep(c: Colony): void {
           b.q = Math.max(20, b.q - 1.2);
           // they can no longer keep it: it goes to whoever needs it
           if (b.q < homeCap(b.k) - 24) {
-            b.own = undefined;
-            b.got = undefined;
+            delete b.own;
+            delete b.got;
             think(c, o, 'shabbyhome');
             log(c, 'home_lost', o.id, undefined, b.k);
           }

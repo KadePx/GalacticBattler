@@ -495,6 +495,10 @@ function slots(c: Colony, adults: number, kids: number): Record<string, number> 
     ratcatcher: adults >= 18 ? 1 : 0,
     quartermaster: adults >= 20 ? 1 : 0,
     herder: has('pen') ? (c.herd && c.herd.length > 12 ? 2 : 1) : 0,
+    // the market's trades, once the town is big enough to keep a market
+    baker: has('kitchen') && adults >= 22 ? 1 : 0,
+    butcher: has('pen') && adults >= 26 ? 1 : 0,
+    potter: has('workshop') && adults >= 24 ? 1 : 0,
   };
 }
 

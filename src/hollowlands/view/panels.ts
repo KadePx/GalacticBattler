@@ -12,9 +12,10 @@ import { foodDays } from '../sim/econ';
 import { FAITHS, mainFaith } from '../sim/faith';
 import { GOVS, approval, rulerTitle } from '../sim/gov';
 import { fullName, pawnById, person, stage } from '../sim/pawn';
-import type { Colony, Dead, Id, Pawn } from '../sim/types';
-import { WEIGHT, clockText, dateText, evText, raceName } from '../text';
+import type { Colony, Dead, Ev, Id, Pawn } from '../sim/types';
+import { WEIGHT, clockText, dateText, evText, raceName, wareName } from '../text';
 import { bldCard, deadCard, face, linkNames, pawnCard, shortDate, type CardUi } from './card';
+import { MARKET_POP, WARES, daysToMarket, marketOpen, priceMult, priceOf } from '../sim/market';
 import { RES_NAMES, WEATHER, actText, causeText, esc, moodColor } from './words';
 
 export type Sel = { k: 'pawn'; id: Id } | { k: 'dead'; id: Id } | { k: 'bld'; id: number } | null;
@@ -367,6 +368,8 @@ export class Panels {
     }
     h += trades || '<div class="hint">Nobody holds a trade yet.</div>';
 
+    h += marketBlock(c);
+
     h += '<h3>Stores</h3><div class="store">';
     for (const k in c.stock) {
       const n = c.stock[k as keyof typeof c.stock];
@@ -424,4 +427,30 @@ export class Panels {
     this.put(this.cbody, body);
     if (was) this.hooks.layout();
   }
+}
+
+/** The market in the colony panel: when it is, what things cost, what changed hands last time, and how full people's purses are. */
+function marketBlock(c: Colony): string {
+  const open = marketOpen(c);
+  const d = daysToMarket(c);
+  const when = open ? 'open now' : c.pawns.length < MARKET_POP ? '' : d === 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`;
+  let h = `<h3>Market${when ? ` <span class="legend">${when}</span>` : ''}</h3>`;
+  if (c.pawns.length < MARKET_POP && !c.mkt?.n) return h + `<div class="hint">A town of ${MARKET_POP} or more holds a market in its square every seventh day.</div>`;
+  h += '<div class="hint">Every seventh day in the square, from eight in the morning until three. The well-off buy the best on the table; a tenth of every sale goes to the treasury.</div>';
+  let last: Ev | undefined;
+  for (let i = c.log.length - 1; i >= 0; i--) if (c.log[i].k === 'market') { last = c.log[i]; break; }
+  if (last) h += `<div class="th"><span>Last market day</span><b>${last.n ?? 0} silver changed hands</b></div>`;
+  for (const w of WARES) {
+    const m = priceMult(c, w);
+    const cls = m >= 1.3 ? 'down' : m <= 0.8 ? 'up' : '';
+    const note = m >= 1.3 ? ' (dear)' : m <= 0.8 ? ' (cheap)' : '';
+    h += `<div class="th"><span>${esc(wareName(w.k))}</span><b class="${cls}">${priceOf(c, w).toFixed(2)} silver${note}</b></div>`;
+  }
+  // purses: the poorest tenth, the middle, the richest tenth of the grown
+  const coins = c.pawns.filter((p) => !p.thrall && stage(c, p) >= 3).map((p) => p.coin).sort((a, b) => a - b);
+  if (coins.length >= 5) {
+    const at = (q: number): number => Math.round(coins[Math.min(coins.length - 1, Math.floor(q * coins.length))]);
+    h += `<div class="th"><span title="Silver in hand: the poorest tenth, the middle, the richest tenth">Purses</span><b>${at(0.1)} · ${at(0.5)} · ${at(0.9)} silver</b></div>`;
+  }
+  return h;
 }

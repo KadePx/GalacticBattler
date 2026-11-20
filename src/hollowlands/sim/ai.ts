@@ -15,6 +15,7 @@ import { throneTile } from './castle';
 import { isDown, needsRest, wound } from './health';
 import { accuse, murder } from './crime';
 import { die } from './life';
+import { MARKET_POP, buy, goMarket, marketOpen, pickShop } from './market';
 import { bedFor, equip, findJob, finishWork } from './jobs';
 import { endBreak, feltTemp, hasThought, think } from './mood';
 import { findPath, walkTicks } from './path';
@@ -210,6 +211,8 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
   const grief = p.th.find((t) => t.o && t.x > c.tick && (t.k === 'died_spouse' || t.k === 'died_child' || t.k === 'died_parent' || t.k === 'died_friend' || t.k === 'died_sibling'));
   const grave = grief ? c.dead.find((d) => d.id === grief.o && d.grave >= 0) : undefined;
   if (grave && hour >= 6 && hour < 21) w('mourn', 1.6);
+  // on other days the masters of the trades sell from their shops
+  if (adult && p.coin >= 6 && hour >= 8 && hour < 19 && c.pawns.length >= MARKET_POP && !marketOpen(c)) w('shop', 0.3 + (p.coin >= 60 ? 0.5 : 0));
 
   let total = 0;
   for (const o of opts) total += o[1];
@@ -335,6 +338,14 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
       case 'read': {
         const [x, y] = seat(c, p, school!, 'c', r);
         if (setAct(c, p, 'read', x, y, dur, 'read', { b: school!.id })) return true;
+        break;
+      }
+      case 'shop': {
+        const sh = pickShop(c, p, r);
+        const b = sh ? c.blds.find((x) => x.id === sh[0]) : undefined;
+        if (!sh || !b) break;
+        const [x, y] = seat(c, p, b, '.', r);
+        if (setAct(c, p, 'shop', x, y, 4, 'shopping', { b: b.id, o: sh[2], d: sh[1] })) return true;
         break;
       }
       case 'mourn': {
@@ -549,6 +560,8 @@ export function decide(c: Colony, p: Pawn): void {
   if (((night && p.rest < 80) || p.rest < 22) && !p.brk && goSleep(c, p, night ? 'night' : 'tired')) return;
   // when food is rationed, only the ruler's table eats its fill
   if (p.food < (c.gov.laws.ration && p.rank < 5 ? 28 : 42) && hasFood(c) && goEat(c, p, r, 'hungry')) return;
+  // market day: the stallholders to their stalls, everyone else round the stalls with their silver
+  if (st >= STAGE.TEEN && !p.brk && !night && marketOpen(c) && goMarket(c, p, r, (x, y, k, dur, why, o, d) => setAct(c, p, k, x, y, dur, why, { o: o || undefined, d }))) return;
 
   if (st === STAGE.CHILD) {
     const school = bldOf(c, 'school');
@@ -889,6 +902,7 @@ export function finish(c: Colony, p: Pawn): void {
       break;
     }
     case 'mourn': if (a.o) think(c, p, 'visitedgrave', a.o); break;
+    case 'shop': if (a.d !== undefined && a.o) buy(c, p, a.d, a.o, !!a.b); break;
     default: break;
   }
   void hasThought;

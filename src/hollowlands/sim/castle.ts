@@ -192,7 +192,7 @@ export function dailyCastle(c: Colony): void {
   // the ruler's house lives in the castle's hall
   const hall = castleHall(c);
   for (const b of castleParts(c)) {
-    if (b !== hall && b.own) b.own = undefined;
+    if (b !== hall && b.own) delete b.own;
   }
   if (hall && ruler && hall.own !== ruler.id) {
     hall.own = ruler.id;

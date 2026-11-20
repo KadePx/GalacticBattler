@@ -3,6 +3,7 @@
 // are small reusable figures moved every frame. The view only ever reads the colony.
 
 import { actText } from './words';
+import { WARES, cartSlots, marketOpen, onHand, stallSlots } from '../sim/market';
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
 import { TOOL_FOR } from '../sim/jobs';
@@ -103,7 +104,7 @@ export class MapView {
   private labelLayer = new Container();
   /** a sign over each building that has a purpose, and its name (names are drawn in screen space, like people's) */
   private signLayer = new Container();
-  private signs: { g: Graphics; label: Text; x: number; y: number; field: boolean }[] = [];
+  private signs: { g: Graphics; label: Text; x: number; y: number; field: boolean; big?: boolean }[] = [];
   private signKey = '';
   /** the colony's stores, piled up beside the storehouse */
   private piles = new Graphics();
@@ -111,6 +112,9 @@ export class MapView {
   /** a besieging host's camp outside the walls: tents, fires, its ladders and ram */
   private camp = new Graphics();
   private campKey = '';
+  /** the market's stalls in the square (one graphic each, so people stand in front of and behind them), and the carters' carts */
+  private stalls: Graphics[] = [];
+  private mktKey = '';
   private chunks: Chunk[] = [];
   private views = new Map<Id, PawnView>();
   private foeViews = new Map<number, { g: Graphics; stamp: number; hp?: number; flash?: number }>();
@@ -215,6 +219,10 @@ export class MapView {
     this.pileKey = '';
     this.camp = new Graphics();
     this.pawnLayer.addChild(this.camp);
+    // a new colony: its market is drawn afresh
+    for (const g of this.stalls) g.destroy();
+    this.stalls = [];
+    this.mktKey = '';
     this.campKey = '';
     this.signKey = '';
     this.pal = null;
@@ -256,6 +264,7 @@ export class MapView {
     this.syncSigns(c);
     this.syncPiles(c);
     this.syncCamp(c);
+    this.syncMarket(c);
     this.stepCamera(dt);
     this.cull();
     this.lighting(tf, dt);
@@ -660,6 +669,121 @@ export class MapView {
     }
   }
 
+  /**
+   * The market in the square. On market day: a stall for each trade that came, under its own striped
+   * awning, with its goods on the counter (fewer as they sell, and fewer when the stores are low), and
+   * the carters' carts by the avenue. On other days, once the town holds a market at all: the bare
+   * trestles, awnings rolled up.
+   */
+  private syncMarket(c: Colony): void {
+    const m = c.mkt;
+    const open = !!m && marketOpen(c);
+    let key = '';
+    if (open) {
+      for (const s of m!.st) {
+        const w = WARES[s.k];
+        const left = Math.max(0, Math.min(4, Math.ceil(onHand(c, w) / Math.max(1, w.per * c.pawns.length * 0.25))));
+        key += `${s.k}:${s.x},${s.y},${s.dx},${s.dy},${left}|`;
+      }
+      key += m!.carts.join(',');
+    } else if (m && m.n > 0) key = `closed|${c.cx},${c.cy},${c.gx},${c.gy}|${c.ter[c.cy * c.w + c.cx]}`;
+    if (key === this.mktKey) return;
+    this.mktKey = key;
+    for (const g of this.stalls) g.destroy();
+    this.stalls = [];
+    if (!key) return;
+    const add = (zy: number): Graphics => {
+      const g = new Graphics();
+      g.zIndex = zy;
+      this.pawnLayer.addChild(g);
+      this.stalls.push(g);
+      return g;
+    };
+    if (!open) {
+      // market's over: bare trestles, the awnings rolled up on their poles
+      for (const sl of stallSlots(c)) {
+        const i = sl.y * c.w + sl.x;
+        if (c.st[i] || c.sb[i]) continue;
+        const cx = (sl.x + 0.5 + sl.dx * 0.62) * TS;
+        const cy = (sl.y + 0.5 + sl.dy * 0.62) * TS;
+        const g = add(cy + 2);
+        const wide = sl.dy !== 0;
+        const hw = wide ? TS * 0.62 : TS * 0.22;
+        const hh = wide ? TS * 0.2 : TS * 0.55;
+        g.ellipse(cx, cy + hh + 1, hw + 2, 2.6).fill({ color: 0x0b1220, alpha: 0.18 });
+        g.rect(cx - hw, cy - hh, hw * 2, hh * 2).fill(0x8a6440).stroke({ width: 1, color: 0x3a2716 });
+        // the poles, with the cloth rolled tight at the top
+        g.moveTo(cx - hw, cy - hh).lineTo(cx - hw, cy - hh - 13).moveTo(cx + hw, cy - hh).lineTo(cx + hw, cy - hh - 13).stroke({ width: 1.3, color: 0x4a3424 });
+        g.roundRect(cx - hw - 1, cy - hh - 15, hw * 2 + 2, 3.2, 1.6).fill(0xb9a88a).stroke({ width: 0.7, color: 0x5a4a3a });
+      }
+      return;
+    }
+    for (const s of m!.st) {
+      const w = WARES[s.k];
+      const hue = AWNING[w.k] ?? 0xa8323a;
+      const left = Math.max(0, Math.min(4, Math.ceil(onHand(c, w) / Math.max(1, w.per * c.pawns.length * 0.25))));
+      const cx = (s.x + 0.5 + s.dx * 0.62) * TS;
+      const cy = (s.y + 0.5 + s.dy * 0.62) * TS;
+      const wide = s.dy !== 0;
+      const hw = wide ? TS * 0.66 : TS * 0.24;
+      const hh = wide ? TS * 0.22 : TS * 0.6;
+      // the counter goes in front of a keeper who faces down the square, behind one who faces up it
+      const g = add(cy + (s.dy > 0 ? 6 : s.dy < 0 ? -6 : 2));
+      g.ellipse(cx, cy + hh + 1, hw + 3, 3).fill({ color: 0x0b1220, alpha: 0.22 });
+      // the awning over keeper and counter alike: striped, scalloped at the front
+      // (raised on its poles above the keeper's head and the counter, so both show under it)
+      const ax = (s.x + 0.5 + s.dx * 0.3) * TS;
+      const aw = wide ? TS * 0.78 : TS * 0.62;
+      const ah = wide ? TS * 0.32 : TS * 0.5;
+      const ay = Math.min(cy - hh, (s.y + 0.5) * TS - 17) - 3 - ah;
+      g.moveTo(ax - aw, ay + ah).lineTo(ax - aw, cy + hh).moveTo(ax + aw, ay + ah).lineTo(ax + aw, cy + hh).stroke({ width: 1.3, color: 0x4a3424 });
+      g.rect(cx - hw, cy - hh, hw * 2, hh * 2).fill(0x9a7048).stroke({ width: 1, color: 0x3a2716 });
+      g.rect(cx - hw, cy + hh - 2.2, hw * 2, 2.2).fill(0x6b4a2c);
+      // what is left to sell, laid out along the counter
+      for (let n = 0; n < left; n++) {
+        const u = left === 1 ? 0.5 : n / (left - 1);
+        const gx = wide ? cx - hw + 4 + u * (hw * 2 - 8) : cx;
+        const gy = wide ? cy - 1 : cy - hh + 4 + u * (hh * 2 - 8);
+        drawWare(g, w.k, gx, gy, n);
+      }
+      const stripes = 5;
+      const a = add(Math.max(cy, (s.y + 0.5) * TS) + 10);
+      a.rect(ax - aw, ay - ah, aw * 2, ah * 2).fill(0xf3ead6);
+      for (let k = 0; k < stripes; k += 2) a.rect(ax - aw + (k * aw * 2) / stripes, ay - ah, (aw * 2) / stripes, ah * 2).fill(hue);
+      for (let k = 0; k < stripes; k++) {
+        const x0 = ax - aw + (k * aw * 2) / stripes;
+        a.moveTo(x0, ay + ah).arc(x0 + aw / stripes, ay + ah, aw / stripes, 0, Math.PI).fill(k % 2 ? 0xf3ead6 : hue);
+      }
+      a.rect(ax - aw, ay - ah, aw * 2, ah * 2).stroke({ width: 1, color: 0x2a1d12, alpha: 0.7 });
+    }
+    // the carters' carts, by the avenue
+    const cs = cartSlots(c);
+    m!.carts.forEach((k, n) => {
+      const at = cs[n];
+      if (!at) return;
+      const x = (at.x + 0.5) * TS;
+      const y = (at.y + 0.5) * TS;
+      const g = add(y + 6);
+      g.ellipse(x, y + 9, 22, 4).fill({ color: 0x0b1220, alpha: 0.22 });
+      // shafts out front and an ox standing in them
+      g.moveTo(x + 14, y + 2).lineTo(x + 30, y + 4).moveTo(x + 14, y + 6).lineTo(x + 30, y + 8).stroke({ width: 1.3, color: 0x4a3424 });
+      g.ellipse(x + 34, y + 3, 8, 4.6).fill(0x8a6a4a).stroke({ width: 0.8, color: 0x3a2a1a });
+      g.ellipse(x + 42, y + 1, 3.6, 3).fill(0x8a6a4a).stroke({ width: 0.8, color: 0x3a2a1a });
+      g.moveTo(x + 41, y - 2).lineTo(x + 39, y - 5).moveTo(x + 44, y - 2).lineTo(x + 46, y - 5).stroke({ width: 1, color: 0xe9dcc0 });
+      g.roundRect(x - 16, y - 5, 32, 11, 2).fill(0x7a5434).stroke({ width: 1, color: 0x2a1d12 });
+      if (k === 'stone') {
+        for (let r = 0; r < 2; r++) for (let q = 0; q < 4 - r; q++) g.roundRect(x - 14 + q * 7 + r * 3.5, y - 9 - r * 5, 6.4, 5, 1).fill(0x9da1aa).stroke({ width: 0.7, color: 0x4b4f58 });
+      } else {
+        for (let r = 0; r < 2; r++) for (let q = 0; q < 2; q++) {
+          g.roundRect(x - 15, y - 9 - r * 4 - q * 0, 30, 3.6, 1.8).fill(0x8a6440).stroke({ width: 0.7, color: 0x3a2716 });
+          g.circle(x + 15, y - 7.2 - r * 4, 1.6).fill(0xc9a27a);
+        }
+      }
+      g.circle(x - 9, y + 7, 5).circle(x + 9, y + 7, 5).fill(0x3a2a1a);
+      g.circle(x - 9, y + 7, 1.6).circle(x + 9, y + 7, 1.6).fill(0x8a6440);
+    });
+  }
+
   /** Woodpile, stone, sacks of food and barrels of ale beside the storehouse, as big as the stores. */
   private syncPiles(c: Colony): void {
     const s = c.stock;
@@ -736,6 +860,8 @@ export class MapView {
     for (const b of c.blds) if (!unsignedB(b)) key += `${b.id}${b.built ? 'b' : 'p'}${b.mat}${b.crop ?? ''},`;
     const sg = c.siege && c.siege.phase < 2 ? c.siege : undefined;
     if (sg) key += `camp${sg.band}`;
+    const mkt = marketOpen(c);
+    if (mkt) key += 'mkt';
     if (key === this.signKey) return;
     this.signKey = key;
     for (const s of this.signs) { s.g.destroy(); s.label.destroy(); }
@@ -746,6 +872,13 @@ export class MapView {
       label.anchor.set(0.5, 0);
       this.labelLayer.addChild(label);
       this.signs.push({ g: new Graphics(), label, x: (sg.x + 0.5) * TS, y: (sg.y + 3.2) * TS, field: false });
+    }
+    if (mkt) {
+      // market day is named over the square, readable from far out
+      const label = new Text({ text: 'Market day', resolution: 2, style: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: 13, fontWeight: '700', fill: 0xffe08a, stroke: { color: 0x0a0d14, width: 3, join: 'round' } } });
+      label.anchor.set(0.5, 1);
+      this.labelLayer.addChild(label);
+      this.signs.push({ g: new Graphics(), label, x: (c.cx + 0.5) * TS, y: (c.cy - 5.6) * TS, field: false, big: true });
     }
     for (const b of c.blds) {
       if (unsignedB(b)) continue;
@@ -786,7 +919,7 @@ export class MapView {
     const s = this.cam.scale.x;
     // building names once the map is close enough to read them; field crops a little closer still
     for (const sg of this.signs) {
-      sg.label.visible = s >= (sg.field ? 0.95 : 0.7);
+      sg.label.visible = sg.big || s >= (sg.field ? 0.95 : 0.7);
       if (sg.label.visible) sg.label.position.set(this.cam.x + sg.x * s, this.cam.y + sg.y * s + 1);
     }
     for (const v of this.views.values()) {
@@ -1138,6 +1271,25 @@ function rainCanvas(): HTMLCanvasElement {
   return cv;
 }
 
+/** The awning colour of each market stall. */
+const AWNING: Record<string, number> = { bread: 0xc0503a, meat: 0x8a2f3a, cloth: 0x4a6fb0, pots: 0xb8743a, tools: 0x5a6470, ale: 0x7a5a2a, greens: 0x4f8a3a, fish: 0x3a7a8a, dairy: 0xc8b04a, herbs: 0x6a8a4a };
+
+/** One of a stall's wares on its counter. */
+function drawWare(g: Graphics, k: string, x: number, y: number, n: number): void {
+  switch (k) {
+    case 'bread': g.ellipse(x, y, 3.6, 2.4).fill(0xd9a35a).stroke({ width: 0.7, color: 0x7a4a1a }); g.moveTo(x - 1.6, y - 1).lineTo(x - 0.6, y + 1).moveTo(x + 0.6, y - 1).lineTo(x + 1.6, y + 1).stroke({ width: 0.6, color: 0x7a4a1a }); break;
+    case 'meat': g.ellipse(x, y, 3.4, 2.6).fill(0xb8404a).stroke({ width: 0.7, color: 0x5a1a1a }); g.circle(x + 2.4, y - 1, 1).fill(0xf3ead6); break;
+    case 'cloth': g.roundRect(x - 3.4, y - 2.4, 6.8, 4.8, 1.6).fill([0x4a6fb0, 0xc0503a, 0x6a8a4a, 0xd8c86a][n % 4]).stroke({ width: 0.7, color: 0x1a1a2a }); break;
+    case 'pots': g.ellipse(x, y + 0.6, 2.8, 2.6).fill(0xb8743a).stroke({ width: 0.7, color: 0x5a3010 }); g.rect(x - 1.4, y - 3, 2.8, 1.4).fill(0xa8642a); break;
+    case 'tools': g.moveTo(x - 3, y + 2).lineTo(x + 2, y - 2).stroke({ width: 1.3, color: 0x8a6440 }); g.rect(x + 0.6, y - 3.6, 3.2, 2).fill(0xc9ced8); break;
+    case 'ale': g.circle(x, y, 3).fill(0x9a6a3c).stroke({ width: 0.8, color: 0x2a1d12 }); g.circle(x, y, 2).stroke({ width: 0.7, color: 0x4b4f58 }); break;
+    case 'greens': g.circle(x - 1.2, y, 2).circle(x + 1.4, y + 0.4, 1.8).fill(0x5fa04a); g.circle(x + 0.2, y - 1.4, 1.5).fill(0xd9733a); break;
+    case 'fish': g.ellipse(x, y, 3.4, 1.4).fill(0xaab8c4).stroke({ width: 0.6, color: 0x4a5a6a }); g.poly([x + 3, y, x + 4.8, y - 1.4, x + 4.8, y + 1.4]).fill(0xaab8c4); break;
+    case 'dairy': g.ellipse(x - 1.4, y, 1.4, 1.8).ellipse(x + 1.4, y, 1.4, 1.8).fill(0xf4efe4).stroke({ width: 0.5, color: 0x8a8070 }); break;
+    default: g.ellipse(x, y, 1.6, 3).fill(0x6fbf5a); g.ellipse(x + 2, y + 0.4, 1.4, 2.4).fill(0x4f9a3a);
+  }
+}
+
 /** What a colonist has in hand right now ('' for nothing). */
 function heldFor(p: Pawn): string {
   const a = p.act;
@@ -1145,6 +1297,7 @@ function heldFor(p: Pawn): string {
   if (a.k === 'subdue') return '';
   if (a.k === 'music') return 'lute';
   if (a.k === 'read' || a.k === 'study') return 'book';
+  if (a.k === 'shop') return 'basket';
   if (a.k === 'work' && a.w) {
     const want = TOOL_FOR[a.w];
     if (want) return p.tool && p.tool[0] === want ? want : '';

@@ -4,11 +4,13 @@
 import { castleHall, hallSpot } from './castle';
 import { festivalName, festivalToday } from './festivals';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, dayOf } from '../config';
+import { PROFS } from './data/professions';
 import { RACES } from './data/races';
 import { foodDays } from './econ';
 import { bump, log, note } from './events';
 import { wound } from './health';
 import { depart, die } from './life';
+import { wage } from './market';
 import { think } from './mood';
 import { STAGE, ageYears, has, pawnById, per, stage, stat } from './pawn';
 import { Rand, S } from './rng';
@@ -278,9 +280,10 @@ export function dailyGov(c: Colony): void {
   if (c.gov.regent && stage(c, ruler) >= STAGE.ADULT) { log(c, 'regency_ends', ruler.id, c.gov.regent); c.gov.regent = 0; }
   if (c.gov.regent && !pawnById(c, c.gov.regent)) c.gov.regent = 0;
 
-  // wages; a greedy ruler takes a cut
+  // wages (see market.ts); a greedy ruler takes a cut
   for (const p of adults) {
-    if (p.prof) p.coin += c.gov.laws.tax ? 0.35 : 0.5;
+    // a trade's wage: the learned trades pay best, and a master earns more than a beginner
+    if (p.prof) p.coin += wage(c, p, PROFS[p.prof]?.skill ?? 0);
     if (p.rank >= RANK.NOBLE) p.coin += p.rank === RANK.RULER ? (c.gov.laws.tax ? 3 : 1.5) : 0.8;
     if (p.coin > 200) p.coin = 200;
   }

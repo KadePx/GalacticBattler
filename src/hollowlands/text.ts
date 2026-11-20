@@ -104,10 +104,30 @@ export const WEIGHT: Record<string, number> = {
   schism: 3, fire_spread: 3, match_sent: 3, match: 3,
   asked: 2, blackmail: 3, prosthetic: 2, captured: 3, ransomed: 1, freed: 3, escaped: 3, plot: 3, plot_fades: 2, cult_whisper: 2, cult_found: 3, rite: 2, cult_rises: 3,
   raidout: 3, raiders_from: 2, raidback: 3, war_declared: 3, war_on_us: 3, incident: 2, set_out: 3, pen_stocked: 2, master: 3, dream: 3, festival_set: 1, festival: 2, contest: 2, apprenticed: 2, graduated: 2, bought_beasts: 1, dogcame: 2, adopted: 2, dogdied: 2, dogbark: 2, slaughter: 1, warband: 3, peace_sued: 3, peace_made: 3, spotted: 2, brokeup: 1, berserk_hit: 3, subdued: 3, subdue_failed: 2,
+  market: 2, market_first: 3, market_sale: 2, carter: 1,
   feast_set: 2, audience: 2, prosper: 2, home_lost: 2, razed: 1, castle: 3, walls: 3, siege: 3, breach: 3, mended: 2,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
+
+/** One of what each market stall sells, and the stall itself. */
+const WARE_ONE: Record<string, string> = { bread: 'loaf', meat: 'cut of meat', cloth: 'bolt of cloth', pots: 'pot', tools: 'tool', ale: 'cask of ale', greens: 'basket of greens', fish: 'fish', dairy: 'cheese', herbs: 'remedy' };
+const WARE_STALL: Record<string, string> = { bread: 'bread', meat: 'meat', cloth: 'cloth', pots: 'pots', tools: 'tools', ale: 'ale', greens: 'greens', fish: 'fish', dairy: 'eggs and cheese', herbs: 'herbs' };
+const WARE_NAME: Record<string, string> = { bread: 'Bread', meat: 'Meat', cloth: 'Cloth', pots: 'Pots', tools: 'Tools', ale: 'Ale', greens: 'Greens', fish: 'Fish', dairy: 'Eggs and cheese', herbs: 'Herbs' };
+export const wareName = (k: string): string => WARE_NAME[k] ?? k;
+const PLURAL = new Set(['pots', 'tools', 'greens', 'herbs', 'dairy']);
+
+/** A market day's summary: stalls, buyers, the busiest stall, and what was dear or cheap (e.s 'stalls|buyers|ware|dear:bread'), silver in e.n. */
+function marketText(c: Colony, e: Ev): string {
+  const [stalls, buyers, ware, said] = (e.s ?? '').split('|');
+  let t = `Market day: ${buyers || 'a crowd of'} people went round ${stalls || 'the'} stalls, and ${e.n ?? 0} silver changed hands.`;
+  if (e.a) t += ` ${first(c, e.a)}'s ${WARE_STALL[ware] ?? 'stall'} sold best.`;
+  if (said) {
+    const [k, w] = said.split(':');
+    t += ` ${WARE_NAME[w] ?? w} ${PLURAL.has(w) ? 'were' : 'was'} ${k === 'dear' ? 'dear' : 'cheap'}.`;
+  }
+  return t;
+}
 
 /** The castle's stages in the chronicle: begun (e.s 'begun') and finished ('done'), stage in e.n. */
 function castleText(c: Colony, e: Ev): string {
@@ -299,6 +319,14 @@ export function evText(c: Colony, e: Ev): string {
     case 'blabbed': return `Drunk, ${a} let slip the secret they came here to bury. ${e.n} heard it.`;
     case 'joined': return e.s?.startsWith('match:') ? `${full(c, e.a)} has arrived from ${e.s.slice(6)}, sent to be married.` : e.s?.startsWith('exile:') ? `${full(c, e.a)} has arrived, cast out of ${e.s.slice(6)}.` : e.s?.startsWith('migrant:') ? `${full(c, e.a)} has come from ${e.s.slice(8)} to start again.` : e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
     case 'trader': return e.s ? `A caravan from ${e.s} stopped for the day.` : 'A trader\'s caravan stopped for the day.';
+    case 'market_first': return `The first market was held in the square: ${e.n ?? 'a few'} stalls under bright awnings, and half the town came to look.`;
+    case 'market': return marketText(c, e);
+    case 'market_sale': return `${a} paid ${e.n ?? 'a good deal of'} silver for the best ${WARE_ONE[e.s ?? ''] ?? 'thing'} on ${b}'s stall.`;
+    case 'carter': {
+      const [what, from] = (e.s ?? '').split('|');
+      const whence = from ? ` from ${from}` : '';
+      return what === 'wood' ? `A timber cart${whence} came in on market day. The colony bought ${e.n ?? 'its'} logs off it.` : `A carter${whence} brought ${e.n ?? 'a load of'} stone to market. The colony bought the lot for its building.`;
+    }
     case 'spotted': { const many = (e.n ?? 1) > 1; const f = many ? FOE_MANY[e.s ?? ''] ?? e.s : FOE_ONE[e.s ?? ''] ?? e.s; return `${a} saw ${many ? e.n + ' ' + f : (/^[aeiou]/.test(f ?? '') ? 'an ' : 'a ') + f} coming and raised the alarm.`; }
     case 'brokeup': return `${a} broke up a fight between ${e.s}.`;
     case 'berserk_hit': return `${a} has gone berserk and attacked ${b}.`;
@@ -355,7 +383,7 @@ const WHY: Record<string, string> = {
   bored: 'Needed a break', idle: 'Nothing pressing to do', free: 'Free time', love: 'Wanted to see their love', urge: 'Could not put it off any longer', crush: 'Could not stay away', friend: 'Wanted company', family: 'Wanted family',
   child: 'Being a child', baby: 'Being a baby', wedding: 'At the wedding', audience: 'Before the seat', trial: 'At the trial', sermon: 'Hearing the sermon', funeral: 'At the funeral', feast: 'At the feast', festival: 'At the festival', grief: 'Grieving', new: 'Just arrived',
   drink: 'Fancied a drink', drinkbored: 'Bored, so: a drink', relax: 'Resting', walk: 'Stretching their legs', pray: 'Praying', dice: 'Feeling lucky', hobby: 'Doing what they love',
-  stargaze: 'Looking at the stars', bathe: 'Having a wash', subdue: 'Someone has gone berserk', subdued: 'Being held down', hotbath: 'Wanted a hot bath', chess: 'Fancied a game of chess', darts: 'Fancied a game of darts', music: 'Wanted to play', read: 'Wanted to read', school: 'Lessons at the schoolhouse', perform: 'Had an audience', stopped: 'Interrupted', born: 'Newborn', alarm: 'The colony is under attack', muster: 'Standing ready with the others', hurt: 'Too hurt or sick to work', seized: 'Seized', carried: 'Carried to bed', freed: 'Freed',
+  stargaze: 'Looking at the stars', bathe: 'Having a wash', subdue: 'Someone has gone berserk', subdued: 'Being held down', hotbath: 'Wanted a hot bath', chess: 'Fancied a game of chess', darts: 'Fancied a game of darts', music: 'Wanted to play', read: 'Wanted to read', school: 'Lessons at the schoolhouse', perform: 'Had an audience', market: 'Market day', stall: 'Keeping a stall at the market', shopping: 'Wanted something from the shops', stopped: 'Interrupted', born: 'Newborn', alarm: 'The colony is under attack', muster: 'Standing ready with the others', hurt: 'Too hurt or sick to work', seized: 'Seized', carried: 'Carried to bed', freed: 'Freed',
 };
 
 export function whyText(why: string): string {

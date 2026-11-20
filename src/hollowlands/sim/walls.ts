@@ -293,7 +293,7 @@ function lay(c: Colony, p: WallPiece, stage: number): boolean {
     old.built = false;
     old.prog = 0;
     old.dmg = 0;
-    old.br = undefined;
+    delete old.br;
     old.need = { wood: Math.round(n * 0.6) + (p.k === 'tgate' ? 15 : 0), stone: n * STONE_TILE + (p.k === 'tgate' ? 20 : p.k === 'wtower' ? 10 : 0) };
     if (p.k === 'tgate' && p.s !== 'tgate~p') old.name = 'Gatehouse';
     return true;
@@ -516,7 +516,7 @@ export function breach(c: Colony, b: Bld, at: number): void {
 /** A mended piece of wall: the rubble is cleared and the gap closed. */
 export function mended(c: Colony, b: Bld): void {
   if (!b.br || b.dmg > 40) return;
-  b.br = undefined;
+  delete b.br;
   syncTiles(c, b);
   log(c, 'mended', undefined, undefined, b.k === 'tgate' ? 'gate' : 'wall', b.id);
 }

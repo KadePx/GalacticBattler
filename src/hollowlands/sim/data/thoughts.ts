@@ -349,6 +349,12 @@ export const TH_LIST: ThDef[] = [
   h('welcomed', 'Made welcome by {o}', 4, DAY * 5, { op: 10 }),
   h('unwelcome', 'Made to feel unwelcome by {o}', -4, DAY * 5, { op: -10 }),
   h('newcomer', 'A stranger among us: {o}', 0, DAY * 10, { op: -4 }),
+
+  // The market
+  h('market', 'Bought a little something at the market', 3, DAY),
+  h('boughtfine', 'Bought something fine at the market', 5, DAY * 2),
+  h('soldwell', 'Sold well at the market', 5, DAY * 2),
+  h('pricey', 'Could not afford a thing at the market', -3, DAY),
 ];
 
 export const TH: Record<string, ThDef> = Object.fromEntries(TH_LIST.map((x) => [x.k, x]));

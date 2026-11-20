@@ -33,6 +33,9 @@ export const PROF_LIST: ProfDef[] = [
   p('lorekeeper', 'Lorekeeper', 'teach', 11, 'Keeps the stories and teaches the young.'),
   // new trades go at the end: players ask for a trade by its place in this list
   p('herder', 'Herder', 'herd', 9, 'Keeps the beasts fed and brings in the eggs, milk and wool.'),
+  p('baker', 'Baker', 'cook', 5, 'Up before dawn at the ovens; sells the bread on market day.'),
+  p('butcher', 'Butcher', 'cook', 5, 'Dresses the meat, and keeps the meat stall on market day.'),
+  p('potter', 'Potter', 'craft', 6, 'Throws pots and bowls and sells them in the square.'),
 ];
 
 export const PROFS: Record<string, ProfDef> = Object.fromEntries(PROF_LIST.map((x) => [x.k, x]));

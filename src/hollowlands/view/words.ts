@@ -38,6 +38,7 @@ const ACT: Record<string, string> = {
   berserk: 'Attacking {o}', subdue: 'Stopping {o}',
   chess: 'Playing chess', darts: 'Throwing darts', music: 'Playing music', read: 'Reading', study: 'At school',
   fight: 'Fighting', flee: 'Running for it', hide: 'Hiding', tend: 'Tending the hurt', train: 'Training',
+  shop: 'Buying from {o}', sell: 'Minding a stall',
 };
 
 const firstOf = (c: Colony, id: Id | undefined): string => {

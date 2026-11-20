@@ -21,6 +21,7 @@ import { dailyWild, stepWild } from './wild';
 import { dailyHerd, stepHerd } from './herd';
 import { dailyGuild } from './guild';
 import { dailyDreams } from './dreams';
+import { dailyMarket, tickMarket } from './market';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
@@ -41,6 +42,7 @@ function daily(c: Colony): void {
   dailyAbroad(c);
   dailyMatch(c);
   dailyIntrigue(c);
+  dailyMarket(c);
   // let go of faded memories and of people long forgotten
   for (const p of c.pawns) {
     for (const key in p.rel) {
@@ -58,6 +60,7 @@ export function step(c: Colony): void {
   if (t % TICKS_PER_DAY === 0) daily(c);
   if (c.inq.length) applyInputs(c);
   if (c.walls) tickGates(c);
+  if (c.mkt && c.mkt.t0) tickMarket(c);
   if (c.siege) dailySiege(c);
   if (c.gath && t >= c.gath.t1) endGathering(c);
   if (c.beasts?.length) stepWild(c);
