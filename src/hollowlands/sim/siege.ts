@@ -75,6 +75,7 @@ export function startSiege(c: Colony, kind: string, n: number, name: string, r: 
   bump(c, 'raids');
   bump(c, 'raid_' + kind);
   bump(c, 'sieges');
+  c.stats.lastRaid = c.tick;
   return true;
 }
 
@@ -119,7 +120,8 @@ export function dailySiege(c: Colony): void {
   const price = Math.round(25 + them * 7);
   const hungry = foodDays(c) < 2.5;
   const bold = ruler ? per(ruler, AX.BRAVE) : 0;
-  if ((fighters >= them * 2 && r.chance(0.35 + bold * 0.15)) || (hungry && fighters >= them * 0.8)) {
+  // (never against a host about to starve out of its own accord)
+  if (sg.sup > 2 && ((fighters >= them * 3 && r.chance(0.35 + bold * 0.15)) || (hungry && fighters >= them * 0.8))) {
     // the gates open and the colony rides out
     const lead = pawnById(c, c.gov.titles.marshal ?? 0) ?? pawnById(c, c.gov.titles.champion ?? 0) ?? ruler;
     log(c, 'siege', lead?.id, undefined, (hungry ? 'sallyhungry:' : 'sally:') + sg.name, fighters);

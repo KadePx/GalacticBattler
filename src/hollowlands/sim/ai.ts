@@ -9,7 +9,7 @@ import { foodDays, hasFood, takeMeal } from './econ';
 import { variety } from './farm';
 import { bump, log } from './events';
 import { attack, canFight, isWarden, onTower, pickFoe } from './combat';
-import { insideWall } from './town';
+import { WALL_W, frame, insideWall, octo } from './town';
 import { wallPosts } from './walls';
 import { throneTile } from './castle';
 import { isDown, needsRest, wound } from './health';
@@ -40,7 +40,7 @@ function moveMult(c: Colony, p: Pawn, st: number): number {
 /** Walk to (x,y) and do something there for dur ticks. False if there is no way to get there. */
 export function setAct(c: Colony, p: Pawn, k: ActK, x: number, y: number, dur: number, why: string, o: ActOpts = {}): boolean {
   // while a host is camped outside, nobody goes out past the wall but to fight
-  if (c.siege && c.siege.phase !== 2 && k !== 'fight' && k !== 'flee' && !insideWall(c, x, y) && insideWall(c, p.x, p.y)) return false;
+  if (c.siege && c.siege.phase !== 2 && k !== 'fight' && k !== 'flee' && beyondWall(c, x, y) && !beyondWall(c, p.x, p.y)) return false;
   const found = findPath(c, p.x, p.y, x, y, !!o.adj);
   if (!found) return false;
   const t = c.tick;
@@ -909,4 +909,9 @@ function wallPost(c: Colony, p: Pawn, f: { x: number; y: number }): number {
     if (d < bd) { bd = d; best = i; }
   }
   return best;
+}
+
+/** Out past the town wall's band (the wall's own stones and gates count as within, so they can be mended from inside). */
+function beyondWall(c: Colony, x: number, y: number): boolean {
+  return octo(x - c.cx, y - c.cy) >= frame(c).wall + WALL_W;
 }

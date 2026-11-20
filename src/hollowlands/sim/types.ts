@@ -376,9 +376,9 @@ export interface Colony {
   /** the castle on the rise: stages finished (0-3), the stage being built (0 none), which way it faces, and when each stage was finished */
   castle?: { stage: number; work: number; turn: number; at: number[] };
   /** the town wall: the stage being raised (1 ditch and palisade, 2 stone), the stage finished, whether the gates are shut, and when each stage was finished */
-  walls?: { stage: number; done: number; shut: number; at: number[]; /** the wall's pieces, worked out when it was begun (see walls.ts) */ pl: { k: string; s: string; x: number; y: number; b: number }[] };
+  walls?: { stage: number; done: number; shut: number; at: number[]; /** the wall's pieces, worked out when it was begun (see walls.ts) */ pl: { k: string; s: string; x: number; y: number; b: number; /** left in timber: the masons cannot get at it */ old?: number }[] };
   /** a warlord's host camped outside the walls: whose, its band, when it came, where it camps, days of supplies left, ladders and ram made, and how it stands (0 camped, 1 assault, 2 gone home) */
-  siege?: { name: string; band: number; t0: number; x: number; y: number; sup: number; ladders: number; ram: number; phase: number; /** the hour each day the host makes up its mind */ hr: number; /** how many came, and the colony's tally of foes slain when they did */ n?: number; s0?: number; from?: string; fromId?: string; paid?: number };
+  siege?: { name: string; band: number; t0: number; x: number; y: number; sup: number; ladders: number; /** climbers who have gone over on them (two to a ladder, then it is broken) */ cl?: number; ram: number; phase: number; /** the hour each day the host makes up its mind */ hr: number; /** how many came, and the colony's tally of foes slain when they did */ n?: number; s0?: number; from?: string; fromId?: string; paid?: number };
   /** the latest wave of the grey plague: when it began, its last new case, how many lived here then, how many it took */
   plague?: { t: number; last: number; n0: number; dead: number };
   /** passing conditions: [kind, until tick] */

@@ -16,7 +16,7 @@ import { homeCap } from './homes';
 import { BEAST_KINDS, plantAround, plantSpot } from './wild';
 import { herdNeed, herdWork, livestock } from './herd';
 import { CASTLE_KINDS, TPL, WALL_KINDS } from './data/buildings';
-import { mended, wallStone } from './walls';
+import { canReach, mended, wallStone } from './walls';
 import { inWallBand } from './town';
 import { castleStone } from './castle';
 import { STAGE, gainXp, has, mkAct, pawnById, posAt, stage, stat } from './pawn';
@@ -161,7 +161,7 @@ function scan(c: Colony): Scan {
     if (b.built) {
       if (!first.has(b.k)) first.set(b.k, b);
       if (!timber && !b.mat && b.k !== 'field' && b.k !== 'well' && b.k !== 'graveyard' && !CASTLE_KINDS.has(b.k) && !WALL_KINDS.has(b.k)) timber = b;
-      if (b.dmg >= 12 && (!worn || b.dmg > worn.dmg) && !(fighting && WALL_KINDS.has(b.k)) && !(b.mat && WALL_KINDS.has(b.k) && c.stock.stone < 2)) worn = b;
+      if (b.dmg >= 12 && (!worn || b.dmg > worn.dmg) && !(WALL_KINDS.has(b.k) && (fighting || (!b.br && b.dmg < 40))) && !(b.mat && WALL_KINDS.has(b.k) && c.stock.stone < 2)) worn = b;
     } else { needWood += b.need.wood; needStone += b.need.stone; }
   }
   let onCastle = 0;
@@ -325,10 +325,15 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
     const onWall = sc.onWall - (mineB && !mineB.built && WALL_KINDS.has(mineB.k) ? 1 : 0);
     // with trouble at the gates, every pair of hands goes to the wall
     const wallCap = c.siege || c.foes.length ? 8 : 3;
-    site = c.blds.find((b) => canBuild(c, b) && ((CASTLE_KINDS.has(b.k) && onCastle < 2) || (WALL_KINDS.has(b.k) && onWall < wallCap)));
+    site = c.blds.find((b) => canBuild(c, b) && ((CASTLE_KINDS.has(b.k) && onCastle < 2) || (WALL_KINDS.has(b.k) && onWall < wallCap && canReach(c, b))));
   }
   if (site) {
-    offer('build', 5.5, 'build', () => {
+    // the castle and the wall are long work: they do not crowd out the mending and bettering of
+    // people's homes, unless there is trouble at the gates
+    const slow = CASTLE_KINDS.has(site.k) || WALL_KINDS.has(site.k);
+    const site0 = site;
+    offer('build', slow && !c.siege && !c.foes.length ? 2.4 : 5.5, 'build', () => {
+      const site = site0;
       const list = cells(shapeOf(site));
       const at = Math.min(list.length - 1, Math.floor(site.prog * list.length));
       // the next part of it to go up, or the nearest after it that can be got at (a castle wall's
@@ -385,7 +390,9 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
   const stoneTarget = 12 + needStone + (pop >= 10 ? 20 : 0) + (timber ? 45 : 0) + castleStone(c) + wallStone(c);
   const wantOre = !!smithy && c.stock.ore < 8 && c.stock.iron < 6;
   if (c.stock.stone < stoneTarget || wantOre) {
-    offer('mine', wantOre ? 3 : 0.8 + 5 * (1 - c.stock.stone / stoneTarget), 'mine', () => {
+    // (the stone wall waiting on stone puts more hands to the quarry)
+    const wallWait = c.walls && c.walls.stage >= 2 && c.walls.done < 2 ? 1.2 : 0;
+    offer('mine', wantOre ? 3 : 0.8 + wallWait + 5 * (1 - c.stock.stone / stoneTarget), 'mine', () => {
       let pick = wantOre ? nearestFree(c, p, featList(c, F.ORE), r, 3) : -1;
       if (pick < 0 && wantOre) pick = towardOre(c);
       const stone = c.stock.stone < stoneTarget;
@@ -503,7 +510,7 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
     for (const b of c.blds) if (b.built && b.beds.length && b.q < cap && b.q < homeCap(b.k) && !CASTLE_KINDS.has(b.k) && (!poor || b.q < poor.q)) poor = b;
     if (poor) {
       const pb = poor;
-      offer('build', 1.6, 'improve', () => job('build', (pb.y + pb.h - 1) * c.w + pb.x + Math.floor(pb.w / 2), true, 'Making a home a little finer', pb.id, 2));
+      offer('build', c.walls && c.walls.done < c.walls.stage ? 2.6 : 1.6, 'improve', () => job('build', (pb.y + pb.h - 1) * c.w + pb.x + Math.floor(pb.w / 2), true, 'Making a home a little finer', pb.id, 2));
     }
   }
   if (smithy && ((c.stock.ore >= 3 && c.stock.wood >= 2) || (c.stock.iron >= 2 && (c.stock.tools < 2 + pop * 0.15 || c.stock.weapons < pop * 0.3)))) {

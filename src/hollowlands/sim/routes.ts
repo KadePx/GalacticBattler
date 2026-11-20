@@ -58,7 +58,7 @@ export function landThreat(seed: number, day: number, sites: Place[], state: { l
     for (const s of alive) {
       out.push({ to: s.id, input: { k: 'news', what: 'warlord', name: who, who: '' } });
       // a walled town sees the whole host camp outside its gates; an open one only its raiders
-      out.push({ to: s.id, input: { k: 'raid', kind: 'orc', n: 3 + (hash32(seed, S.STORY, 703, day, s.x, s.y) % 3), siege: 8 + (hash32(seed, S.STORY, 705, day, s.x, s.y) % 5), name: who, delay: 240 + (hash32(seed, S.STORY, 704, day, s.x) % 1200) } });
+      out.push({ to: s.id, input: { k: 'raid', kind: 'orc', n: 3 + (hash32(seed, S.STORY, 703, day, s.x, s.y) % 3), siege: 10, name: who, delay: 240 + (hash32(seed, S.STORY, 704, day, s.x) % 1200) } });
     }
   } else if (roll < 8) {
     for (const s of alive) out.push({ to: s.id, input: { k: 'news', what: 'outbreak', name: 'the road', who: 'plague' } });

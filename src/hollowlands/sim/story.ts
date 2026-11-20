@@ -4,6 +4,7 @@
 
 import { cropsChanged } from './cache';
 import { siegeable, startSiege } from './siege';
+import { WALL_KINDS } from './data/buildings';
 import { DAYS_PER_YEAR, HARD_CAP, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, dayOf, seasonOf } from '../config';
 import { checkSpec, pawnFromSpec, type PawnSpec } from './create';
 import { addFact, learn } from './social';
@@ -15,7 +16,7 @@ import { oddThing } from './odd';
 import { importPawns } from './settle';
 import { cells } from './data/buildings';
 import { PLAYABLE } from './data/races';
-import { spawnRaid } from './combat';
+import { canFight, spawnRaid } from './combat';
 import { buyBeasts } from './herd';
 import { foodUnits } from './econ';
 import { bump, log, note } from './events';
@@ -84,12 +85,20 @@ export function applyInputs(c: Colony): void {
     if (e.k === 'raid') {
       // trouble sent from elsewhere may still be a day or two down the road
       if (e.delay) { c.inq.push({ ...e, t: c.tick + Number(e.delay), delay: undefined }); continue; }
-      if (c.foes.length) continue;
+      if (c.foes.length) {
+        // a host on the march waits a day for the trouble already here to clear (for a few days at most)
+        if (e.siege && Number(e.waits ?? 0) < 5) c.inq.push({ ...e, t: c.tick + TICKS_PER_DAY, waits: Number(e.waits ?? 0) + 1 });
+        continue;
+      }
       const rr = new Rand(c.seed, S.FIGHT, c.tick, 99);
       const from = e.fromId ? { id: String(e.fromId), name: String(e.fromName) } : undefined;
       // a host come to besiege a walled town makes camp; an unwalled one it simply falls on
       // (e.siege is the size of the host that comes if there are walls to besiege; e.n the band that comes if not)
-      const sieged = !!e.siege && siegeable(c) && startSiege(c, String(e.kind), Number(e.siege) || 1, String(e.name ?? e.fromName ?? ''), rr, from);
+      // the host's size answers to the colony's strength: about 6 and one more for every 6 who can fight, 10 at most
+      let fighters = 0;
+      for (const p of c.pawns) if (canFight(c, p)) fighters++;
+      const host = Math.min(Number(e.siege) || 1, 10, 6 + Math.floor(fighters / 6));
+      const sieged = !!e.siege && siegeable(c) && startSiege(c, String(e.kind), host, String(e.name ?? e.fromName ?? ''), rr, from);
       if (!sieged) spawnRaid(c, String(e.kind), Number(e.n) || 1, rr);
       if (e.fromId) {
         c.raidFrom = { id: String(e.fromId), name: String(e.fromName), loot0: c.stats.looted ?? 0, slain0: c.stats.foesSlain ?? 0, died0: c.stats.deaths ?? 0 };
@@ -232,7 +241,7 @@ export function dailyStory(c: Colony): void {
     case 'drought': c.mods.push(['drought', c.tick + (6 + r.int(5)) * TICKS_PER_DAY]); log(c, 'drought'); break;
     case 'coldsnap': c.mods.push(['coldsnap', c.tick + (3 + r.int(4)) * TICKS_PER_DAY]); log(c, 'coldsnap'); break;
     case 'storm': {
-      for (const b of c.blds) if (b.built && b.k !== 'field' && b.k !== 'graveyard' && b.k !== 'well') b.dmg = Math.min(80, b.dmg + 6 + r.int(14));
+      for (const b of c.blds) if (b.built && b.k !== 'field' && b.k !== 'graveyard' && b.k !== 'well' && !WALL_KINDS.has(b.k)) b.dmg = Math.min(80, b.dmg + 6 + r.int(14));
       const out = c.pawns.filter((p) => stage(c, p) >= STAGE.TEEN);
       if (out.length && r.chance(0.5)) wound(c, r.pick(out), 'crush', 10 + r.int(16), r);
       log(c, 'storm');

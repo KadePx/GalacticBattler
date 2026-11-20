@@ -329,7 +329,8 @@ for (const t of CASTLE_TPL) {
  * stretches of wall ('twall': a palisade of stakes behind a ditch, later rebuilt in stone), towers
  * ('wtower') and gates ('tgate': a timber gate in the palisade, later a stone gatehouse). A piece's
  * plan depends on its length and which way it runs, so every plan is made here up front: their costs
- * are the plan's own (a long stretch costs more than a short one), not the kind's.
+ * are the plan's own (a long stretch costs more than a short one), not the kind's. They are the
+ * timber stage's costs: the stone asked for the stone stage is set when it is begun (walls.ts).
  *   twall~h<n> / ~v<n>: a straight run across or down; ~d<n> / ~a<n>: a diagonal run (down-right,
  *   down-left). wtower~s/e/n/w: a tower on a straight side, its door on the town side;
  *   wtower~se/ne/nw/sw: a smaller tower on a diagonal side. tgate~h/v: a timber gate in the
@@ -342,27 +343,27 @@ export const WALL_MAX = 48;
     TPL[key] = tpl(base, name, wood, stone, work, rows);
   };
   add('twall', 'twall', 'Town wall', 3, 0, 1.6, ['P']);
-  add('wtower', 'wtower', 'Wall tower', 10, 40, 40, ['Z+Z', 'Z.Z', 'ZZZ']);
+  add('wtower', 'wtower', 'Wall tower', 10, 0, 40, ['Z+Z', 'Z.Z', 'ZZZ']);
   add('tgate', 'tgate', 'Town gate', 25, 0, 14, ['PgggP']);
   for (let n = 1; n <= WALL_MAX; n++) {
     const diag = (down: boolean): string[] => Array.from({ length: n }, (_, i) => { const col = down ? i : n - 1 - i; return ' '.repeat(col) + 'P' + ' '.repeat(n - 1 - col); });
-    add('twall~h' + n, 'twall', 'Town wall', 3 * n, 0, 1.6 * n, ['P'.repeat(n)]);
-    add('twall~v' + n, 'twall', 'Town wall', 3 * n, 0, 1.6 * n, Array.from({ length: n }, () => 'P'));
-    add('twall~d' + n, 'twall', 'Town wall', 3 * n, 0, 1.6 * n, diag(true));
-    add('twall~a' + n, 'twall', 'Town wall', 3 * n, 0, 1.6 * n, diag(false));
+    add('twall~h' + n, 'twall', 'Town wall', 2 * n, 0, 1.6 * n, ['P'.repeat(n)]);
+    add('twall~v' + n, 'twall', 'Town wall', 2 * n, 0, 1.6 * n, Array.from({ length: n }, () => 'P'));
+    add('twall~d' + n, 'twall', 'Town wall', 2 * n, 0, 1.6 * n, diag(true));
+    add('twall~a' + n, 'twall', 'Town wall', 2 * n, 0, 1.6 * n, diag(false));
   }
-  add('wtower~s', 'wtower', 'Wall tower', 10, 40, 40, ['Z+Z', 'Z.Z', 'ZZZ']);
-  add('wtower~n', 'wtower', 'Wall tower', 10, 40, 40, ['ZZZ', 'Z.Z', 'Z+Z']);
-  add('wtower~e', 'wtower', 'Wall tower', 10, 40, 40, ['ZZZ', '+.Z', 'ZZZ']);
-  add('wtower~w', 'wtower', 'Wall tower', 10, 40, 40, ['ZZZ', 'Z.+', 'ZZZ']);
-  add('wtower~se', 'wtower', 'Wall tower', 6, 25, 25, ['.Z', 'ZZ']);
-  add('wtower~ne', 'wtower', 'Wall tower', 6, 25, 25, ['ZZ', '.Z']);
-  add('wtower~nw', 'wtower', 'Wall tower', 6, 25, 25, ['ZZ', 'Z.']);
-  add('wtower~sw', 'wtower', 'Wall tower', 6, 25, 25, ['Z.', 'ZZ']);
+  add('wtower~s', 'wtower', 'Wall tower', 10, 0, 40, ['Z+Z', 'Z.Z', 'ZZZ']);
+  add('wtower~n', 'wtower', 'Wall tower', 10, 0, 40, ['ZZZ', 'Z.Z', 'Z+Z']);
+  add('wtower~e', 'wtower', 'Wall tower', 10, 0, 40, ['ZZZ', '+.Z', 'ZZZ']);
+  add('wtower~w', 'wtower', 'Wall tower', 10, 0, 40, ['ZZZ', 'Z.+', 'ZZZ']);
+  add('wtower~se', 'wtower', 'Wall tower', 6, 0, 25, ['.Z', 'ZZ']);
+  add('wtower~ne', 'wtower', 'Wall tower', 6, 0, 25, ['ZZ', '.Z']);
+  add('wtower~nw', 'wtower', 'Wall tower', 6, 0, 25, ['ZZ', 'Z.']);
+  add('wtower~sw', 'wtower', 'Wall tower', 6, 0, 25, ['Z.', 'ZZ']);
   add('tgate~h', 'tgate', 'Town gate', 25, 0, 14, ['PgggP']);
   add('tgate~v', 'tgate', 'Town gate', 25, 0, 14, ['P', 'g', 'g', 'g', 'P']);
-  add('tgate~H', 'tgate', 'Gatehouse', 25, 60, 50, ['Z,,,Z', 'ZgggZ', 'Z,,,Z']);
-  add('tgate~V', 'tgate', 'Gatehouse', 25, 60, 50, ['ZZZ', ',g,', ',g,', ',g,', 'ZZZ']);
+  add('tgate~H', 'tgate', 'Gatehouse', 25, 0, 50, ['Z,,,Z', 'ZgggZ', 'Z,,,Z']);
+  add('tgate~V', 'tgate', 'Gatehouse', 25, 0, 50, ['ZZZ', ',g,', ',g,', ',g,', 'ZZZ']);
   add('tgate~p', 'tgate', 'Postern', 6, 0, 4, ['g']);
 }
 

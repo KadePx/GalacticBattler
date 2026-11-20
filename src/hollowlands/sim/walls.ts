@@ -24,7 +24,7 @@ import { B, F, T, type Bld, type Colony, type Pawn } from './types';
 export { WALL_KINDS };
 
 /** A piece of the wall in the colony's plan: its kind, floor plan and corner, and the building standing for it (0 none yet, -1 given up on). */
-export interface WallPiece { k: string; s: string; x: number; y: number; b: number }
+export interface WallPiece { k: string; s: string; x: number; y: number; b: number; old?: number }
 
 /** Is this a piece of the town wall? */
 export const isWallPart = (b: { k: string }): boolean => WALL_KINDS.has(b.k);
@@ -83,13 +83,35 @@ export function planWalls(c: Colony): WallPiece[] {
   };
   const pieces: WallPiece[] = [];
   const claimed = new Set<number>();
+  const owner = new Map<number, WallPiece>();
+  // the doors and gates of what is built already: no tower may stand against one
+  const doorAt = new Set<number>();
+  for (const b of c.blds) {
+    if (isWallPart(b)) continue;
+    for (const cell of cells(shapeOf(b))) if (cell.ch === '+' || cell.ch === 'g') doorAt.add((b.y + cell.dy) * W + b.x + cell.dx);
+  }
+  const byDoor = (sh: string, x0: number, y0: number): boolean => {
+    for (const cell of cells(sh)) {
+      if (cell.ch !== 'Z') continue;
+      const i = (y0 + cell.dy) * W + x0 + cell.dx;
+      for (const j of [i - 1, i + 1, i - W, i + W, i - W - 1, i - W + 1, i + W - 1, i + W + 1]) if (doorAt.has(j)) return true;
+    }
+    return false;
+  };
   const claim = (sh: string, x0: number, y0: number, k: string): boolean => {
     const cl = cells(sh);
     for (const cell of cl) if (claimed.has((y0 + cell.dy) * W + x0 + cell.dx)) return false;
     if (!fits(sh, x0, y0)) return false;
-    for (const cell of cl) claimed.add((y0 + cell.dy) * W + x0 + cell.dx);
-    pieces.push({ k, s: sh, x: x0, y: y0, b: 0 });
+    if (k === 'wtower' && byDoor(sh, x0, y0)) return false;
+    const p: WallPiece = { k, s: sh, x: x0, y: y0, b: 0 };
+    for (const cell of cl) { claimed.add((y0 + cell.dy) * W + x0 + cell.dx); owner.set((y0 + cell.dy) * W + x0 + cell.dx, p); }
+    pieces.push(p);
     return true;
+  };
+  /** Take a piece back out of the plan (a tower that would shut someone's way, say). */
+  const unclaim = (p: WallPiece): void => {
+    for (const cell of cells(p.s)) { const i = (p.y + cell.dy) * W + p.x + cell.dx; claimed.delete(i); owner.delete(i); }
+    pieces.splice(pieces.indexOf(p), 1);
   };
   // gates where the four straight streets cross the line, the avenue's first
   const fr = frame(c);
@@ -186,7 +208,22 @@ export function planWalls(c: Colony): WallPiece[] {
       }
       if (inR && lost) { fix = i; break; }
     }
-    if (fix < 0) break;
+    if (fix < 0) {
+      // ground lost behind a tower (its outer stones against a gate or a meadow's only way): the
+      // tower gives way to a postern on its own stretch of the line
+      let tower: WallPiece | undefined;
+      const blocked = blockedAll();
+      for (let i = W; i < W * (H - 1) && !tower; i++) {
+        if (!before[i] || now[i] || blocked.has(i) || !passable(i)) continue;
+        for (const j of [i - 1, i + 1, i - W, i + W]) { const p = owner.get(j); if (p && p.k === 'wtower') { tower = p; break; } }
+      }
+      if (!tower) break;
+      let ringCell = -1;
+      for (const cell of cells(tower.s)) { const i = (tower.y + cell.dy) * W + tower.x + cell.dx; if (cell.ch === '.' && ringSet.has(i)) ringCell = i; }
+      unclaim(tower);
+      if (ringCell < 0 || !claim('tgate~p', ringCell % W, Math.floor(ringCell / W), 'tgate')) continue;
+      continue;
+    }
     if (!claim('tgate~p', fix % W, Math.floor(fix / W), 'tgate')) break;
   }
   // the rest of the line: stretches of wall, no more than seven tiles each, cut where a side turns
@@ -287,9 +324,20 @@ function lay(c: Colony, p: WallPiece, stage: number): boolean {
   return true;
 }
 
+/** Can a builder get to some part of this piece (stand on or beside one of its cells)? */
+export function canReach(c: Colony, b: Bld): boolean {
+  const k = cacheOf(c);
+  const W = c.w;
+  for (const cell of cells(shapeOf(b))) {
+    const i = (b.y + cell.dy) * W + b.x + cell.dx;
+    if (k.reach[i] || k.reach[i - 1] || k.reach[i + 1] || k.reach[i - W] || k.reach[i + W]) return true;
+  }
+  return false;
+}
+
 /** Is this piece finished for the stage? */
 function standing(c: Colony, p: WallPiece, stage: number): boolean {
-  if (p.b < 0) return true;
+  if (p.b < 0 || p.old) return true;
   const b = bldById(c, p.b);
   return !!b && b.built && b.mat >= (stage >= 2 ? 1 : 0);
 }
@@ -317,6 +365,19 @@ export function dailyWalls(c: Colony): void {
     if (p.b <= 0) continue;
     const b = bldById(c, p.b);
     if (b && !b.built) open++;
+  }
+  // a piece the builders cannot get at (water or rock all round it) is given up after a while
+  for (const p of pl) {
+    const b = bldById(c, p.b);
+    if (!b || b.built || canReach(c, b)) continue;
+    const k = 'wallcut' + pl.indexOf(p);
+    c.stats[k] = (c.stats[k] ?? 0) + 1;
+    if (c.stats[k] <= 10) continue;
+    delete c.stats[k];
+    open--;
+    // (a timber stretch waiting to be rebuilt in stone is left standing as it is)
+    if (b.mat) { b.mat = 0; b.built = true; b.prog = 1; b.need = { wood: 0, stone: 0 }; syncTiles(c, b); p.old = 1; }
+    else { raze(c, b); p.b = -1; }
   }
   for (const p of pl) {
     if (open >= (threat ? LAID + 2 : LAID)) break;

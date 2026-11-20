@@ -189,7 +189,7 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
   if (p.ill) add(p.ill.k === 'pox' ? 'pox' : 'sick');
   else if (st >= STAGE.TEEN && c.pawns.some((o) => o.ill?.k === 'plague')) add('plaguefear');
   if (c.siege && c.siege.phase < 2 && st >= STAGE.CHILD) { add('besieged'); if (c.siege.sup >= 0 && c.siege.t0 + 240 <= c.tick) add('rations'); }
-  else if (c.walls && c.walls.done >= 2 && st >= STAGE.TEEN && (c.stats.raids ?? 0) > 0) add('safewalls');
+  else if (c.walls && c.walls.done >= 2 && st >= STAGE.TEEN && c.stats.lastRaid !== undefined && c.tick - c.stats.lastRaid < 60 * TICKS_PER_DAY) add('safewalls');
   if (has(p, 'drunkard') && c.stock.ale < 1 && p.drunk <= 0) add('craving');
 
   const inside = indoors(c, p);

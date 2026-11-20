@@ -141,6 +141,9 @@ export function findSite(c: Colony, k: string, shape = k, far = false, planned =
           if (nx >= 0 && ny >= 0 && nx < w && ny < h && t.rows[ny][nx] !== ' ') continue;
           edge = true;
           const n = (y + ny) * c.w + x + nx;
+          // (not onto the town wall's line, unless it is the way through one of its gates)
+          const nod = octo(x + nx - c.cx, y + ny - c.cy);
+          if (nod >= WALL && nod < WALL + WALL_W && !(keep && keep[n])) continue;
           if (!c.sb[n] && c.ter[n] !== T.DEEP && c.ter[n] !== T.ROCK && (!c.st[n] || passableThing(c.st[n]))) open = true;
         }
         if (edge && !open) { ok = false; break; }

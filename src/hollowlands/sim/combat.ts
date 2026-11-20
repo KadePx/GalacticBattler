@@ -70,6 +70,7 @@ export function spawnRaid(c: Colony, kind: string, n: number, r: Rand): void {
     c.foes.push({ id: c.nextFoe++, k: kind, name: def.name, x, y, px: x, py: y, hp: def.hp, max: def.hp, target: 0, mode: 0, loot: 0, held: 0, band, wait });
   }
   c.stats['band' + band] = n;
+  c.stats.lastRaid = c.tick;
   log(c, 'raid', undefined, undefined, kind, n);
   bump(c, 'raids');
   bump(c, 'raid_' + kind);
@@ -140,7 +141,7 @@ function stepFoe(c: Colony, f: Foe, tx: number, ty: number, adj: boolean, spd: n
 
 function defense(c: Colony, p: Pawn): number {
   // wardens wear what armour the colony has; walls are better still
-  return p.sk[0] * 0.6 + (isWarden(c, p) ? 3 : 0) + (onTower(c, p) ? 3 : 0) + (c.stock.weapons >= 1 ? 1.5 : 0) + (p.act.k === 'fight' ? 1.5 : 0) + (p.act.k === 'hide' ? 2 : 0) - (isDown(p) ? 4 : 0);
+  return p.sk[0] * 0.6 + (isWarden(c, p) ? 3 : 0) + (onTower(c, p) ? 3 : 0) + (p.act.why === 'wallpost' ? 1.5 : 0) + (c.stock.weapons >= 1 ? 1.5 : 0) + (p.act.k === 'fight' ? 1.5 : 0) + (p.act.k === 'hide' ? 2 : 0) - (isDown(p) ? 4 : 0);
 }
 
 function rout(c: Colony, band: number): void {
@@ -349,7 +350,8 @@ function assault(c: Colony, f: Foe, r: Rand): boolean {
   if (!c.walls || (def.beast && def.goal !== 'smash') || insideWall(c, f.x, f.y)) return false;
   const sg = c.siege && c.siege.band === f.band ? c.siege : undefined;
   const ram = !!sg && sg.ram > 0;
-  const ladders = !!sg && sg.ladders > 0;
+  // each ladder takes two over the wall before it is thrown down
+  const ladders = !!sg && sg.ladders * 2 > (sg.cl ?? 0);
   const W = c.w;
   const live = (i: number): boolean => { const s = c.st[i]; return (s === B.PALISADE || s === B.CWALL || s === B.CTOWER || s === B.GATE) && isWallPart(c.blds.find((b) => b.id === c.sb[i]) ?? { k: '' }); };
   // the colony has ridden out: the host stands and waits for it rather than batter at an empty gate
@@ -373,6 +375,7 @@ function assault(c: Colony, f: Foe, r: Rand): boolean {
     f.x = over % W;
     f.y = (over - f.x) / W;
     f.wt = 0;
+    if (sg) sg.cl = (sg.cl ?? 0) + 1;
   } else if ((c.stats.breaches ?? 0) > before) f.wt = 0;
   return true;
 }
