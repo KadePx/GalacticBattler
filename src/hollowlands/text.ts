@@ -349,6 +349,8 @@ export function evText(c: Colony, e: Ev): string {
       const [what, from] = (e.s ?? '').split('|');
       const whence = from ? ` from ${from}` : '';
       if (what === 'grain') return `A grain cart${whence} came in on market day. The treasury bought ${e.n ?? 'its'} sacks for the granary against a hard winter.`;
+      if (what === 'famine') return `Word of the hunger went out, and a grain cart${whence} came in. The treasury paid a hard price for ${e.n ?? 'its'} sacks.`;
+      if (what === 'charity') return `They heard${from ? ' in ' + from : ''} that the colony was starving, and sent ${e.n ?? 'some'} sacks of grain on a cart, asking nothing for them.`;
       return what === 'wood' ? `A timber cart${whence} came in on market day. The colony bought ${e.n ?? 'its'} logs off it.` : `A carter${whence} brought ${e.n ?? 'a load of'} stone to market. The colony bought the lot for its building.`;
     }
     case 'spotted': { const many = (e.n ?? 1) > 1; const f = many ? FOE_MANY[e.s ?? ''] ?? e.s : FOE_ONE[e.s ?? ''] ?? e.s; return `${a} saw ${many ? e.n + ' ' + f : (/^[aeiou]/.test(f ?? '') ? 'an ' : 'a ') + f} coming and raised the alarm.`; }

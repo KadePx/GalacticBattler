@@ -338,7 +338,7 @@ function arrive(c: Colony, kind: string, r: Rand): void {
       lead = someone('taxman', r.chance(0.6) ? 'human' : local(), 7, 0.5);
       lead.f = KINGS[hash32(c.seed, S.VISIT, 77) % KINGS.length];
       // a quarter of the treasury, and something for every mouth
-      lead.n = Math.round(clamp(c.stock.silver * 0.25 + c.pawns.length * 0.5, 20, 600));
+      lead.n = Math.round(clamp(c.stock.silver * 0.25 + c.pawns.length * 0.5, 20, 1000));
       lead.dep = c.tick + 2 * D;
       for (let k = 0; k < 2; k++) someone('guard', r.chance(0.7) ? 'human' : local(), 0, 0.2);
       break;
@@ -458,6 +458,8 @@ function decide(c: Colony, v: Visitor): void {
   const r = new Rand(c.seed, S.VISIT, c.tick, v.id);
   const party = partyOf(c, v);
   const t = c.tick;
+  // the party keeps the leader's day for leaving (the mule too)
+  for (const m of party) m.dep = v.dep;
   if (v.m === 2) {
     if (t >= v.ta) {
       V.l = V.l.filter((x) => x.g !== v.g);

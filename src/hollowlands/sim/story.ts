@@ -96,14 +96,16 @@ export function applyInputs(c: Colony): void {
       const from = e.fromId ? { id: String(e.fromId), name: String(e.fromName) } : undefined;
       // a host come to besiege a walled town makes camp; an unwalled one it simply falls on
       // (e.siege is the size of the host that comes if there are walls to besiege; e.n the band that comes if not)
-      // the host's size answers to the colony's strength: about 6 and one more for every 6 who can fight, 10 at most
+      // the host's size answers to the colony's strength: 4 and one more for every 4 who can fight, 10 at most;
+      // a band from beyond the hills sizes itself to the place too (they come for loot, not to be cut down)
       let fighters = 0;
       for (const p of c.pawns) if (canFight(c, p)) fighters++;
-      const host = Math.min(Number(e.siege) || 1, 10, 6 + Math.floor(fighters / 6));
+      const host = Math.min(Number(e.siege) || 1, 10, 4 + Math.floor(fighters / 4));
+      const band = e.fromId || e.siege ? Math.min(Number(e.n) || 1, Math.max(2, Math.ceil(fighters / 2))) : Number(e.n) || 1;
       // the king's soldiers, come for the tax that was refused
       if (e.king) { log(c, 'v_kingmen', undefined, undefined, undefined, Number(e.n) || 1); c.stats.kingLoot = Math.round((Number(e.due) || 40) * 1.5); }
       const sieged = !!e.siege && siegeable(c) && startSiege(c, String(e.kind), host, String(e.name ?? e.fromName ?? ''), rr, from);
-      if (!sieged) spawnRaid(c, String(e.kind), Number(e.n) || 1, rr);
+      if (!sieged) spawnRaid(c, String(e.kind), band, rr);
       if (e.fromId) {
         c.raidFrom = { id: String(e.fromId), name: String(e.fromName), loot0: c.stats.looted ?? 0, slain0: c.stats.foesSlain ?? 0, died0: c.stats.deaths ?? 0 };
         const g = (c.grudge ??= {});

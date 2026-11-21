@@ -26,7 +26,10 @@ export function dailyAbroad(c: Colony): void {
   if (!ruler || c.foes.length || c.alarm) return;
   const r = new Rand(c.seed, S.EVENT, day, 91);
   let fighters = 0;
-  for (const p of c.pawns) if (canFight(c, p)) fighters++;
+  let grown = 0;
+  for (const p of c.pawns) { if (canFight(c, p)) fighters++; if (stage(c, p) === STAGE.ADULT) grown++; }
+  // a town short of grown hands does not go looking for a fight (it takes years to raise more)
+  const thin = grown < 30;
   const fierce = c.gov.k === 'chief' || c.gov.k === 'tyrant' || per(ruler, AX.KIND) < -0.8 || has(ruler, 'bloodlust');
 
   // trouble on the borders: small slights that add up
@@ -42,7 +45,7 @@ export function dailyAbroad(c: Colony): void {
   // a grudge deep enough becomes a war
   if (day % 3 === 1) {
     for (const n of near) {
-      if (wars[n.id] || (g[n.id] ?? 0) < 18 || fighters < 4) continue;
+      if (wars[n.id] || (g[n.id] ?? 0) < 18 || fighters < 10 || thin) continue;
       const temper = per(ruler, AX.TEMPER) + (fierce ? 1 : 0) - per(ruler, AX.KIND) * 0.6;
       if (!r.chance(Math.min(0.8, 0.2 + temper * 0.2 + (g[n.id] - 20) / 60))) continue;
       wars[n.id] = { name: n.name, since: c.tick, sent: 0, came: 0, lost: 0, slain: 0, ours: true };
@@ -59,7 +62,7 @@ export function dailyAbroad(c: Colony): void {
     const w = wars[id];
     const days = (c.tick - w.since) / TICKS_PER_DAY;
     if (days < 15 || day % 4 !== 2) continue;
-    const weary = days / 30 + w.lost * 1.2 + (foodDays(c) < 6 ? 2 : 0) + (fighters < 4 ? 3 : 0) - (has(ruler, 'bloodlust') ? 2 : 0) - (fierce ? 1 : 0) + per(ruler, AX.KIND);
+    const weary = days / 30 + w.lost * 1.2 + (foodDays(c) < 6 ? 2 : 0) + (fighters < 8 || thin ? 3 : 0) - (has(ruler, 'bloodlust') ? 2 : 0) - (fierce ? 1 : 0) + per(ruler, AX.KIND);
     // a long war that nobody is fighting simply ends
     if (days > 120 || r.chance(Math.max(0, Math.min(0.6, weary * 0.06)))) {
       const tribute = days > 120 ? 0 : Math.round(Math.min(c.stock.silver * 0.3, 20 + w.lost * 8));
@@ -73,9 +76,10 @@ export function dailyAbroad(c: Colony): void {
   }
 
   // war bands, or a hard ruler's raid
-  if (seasonOf(c.tick) === 3 || fighters < 5) return;
+  // (a colony that has lost too many of its fighters keeps the ones it has at home)
+  if (seasonOf(c.tick) === 3 || fighters < 10 || thin) return;
   const enemy = Object.keys(wars).find((id) => near.some((n) => n.id === id));
-  const gap = enemy ? 9 : 25;
+  const gap = enemy ? 12 : 25;
   if (c.tick - (c.story.raid ?? -99999) < TICKS_PER_DAY * gap || day % (enemy ? 3 : 5) !== 0) return;
   let target: { id: string; name: string } | undefined;
   if (enemy) {
@@ -88,7 +92,7 @@ export function dailyAbroad(c: Colony): void {
     target = near[r.int(Math.min(2, near.length))];
   }
   if (!target) return;
-  const n = Math.min(enemy ? 8 : 7, Math.max(3, fighters - 3));
+  const n = Math.min(enemy ? 8 : 7, Math.max(3, Math.floor(fighters / 3)));
   // the marshal leads, else the champion, else the best fighter
   const captain = pawnById(c, c.gov.titles.marshal ?? 0) ?? pawnById(c, c.gov.titles.champion ?? 0) ?? c.pawns.filter((p) => canFight(c, p) && !p.owner).sort((a, b) => b.sk[0] - a.sk[0])[0];
   c.story.raid = c.tick;

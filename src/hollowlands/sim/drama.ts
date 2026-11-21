@@ -11,7 +11,8 @@ import { becomeLovers, breakup } from './life';
 import { getRel, think } from './mood';
 import { familyName } from './names';
 import { AID, aidCount, openNear, type Go } from './nature';
-import { STAGE, has, makePawn, mkAct, pawnById, per, posAt, stage } from './pawn';
+import { RACES } from './data/races';
+import { STAGE, ageYears, has, makePawn, mkAct, pawnById, per, posAt, stage } from './pawn';
 import { Rand, S } from './rng';
 import { brawl, insult, opinion } from './social';
 import { reach } from './town';
@@ -182,7 +183,10 @@ function suitor(c: Colony, n: Nat, r: Rand): boolean {
   if (!o) return false;
   const house = c.near?.length ? r.pick(c.near).name : '';
   const fam = familyName(r, o.race);
-  const p = makePawn(c, r, { race: o.race, sex: o.orient === 2 ? o.sex : o.sex === 1 ? 0 : 1, fam });
+  // someone near their intended's age (an adult, not yet old)
+  const R = RACES[o.race];
+  const age = Math.max(R.adult + 1, Math.min(R.old * 0.8, ageYears(c, o) - 3 + r.float() * 6));
+  const p = makePawn(c, r, { race: o.race, sex: o.orient === 2 ? o.sex : o.sex === 1 ? 0 : 1, fam, age });
   if (stage(c, p) !== STAGE.ADULT) return false;
   p.rank = 5;
   if (p.orient === 2 && o.orient !== 2) p.orient = 1;
@@ -265,9 +269,12 @@ export function dramaStep(c: Colony, n: Nat): void {
     const kid = pawnById(c, l.a);
     if (!kid || kid.gone) delete n.lost;
     else if (t >= l.t1) {
-      log(c, 'n_lost_home', kid.id);
-      note(c, kid, 'n_lost_home');
-      think(c, kid, 'lostwoods');
+      // only a child the colony knew was missing comes home to a welcome; otherwise nobody noticed
+      if (l.told) {
+        log(c, 'n_lost_home', kid.id);
+        note(c, kid, 'n_lost_home');
+        think(c, kid, 'lostwoods');
+      }
       delete n.lost;
     } else if (t >= l.s && !l.told) {
       l.told = 1;

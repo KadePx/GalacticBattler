@@ -37,7 +37,7 @@ export function techScan(c: Colony): Memo {
 export const techBld = (c: Colony, k: string): Bld | undefined => techScan(c).blds.get(k);
 
 /** Bigger harvests from rested and watered fields. */
-export const harvestMult = (c: Colony): number => (knows(c, 'rotation') ? 1.12 : 1) * (knows(c, 'irrigation') ? 1.12 : 1);
+export const harvestMult = (c: Colony): number => (knows(c, 'rotation') ? 1.12 : 1) * (knows(c, 'irrigation') ? 1.08 : 1);
 
 /** Steel tools and blades: known, and a steelworks to make them. */
 export const steel = (c: Colony): boolean => !!techBld(c, 'steelworks');

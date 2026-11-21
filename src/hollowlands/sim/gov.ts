@@ -274,7 +274,7 @@ export function dailyGov(c: Colony): void {
       c.gath = { k: 'feast', t0: t + 17 * 10, t1: t + 21 * 10, ...at };
       log(c, 'feast_set', ruler.id, undefined, doy === 43 ? 'harvest' : 'midwinter');
       treat(c, 'feast');
-    } else if (day % 10 === 6 && (c.gov.k === 'lord' || c.gov.k === 'tyrant' || c.gov.k === 'chief') && adults.length >= 8) {
+    } else if (day % 20 === 6 && (c.gov.k === 'lord' || c.gov.k === 'tyrant' || c.gov.k === 'chief') && adults.length >= 8) {
       c.gath = { k: 'audience', t0: t + 11 * 10, t1: t + 12 * 10 + 5, a: ruler.id, ...at };
     }
   }

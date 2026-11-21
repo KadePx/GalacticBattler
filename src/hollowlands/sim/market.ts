@@ -13,7 +13,7 @@
 import { DAYS_PER_YEAR, TICKS_PER_DAY, TICKS_PER_HOUR, dayOf } from '../config';
 import { cacheOf } from './cache';
 import { castleStone } from './castle';
-import { foodDays } from './econ';
+import { foodDays, mouths } from './econ';
 import { bump, log } from './events';
 import { festivalToday } from './festivals';
 import { isDown, needsRest } from './health';
@@ -164,9 +164,41 @@ export const priceOf = (c: Colony, w: WareDef): number => Math.round(w.base * pr
 
 // ---------- The day ----------
 
+/**
+ * Bare stores: word goes out to the neighbours at once, market day or not. The treasury buys grain
+ * at a famine price as far as its silver goes; a town that cannot pay is sent a little out of
+ * charity. (Not while a host is camped outside: nothing gets through a siege.)
+ */
+function famineCart(c: Colony, day: number): void {
+  if (c.pawns.length < 4 || c.siege || foodDays(c) >= 1.5 || day - (c.stats.famineCart ?? -99) < 4) return;
+  const r = new Rand(c.seed, S.EVENT, day, 77);
+  const from = c.near?.length ? r.pick(c.near).name : '';
+  const need = Math.ceil(mouths(c) * 1.75 * 6);
+  const price = 0.6;
+  const n = Math.floor(Math.min(need, c.stock.silver / price));
+  c.stats.famineCart = day;
+  if (n >= 10) {
+    c.stock.silver -= n * price;
+    c.stock.grain += n;
+    bump(c, 'famineGrain', n);
+    log(c, 'carter', undefined, undefined, `famine|${from}`, n);
+  } else if (day - (c.stats.charityCart ?? -99) >= 10) {
+    const gift = Math.ceil(mouths(c) * 1.75 * 3);
+    c.stats.charityCart = day;
+    c.stock.grain += gift;
+    bump(c, 'charityGrain', gift);
+    log(c, 'carter', undefined, undefined, `charity|${from}`, gift);
+  }
+}
+
 /** Start of each day: is today market day? */
 export function dailyMarket(c: Colony): void {
   const day = dayOf(c.tick);
+  famineCart(c, day);
+  // a treasury far beyond the town's needs is spent about as fast as it fills: the ruler's
+  // household, gifts to friends abroad and the upkeep of the halls take a share of what is over
+  const fat = c.stock.silver - RICH_PER_HEAD * c.pawns.length;
+  if (fat > 0) { c.stock.silver -= fat * 0.01; bump(c, 'upkeep', fat * 0.01); }
   const m = c.mkt;
   if (m) { m.t0 = 0; m.t1 = 0; }
   if (day % 7 !== marketDow(c) || c.pawns.length < MARKET_POP) return;
@@ -240,13 +272,17 @@ export function stoneWant(c: Colony): number {
 
 /** A treasury holding more than this per head has silver to spare for alms, a grain reserve and the town's feasts. */
 export const SPARE_PER_HEAD = 15;
+/** Above this per head, a share of the treasury goes each day on the ruler's household and the halls. */
+const RICH_PER_HEAD = 40;
 const spare = (c: Colony): boolean => c.stock.silver > SPARE_PER_HEAD * c.pawns.length;
 
 /** At the end of market day a full treasury gives alms to the poorest: three silver to each grown colonist down to their last few coins. */
 function alms(c: Colony): void {
   if (!spare(c)) return;
   const poor = c.pawns.filter((p) => !p.gone && !p.thrall && stage(c, p) >= STAGE.ADULT && p.coin < RESERVE).sort((a, b) => a.coin - b.coin || a.id - b.id);
-  const n = Math.min(poor.length, Math.max(1, Math.ceil(c.pawns.length / 10)));
+  // (a treasury grown fat gives to three times as many)
+  const rich = c.stock.silver > SPARE_PER_HEAD * 2 * c.pawns.length ? 3 : 1;
+  const n = Math.min(poor.length, Math.max(1, Math.ceil(c.pawns.length / 10) * rich));
   if (!n) return;
   for (let i = 0; i < n; i++) { poor[i].coin += 3; think(c, poor[i], 'alms'); }
   c.stock.silver -= n * 3;

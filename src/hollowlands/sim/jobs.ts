@@ -62,6 +62,8 @@ export function toolMult(p: Pawn, w: WorkK, c?: Colony): number {
   return p.tool && p.tool[0] === k ? (c && steel(c) ? 1.25 : 1.15) : 0.82;
 }
 
+/** The chance a cut at a rock face works it out to the floor (otherwise the face goes down another course). */
+const QUARRY_OUT = 0.4;
 const DUR: Record<WorkK, number> = { farm: 10, forage: 8, hunt: 36, fish: 16, wood: 12, mine: 14, cook: 10, build: 12, craft: 14, smith: 14, brew: 12, heal: 10, teach: 12, preach: 12, guard: 20, herbs: 8, herd: 10 };
 const CROWD: Record<WorkK, number> = { farm: 0.2, forage: 0.6, hunt: 1, fish: 1, wood: 0.6, mine: 0.8, cook: 2.5, build: 0.4, craft: 3, smith: 3, brew: 3, heal: 2, teach: 5, preach: 5, guard: 2, herbs: 3, herd: 3 };
 
@@ -379,7 +381,7 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
   }
   // the woods are thinning: someone with a feel for growing things plants for later
   const standing = featList(c, F.TREE).length + featList(c, F.PINE).length;
-  if (season < 3 && standing < 40 && featList(c, F.SAPLING).length < 45 && (mine === 'wood' || mine === 'farm' || p.sk[4] >= 4)) {
+  if (season < 3 && standing < 40 + pop && featList(c, F.SAPLING).length < 30 + pop && (mine === 'wood' || mine === 'farm' || p.sk[4] >= 4)) {
     offer('wood', standing < 12 ? 3.2 : 1.6, 'wood', () => {
       const i = plantSpot(c, r);
       if (i < 0) return null;
@@ -671,9 +673,13 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       if (tile < 0 || (c.feat[tile] !== F.TREE && c.feat[tile] !== F.PINE)) break;
       const left = c.fg[tile] - 19 * speed * hours;
       if (left <= 0) {
-        const n = c.feat[tile] === F.PINE ? 7 : 9;
+        const pine = c.feat[tile] === F.PINE;
+        const n = pine ? 7 : 9;
         c.feat[tile] = F.NONE;
         c.fg[tile] = 0;
+        // a felled broadleaf puts up shoots from the stump (a pine now and then seeds the gap), so
+        // the woods the colony cuts come back
+        if (r.chance(pine ? 0.3 : 0.6) && !c.st[tile] && !c.sb[tile] && (c.ter[tile] === T.GRASS || c.ter[tile] === T.DIRT || c.ter[tile] === T.STONE)) { c.feat[tile] = F.SAPLING; dropFeat(c, F.SAPLING); }
         c.stock.wood += n;
         made('wood', n);
         touchAt(c, tile);
@@ -695,11 +701,11 @@ export function finishWork(c: Colony, p: Pawn, a: Act): void {
       } else if (c.ter[tile] === T.ROCK) {
         const done = c.fg[tile] + 20 * speed * hours;
         if (done >= 100) {
-          c.ter[tile] = T.STONE;
           c.fg[tile] = 0;
           c.stock.stone += 12;
           made('stone', 12);
-          touchAt(c, tile);
+          // a good face is cut down several courses before it is worked out to the floor
+          if (r.chance(QUARRY_OUT)) { c.ter[tile] = T.STONE; touchAt(c, tile); }
         } else c.fg[tile] = Math.round(done);
       }
       break;

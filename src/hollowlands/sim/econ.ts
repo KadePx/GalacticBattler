@@ -2,7 +2,7 @@
 // crops, bushes and trees grow back.
 
 import { DAYS_PER_SEASON, DAYS_PER_YEAR, dayOf, seasonOf } from '../config';
-import { cropsChanged, dropFeat, touch } from './cache';
+import { cacheOf, cropsChanged, dropFeat, featList, touch } from './cache';
 import { CROPS, cells } from './data/buildings';
 import { bump, log } from './events';
 import { STAGE, stage, stat } from './pawn';
@@ -72,6 +72,46 @@ export function seasonTemp(dayOfYear: number): number {
     }
   }
   return 7;
+}
+
+/** Boulders loosened in a season, at most, and how many may lie about before no more are counted. */
+const LOOSEN = 16;
+const LOOSE_MAX = 60;
+
+function loosenStone(c: Colony, r: Rand): void {
+  if (featList(c, F.BOULDER).length >= LOOSE_MAX) return;
+  const k = cacheOf(c);
+  const W = c.w;
+  const cand: number[] = [];
+  for (let y = 2; y < c.h - 2; y++) {
+    for (let x = 2; x < W - 2; x++) {
+      const i = y * W + x;
+      if (c.ter[i] !== T.STONE || c.feat[i] !== F.NONE || c.sb[i] || c.st[i] || !k.reach[i]) continue;
+      // (open ground all round, and nothing built or laid next to it: no doorstep, wall foot or street)
+      let open = true;
+      for (const j of [i - W - 1, i - W, i - W + 1, i - 1, i + 1, i + W - 1, i + W, i + W + 1]) if (!k.walk[j] || c.sb[j] || c.st[j]) { open = false; break; }
+      if (open) cand.push(i);
+    }
+  }
+  // (each with open ground all round it, and none touching another laid down today, so there is
+  // always a way round)
+  const placed: number[] = [];
+  const held = new Set<number>();
+  for (const p of c.pawns) { held.add(p.y * W + p.x); held.add(p.act.ty * W + p.act.tx); }
+  for (const f of c.foes) held.add(Math.floor(f.y) * W + Math.floor(f.x));
+  for (let n = 0; n < LOOSEN * 2 && placed.length < LOOSEN && cand.length; n++) {
+    const j = r.int(cand.length);
+    const i = cand[j];
+    cand[j] = cand[cand.length - 1];
+    cand.pop();
+    const x = i % W;
+    const y = (i - x) / W;
+    if (held.has(i) || placed.some((o) => Math.abs((o % W) - x) <= 1 && Math.abs(Math.floor(o / W) - y) <= 1)) continue;
+    c.feat[i] = F.BOULDER;
+    c.fg[i] = 100;
+    placed.push(i);
+  }
+  if (placed.length) { touch(c); bump(c, 'loosened', placed.length); }
 }
 
 /** Start of each day: weather, growth, rot, wear. */
@@ -154,6 +194,10 @@ export function dailyLand(c: Colony): void {
       changed = true;
     }
   }
+  // Frost and rain work stone loose from the crags: at the turn of each season a few boulders lie
+  // out on the bare rock floors (old quarries too), so a colony that has cut its rock back is not
+  // left with none. Only in open ground, where a boulder cannot close a way through.
+  if (season < 3 && doy % DAYS_PER_SEASON === 1) loosenStone(c, new Rand(c.seed, S.WEATHER, day, 7));
   c.game = Math.min(100, c.game + (season === 3 ? 0.5 : 1.3));
 
   // Rot. Cold keeps things.

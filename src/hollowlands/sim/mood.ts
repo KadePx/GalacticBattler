@@ -272,7 +272,8 @@ export function hourly(c: Colony, p: Pawn): void {
   }
   if (p.drunk > 0) p.drunk = Math.max(0, p.drunk - 12);
   if (p.food <= 0) {
-    p.hp -= 1.4;
+    // (slow enough that a town with bare stores has a few days to find food before the dying starts)
+    p.hp -= 0.9;
     bump(c, 'starveHours');
     if (p.hp <= 0) { die(c, p, 'starved'); return; }
   }
