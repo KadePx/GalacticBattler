@@ -19,6 +19,7 @@ import { MARKET_POP, buy, goMarket, marketOpen, pickShop } from './market';
 import { bedFor, equip, findJob, finishWork } from './jobs';
 import { addLore } from './tech';
 import { guestCall, guestSpot, metGuest } from './visit';
+import { natAct, natDone } from './nature';
 import { endBreak, feltTemp, hasThought, think } from './mood';
 import { findPath, walkTicks } from './path';
 import { STAGE, gainXp, has, idleAct, mkAct, pawnById, per, posAt, stage, stat } from './pawn';
@@ -564,6 +565,8 @@ export function decide(c: Colony, p: Pawn): void {
       if (setAct(c, p, 'subdue', oi % c.w, Math.floor(oi / c.w), 2, 'subdue', { adj: true, o: mad.id })) return;
     }
   }
+  // the land turning on the colony (a fire, a flood, locusts, a dragon), or a drama of its own (a lost child, a duel)
+  if (c.nat && natAct(c, p, r, st, hour, (k, x, y, dur, why, o) => setAct(c, p, k, x, y, dur, why, o ?? {}))) return;
   if (p.food < 18 && hasFood(c) && goEat(c, p, r, 'starving')) return;
   if (p.rest < 8 && goSleep(c, p, 'exhausted')) return;
   if (c.gath && t >= c.gath.t0 - 12 && t < c.gath.t1 - 4 && wantsToAttend(c, p, st) && attend(c, p, r)) return;
@@ -681,6 +684,7 @@ export function finish(c: Colony, p: Pawn): void {
       break;
     }
     case 'work': finishWork(c, p, a); break;
+    case 'aid': natDone(c, p, a, r); break;
     case 'fight': if (a.d !== undefined) attack(c, p, a.d, a.b === 1); break;
     case 'drink': {
       const rounds = Math.max(1, Math.round(spent / 16));

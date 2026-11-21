@@ -82,10 +82,13 @@ export function dailyLand(c: Colony): void {
   const r = new Rand(c.seed, S.WEATHER, day);
   const prevTemp = c.temp;
   c.temp = Math.round(seasonTemp(doy) + (r.float() + r.float() - 1) * 5) - (c.mods.some((m) => m[0] === 'coldsnap' && m[1] > c.tick) ? 11 : 0);
+  // a hard winter: the cold bites deeper all season, and the snow comes more often
+  const hard = season === 3 && c.mods.some((m) => m[0] === 'hardwinter' && m[1] > c.tick);
+  if (hard) c.temp -= 6;
   const drought = c.mods.some((m) => m[0] === 'drought' && m[1] > c.tick);
   const roll = r.float();
   const wet = c.biome === 'marsh' ? 0.12 : c.biome === 'coast' ? 0.06 : 0;
-  if (c.temp <= 0) c.weather = roll < 0.3 + wet ? 4 : roll < 0.55 ? 1 : 0;
+  if (c.temp <= 0) c.weather = roll < 0.3 + wet + (hard ? 0.25 : 0) ? 4 : roll < (hard ? 0.8 : 0.55) ? 1 : 0;
   else if (drought) c.weather = roll < 0.3 ? 1 : 0;
   else if (roll < 0.05) c.weather = 3;
   else if (roll < 0.24 + wet + (season === 2 ? 0.08 : 0)) c.weather = 2;

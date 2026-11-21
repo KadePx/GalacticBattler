@@ -52,7 +52,9 @@ export type ActK =
   | 'idle' | 'wander' | 'sleep' | 'eat' | 'work' | 'drink' | 'relax' | 'walk' | 'pray' | 'dice' | 'hobby' | 'play' | 'visit' | 'sulk' | 'binge' | 'tantrum' | 'rave'
   | 'court' | 'wed' | 'attend' | 'mourn' | 'labour' | 'rest' | 'perform' | 'listen' | 'stargaze' | 'bathe'
   | 'chess' | 'darts' | 'music' | 'read' | 'study' | 'berserk' | 'subdue'
-  | 'shop' | 'sell';
+  | 'shop' | 'sell'
+  // lending a hand when the land turns on the colony (see nature.ts: act.d says what), and a duel
+  | 'aid' | 'duel';
 
 export interface Act {
   k: ActK;
@@ -338,6 +340,51 @@ export interface Visitor {
   pw?: Pawn;
 }
 
+/**
+ * The land's own events and the colony's dramas (see nature.ts and drama.ts). Lists of tiles are
+ * flat number arrays; every optional part is deleted (never set to undefined) when it is over.
+ */
+export interface Nat {
+  /** the day the next one may come, and the day each kind last came */
+  nx: number; seen: Record<string, number>;
+  /** burning tiles as pairs: tile, ticks of fuel left */
+  fire: number[];
+  /** a wildfire's tally: where it began, tiles burnt, beaten out, buildings it reached, and when it began */
+  wf?: { x: number; y: number; n: number; out: number; hit: number; t0: number };
+  /** scorched ground as pairs: tile, the day it burnt (it greens again in time) */
+  ash: number[];
+  /** heaps of rubble left by a quake (tiles) */
+  rub: number[];
+  /** cracks in the ground from the last quake, until tick t */
+  cr?: { t: number; l: number[] };
+  /** the tick of the last quake (the view shakes) */
+  qk?: number;
+  /** a flood: began, highest at, gone by, the low ground as pairs (tile, depth 1..top), top depth, plots lost, earth heaped */
+  fl?: { t0: number; pk: number; t1: number; l: number[]; top: number; lost: number; dk: number };
+  /** a night of falling stars or of the northern lights */
+  sky?: { k: string; t0: number; t1: number; done: number };
+  /** where a star came down: tile, until tick, who went to find it (-1 found) */
+  cra?: { i: number; t1: number; a: Id };
+  /** a locust swarm: where it is and was a moment ago, where it is headed, began, must leave by, plots eaten, how scared it is, leaving */
+  loc?: { x: number; y: number; px: number; py: number; tx: number; ty: number; t0: number; t1: number; n: number; sc: number; go: number; cap: number };
+  /** a dragon passing over: from and to (tiles, may lie off the map), when, and what it did ('field', 'beast', 'pass') */
+  dr?: { x0: number; y0: number; x1: number; y1: number; t0: number; t1: number; k: string; done: number };
+  /** a haunting: the graveyard, the restless dead, until, who keeps vigil, nights kept */
+  haunt?: { b: number; d: Id; t1: number; v: Id; n: number };
+  /** something cursed out of the mine: who has it, since, until, what it is, mishaps */
+  curse?: { a: Id; t0: number; t1: number; s: number; k: number };
+  /** a child lost in the woods: who, where, when they went, when the search began, when they find their own way home */
+  lost?: { a: Id; x: number; y: number; t0: number; s: number; t1: number; told: number };
+  /** lovers running off to marry: who, where to, when they go and come back, the parent against it */
+  el?: { a: Id; b: Id; x: number; y: number; t0: number; t1: number; by: Id; told: number };
+  /** a feud between two families (their names), until, clashes */
+  feud?: { a: string; b: string; t1: number; n: number };
+  /** a duel over love: the challenger, the one challenged, for whom, when, and where */
+  duel?: { a: Id; b: Id; o: Id; t: number; x: number; y: number };
+  /** a match between noble houses waiting for its wedding: the suitor, the one they came for, the house */
+  nw?: { a: Id; b: Id; h: string };
+}
+
 export interface Ev { t: number; k: string; a?: Id; b?: Id; s?: string; n?: number }
 
 /** Something that happened (or is said to have) that people can know and pass on. */
@@ -455,6 +502,8 @@ export interface Colony {
   vis?: { l: Visitor[]; n: number; gone: number; seen: Record<string, number>; nx: string; at: number; wrath: number; paid: number; refused: number };
   /** the colony's festivals: its own name for each, how many years held, and this year's champion */
   trad?: Partial<Record<'spring' | 'summer', { name: string; n: number; champ?: Id }>>;
+  /** the land's own events and the colony's dramas (see nature.ts) */
+  nat?: Nat;
 }
 
 export const idx = (c: { w: number }, x: number, y: number): number => y * c.w + x;

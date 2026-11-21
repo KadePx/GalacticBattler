@@ -14,6 +14,7 @@ import { WorldView } from './view/world';
 import { createColony, step, type Colony, type Ev, type Id, type RaceK } from './sim/index';
 import { checkSpec, type PawnSpec } from './sim/create';
 import { fullName, pawnById } from './sim/pawn';
+import { startNat } from './sim/nature';
 import type { Dead, Pawn } from './sim/types';
 import { WEIGHT, dateText, evText } from './text';
 import { Creator, randomSpec } from './view/creator';
@@ -574,6 +575,8 @@ const hooks = {
   },
   /** My colonist, or null if there is none alive here. */
   me: (): Pawn | null => myPawn(),
+  /** Local test colonies only: set one of the land's events going now ('wildfire', 'flood', 'quake', 'meteors', 'aurora', 'locusts', 'haunt', 'curse', 'dragon', 'elope', 'feud', 'lost', 'duel', 'suitor'). */
+  nature: (k: string): boolean => startNat(c, k),
   /** Forget the colonist remembered for this seed (they will not be sent in again on reload). */
   forgetMine: (): void => store.del(mineKey),
   map,

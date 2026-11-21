@@ -61,6 +61,31 @@ for (let s = 1; s <= worlds; s++) {
         if (v.g !== v.id && !c.vis!.l.some((x) => x.id === v.g)) flag('visitor party without a leader');
       }
       if ((c.vis?.l.length ?? 0) > 8) flag('too many visitors');
+      // the land's events: their marks on the map stay in bounds and clear up, and nothing outstays its end
+      const n = c.nat;
+      if (n) {
+        const N = c.w * c.h;
+        const D = TICKS_PER_DAY;
+        if (n.fire.length > 280) flag('fire too big');
+        for (let j = 0; j < n.fire.length; j += 2) if (n.fire[j] < 0 || n.fire[j] >= N) flag('fire off the map');
+        if (n.fire.length && n.wf && c.tick > n.wf.t0 + D * 6) flag('fire burning for days');
+        if (n.ash.length > 5000) flag('ash piling up');
+        if (n.fl && c.tick > n.fl.t1 + 1) flag('flood never went down');
+        if (n.cr && c.tick > n.cr.t + D) flag('cracks never cleared');
+        if (n.rub.length && !n.cr) flag('rubble left after the cracks healed');
+        if (n.loc && c.tick > n.loc.t1 + D * 2) flag('locusts never left');
+        if (n.dr && c.tick > n.dr.t1 + 40) flag('dragon never left');
+        if (n.sky && c.tick > n.sky.t1 + D) flag('night sky stuck');
+        if (n.cra && c.tick > n.cra.t1 + D) flag('crater never cleared');
+        if (n.haunt && c.tick > n.haunt.t1 + D) flag('haunting never ended');
+        if (n.curse && (c.tick > n.curse.t1 + D || !ids.has(n.curse.a))) flag('curse stuck');
+        if (n.feud && c.tick > n.feud.t1 + D) flag('feud never ended');
+        if (n.lost && (c.tick > n.lost.t1 + 1 || !ids.has(n.lost.a))) flag('lost child never came home');
+        if (n.el && c.tick > n.el.t1 + 1) flag('elopement stuck');
+        if (n.duel && c.tick > n.duel.t + 20) flag('duel never fought');
+        if (n.nw && (!ids.has(n.nw.a) || !ids.has(n.nw.b))) flag('noble match with someone gone');
+        for (const k of Object.keys(n)) if ((n as unknown as Record<string, unknown>)[k] === undefined) flag(`nature field ${k} left undefined`);
+      }
       for (const f of c.foes) if (!Number.isFinite(f.hp) || f.x < 0 || f.y < 0 || f.x >= c.w || f.y >= c.h) flag('foe off the map');
     }
   }

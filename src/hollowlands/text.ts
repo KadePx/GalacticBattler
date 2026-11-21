@@ -9,6 +9,7 @@ import { RACES } from './sim/data/races';
 import { TH } from './sim/data/thoughts';
 import { person } from './sim/pawn';
 import { rulerTitle } from './sim/gov';
+import { cursedThing } from './sim/nature';
 import type { Colony, Ev, Id } from './sim/types';
 
 /** "Day 13 of Autumn, Year 3", optionally with the time of day. */
@@ -110,6 +111,10 @@ export const WEIGHT: Record<string, number> = {
   feast_set: 2, audience: 2, prosper: 2, home_lost: 2, razed: 1, castle: 3, walls: 3, siege: 3, breach: 3, mended: 2,
   discovery: 3, firstbuilt: 3, cleared: 1, chronicle: 2, tech_trader: 1, glazed_first: 2, jewels_first: 2,
   joined: 3, blabbed: 3, heir: 3, heirloom: 2, nudge: 1, trader: 1, bard: 1, herd: 1, omen: 1, healer_visit: 1, bumper: 1, blight: 3, drought: 2, coldsnap: 2, storm: 2, fire: 3, rats: 2, eclipse: 2,
+  n_wildfire: 3, n_fire_town: 3, n_fire_out: 2, n_flood: 3, n_flood_end: 2, n_quake: 3, n_vein: 2, n_cleared: 1, n_meteors: 2, n_aurora: 2, n_starfall: 2, n_stariron: 2,
+  n_locusts: 3, n_locusts_gone: 2, n_dragon: 3, n_dragon_field: 3, n_dragon_beast: 3, n_dragon_pass: 2, n_haunt: 3, n_haunt_laid: 2, n_haunt_fades: 2,
+  n_curse: 3, n_curse_hurt: 2, n_curse_sour: 2, n_curse_tools: 2, n_curse_end: 2, n_winter_warn: 2, n_winter: 3, n_winter_end: 2,
+  n_elope: 3, n_eloped: 3, n_feud: 3, n_feud_clash: 2, n_feud_end: 2, n_feud_wed: 3, n_lost: 3, n_found: 3, n_lost_home: 2, n_challenge: 3, n_duel: 3, n_duel_off: 2, n_suitor: 3, n_noble_wed: 3,
   v_come: 2, v_gone: 1, v_shelter: 1, v_fair: 1, v_rare: 2, v_nosale: 1, v_finery: 1, v_festival: 2, v_played: 1, v_song: 2, v_saint: 2, v_offering: 1, v_converted: 2,
   v_takenin: 3, v_turnedaway: 3, v_healed: 2, v_blessed: 2, v_fields: 2, v_lights: 2, v_lore: 2, v_fortune: 2, v_paid: 3, v_refused: 3, v_kingmen: 3,
   v_told: 2, v_miss: 2, v_lost: 1, v_bought: 3, v_beaten: 3, v_wounded: 3, v_fled: 3, v_taken: 3,
@@ -192,6 +197,7 @@ export function evText(c: Colony, e: Ev): string {
   const a = first(c, e.a);
   const b = first(c, e.b);
   if (e.k.startsWith('v_')) return visitText(c, e);
+  if (e.k.startsWith('n_')) return natText(c, e);
   switch (e.k) {
     case 'death': return `${full(c, e.a)} ${CAUSES[e.s ?? ''] ?? 'died'}${e.b && e.s === 'brawl' ? ` at the hands of ${full(c, e.b)}` : ''}.`;
     case 'birth': return `${full(c, e.b)} gave birth to ${a}${e.n && person(c, e.n) ? `, child of ${first(c, e.n)}` : ''}.`;
@@ -502,4 +508,65 @@ function techNews(name: string, who: string | undefined): string {
   const [k, by] = (who ?? '').split('|');
   const d = TECHS[k];
   return `News from ${name}: ${by || 'someone there'} has worked out ${(d?.name ?? 'something new').toLowerCase()}. Our own people are talking about how it is done.`;
+}
+
+/** A line about the land turning on the colony, a mystery, or one of the colony's own dramas (see sim/nature.ts and sim/drama.ts). */
+function natText(c: Colony, e: Ev): string {
+  const a = first(c, e.a);
+  const b = first(c, e.b);
+  const n = e.n ?? 0;
+  const s = e.s ?? '';
+  const fams = (): [string, string] => { const p = s.split('|'); return [p[p.length - 2] ?? 'one', p[p.length - 1] ?? 'the other']; };
+  switch (e.k) {
+    case 'n_wildfire': return s === 'dragon' ? 'The trees by the burnt field have caught. The fire is running into the woods.' : `Smoke over the woods to the ${s || 'north'}: a wildfire has taken hold in the trees. People are turning out with wet sacks and spades.`;
+    case 'n_fire_town': return `The wildfire has reached the ${bldName(s)}. Sparks are falling on the roofs.`;
+    case 'n_fire_out': { const f = Number(s) || 0; return `The wildfire is out. ${n ? `${n} stretches of woodland burned` : 'Hardly a tree was lost'}${f ? `, and ${f} people came home black with soot from beating at the flames` : ''}.`; }
+    case 'n_flood': return `${s === 'melt' ? 'The snowmelt has the river over its banks' : 'After the rain the water is over its banks'}, and it is rising over the low ground${n ? ` toward ${n === 1 ? 'one of the fields' : `${n} of the fields`}` : ''}.`;
+    case 'n_flood_end': return `The water has gone back down. ${n ? `It took the crops from ${n} plots` : 'The fields came through it'}${Number(s) > 3 ? ', and the earth heaped along the edges kept the worst of it off' : ''}.`;
+    case 'n_quake': { const hurt = Number(s) || 0; return `The earth shook. Cracks opened in the ground${n ? ` and ${n === 1 ? 'one building was' : `${n} buildings were`} damaged` : ''}${hurt ? `; ${hurt === 1 ? 'one person was' : `${hurt} people were`} hurt by what fell` : ''}.`; }
+    case 'n_vein': return 'Where the quake split the rock face, a fresh vein of ore shows through.';
+    case 'n_cleared': return `The last of the rubble from the quake has been cleared. ${a} carted the final load away.`;
+    case 'n_meteors': return 'Stars are falling tonight, dozens of them, streaking across the sky. Half the colony is out in the street to watch.';
+    case 'n_aurora': return 'The northern lights are out tonight: green and violet curtains across the whole sky.';
+    case 'n_starfall': return `One of the falling stars came down to the ${s || 'north'}, beyond the fields. Something is still glowing in the hole it made.`;
+    case 'n_stariron': return `${a} walked out to the fallen star and came back with ${n || 'a sack of'} pounds of star-iron, black and heavy and still warm.`;
+    case 'n_locusts': return `A dark cloud is coming in from the ${s || 'east'}, and it is humming: locusts, headed for the fields.`;
+    case 'n_locusts_gone': return s === 'driven' ? `The locusts are gone, driven off with pots and pans and smoky fires. They stripped ${n} plots before they went.` : `The locusts have moved on, leaving ${n} plots stripped bare.`;
+    case 'n_dragon': return `A dragon. It came over the hills from the ${s || 'north'}, so low its shadow covered the whole town. People ran for their doors.`;
+    case 'n_dragon_field': return `The dragon breathed once as it passed. The ${s || 'grain'} field is ash.`;
+    case 'n_dragon_beast': return `The dragon dropped on the pen and took a ${s || 'beast'}, and was gone before anyone could scream.`;
+    case 'n_dragon_pass': return 'It did not stop. It passed over and was gone into the clouds, and nobody has spoken above a whisper since.';
+    case 'n_haunt': return `There are lights in the graveyard at night, and the old folk say it is ${a}, who cannot rest. ${b} means to keep watch among the graves until it stops.`;
+    case 'n_haunt_laid': return `${a} kept watch among the graves and spoke to ${b}'s spirit. The lights have not come back.`;
+    case 'n_haunt_fades': return `The lights over the graveyard have stopped. Nobody can say why. ${a} rests easy again.`;
+    case 'n_curse': return `Deep in the mine, ${a} broke into a hollow in the rock and found ${cursedThing(Number(s))}, and brought it home.`;
+    case 'n_curse_hurt': return e.a === e.b ? `${a} had a bad fall. People are starting to look at what ${a} brought up from the mine.` : `${a} had a bad fall in ${b}'s house. People blame what ${b} brought up from the mine.`;
+    case 'n_curse_sour': return `${n || 'Several'} casks of ale turned to vinegar overnight. Everyone knows what ${a} keeps on the shelf.`;
+    case 'n_curse_tools': return `Tools keep breaking around ${a}. It is the thing from the mine, people say.`;
+    case 'n_curse_end': {
+      const [how, k] = s.split('|');
+      const thing = cursedThing(Number(k));
+      if (how === 'water') return `${a} threw ${thing} into the deep water. The bad luck went with it.`;
+      if (how === 'shrine') return `${a} gave ${thing} to the shrine, to be buried under the altar stone.`;
+      return `${thing[0].toUpperCase()}${thing.slice(1)}, the thing ${a} found in the mine, is gone. Nobody admits to taking it.`;
+    }
+    case 'n_winter_warn': return 'The geese went south early and the berries hang thick on the rowans. The old folk say a hard winter is coming, and the woodcutters are working late.';
+    case 'n_winter': return 'The hard winter has come. The wells freeze over at night and the snow lies deep.';
+    case 'n_winter_end': return 'The hard winter has broken at last. The first green is showing through the snow.';
+    case 'n_elope': return n ? `${a} and ${b} slipped out of the colony after dark, against ${first(c, n)}'s word.` : `${a} and ${b} slipped out of the colony after dark. They have been courting for a season and more, and they are done with waiting.`;
+    case 'n_eloped': return `${a} and ${b} came back at dawn, married under an oak in the woods.${n ? ` ${first(c, n)} will not speak to them.` : ' Nobody is very surprised.'}`;
+    case 'n_feud': { const [x, y] = fams(); return s.startsWith('elope') ? `${a} has sworn the ${x} family will never forgive the ${y} family. It is a feud now.` : `The bad blood between the ${x} and ${y} families has become a feud. It began with ${a} and ${b}.`; }
+    case 'n_feud_clash': return s === 'fists' ? `${a} and ${b} came to blows. The feud between their families goes on.` : s === 'fence' ? `Someone smashed the fence at ${b}'s house in the night. Everyone says it was ${a}.` : `${a} and ${b} traded insults at the well. The feud between their families goes on.`;
+    case 'n_feud_end': { const [x, y] = s.split('|'); return e.a ? `${a} sat the ${x} and ${y} families down at one table, and the feud is over.` : `The feud between the ${x} and ${y} families has burned itself out.`; }
+    case 'n_feud_wed': return `${a} and ${b} are married, and their two families have had to make peace.`;
+    case 'n_lost': return `${a} went into the woods after a stray goat and has not come back. A search party is going out with torches${e.b ? `, ${b} at its head` : ''}.`;
+    case 'n_found': return `${a} found ${b} in the woods, cold and frightened but unhurt, and carried them home.`;
+    case 'n_lost_home': return `${a} found the way home alone at first light, scratched and hungry, after a night in the woods.`;
+    case 'n_challenge': return `${a} has challenged ${b} to a duel over ${first(c, n)}. They meet at dawn in the square.`;
+    case 'n_duel': { const x = first(c, n); return s === 'heart' ? `${a} beat ${b} in the duel at dawn, and ${x} has gone to ${a}.` : s === 'kept' ? `${a} beat ${b} in the duel at dawn, and keeps ${x}.` : `${a} beat ${b} in the duel at dawn. ${x} was not impressed.`; }
+    case 'n_duel_off': return `${a} did not turn up for the duel with ${b}. The whole colony knows.`;
+    case 'n_suitor': return `${full(c, e.a)} rode in from ${s || 'a noble house beyond the hills'} with a letter and a ring, asking for the hand of ${b}. ${b} has said yes.`;
+    case 'n_noble_wed': { const [old, nw, h] = s.split('|'); return `With that, the houses of ${old || 'one family'} and ${nw || 'another'} are joined${h ? `, and ${h} is kin to us now` : ''}. Banners hung in the hall, the treasury paid for the feast, and it ran late into the night.`; }
+    default: return `${e.k}: ${a}`;
+  }
 }

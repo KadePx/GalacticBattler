@@ -475,7 +475,7 @@ export function activityKey(k: string, w: string | undefined): string {
 }
 
 /** Things done with a tool get a little swing on the map. */
-export const SWINGS = new Set(['w:wood', 'w:mine', 'w:build', 'w:smith', 'w:farm', 'fight']);
+export const SWINGS = new Set(['w:wood', 'w:mine', 'w:build', 'w:smith', 'w:farm', 'fight', 'aid', 'duel']);
 
 export function drawActivity(g: Graphics, key: string): void {
   g.clear();
@@ -589,6 +589,7 @@ export function drawActivity(g: Graphics, key: string): void {
     case 'mourn': // a tear
       g.moveTo(0, -4).quadraticCurveTo(3.4, 1, 0, 3.6).quadraticCurveTo(-3.4, 1, 0, -4).fill(0x7fb4f0);
       break;
+    case 'duel':
     case 'fight': // crossed swords
       line([-3.6, 3.6, 3.6, -3.6], 0xdfe3ea, 1.4);
       line([3.6, 3.6, -3.6, -3.6], 0xdfe3ea, 1.4);
@@ -655,6 +656,10 @@ export function drawActivity(g: Graphics, key: string): void {
       line([-2.8, -2.2, -1.2, 0.6], 0xc9ced8, 0.6);
       line([2.8, -2.2, 1.2, 0.6], 0xc9ced8, 0.6);
       line([2.8, -2.2, 4.4, 0.6], 0xc9ced8, 0.6);
+      break;
+    case 'aid': // a helping hand: a bucket
+      g.poly([-3.4, -2.6, 3.4, -2.6, 2.4, 3.8, -2.4, 3.8]).fill(0x8fb4d8);
+      line([-3.4, -2.6, 0, -5, 3.4, -2.6], BADGE_INK, 0.9);
       break;
     case 'tantrum':
     case 'rave':

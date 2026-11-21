@@ -366,7 +366,7 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
 
   // Wood and stone
   const { needWood, needStone } = scan(c);
-  const woodTarget = 25 + pop * 3 + needWood + (season >= 2 ? pop * 5 : season === 1 ? pop * 2 : 0);
+  const woodTarget = 25 + pop * 3 + needWood + (season >= 2 ? pop * 5 : season === 1 ? pop * 2 : 0) + (c.mods.some((m) => m[0] === 'hardwinter' && m[1] > c.tick) ? pop * 4 : 0);
   if (c.stock.wood < woodTarget) {
     offer('wood', 1 + 6 * (1 - c.stock.wood / woodTarget), 'wood', () => {
       const fallen = nearestFree(c, p, featList(c, F.LOG), r, 3);

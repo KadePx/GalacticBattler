@@ -1,6 +1,7 @@
 // The long arcs of a life: love, marriage, children, growing up, growing old, dying, and the
 // gatherings (weddings, funerals) that mark them.
 
+import { nobleWedding } from './drama';
 import { techBld } from './known';
 import { endFestival } from './festivals';
 import { HARD_CAP, SOFT_CAP, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../config';
@@ -392,6 +393,7 @@ export function endGathering(c: Colony): void {
       if (c.stock.ale >= 1 && !has(p, 'teetotal') && stage(c, p) >= STAGE.ADULT) { c.stock.ale -= 1; p.drunk += 35; ale++; }
     }
     log(c, 'wedding', a.id, b.id, old, there.length - 2);
+    nobleWedding(c, a, b, old, there);
     note(c, a, 'wedding', b.id);
     note(c, b, 'wedding', a.id);
     bump(c, 'weddings');

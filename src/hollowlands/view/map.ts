@@ -18,6 +18,7 @@ import { BLD_ICON, SWINGING, WORK_HELD, drawHeld, WILD_SIZE, drawBeast, FOE_SIZE
 import { SHAPE, stageOfAge, yearsAt } from './look';
 import { Fx, type FxPawn } from './fx';
 import { Life } from './life';
+import { NatureView } from './nature';
 import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
 
 /** Chunk size in tiles. */
@@ -140,6 +141,12 @@ export class MapView {
   private fxSky = new Graphics();
   private fxPawns: FxPawn[] = [];
   /** the town at work: looms, bellows, bubbling pots, washing lines, loads carried, carts on the road, lit windows */
+  /** the land's events: scorched ground, flood water, cracks, fire, locusts, the dragon, the night sky */
+  private nat = new NatureView();
+  private natGround = new Graphics();
+  private natSky = new Graphics();
+  private natGlow = new Graphics();
+  private natScreen = new Graphics();
   private life = new Life();
   private lifeFloor = new Graphics();
   private lifeLit = new Graphics();
@@ -196,7 +203,9 @@ export class MapView {
     this.mineMark.poly([-5, -7, 5, -7, 0, 0]).fill(0x7c8cff).stroke({ width: 1.5, color: 0xffffff });
     this.mineMark.visible = false;
     this.fog.visible = false;
-    this.wxLayer.addChild(this.fog, this.flashG);
+    // falling stars and the northern lights are light: they add to what is under them
+    this.natScreen.blendMode = 'add';
+    this.wxLayer.addChild(this.natScreen, this.fog, this.flashG);
     this.app.stage.addChild(this.cam, this.wxLayer, this.labelLayer);
     this.bindInput();
     new ResizeObserver(() => { this.sizeOverlays(); if (this.c) this.clamp(); }).observe(parent);
@@ -238,7 +247,8 @@ export class MapView {
     }
     this.night.clear().rect(0, 0, this.mw, this.mh).fill(0xffffff);
     this.overLayer.addChild(this.ring, this.mineMark);
-    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.bldSel, this.lifeFloor, this.pawnLayer, this.fxWork, this.canopyLayer, this.fxSky, this.night, this.lifeLit, this.lightLayer, this.signLayer, this.overLayer);
+    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.natGround, this.bldSel, this.lifeFloor, this.pawnLayer, this.fxWork, this.canopyLayer, this.fxSky, this.natSky, this.night, this.lifeLit, this.lightLayer, this.natGlow, this.signLayer, this.overLayer);
+    this.nat.reset(this.natGround);
     this.life.reset();
     // the old pile graphic went with the old chunks: start a fresh one
     this.piles = new Graphics();
@@ -315,6 +325,8 @@ export class MapView {
     this.lighting(tf, dt);
     this.life.draw(this.lifeFloor, this.lifeLit, c, this.fxPawns, this.busy, this.homeIn, this.time, tf, this.viewB, this.cam.scale.x, this.sky[3], this.pawnLayer);
     this.weather(dt);
+    const [sx, sy] = this.nat.draw(this.natGround, this.natSky, this.natGlow, this.natScreen, c, tf, this.time, dt, this.viewB, this.cam.scale.x, this.app.screen.width, this.app.screen.height, this.sky[3]);
+    if (sx !== this.app.stage.x || sy !== this.app.stage.y) this.app.stage.position.set(sx, sy);
   }
 
   /** Check what changed on the map and redraw only that. Cheap enough to run several times a second. */
@@ -1537,6 +1549,8 @@ function heldFor(p: Pawn, blds: Map<number, Bld>): string {
   }
   if (a.k === 'fight') return a.b === 1 ? 'bow' : p.prof === 'guard' || p.prof === 'scout' ? 'spear' : 'sword';
   if (a.k === 'subdue') return '';
+  if (a.k === 'duel') return 'sword';
+  if (a.k === 'aid') return a.d === 1 ? 'sack' : a.d === 2 ? 'hoe' : a.d === 4 ? 'pick' : a.d === 5 ? 'pot' : a.d === 6 ? 'book' : '';
   if (a.k === 'music') return 'lute';
   if (a.k === 'read' || a.k === 'study') return 'book';
   if (a.k === 'shop') return 'basket';

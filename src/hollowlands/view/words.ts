@@ -5,6 +5,7 @@ import { PROFS } from '../sim/data/professions';
 import { TECHS } from '../sim/data/tech';
 import { TPL } from '../sim/data/buildings';
 import { breakLine } from '../sim/mood';
+import { cursedThing } from '../sim/nature';
 import { person } from '../sim/pawn';
 import type { Bio, Colony, Dead, Id, Pawn } from '../sim/types';
 import { evText } from '../text';
@@ -42,7 +43,12 @@ const ACT: Record<string, string> = {
   chess: 'Playing chess', darts: 'Throwing darts', music: 'Playing music', read: 'Reading', study: 'At school',
   fight: 'Fighting', flee: 'Running for it', hide: 'Hiding', tend: 'Tending the hurt', train: 'Training',
   shop: 'Buying from {o}', sell: 'Minding a stall',
+  aid: 'Lending a hand', duel: 'Duelling {o}',
 };
+
+/** Lending a hand when the land turns (act.d), and a few acts done for an unusual reason (act.why). */
+const AID_ACT: Record<number, string> = { 1: 'Beating out the fire', 2: 'Heaping earth against the flood', 3: 'Searching the woods for {o}', 4: 'Clearing rubble', 5: 'Driving off the locusts', 6: 'Keeping vigil in the graveyard', 7: 'Getting rid of the cursed thing', 8: 'Going to see the fallen star' };
+const WHY_ACT: Record<string, string> = { lost: 'Lost in the woods', elope: 'Running off with {o}', dragon: 'Hiding from the dragon' };
 
 const GUEST_ACT: Record<string, string> = {
   minstrel: 'Listening to the minstrel', merchant: 'Looking over the merchant\'s wares', wizard: 'Hearing the wizard out', pilgrim: 'Talking faith with the pilgrims',
@@ -81,10 +87,34 @@ function visitBio(c: Colony, b: Bio, o: string): string {
   }
 }
 
+/** A line in someone's life story about the land's events and the colony's dramas. */
+function natBio(c: Colony, b: Bio, o: string): string {
+  const s = b.s ?? '';
+  switch (b.k) {
+    case 'n_curse': return `Found ${cursedThing(Number(s))} deep in the mine.`;
+    case 'n_curse_gone': return s === 'lost' ? 'Lost the cursed thing from the mine, and was glad of it.' : s === 'shrine' ? 'Gave the cursed thing from the mine to the shrine.' : 'Threw the cursed thing from the mine into deep water.';
+    case 'n_quake_hurt': return 'Was hurt when the earth shook.';
+    case 'n_stariron': return 'Found star-iron where a star fell to earth.';
+    case 'n_dragon': return s === 'awe' ? 'Saw a dragon fly over the colony, and was not afraid.' : 'Saw a dragon fly over the colony.';
+    case 'n_haunt_laid': return `Laid ${o}'s restless spirit to rest.`;
+    case 'n_feud': return `Started a feud with ${o} and the ${s || 'other'} family.`;
+    case 'n_feud_peace': { const [x, y] = s.split('|'); return `Made peace between the ${x} and ${y} families.`; }
+    case 'n_lost_home': return 'Was lost all night in the woods.';
+    case 'n_lost_found': return `Was lost in the woods until ${o} found them.`;
+    case 'n_found': return `Found ${o}, lost in the woods.`;
+    case 'n_eloped': return `Ran off in the night to marry ${o}.`;
+    case 'n_duel_won': return `Beat ${o} in a duel${s ? ` over ${firstOf(c, Number(s))}` : ''}.`;
+    case 'n_duel_lost': return `Lost a duel to ${o}${s ? ` over ${firstOf(c, Number(s))}` : ''}.`;
+    case 'n_suitor': return `Came from ${s || 'a noble house'} to marry ${o}.`;
+    case 'n_suitor_got': return `Was asked for in marriage by ${o} of the house of ${s || 'a noble family'}.`;
+    default: return pretty(b.k) + '.';
+  }
+}
+
 /** A few words for what a colonist is doing right now. */
 export function actText(c: Colony, p: Pawn): string {
   const a = p.act;
-  let s = a.k === 'work' && a.w ? WORK[a.w] ?? 'Working' : ACT[a.k] ?? a.k;
+  let s = a.k === 'work' && a.w ? WORK[a.w] ?? 'Working' : a.k === 'aid' ? AID_ACT[a.d ?? 0] ?? 'Lending a hand' : WHY_ACT[a.why] ?? ACT[a.k] ?? a.k;
   // at a shop, buying from its master only when the master is there; otherwise just shopping
   if (a.k === 'shop' && a.b) { const o = a.o ? person(c, a.o) : undefined; if (!o || !('act' in o) || o.act.b !== a.b) s = 'Shopping'; }
   if (a.k === 'listen' && a.why === 'guest') {
@@ -194,6 +224,7 @@ export function bioText(c: Colony, b: Bio): string {
     case 'enthralled': return `Was taken alive in a raid and put in chains at ${b.s ?? 'the colony'}.`;
     case 'freed': return 'Was freed.';
     default: if (b.k.startsWith('v_')) return visitBio(c, b, o);
+      if (b.k.startsWith('n_')) return natBio(c, b, o);
     return pretty(b.k) + (b.o ? ` (${o})` : '') + '.';
   }
 }
