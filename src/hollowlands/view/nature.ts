@@ -11,11 +11,21 @@ import type { Colony } from '../sim/types';
 import type { Bounds } from './fx';
 import { TS, hash2 } from './tiles';
 
+let calmQ: MediaQueryList | null | undefined;
+/** Has the viewer asked their system for less motion? */
+function calm(): boolean {
+  if (calmQ === undefined) calmQ = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  return !!calmQ?.matches;
+}
+
 export class NatureView {
   private gKey = '';
   /** the quake the view last shook for, and how long the shaking has left (ms) */
   private shook = -1;
   private shakeMs = 0;
+  /** scratch masks for the scorched ground (one byte per tile), kept between redraws */
+  private ashM = new Uint8Array(0);
+  private doneM = new Uint8Array(0);
 
   /** A new colony: everything is drawn afresh. */
   reset(ground: Graphics): void {
@@ -44,25 +54,32 @@ export class NatureView {
       this.gKey = key;
       ground.clear();
       const day = dayOf(Math.floor(tf));
-      // scorched ground, fading as it greens
-      const ash = new Set<number>();
-      for (let j = 0; j < n.ash.length; j += 2) ash.add(n.ash[j]);
-      const done = new Set<number>();
+      // scorched ground, fading as it greens (byte masks, not sets: a big burn has thousands of tiles)
+      const N = W * c.h;
+      if (this.ashM.length !== N) { this.ashM = new Uint8Array(N); this.doneM = new Uint8Array(N); }
+      const ash = this.ashM;
+      const done = this.doneM;
+      for (let j = 0; j < n.ash.length; j += 2) ash[n.ash[j]] = 1;
       for (let j = n.ash.length - 2; j >= 0; j -= 2) {
         const i = n.ash[j];
-        if (done.has(i)) continue;
-        done.add(i);
+        if (done[i]) continue;
+        done[i] = 1;
         const age = day - n.ash[j + 1];
         const x = (i % W) * TS;
         const y = Math.floor(i / W) * TS;
         const a = Math.max(0.12, 0.62 - age * 0.012);
         // the edge of a burn is ragged; inside it the black runs on unbroken
-        const inner = ash.has(i - 1) && ash.has(i + 1) && ash.has(i - W) && ash.has(i + W);
+        const inner = !!(ash[i - 1] && ash[i + 1] && ash[i - W] && ash[i + W]);
         if (inner) ground.rect(x, y, TS, TS).fill({ color: 0x2b2420, alpha: a });
         else ground.roundRect(x + 1 + hash2(i, 8, 40) * 3, y + 1 + hash2(i, 9, 40) * 3, TS - 4, TS - 4, 8).fill({ color: 0x2b2420, alpha: a * 0.85 });
         if (age < 3) ground.circle(x + hash2(i, 1, 40) * TS, y + hash2(i, 2, 40) * TS, 1.6).fill({ color: 0xff7a2a, alpha: 0.5 });
         else ground.circle(x + hash2(i, 3, 40) * TS, y + hash2(i, 4, 40) * TS, 2.2).fill({ color: 0x5b6b3a, alpha: Math.min(0.6, age * 0.02) });
       }
+      for (let j = 0; j < n.ash.length; j += 2) { ash[n.ash[j]] = 0; done[n.ash[j]] = 0; }
+      // water and cracks stay off building floors (fields excepted: they flood and split like any ground)
+      const floor = new Set<number>();
+      for (const b of c.blds) if (b.k !== 'field') floor.add(b.id);
+      const onFloor = (i: number): boolean => c.sb[i] > 0 && floor.has(c.sb[i]);
       // the water over the low ground
       if (lvl > 0 && n.fl) {
         const l = n.fl.l;
@@ -70,6 +87,7 @@ export class NatureView {
           const d = l[j + 1];
           if (d > lvl) continue;
           const i = l[j];
+          if (onFloor(i)) continue;
           const deep = Math.min(1, (lvl - d + 1) / 2);
           ground.rect((i % W) * TS, Math.floor(i / W) * TS, TS, TS).fill({ color: deep > 0.6 ? 0x3d6f9a : 0x5b8db5, alpha: 0.45 + deep * 0.3 });
         }
@@ -77,6 +95,7 @@ export class NatureView {
       // cracks in the ground
       if (n.cr) {
         for (const i of n.cr.l) {
+          if (onFloor(i)) continue;
           const x = (i % W) * TS;
           const y = Math.floor(i / W) * TS;
           const h1 = hash2(i, 5, 41);
@@ -268,7 +287,9 @@ export class NatureView {
     if (qk !== undefined && tf >= qk && tf - qk < TICKS_PER_HOUR * 3 && qk !== this.shook) { this.shook = qk; this.shakeMs = 1800; }
     if (this.shakeMs <= 0) return [0, 0];
     this.shakeMs = Math.max(0, this.shakeMs - dt);
-    const amp = 9 * (this.shakeMs / 1800);
+    // gentler on a phone, and none at all for those who asked for less motion
+    if (calm()) return [0, 0];
+    const amp = (window.innerWidth <= 760 ? 4.5 : 9) * (this.shakeMs / 1800);
     return [Math.sin(time * 0.09) * amp, Math.cos(time * 0.13) * amp * 0.7];
   }
 }
