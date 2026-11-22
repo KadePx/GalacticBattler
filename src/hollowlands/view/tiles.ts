@@ -448,6 +448,15 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
   const late: (() => void)[] = [];
   const W = c.w;
   const stAt = (x: number, y: number): number => (x < 0 || y < 0 || x >= W || y >= c.h ? 0 : c.st[y * W + x]);
+  /** Where two walls meet at a square inside corner, carry the dark outline round it. */
+  const innerCorners = (x: number, y: number, px: number, py: number, edge: number, faceH: number): void => {
+    for (const dx of [-1, 1]) for (const dy of [-1, 1]) {
+      if (!isWall(stAt(x + dx, y)) || !isWall(stAt(x, y + dy)) || isWall(stAt(x + dx, y + dy))) continue;
+      const ex = dx > 0 ? px + TS - 2 : px;
+      if (dy > 0) g.rect(ex, py + TS - faceH, 2, faceH).fill(edge);
+      else g.rect(ex, py, 2, 2).fill(edge);
+    }
+  };
   // ---- the town wall, drawn as one continuous line ----
   // Each tile draws its half of the line to every neighbour on the wall, so straight runs, diagonal
   // runs, corners, towers and gates all meet at tile edges and tile corners with no gaps.
@@ -456,6 +465,7 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
     const i = y * W + x;
     if (!c.st[i]) return false;
     const q = blds.get(c.sb[i]);
+    if (q?.k === 'palisade') return c.st[i] === B.PALISADE || c.st[i] === B.DOOR;
     if (!q || !WALL_PARTS.has(q.k)) return false;
     return q.k === 'wtower' || isLine(c.st[i]);
   };
@@ -597,6 +607,7 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
       const shade = (sx: number, sy: number, w: number, h: number, r: number): void => {
         g.roundRect(sx + 1.5, sy + 2, w, h, r).fill({ color: 0x140c06, alpha: 0.28 });
       };
+      if (b?.k === 'palisade' && s === B.PALISADE) { drawLine(x, y, cx, cy, false); continue; }
       if (b && WALL_PARTS.has(b.k) && s !== B.PAVING && s !== B.RUBBLE) {
         const flank = b.k === 'tgate' && (b.s === 'tgate~H' || b.s === 'tgate~V') && (s === B.CTOWER || s === B.PALISADE);
         if (b.k === 'wtower' || flank) { drawBlock(x, y, px, py, b, s); continue; }
@@ -667,6 +678,7 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
             const ns = isWall(stAt(x, y - 1)) && isWall(stAt(x, y + 1)) && !isWall(stAt(x - 1, y)) && !isWall(stAt(x + 1, y));
             if ((ew && x % 2 === 0) || (ns && y % 2 === 0)) drawWindow(g, x, y, ew, false);
           }
+          innerCorners(x, y, px, py, edge, 7);
           if (pal.snow > 0.5) g.rect(px + l, py + u, TS - l - r, 3).fill({ color: 0xf2f5f7, alpha: 0.55 });
           // a wall that steps diagonally (round towers, cut corners) is joined by a slanted piece
           // drawn over the empty corner between the two
@@ -798,11 +810,20 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           const ns = isCastleWall(stAt(x, y - 1)) || isCastleWall(stAt(x, y + 1));
           const ew = isCastleWall(stAt(x - 1, y)) || isCastleWall(stAt(x + 1, y));
           const walk = tower ? 0x6e6f77 : 0x7d7e86;
-          if (ew || !ns) g.rect(px + l, cy - 3, TS - l - r, 6).fill(walk);
-          if (ns) g.rect(cx - 3, py + u, 6, TS - u - d).fill(walk);
+          const joins = (dx: number, dy: number): boolean => { const n = stAt(x + dx, y + dy); return isCastleWall(n) || n === B.DOOR || n === B.GATE; };
+          g.rect(cx - 3, cy - 3, 6, 6).fill(walk);
+          if (joins(-1, 0)) g.rect(px, cy - 3, TS / 2, 6).fill(walk);
+          if (joins(1, 0)) g.rect(cx, cy - 3, TS / 2, 6).fill(walk);
+          if (joins(0, -1)) g.rect(cx - 3, py, 6, TS / 2).fill(walk);
+          if (joins(0, 1)) g.rect(cx - 3, cy, 6, TS / 2).fill(walk);
           const merlon = (mx: number, my: number): void => { g.rect(mx, my, 4.5, 4.5).fill(tower ? 0xa9aab2 : 0xb6b7bf).stroke({ width: 0.8, color: edge }); };
           if (ew || !ns) for (const mx of [px + 2, px + 9.5, px + 17]) { if (!isCastleWall(stAt(x, y - 1))) merlon(mx, py + u + 0.5); if (!isCastleWall(stAt(x, y + 1))) merlon(mx, py + TS - d - 5); }
-          if (ns) for (const my of [py + 2, py + 9.5, py + 17]) { if (!isCastleWall(stAt(x - 1, y))) merlon(px + l + 0.5, my); if (!isCastleWall(stAt(x + 1, y))) merlon(px + TS - r - 5, my); }
+          if (ns) for (const my of [py + 2, py + 9.5, py + 17]) {
+            if (my + 4.5 > py + TS - d) continue; // never over the wall's south face
+            if (!isCastleWall(stAt(x - 1, y))) merlon(px + l + 0.5, my);
+            if (!isCastleWall(stAt(x + 1, y))) merlon(px + TS - r - 5, my);
+          }
+          innerCorners(x, y, px, py, edge, 8);
           if (tower) g.rect(px + l, py + u, TS - l - r, TS - u - d).stroke({ width: 1.2, color: 0x3a3b42, alpha: 0.6 });
           // a pennant on each tower, once the colony can dye cloth
           // (at the top corner of each tower: over the middle of a square tower, on top of a narrow one)
