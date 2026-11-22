@@ -448,19 +448,109 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
   const late: (() => void)[] = [];
   const W = c.w;
   const stAt = (x: number, y: number): number => (x < 0 || y < 0 || x >= W || y >= c.h ? 0 : c.st[y * W + x]);
-  // the ditch in front of the town wall: a dark trench on the open ground just outside the line
-  const ditch = (x: number, y: number): void => {
-    const dx = x - c.cx;
-    const dy = y - c.cy;
-    const ax = Math.abs(dx);
-    const ay = Math.abs(dy);
-    const ox = ax >= ay * 0.4142 ? Math.sign(dx) : 0;
-    const oy = ay >= ax * 0.4142 ? Math.sign(dy) : 0;
-    if (stAt(x + ox, y + oy)) return;
-    const qx = (x + ox) * TS;
-    const qy = (y + oy) * TS;
-    g.rect(qx, qy, TS, TS).fill({ color: 0x2a2216, alpha: 0.32 });
-    g.rect(qx + 3, qy + 3, TS - 6, TS - 6).fill({ color: 0x1a140c, alpha: 0.28 });
+  // ---- the town wall, drawn as one continuous line ----
+  // Each tile draws its half of the line to every neighbour on the wall, so straight runs, diagonal
+  // runs, corners, towers and gates all meet at tile edges and tile corners with no gaps.
+  const lineAt = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= W || y >= c.h) return false;
+    const i = y * W + x;
+    if (!c.st[i]) return false;
+    const q = blds.get(c.sb[i]);
+    if (!q || !WALL_PARTS.has(q.k)) return false;
+    return q.k === 'wtower' || isLine(c.st[i]);
+  };
+  const lineLinks = (x: number, y: number): [number, number][] => {
+    const out: [number, number][] = [];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (lineAt(x + dx, y + dy)) out.push([dx, dy]);
+    // a diagonal step only where no square neighbour already carries the line round the corner
+    for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+      if (lineAt(x + dx, y + dy) && !lineAt(x + dx, y) && !lineAt(x, y + dy)) out.push([dx, dy]);
+    }
+    return out;
+  };
+  const band = (mx: number, my: number, links: [number, number][], width: number, color: number, alpha = 1): void => {
+    for (const [dx, dy] of links) g.moveTo(mx, my).lineTo(mx + dx * TS / 2, my + dy * TS / 2).stroke({ width, color, alpha, cap: 'butt' });
+    g.circle(mx, my, width / 2).fill({ color, alpha });
+  };
+  /** Points every `step` px along this tile's half of the line, for stakes and merlons. */
+  const along = (mx: number, my: number, links: [number, number][], step: number): [number, number, number, number][] => {
+    const out: [number, number, number, number][] = [[mx, my, 0, 0]];
+    for (const [dx, dy] of links) {
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const ux = dx / len;
+      const uy = dy / len;
+      for (let t = step; t < (len * TS) / 2; t += step) out.push([mx + ux * t, my + uy * t, ux, uy]);
+    }
+    return out;
+  };
+  const drawLine = (x: number, y: number, mx: number, my: number, inStone: boolean): void => {
+    const links = lineLinks(x, y);
+    band(mx + 1, my + 5, links, 17, 0x140c06, 0.26);
+    if (inStone) {
+      band(mx, my + 3, links, 16, 0x1c1d22);
+      band(mx, my + 3, links, 13, 0x55565e);
+      band(mx, my, links, 15, 0x1c1d22);
+      band(mx, my, links, 12, 0x9a9ba3);
+      band(mx, my, links, 5, 0x7d7e86);
+      for (const [px, py, ux, uy] of along(mx, my, links, 6)) {
+        if (!ux && !uy) continue;
+        for (const side of [-1, 1]) g.rect(px - uy * side * 4.4 - 1.7, py + ux * side * 4.4 - 1.7, 3.4, 3.4).fill(0xb6b7bf).stroke({ width: 0.6, color: 0x1c1d22 });
+      }
+      if (pal.snow > 0.5) band(mx, my - 2, links, 5, 0xf2f5f7, 0.5);
+      return;
+    }
+    // sharpened logs standing side by side, nearest drawn last
+    const posts = along(mx, my, links, 4.6).sort((p, q) => p[1] - q[1] || p[0] - q[0]);
+    for (const [px, py] of posts) {
+      const tone = hash2(Math.round(px), Math.round(py), 71) > 0.5 ? 0x7a5232 : 0x8a6440;
+      g.roundRect(px - 2.8, py - 6, 5.6, 13, 2).fill(tone).stroke({ width: 0.9, color: 0x2a1d12 });
+      g.circle(px, py - 4.4, 1.5).fill(0xc9a27a);
+    }
+    if (pal.snow > 0.5) band(mx, my - 5, links, 3, 0xf2f5f7, 0.45);
+  };
+  /** A tower, or a gatehouse's flanking tower: one solid block across all its tiles. */
+  const drawBlock = (x: number, y: number, px: number, py: number, q: Bld, s0: number): void => {
+    const i = y * W + x;
+    const same = (dx: number, dy: number): boolean => {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= c.h) return false;
+      const j = ny * W + nx;
+      if (c.sb[j] !== c.sb[i] || !c.st[j]) return false;
+      return q.k === 'wtower' || c.st[j] === s0;
+    };
+    const inStone = q.mat === 1;
+    const edge = inStone ? 0x1c1d22 : 0x2a1d12;
+    const faceC = inStone ? 0x55555c : 0x5a3c26;
+    const topC = inStone ? 0x8d8e96 : 0x8f6a45;
+    const l = same(-1, 0) ? 0 : 1.5;
+    const r = same(1, 0) ? 0 : 1.5;
+    const u = same(0, -1) ? 0 : 1.5;
+    const d = same(0, 1) ? 0 : 7;
+    g.rect(px, py, TS, TS).fill(edge);
+    g.rect(px + l, py + u, TS - l - r, TS - u - (d ? 1.5 : 0)).fill(faceC);
+    g.rect(px + l, py + u, TS - l - r, TS - u - d).fill(topC);
+    if (inStone) {
+      g.rect(px + l, py + 11.5, TS - l - r, 0.9).rect(px + ((x + y) & 1 ? 7 : 16), py + u, 0.9, 11).fill({ color: 0x4a4b52, alpha: 0.55 });
+      const merlon = (mx: number, my: number): void => { g.rect(mx, my, 4.5, 4.5).fill(0xb0b1b9).stroke({ width: 0.8, color: edge }); };
+      if (!same(0, -1)) for (const mx of [px + 2, px + 9.5, px + 17]) merlon(mx, py + u + 0.5);
+      if (!same(0, 1)) for (const mx of [px + 2, px + 9.5, px + 17]) merlon(mx, py + TS - d - 5);
+      if (!same(-1, 0)) for (const my of [py + 2, py + 9.5, py + 13]) merlon(px + l + 0.5, my);
+      if (!same(1, 0)) for (const my of [py + 2, py + 9.5, py + 13]) merlon(px + TS - r - 5, my);
+    } else {
+      for (let n = 1; n < 4; n++) g.rect(px + l, py + n * 6, TS - l - r, 0.8).fill({ color: 0x4a3120, alpha: 0.6 });
+      const rim = 0x6a4426;
+      if (!same(0, -1)) g.rect(px + l, py + u, TS - l - r, 3.5).fill(rim);
+      if (!same(0, 1)) g.rect(px + l, py + TS - d - 3.5, TS - l - r, 3.5).fill(rim);
+      if (!same(-1, 0)) g.rect(px + l, py + u, 3.5, TS - u - d).fill(rim);
+      if (!same(1, 0)) g.rect(px + TS - r - 3.5, py + u, 3.5, TS - u - d).fill(rim);
+    }
+    if (s0 === B.DOOR) g.rect(px + 7, py + 7, 10, 8).fill(0x2a1d12).stroke({ width: 1, color: edge });
+    if (dyed && q.k === 'wtower' && x === q.x && y === q.y) {
+      const [field, metal] = houseColours(c);
+      late.push(() => drawPennant(g, x, y, field, metal));
+    }
+    if (pal.snow > 0.5) g.rect(px + l, py + u, TS - l - r, 3).fill({ color: 0xf2f5f7, alpha: 0.5 });
   };
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
@@ -507,6 +597,20 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
       const shade = (sx: number, sy: number, w: number, h: number, r: number): void => {
         g.roundRect(sx + 1.5, sy + 2, w, h, r).fill({ color: 0x140c06, alpha: 0.28 });
       };
+      if (b && WALL_PARTS.has(b.k) && s !== B.PAVING && s !== B.RUBBLE) {
+        const flank = b.k === 'tgate' && (b.s === 'tgate~H' || b.s === 'tgate~V') && (s === B.CTOWER || s === B.PALISADE);
+        if (b.k === 'wtower' || flank) { drawBlock(x, y, px, py, b, s); continue; }
+        if (s !== B.GATE) { drawLine(x, y, cx, cy, s === B.CWALL || s === B.CTOWER); continue; }
+        if (b.s === 'tgate~p') {
+          // a postern: the line runs on, with a small iron-bound door set in it
+          drawLine(x, y, cx, cy, b.mat === 1);
+          const shutP = !!c.walls?.shut;
+          g.roundRect(cx - 6.5, cy - 6.5, 13, 13, 2).fill(shutP ? 0x6a4426 : 0x3a2a1a).stroke({ width: 1.3, color: 0x1c1610 });
+          if (shutP) g.rect(cx - 6, cy - 3.5, 12, 1.2).rect(cx - 6, cy + 2.5, 12, 1.2).fill(0x2c2f36);
+          else g.rect(cx - 4, cy - 4, 8, 8).fill({ color: 0xcdbb94, alpha: 0.75 });
+          continue;
+        }
+      }
       if (s >= B.BED && roofed && s !== B.GRAVE && (s < B.FLOOR_BARE || s === B.STRAW || CASTLE_FURN.has(s) || (isTechThing(s) && s !== B.WHEEL))) floor();
 
       switch (s) {
@@ -675,7 +779,6 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
         }
         case B.CWALL:
         case B.CTOWER: {
-          if (b && WALL_PARTS.has(b.k)) ditch(x, y);
           // the castle's walls: thick dressed stone, darker and heavier than any house wall, with
           // merlons along the wall-walk; the towers rounder and capped with a ring of them
           const tower = s === B.CTOWER;
@@ -712,8 +815,6 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           break;
         }
         case B.PALISADE: {
-          // the town's palisade has a ditch dug in front of it
-          if (b && WALL_PARTS.has(b.k)) ditch(x, y);
           // a ring of sharpened stakes: logs side by side along the line, points outward
           const link = (dx: number, dy: number): boolean => { const n = stAt(x + dx, y + dy); return n === B.PALISADE || n === B.GATE || (n === B.DOOR && c.sb[(y + dy) * W + x + dx] === c.sb[i]); };
           const along = link(-1, 0) || link(1, 0);
