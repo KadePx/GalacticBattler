@@ -11,6 +11,7 @@ import { depart, die } from './life';
 import { endNow, think } from './mood';
 import { findPath } from './path';
 import { STAGE, has, idleAct, pawnById, per, posAt, stage } from './pawn';
+import { relicCount } from './exped';
 import { Rand, S } from './rng';
 import { addFact, learn } from './social';
 import { campIdle, endSiege } from './siege';
@@ -146,7 +147,7 @@ function stepFoe(c: Colony, f: Foe, tx: number, ty: number, adj: boolean, spd: n
 
 function defense(c: Colony, p: Pawn): number {
   // wardens wear what armour the colony has; walls are better still
-  return p.sk[0] * 0.6 + (isWarden(c, p) ? 3 : 0) + (onTower(c, p) ? 3 : 0) + (p.act.why === 'wallpost' ? 1.5 : 0) + (c.stock.weapons >= 1 ? 1.5 : 0) + (p.act.k === 'fight' ? 1.5 : 0) + (p.act.k === 'hide' ? 2 : 0) - (isDown(p) ? 4 : 0);
+  return p.sk[0] * 0.6 + (isWarden(c, p) ? 3 : 0) + (onTower(c, p) ? 3 : 0) + (p.act.why === 'wallpost' ? 1.5 : 0) + (c.stock.weapons >= 1 ? 1.5 : 0) + (p.act.k === 'fight' ? 1.5 : 0) + (p.act.k === 'hide' ? 2 : 0) - (isDown(p) ? 4 : 0) + (c.exp && c.exp.rel.length ? Math.min(1.5, relicCount(c, 'def') * 0.75) : 0);
 }
 
 function rout(c: Colony, band: number): void {

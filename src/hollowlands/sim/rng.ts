@@ -97,4 +97,5 @@ export const S = {
   TECH: 23,
   VISIT: 24,
   NATURE: 25,
+  EXPED: 26,
 } as const;

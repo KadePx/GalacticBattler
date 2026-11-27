@@ -36,6 +36,8 @@ export const B = {
   // water wheel, a baker's oven, a potter's kiln, a glass furnace, tanning and dye vats, a steel
   // furnace, a jeweller's bench, a printing press
   MILLSTONE: 75, SAILS: 76, WHEEL: 77, OVEN: 78, KILN: 79, GLASSFURN: 80, TANVAT: 81, DYEVAT: 82, BLOOMERY: 83, JEWELBENCH: 84, PRESS: 85,
+  // a relic an expedition brought home, on its stand in the hall (see exped.ts)
+  RELIC: 86,
 } as const;
 
 /** Street furniture: stands on its own, outside any building. */
@@ -54,7 +56,9 @@ export type ActK =
   | 'chess' | 'darts' | 'music' | 'read' | 'study' | 'berserk' | 'subdue'
   | 'shop' | 'sell'
   // lending a hand when the land turns on the colony (see nature.ts: act.d says what), and a duel
-  | 'aid' | 'duel';
+  | 'aid' | 'duel'
+  // an expedition: mustering at the gate, walking out, walking home (act.why says which)
+  | 'trek';
 
 export interface Act {
   k: ActK;
@@ -246,6 +250,8 @@ export interface Pawn {
   ask?: { k: string; o?: Id; n?: number; x: number };
   /** the tool they carry for their work: [kind, wear left 0..100] */
   tool?: [string, number];
+  /** a player's colonist who has stepped forward for the next expedition: until this tick */
+  vol?: number;
   /** set when they die this tick; swept at the end of the tick */
   gone?: boolean;
 }
@@ -387,6 +393,44 @@ export interface Nat {
 
 export interface Ev { t: number; k: string; a?: Id; b?: Id; s?: string; n?: number }
 
+/** Somewhere an expedition can go: its kind (ruin, cave, tomb, wreck, tower), name, danger 1-3, what it is said to hold, and days of road each way. */
+export interface XSite { k: string; name: string; d: number; p: string; far: number }
+
+/** A relic on display: which kind, its name, who brought it home and when, where from, what it does, its tile (-1 while it has no place) and the floor under it. */
+export interface XRelic { id: number; k: number; name: string; by: Id; t: number; from: string; fx: string; i: number; f: number }
+
+/**
+ * A party sent out to explore (see exped.ts). While they are away its people are held here, off
+ * the map and out of the colony's list, but still the colony's own: homes, families and trades kept.
+ */
+export interface XParty {
+  id: number; site: XSite; lead: Id;
+  /** everyone who set out (the fallen too), and what each went as */
+  ids: Id[]; ro: string[];
+  /** those off the map */
+  pw: Pawn[];
+  /** 0 mustering, 1 walking out, 2 away, 3 walking home, 4 missing */
+  m: number;
+  /** called, leaves, due back, came back in at the gate (0 until then) */
+  t0: number; go: number; back: number; t3: number;
+  /** where they muster, and where they are welcomed home */
+  x: number; y: number; wx: number; wy: number;
+  /** days planned at the site, and days out so far */
+  stay: number; day: number;
+  /** the tale so far, a line a day */
+  beats: Ev[];
+  silver: number; iron: number; goods: number; lore: number;
+  /** a relic found (its kind, -1 none), and its name */
+  relic: number; rn: string;
+  /** wounds taken, who fell, a captive freed, whether word that they are overdue has gone round */
+  hurt: number; fallen: Id[]; cap: number; od: number;
+  /** a map to somewhere further */
+  map?: XSite;
+}
+
+/** An expedition that is over: who went, where, when, how it ended, and its tale. */
+export interface XDone { id: number; site: XSite; lead: Id; ids: Id[]; t0: number; t1: number; out: string; beats: Ev[] }
+
 /** Something that happened (or is said to have) that people can know and pass on. */
 export interface Fact { id: number; k: string; a: Id; b?: Id; t: number; real: boolean; s?: string }
 
@@ -504,6 +548,13 @@ export interface Colony {
   trad?: Partial<Record<'spring' | 'summer', { name: string; n: number; champ?: Id }>>;
   /** the land's own events and the colony's dramas (see nature.ts) */
   nat?: Nat;
+  /**
+   * Expeditions (see exped.ts): the next party's id, the day the next may be called, the party out
+   * now, relics on display and the next relic's id, places known from maps, places already searched,
+   * dead colonies nearby (told to us by the region), expeditions past, and lone survivors of a lost
+   * party still on their way home (who, when they come in, from where, which expedition)
+   */
+  exp?: { n: number; nx: number; l: XParty[]; rel: XRelic[]; nr: number; sites: XSite[]; seen: string[]; dead: string[]; done: XDone[]; late: { pw: Pawn; t: number; site: string; id: number }[] };
 }
 
 export const idx = (c: { w: number }, x: number, y: number): number => y * c.w + x;

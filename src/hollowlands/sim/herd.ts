@@ -6,7 +6,7 @@ import { cacheOf } from './cache';
 import { cells } from './data/buildings';
 import { bump, log } from './events';
 import { think } from './mood';
-import { STAGE, pawnById, posAt, stage } from './pawn';
+import { STAGE, awayById, pawnById, posAt, stage } from './pawn';
 import { Rand, S } from './rng';
 import type { Animal, Bld, Colony, Pawn } from './types';
 
@@ -170,6 +170,8 @@ export function dailyHerd(c: Colony): void {
   for (const d of (c.herd ?? []).filter((a) => a.k === 'dog')) {
     const o = d.owner ? pawnById(c, d.owner) : undefined;
     if (o && !o.gone) continue;
+    // their person is away with an expedition: they wait at home
+    if (d.owner && awayById(c, d.owner)) continue;
     if (o?.gone || d.owner) {
       // their person is gone: they wait a while, then choose someone new
       if (r.chance(0.6)) continue;

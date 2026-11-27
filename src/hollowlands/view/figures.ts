@@ -292,6 +292,22 @@ export function drawHeld(g: Graphics, k: string): void {
       haft(15, WOOD, 1.4);
       g.poly([0, -16.5, 1.6, -12.5, 0, -11.5, -1.6, -12.5]).fill(IRON).stroke({ width: 0.5, color: DARK });
       break;
+    case 'xpack': case 'xbanner': case 'xloot':
+      // an expedition: a pack on the back with a bedroll on top; the leader's banner, a walking staff, or a sack of what they found
+      g.roundRect(-18.2, -3.4, 5.6, 7.4, 1.8).fill(0x7a5a36).stroke({ width: 0.6, color: DARK });
+      g.roundRect(-19, -5.6, 7.2, 2.6, 1.3).fill(0xb9a37a).stroke({ width: 0.5, color: DARK });
+      g.rect(-15.9, -3, 1, 6.6).fill(0x4a3420);
+      if (k === 'xbanner') {
+        g.moveTo(0, 3).lineTo(0, -25).stroke({ width: 1.5, color: WOOD, cap: 'round' });
+        g.poly([0.8, -25, 14, -21.4, 0.8, -16.4]).fill(0xc23a3a).stroke({ width: 0.6, color: DARK });
+        g.poly([0.8, -22.6, 7, -21.2, 0.8, -19]).fill(0xe8c75a);
+        g.circle(0, -25.8, 1.3).fill(0xe8c75a);
+      } else if (k === 'xloot') {
+        g.roundRect(-3.4, -6.6, 7.4, 8.2, 3).fill(0xd8c9a0).stroke({ width: 0.6, color: DARK });
+        g.rect(-1.4, -7.4, 3.2, 1.3).fill(0xa8946a);
+        g.circle(1.8, -8.2, 1.1).circle(-0.6, -8.6, 0.9).fill(0xf2cf5a);
+      } else g.moveTo(0, 3).lineTo(0, -10.5).stroke({ width: 1.3, color: WOOD, cap: 'round' });
+      break;
     case 'sword':
       g.rect(-0.9, -1, 1.8, 3.4).fill(0x5a3d28);
       g.rect(-2.6, -1.6, 5.2, 1.2).fill(0x9a8a6a);
@@ -470,7 +486,7 @@ const BADGE_INK = 0xe9edf6;
 /** The badge key for an action: the kind of work when working, otherwise the action itself. */
 export function activityKey(k: string, w: string | undefined): string {
   if (k === 'work') return w ? 'w:' + w : '';
-  if (k === 'idle' || k === 'wander' || k === 'walk' || k === 'sleep') return '';
+  if (k === 'idle' || k === 'wander' || k === 'walk' || k === 'sleep' || k === 'trek') return '';
   return k;
 }
 

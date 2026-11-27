@@ -9,6 +9,7 @@ import { think, getRel } from './mood';
 import { pawnById, per } from './pawn';
 import { opinion } from './social';
 import { exposeCultist, exposePlot, joinCult, joinPlot } from './intrigue';
+import { setAskVenture, volunteer } from './exped';
 import { AX, type Colony, type Id, type Input, type Pawn } from './types';
 
 export interface AskDef { k: string; title: string; text: string; opts: [string, string][] }
@@ -19,6 +20,7 @@ export const ASKS: Record<string, AskDef> = {
   report: { k: 'report', title: 'Caught in the act', text: 'They saw {o} stealing from the stores. Nobody else did.', opts: [['report', 'Turn them in'], ['hush', 'Say nothing'], ['blackmail', 'Make them pay for silence']] },
   plot: { k: 'plot', title: 'A quiet word', text: '{o} says the ruler has to go, and asks if they are in.', opts: [['join', 'Join the plot'], ['no', 'Want no part of it'], ['warn', 'Warn the ruler']] },
   cult: { k: 'cult', title: 'After dark', text: '{o} speaks of the Hollow Mother, who fills what is empty, and asks them to come and see.', opts: [['join', 'Go with them'], ['no', 'Refuse'], ['report', 'Tell the ruler']] },
+  venture: { k: 'venture', title: 'Talk of an expedition', text: 'A party is to be sent out beyond the colony\'s land to search an old place for what it holds. It is days away and not safe, though they would be brought home alive.', opts: [['go', 'Step forward'], ['no', 'Stay home']] },
   settle: { k: 'settle', title: 'Talk of leaving', text: 'People are talking about setting out to found a new colony.', opts: [['go', 'Go with them (or alone, if no party forms)'], ['stay', 'Stay here'], ['see', 'Let them decide']] },
 };
 
@@ -29,6 +31,8 @@ export function ask(c: Colony, p: Pawn, k: string, o?: Id, n?: number, days = 2)
   log(c, 'asked', p.id, o, k);
   return true;
 }
+
+setAskVenture((c, p) => { ask(c, p, 'venture', undefined, undefined, 1); });
 
 function betroth(c: Colony, p: Pawn, o: Pawn): void {
   getRel(p, o.id).k = 'betrothed';
@@ -80,6 +84,8 @@ export function settleAsk(c: Colony, p: Pawn, v: string): void {
     const choice = v || (p.dev >= 2 ? 'no' : p.mood < 40 ? 'join' : 'no');
     if (choice === 'join') joinCult(c, p, o);
     else if (choice === 'report' && o && !o.gone) exposeCultist(c, p, o);
+  } else if (a.k === 'venture') {
+    if (v === 'go') volunteer(c, p);
   } else if (a.k === 'settle') {
     if (v === 'go') { p.roots = -1; p.leaveT = c.tick; }
     else if (v === 'stay') { p.roots = 1; p.leaveT = undefined; }

@@ -6,7 +6,8 @@ import { PROF_LIST } from './data/professions';
 import { TICKS_PER_DAY } from '../config';
 import { log, note } from './events';
 import { think } from './mood';
-import { STAGE, pawnById, stage } from './pawn';
+import { volunteer } from './exped';
+import { STAGE, ownedPawn, pawnById, stage } from './pawn';
 import { SKILLS, type Colony, type Dead, type Input, type Pawn } from './types';
 
 export const RESOLVE_CAP = 6;
@@ -23,6 +24,7 @@ export const NUDGES: Record<string, NudgeDef> = {
   yearn: { k: 'yearn', name: 'Yearn to leave', blurb: 'Go with the next settler party; if none sets out within about 15 days, leave alone for a neighbouring colony.', cost: 1, needs: 'self' },
   stay: { k: 'stay', name: 'Put down roots', blurb: 'Whatever happens, this is home.', cost: 1, needs: 'self' },
   trade: { k: 'trade', name: 'Ask for a trade', blurb: 'Take up this trade if the colony has a place for it. Whoever holds it now is found other work.', cost: 1, needs: 'trade' },
+  venture: { k: 'venture', name: 'Step forward', blurb: 'Go with the next expedition the colony sends out. Days away, and not safe, but you will be brought home alive.', cost: 1, needs: 'self' },
   focus: { k: 'focus', name: 'Focus', blurb: 'Throw yourself into this work for a few days.', cost: 1, needs: 'skill' },
 };
 
@@ -58,6 +60,11 @@ export function nudge(c: Colony, e: Input): void {
   const p = c.pawns.find((x) => x.owner === e.owner && !x.gone);
   const def = NUDGES[String(e.kind)];
   if (!p || !def || stage(c, p) < STAGE.TEEN) return;
+  if (def.k === 'venture') {
+    if ((p.vol !== undefined && p.vol > c.tick) || stage(c, p) !== STAGE.ADULT || !spend(c, p, def.cost)) return;
+    volunteer(c, p);
+    return;
+  }
   if (def.needs === 'self') {
     if (!spend(c, p, def.cost)) return;
     p.roots = def.k === 'stay' ? 1 : -1;
@@ -92,7 +99,7 @@ export function nudge(c: Colony, e: Input): void {
 
 /** The player's last colonist, if they have no living one. */
 export function lastLife(c: Colony, owner: string): Dead | null {
-  if (!owner || c.pawns.some((p) => p.owner === owner && !p.gone)) return null;
+  if (!owner || ownedPawn(c, owner)) return null;
   for (let i = c.dead.length - 1; i >= 0; i--) if (c.dead[i].owner === owner) return c.dead[i];
   return null;
 }

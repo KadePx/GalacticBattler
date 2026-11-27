@@ -25,6 +25,7 @@ import { findPath, walkTicks } from './path';
 import { STAGE, gainXp, has, idleAct, mkAct, pawnById, per, posAt, stage, stat } from './pawn';
 import { Rand, S } from './rng';
 import { addFact, attracted, favourite, insult, interact, learn, opinion } from './social';
+import { expAct } from './exped';
 import { AX, type ActK, type Bld, type Colony, type Pawn, type WorkK } from './types';
 
 interface ActOpts { adj?: boolean; b?: number; o?: number; w?: WorkK; d?: number }
@@ -569,6 +570,8 @@ export function decide(c: Colony, p: Pawn): void {
   if (c.nat && natAct(c, p, r, st, hour, (k, x, y, dur, why, o) => setAct(c, p, k, x, y, dur, why, o ?? {}))) return;
   if (p.food < 18 && hasFood(c) && goEat(c, p, r, 'starving')) return;
   if (p.rest < 8 && goSleep(c, p, 'exhausted')) return;
+  // an expedition mustering, leaving or coming home: its own people, and those who see them off and welcome them back
+  if (c.exp && c.exp.l.length && expAct(c, p, st, (k, x, y, dur, why) => setAct(c, p, k, x, y, dur, why))) return;
   if (c.gath && t >= c.gath.t0 - 12 && t < c.gath.t1 - 4 && wantsToAttend(c, p, st) && attend(c, p, r)) return;
   if (((night && p.rest < 80) || p.rest < 22) && !p.brk && goSleep(c, p, night ? 'night' : 'tired')) return;
   // when food is rationed, only the ruler's table eats its fill

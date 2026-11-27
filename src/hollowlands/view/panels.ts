@@ -4,22 +4,23 @@
 // here touches the colony.
 
 import { festivalName } from '../sim/festivals';
-import { TICKS_PER_DAY } from '../config';
+import { SEASON_NAMES, TICKS_PER_DAY, when } from '../config';
 import { CROPS, TPL } from '../sim/data/buildings';
 import { PROFS, PROF_LIST } from '../sim/data/professions';
 import { RACES } from '../sim/data/races';
 import { foodDays } from '../sim/econ';
 import { FAITHS, mainFaith } from '../sim/faith';
 import { GOVS, approval, rulerTitle } from '../sim/gov';
-import { fullName, pawnById, person, stage } from '../sim/pawn';
+import { awayById, fullName, pawnById, person, stage } from '../sim/pawn';
+import { RELIC_CAP, RELIC_KINDS, awayPawns } from '../sim/exped';
 import type { Colony, Dead, Ev, Id, Pawn } from '../sim/types';
-import { WEIGHT, clockText, dateText, evText, raceName, wareName } from '../text';
+import { WEIGHT, clockText, dateText, dangerWord, evText, outcomeWord, promiseWord, raceName, roleWord, siteWord, wareName } from '../text';
 import { bldCard, deadCard, face, guestCard, guestFace, linkNames, pawnCard, shortDate, type CardUi } from './card';
 import { VIS_INFO, guests } from '../sim/visit';
 import { MARKET_POP, WARES, daysToMarket, marketOpen, priceMult, priceOf } from '../sim/market';
 import { TECHS, TECH_LIST } from '../sim/data/tech';
 import { costOf, nextTech } from '../sim/tech';
-import { RES_NAMES, WEATHER, actText, causeText, esc, moodColor } from './words';
+import { RES_NAMES, WEATHER, actText, awayWhere, causeText, esc, moodColor } from './words';
 
 export type Sel = { k: 'pawn'; id: Id } | { k: 'dead'; id: Id } | { k: 'bld'; id: number } | { k: 'guest'; id: number } | null;
 export type Tab = 'feed' | 'people' | 'colony';
@@ -271,8 +272,21 @@ export class Panels {
         const doing = g.m === 0 ? 'Coming up the road' : g.m === 2 ? 'Leaving' : c.tick < g.ta ? 'Walking about' : 'In the colony';
         h += `<div class="row guest${g.id === gSel ? ' sel' : ''}" data-g="${g.id}">${guestFace(c, g, 38)}<div class="n"><b><i class="gm">✦</i>${esc(g.first + ' ' + g.fam)}</b><small>${esc(VIS_INFO[g.k]?.name ?? g.k)}${n > 1 ? ` · party of ${n}` : ''}</small><small class="plain">${doing}</small></div><div class="v"><span class="tie guest">Guest</span></div></div>`;
       }
-      h += `<h3>People of ${esc(c.name)}</h3>`;
     }
+    // away with an expedition: still the colony's own, but not here to be counted
+    const away = awayPawns(c);
+    if (away.length) {
+      const w0 = awayWhere(c, away[0].id);
+      h += `<h3>Away <span class="legend">${w0 && w0.day ? `day ${w0.day} · ` : ''}not counted until they are home</span></h3>`;
+      for (const p of away) {
+        const w = awayWhere(c, p.id);
+        const q = c.exp!.l.find((o) => o.ids.includes(p.id));
+        const role = q ? roleWord(q.ro[q.ids.indexOf(p.id)]) : '';
+        const mine = p.id === v.me;
+        h += `<div class="row away${p.id === selId ? ' sel' : ''}" data-p="${p.id}">${face(c, p, 38)}<div class="n"><b class="${mine ? 'mine' : p.owner ? 'player' : ''}">${mine || p.owner ? '<i class="pm">◆</i>' : ''}${esc(fullName(p))}</b><small>${esc(raceName(p.race))}${role ? ' · ' + esc(role) : ''}</small><small class="plain wrap">${esc(w ? w.where : 'Away')}</small></div><div class="v"><span class="tie away">${w && w.day ? `Day ${w.day}` : 'Missing'}</span></div></div>`;
+      }
+    }
+    if (here.length || away.length) h += `<h3>People of ${esc(c.name)}</h3>`;
     for (const p of list) h += this.personRow(c, p, p.id === selId, p.id === v.me);
     return h;
   }
@@ -394,6 +408,7 @@ export class Panels {
     h += trades || '<div class="hint">Nobody holds a trade yet.</div>';
 
     h += discoveriesBlock(c);
+    h += expeditionsBlock(c, this.ui);
 
     h += marketBlock(c);
 
@@ -429,7 +444,7 @@ export class Panels {
     let title = '';
     let body = '';
     if (s?.k === 'pawn') {
-      const p = pawnById(c, s.id);
+      const p = pawnById(c, s.id) ?? awayById(c, s.id);
       if (p) { this.ui.following = v.follow === p.id; this.ui.mine = v.me === p.id; title = p.first; body = pawnCard(c, p, this.ui); }
     } else if (s?.k === 'dead') {
       const d = c.dead.find((x) => x.id === s.id);
@@ -450,13 +465,50 @@ export class Panels {
       this.selKey = key;
       this.ui.open.clear();
       this.ui.allRel = false;
-      if (s?.k === 'pawn') { const p = pawnById(c, s.id); if (p) body = pawnCard(c, p, this.ui); }
+      if (s?.k === 'pawn') { const p = pawnById(c, s.id) ?? awayById(c, s.id); if (p) body = pawnCard(c, p, this.ui); }
       this.cbody.scrollTop = 0;
     }
     this.put($('ctitle'), esc(title));
     this.put(this.cbody, body);
     if (was) this.hooks.layout();
   }
+}
+
+const RELIC_FX: Record<string, string> = { mood: 'It lifts the heart to see it', def: 'Those who fight for the colony stand a little firmer', dev: 'People come to pray before it', lore: 'The learned study it' };
+
+/** Expeditions in the colony panel: the party out now and its tale so far, the relics in the hall, places a map has shown, and the expeditions before. */
+function expeditionsBlock(c: Colony, ui: CardUi): string {
+  const x = c.exp;
+  const sent = Math.round(c.stats.expeditions ?? 0);
+  let h = `<h3>Expeditions <span class="legend">${sent} sent${x && x.rel.length ? ` · ${x.rel.length} of ${RELIC_CAP} relics` : ''}</span></h3>`;
+  if (!x || (!x.l.length && !x.done.length && !x.rel.length)) return h + '<div class="hint">No party has gone out yet. A few times a year, when the colony is at peace and fed, a handful of the bold are sent beyond its land to search an old ruin, a cave or a tomb.</div>';
+  const who = (id: Id): string => { const p = person(c, id); return p ? `<a class="who" data-p="${p.id}">${esc(fullName(p))}</a>` : 'someone now gone'; };
+  const tale = (beats: Ev[]): string => beats.map((e) => `<div class="beat"><small>${SEASON_NAMES[when(e.t).season].slice(0, 3)} ${when(e.t).day}</small><span>${linkNames(c, evText(c, e), [e.a, e.b])}</span></div>`).join('');
+  const place = (s: { k: string; name: string; d: number; p: string; far: number }): string => `${esc(siteWord(s.k))}, ${s.far === 1 ? 'a day' : s.far + ' days'} away · ${esc(dangerWord(s.d))} · said to hold ${esc(promiseWord(s.p))}`;
+  for (const q of x.l) {
+    const state = q.m === 0 ? 'Mustering at the gate' : q.m === 1 ? 'Setting out' : q.m === 3 ? 'Home, walking in from the gate' : q.od ? 'Overdue: no word' : (awayWhere(c, q.pw[0]?.id ?? 0)?.where ?? 'Away');
+    const day = awayWhere(c, q.pw[0]?.id ?? 0)?.day ?? 0;
+    h += `<div class="xcard"><div class="xhead"><b>${esc(q.site.name[0].toUpperCase() + q.site.name.slice(1))}</b><span class="tie away">${day ? `Day ${day}` : 'Today'}</span></div>`;
+    h += `<small>${place(q.site)}</small><small class="plain">${esc(state)}</small>`;
+    h += `<div class="xwho">${q.ids.map((id, i) => `${who(id)} <i>${esc(q.fallen.includes(id) ? 'fell' : roleWord(q.ro[i]))}</i>`).join(' · ')}</div>`;
+    h += tale(q.beats) + '</div>';
+  }
+  for (const r of x.rel) {
+    h += `<div class="row disc relic"${r.i >= 0 ? ` data-tile="${r.i}"` : ''}><div class="n"><b>${esc(r.name[0].toUpperCase() + r.name.slice(1))}</b><small class="wrap">Brought home from ${esc(r.from)} by ${who(r.by)} · ${r.i >= 0 ? (c.blds.find((b) => b.id === c.sb[r.i])?.k === 'hall' ? 'on show in the hall' : 'on show in the castle hall') : 'put away safe'}</small><small class="plain wrap">${esc(RELIC_FX[r.fx] ?? '')}.</small></div><div class="yr">${shortDate(r.t)}</div></div>`;
+  }
+  for (const s of x.sites) h += `<div class="hint">A map shows the way to <b>${esc(s.name)}</b>: ${place(s)}.</div>`;
+  for (const l of x.late) h += `<div class="hint">${who(l.pw.id)} is still missing since the expedition to ${esc(l.site)}.</div>`;
+  for (let i = x.done.length - 1; i >= 0; i--) {
+    const d = x.done[i];
+    const key = 'x' + d.id;
+    const open = ui.open.has(key);
+    h += `<div class="xcard past"><div class="xhead" data-open="${key}"><b>${esc(d.site.name[0].toUpperCase() + d.site.name.slice(1))}</b><span class="yr">${SEASON_NAMES[when(d.t0).season]} ${when(d.t0).day}, year ${when(d.t0).year} ${open ? '▾' : '▸'}</span></div>`;
+    h += `<small class="plain">${esc(outcomeWord(d.out))} · led by ${who(d.lead)} · party of ${d.ids.length}</small>`;
+    if (open) h += `<div class="xwho">${d.ids.map((id) => who(id)).join(' · ')}</div>` + tale(d.beats);
+    h += '</div>';
+  }
+  void RELIC_KINDS;
+  return h;
 }
 
 /** The market in the colony panel: when it is, what things cost, what changed hands last time, and how full people's purses are. */

@@ -10,7 +10,7 @@ import { CASTLE_KINDS, DECOR, cellCode, isDecor, shapeOf, spots } from './data/b
 import { log } from './events';
 import { RANK } from './gov';
 import { think } from './mood';
-import { STAGE, pawnById, stage } from './pawn';
+import { STAGE, awayById, pawnById, stage } from './pawn';
 import { assignBeds, build, sharesWithStrangers } from './planner';
 import { B, type Bld, type Colony, type Pawn } from './types';
 
@@ -191,7 +191,7 @@ export function upkeep(c: Colony): void {
     if (b.own) {
       const o = pawnById(c, b.own);
       // the family moved on to somewhere better, or died out: it is anyone's now
-      if (!o) { const h = heirOf(c, b, b.own); if (h) b.own = h; else delete b.own; }
+      if (!o) { if (!awayById(c, b.own)) { const h = heirOf(c, b, b.own); if (h) b.own = h; else delete b.own; } }
       // (a family that has only just bought or finished it has a few days to move in)
       else if (o.home !== b.id && b.beds.every((x) => x !== o.id) && c.tick - (b.got ?? 0) > GRACE) delete b.own;
     }

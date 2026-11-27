@@ -54,6 +54,8 @@ const CAUSES: Record<string, string> = {
   foe_soldier: 'was cut down by the king\'s soldiers', bounty: 'was taken away in chains by a bounty hunter', fled_hunter: 'fled before a bounty hunter could take them',
   foe_bandit: 'was cut down by bandits', foe_slaver: 'was killed by slavers', foe_orc: 'was butchered by orc raiders', foe_wolf: 'was torn apart by wolves',
   foe_ghoul: 'was dragged down by ghouls', foe_troll: 'was crushed by a troll', foe_boar: 'was gored by a boar',
+  x_crush: 'was crushed under falling stone on an expedition, far from home', x_fall: 'fell to their death on an expedition, far from home', x_trap: 'was killed by an old trap on an expedition, far from home',
+  x_beast: 'was killed by something in the dark on an expedition, far from home', x_drown: 'drowned in black water on an expedition, far from home', x_lost: 'went out with an expedition and never came home',
   sick_flux: 'died of the flux', sick_fever: 'died of rot fever', sick_plague: 'died of the grey plague', sick_cough: 'died of lung-cough', sick_pox: 'died of goblin pox',
 };
 
@@ -94,6 +96,90 @@ const FACTS: Record<string, string> = {
   bastard: 'a child\'s true father',
 };
 
+const SITE_WORD: Record<string, string> = { camp: 'what a host left behind,', ruin: 'an old ruin', cave: 'a cave', tomb: 'an old tomb', wreck: 'a wreck', tower: 'an old tower' };
+const PROMISE_WORD: Record<string, string> = { relic: 'something old and precious', silver: 'buried silver', iron: 'good old iron', goods: 'fine things left behind', lore: 'old knowledge' };
+const DANGER_WORD = ['', 'not thought dangerous', 'said to be dangerous', 'a place few come back from'];
+const OUT_WORD: Record<string, string> = { triumph: 'A famous expedition', good: 'Came home with something to show for it', thin: 'Came home with little', empty: 'Came home with nothing', grim: 'Came home, but not all of them', lost: 'Never came home', off: 'Called off' };
+const ROLE_WORD: Record<string, string> = { lead: 'leader', sword: 'fighter', scout: 'scout', lore: 'scholar', heal: 'healer', pack: 'porter' };
+export const siteWord = (k: string): string => SITE_WORD[k] ?? 'an old place';
+export const promiseWord = (p: string): string => PROMISE_WORD[p] ?? 'who knows what';
+export const dangerWord = (d: number): string => DANGER_WORD[d] ?? '';
+export const outcomeWord = (k: string): string => OUT_WORD[k] ?? '';
+export const roleWord = (k: string): string => ROLE_WORD[k] ?? '';
+const NUM_WORD = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
+
+const ROAD = [
+  'made good time on the old road', 'forded a cold river and camped on the far bank', 'lost half a day to a washed-out track', 'shared a fire with a tinker who knew the way',
+  'walked all day in the rain', 'slept in a shepherd\'s hut and were glad of it',
+];
+const ROAD_HOME = ['made good time on the road home', 'crossed the river again, lower now', 'walked from first light to dark', 'slept under the same oak as on the way out', 'met a carter who had news of home', 'could see the smoke of home by evening'];
+const BAR: Record<string, string[]> = {
+  camp: ['a ditch full of sharpened stakes', 'a supply wagon tipped on its side', 'a burnt palisade, still smouldering'],
+  ruin: ['a cellar stair half fallen in', 'a vault door rusted shut', 'a well shaft with rungs going down into the dark'],
+  cave: ['a flooded passage', 'a crack barely wide enough to crawl through', 'a drop with no bottom their torches could find'],
+  tomb: ['a sealed door carved with warnings', 'a passage strewn with old bones', 'a stone slab that would take all of them to move'],
+  wreck: ['a hold full of black water', 'a hull tipped on its side and groaning', 'a cabin door swollen shut'],
+  tower: ['a stair with no rail, climbing into the dark', 'a trapdoor bolted from above', 'a floor half fallen away'],
+};
+const HAZ: Record<string, [string, string]> = {
+  collapse: ['The roof came down. {a} was dug out hurt but alive.', 'The roof came down on {a}.'],
+  fall: ['{a} fell, and was hauled back up on a rope with something broken.', '{a} fell, a long way.'],
+  trap: ['Something old and sharp swung out of the wall and opened {a}\'s arm.', 'Something old and sharp swung out of the wall. {a} never saw it.'],
+  beast: ['Something lived in there. It got its teeth into {a} before they drove it off.', 'Something lived in there. It took {a}.'],
+  water: ['The water rose faster than they could climb. {a} was pulled out half drowned.', 'The water rose faster than they could climb. {a} did not come up.'],
+};
+
+/** The feed's telling of an expedition (e.s is "place|detail", e.n the day of the journey times a thousand plus a count). */
+function expText(c: Colony, e: Ev): string {
+  const a = first(c, e.a);
+  const p = (e.s ?? '').split('|');
+  const site = p[0] || 'the wilds';
+  const n = e.n ?? 0;
+  const day = `Day ${Math.floor(n / 1000)}: `;
+  const m = n % 1000;
+  switch (e.k) {
+    case 'x_call': { const far = Number(p[2]) || 1; return `${full(c, e.a)} is gathering a party of ${NUM_WORD[n] ?? n} to seek out ${site}, ${siteWord(p[1])} ${far === 1 ? 'a day\'s walk' : `${NUM_WORD[far] ?? far} days' walk`} away. They leave from the gate this morning.`; }
+    case 'x_left': return `${full(c, e.a)} and ${NUM_WORD[n - 1] ?? n - 1} ${n - 1 === 1 ? 'other' : 'others'} walked out along the road with packs on their backs and a banner at their head, bound for ${site}.`;
+    case 'x_off': return `The expedition to ${site} has been called off for now.`;
+    case 'x_road': return `${day}the party ${(m >= 10 ? ROAD_HOME : ROAD)[m % 10] ?? ROAD[0]}.`;
+    case 'x_ambush': return `${day}${p[1] === 'wolves' ? 'wolves came at the camp in the night' : 'bandits were waiting where the road narrows'}. ${e.a ? `${a} was ${p[1] === 'wolves' ? 'bitten' : 'cut'} before they were driven off.` : 'The party drove them off unhurt.'}`;
+    case 'x_reach': return `${day}the party reached ${site}. ${m >= 3 ? 'Nobody liked the look of it.' : m === 2 ? 'They made camp outside and went in at first light.' : 'It was quiet, and long empty.'}`;
+    case 'x_dare': return `${day}${(BAR[p[1]] ?? BAR.ruin)[m % 3]} barred the way. ${a} would not turn back, and they went on in.`;
+    case 'x_care': return `${day}${(BAR[p[1]] ?? BAR.ruin)[m % 3]} barred the way. ${a} judged it not worth a life, and they searched what they could reach.`;
+    case 'x_hazard': return day + (HAZ[p[1]] ?? HAZ.collapse)[m ? 1 : 0].replace('{a}', a);
+    case 'x_find': return `${day}${a} ${p[1] === 'iron' ? `found ${m} bars of good old iron under the rubble` : p[1] === 'goods' ? `brought out ${m} loads of fine old things: glass, bronze and carved bone` : `turned up a rotted chest with ${m} silver in it`}.`;
+    case 'x_relic': return `${day}in the last chamber ${a} found ${p[1] ?? 'something old and precious'}.`;
+    case 'x_left_be': return `${day}${p[1] ?? 'something precious'} lay in the dead one's hands. ${a} would not rob a grave: they said a prayer and left it there.`;
+    case 'x_map': return `${day}${a} found a map scratched into a wall: the way to ${p[1] ?? 'somewhere further'}.`;
+    case 'x_lore': return `${day}${a} spent the day copying old carvings by candlelight.`;
+    case 'x_captive': return `${day}they found someone alive in there, caged and half starved. ${a} broke the lock.`;
+    case 'x_bare': return `${day}${['nothing but dust, bones and other people\'s footprints. Someone had been there first', 'they searched every corner and found nothing worth the carrying', 'whatever was there once is long gone'][m % 3]}.`;
+    case 'x_linger': return `${a} would not leave while there might be more to find. They stayed another day.`;
+    case 'x_homeward': return `${day}the party turned for home${p[1] === 'rich' ? ', packs heavy' : p[1] === 'grim' ? ', one fewer than set out' : p[1] === 'hurt' ? ', helping their wounded along' : p[1] === 'bare' ? ' with nothing to show for it' : ''}.`;
+    case 'x_back': return `The expedition is back from ${site}: ${NUM_WORD[n] ?? n} of them at the gate${p[1] === 'rich' ? ', bent under what they carry' : p[1] === 'grim' ? ', walking slowly' : p[1] === 'bare' ? ', packs empty' : ''}.`;
+    case 'x_home': {
+      const got: string[] = [];
+      if (Number(p[2]) > 0) got.push(`${p[2]} silver`);
+      if (Number(p[3]) > 0) got.push(`${p[3]} loads of fine goods`);
+      if (Number(p[4]) > 0) got.push(`${p[4]} bars of old iron`);
+      if (Number(p[5]) > 0) got.push('pages of old lore');
+      const list = got.length > 1 ? got.slice(0, -1).join(', ') + ' and ' + got[got.length - 1] : got[0];
+      const cost = Number(p[6]) > 0 ? ` ${NUM_WORD[Number(p[6])] ?? p[6]} of them did not come back.` : '';
+      if (p[1] === 'triumph') return `${full(c, e.a)}'s party is home from ${site}${list ? ` with ${list}` : ''}, and a tale people will be telling for years.${cost}`;
+      if (p[1] === 'empty') return `${full(c, e.a)}'s party is home from ${site} with nothing but sore feet.${cost}`;
+      return `${full(c, e.a)}'s party is home from ${site}${list ? ` with ${list}` : ''}.${cost}`;
+    }
+    case 'x_relic_set': return p[1] === 'store' ? `${p[0][0].toUpperCase() + p[0].slice(1)} ${/s of /.test(p[0]) ? 'have' : 'has'} been put away safe until there is a hall to show ${/s of /.test(p[0]) ? 'them' : 'it'} in.` : `${p[0][0].toUpperCase() + p[0].slice(1)} ${/s of /.test(p[0]) ? 'have' : 'has'} been set on a stand in the ${p[1] === 'keep' ? 'great hall of the castle' : 'hall'}, where everyone can see ${/s of /.test(p[0]) ? 'them' : 'it'}.`;
+    case 'x_feast': return `There will be a feast to welcome the expedition home.`;
+    case 'x_title': return `People have started calling ${a} "${first(c, e.a)} ${e.s ?? ''}".`;
+    case 'x_overdue': return `The party sent to ${site} should have been home days ago. There has been no word.`;
+    case 'x_mourned': return `Nobody has come back from ${site}. The colony has given the ${NUM_WORD[n] ?? n} of them up for lost.`;
+    case 'x_survivor': return `${full(c, e.a)} walked in at the gate alone, thin as a rake: the last of the party lost at ${site}.`;
+    case 'x_vol': return `${a} has stepped forward to go with the next expedition.`;
+    default: return `${e.k}: ${a}`;
+  }
+}
+
 /** How much an event matters: 3 life-changing, 2 notable, 1 colour, 0 noise. */
 export const WEIGHT: Record<string, number> = {
   death: 3, birth: 3, wedding: 3, lovers: 2, betrothed: 2, divorce: 3, breakup: 2, found_out: 3, affair: 2, bastard_plain: 3, stillbirth: 3,
@@ -117,6 +203,8 @@ export const WEIGHT: Record<string, number> = {
   n_elope: 3, n_eloped: 3, n_feud: 3, n_feud_clash: 2, n_feud_end: 2, n_feud_wed: 3, n_lost: 3, n_found: 3, n_lost_home: 2, n_challenge: 3, n_duel: 3, n_duel_off: 2, n_suitor: 3, n_noble_wed: 3,
   v_come: 2, v_gone: 1, v_shelter: 1, v_fair: 1, v_rare: 2, v_nosale: 1, v_finery: 1, v_festival: 2, v_played: 1, v_song: 2, v_saint: 2, v_offering: 1, v_converted: 2,
   v_takenin: 3, v_turnedaway: 3, v_healed: 2, v_blessed: 2, v_fields: 2, v_lights: 2, v_lore: 2, v_fortune: 2, v_paid: 3, v_refused: 3, v_kingmen: 3,
+  x_call: 2, x_left: 3, x_off: 1, x_road: 1, x_ambush: 2, x_reach: 2, x_dare: 2, x_care: 2, x_hazard: 3, x_find: 2, x_relic: 3, x_left_be: 2, x_map: 2, x_lore: 2, x_captive: 3, x_bare: 1, x_linger: 1,
+  x_homeward: 1, x_back: 3, x_home: 3, x_relic_set: 3, x_feast: 2, x_title: 3, x_overdue: 3, x_mourned: 3, x_survivor: 3, x_vol: 2,
   v_told: 2, v_miss: 2, v_lost: 1, v_bought: 3, v_beaten: 3, v_wounded: 3, v_fled: 3, v_taken: 3,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
@@ -198,6 +286,7 @@ export function evText(c: Colony, e: Ev): string {
   const b = first(c, e.b);
   if (e.k.startsWith('v_')) return visitText(c, e);
   if (e.k.startsWith('n_')) return natText(c, e);
+  if (e.k.startsWith('x_')) return expText(c, e);
   switch (e.k) {
     case 'death': return `${full(c, e.a)} ${CAUSES[e.s ?? ''] ?? 'died'}${e.b && e.s === 'brawl' ? ` at the hands of ${full(c, e.b)}` : ''}.`;
     case 'birth': return `${full(c, e.b)} gave birth to ${a}${e.n && person(c, e.n) ? `, child of ${first(c, e.n)}` : ''}.`;
@@ -338,7 +427,7 @@ export function evText(c: Colony, e: Ev): string {
     case 'heirloom': return `${a} now keeps ${b}'s ${e.s ?? 'keepsake'}.`;
     case 'nudge': return e.s === 'yearn' ? `${a} has begun to look at the road.` : e.s === 'stay' ? `${a} has decided this is home.` : e.s === 'focus' ? `${a} has thrown themselves into their work.` : e.s === 'trade' ? (e.n !== undefined && e.n >= 0 && PROF_LIST[e.n] ? `${a} has asked to work as ${/^[aeiou]/i.test(PROF_LIST[e.n].name) ? 'an' : 'a'} ${PROF_LIST[e.n].name.toLowerCase()}.` : `${a} will take whatever trade suits them.`) : `${a} has ${b} on their mind.`;
     case 'blabbed': return `Drunk, ${a} let slip the secret they came here to bury. ${e.n} heard it.`;
-    case 'joined': return e.s?.startsWith('match:') ? `${full(c, e.a)} has arrived from ${e.s.slice(6)}, sent to be married.` : e.s?.startsWith('exile:') ? `${full(c, e.a)} has arrived, cast out of ${e.s.slice(6)}.` : e.s?.startsWith('migrant:') ? `${full(c, e.a)} has come from ${e.s.slice(8)} to start again.` : e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
+    case 'joined': return e.s?.startsWith('match:') ? `${full(c, e.a)} has arrived from ${e.s.slice(6)}, sent to be married.` : e.s?.startsWith('rescued:') ? `${full(c, e.a)} has come home with the expedition, freed from a cage at ${e.s.slice(8)}, and means to stay.` : e.s?.startsWith('exile:') ? `${full(c, e.a)} has arrived, cast out of ${e.s.slice(6)}.` : e.s?.startsWith('migrant:') ? `${full(c, e.a)} has come from ${e.s.slice(8)} to start again.` : e.s === 'refugee' ? `${full(c, e.a)} staggered in off the road, fleeing something worse.` : `${full(c, e.a)} has come to live here.`;
     case 'trader': return e.s ? `A caravan from ${e.s} stopped for the day.` : 'A trader\'s caravan stopped for the day.';
     case 'market_first': return `The first market was held in the square: ${e.n ?? 'a few'} stalls under bright awnings, and half the town came to look.`;
     case 'market': return marketText(c, e);
@@ -478,6 +567,7 @@ export function thoughtText(c: Colony, k: string, o?: Id): string {
 }
 
 const WHY: Record<string, string> = {
+  x_gather: 'Chosen for the expedition', x_leave: 'Chosen for the expedition', x_home: 'Back from the wilds', farewell: 'Someone of theirs is going', welcome: 'The expedition is home', away: 'Chosen for the expedition',
   hungry: 'Hungry', starving: 'Starving', tired: 'Worn out', exhausted: 'Collapsed from exhaustion', night: 'Time to sleep', break: 'Not in their right mind',
   bored: 'Needed a break', idle: 'Nothing pressing to do', free: 'Free time', love: 'Wanted to see their love', urge: 'Could not put it off any longer', crush: 'Could not stay away', friend: 'Wanted company', family: 'Wanted family',
   child: 'Being a child', baby: 'Being a baby', wedding: 'At the wedding', audience: 'Before the seat', trial: 'At the trial', sermon: 'Hearing the sermon', funeral: 'At the funeral', feast: 'At the feast', festival: 'At the festival', grief: 'Grieving', new: 'Just arrived',

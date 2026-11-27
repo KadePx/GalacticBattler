@@ -13,9 +13,10 @@ import { connect, fetchRegion, myHash, myId, regionMine, regionSeed, useColony, 
 import { WorldView } from './view/world';
 import { createColony, step, type Colony, type Ev, type Id, type RaceK } from './sim/index';
 import { checkSpec, type PawnSpec } from './sim/create';
-import { fullName, pawnById } from './sim/pawn';
+import { awayById, fullName, ownedPawn, pawnById } from './sim/pawn';
 import { startNat } from './sim/nature';
-import type { Dead, Pawn } from './sim/types';
+import type { Dead, Pawn, XSite } from './sim/types';
+import { callParty } from './sim/exped';
 import { WEIGHT, dateText, evText } from './text';
 import { Creator, randomSpec } from './view/creator';
 import { MapView } from './view/map';
@@ -80,9 +81,9 @@ function setFollow(id: Id): void {
 
 /** Open the card for anyone the colony has known. The dead get a memorial. */
 function openPerson(id: Id, focus = true): void {
-  if (pawnById(c, id)) {
+  if (pawnById(c, id) || awayById(c, id)) {
     setSel({ k: 'pawn', id });
-    if (focus && follow !== id) map.focusPawn(id, 1.2);
+    if (focus && follow !== id && pawnById(c, id)) map.focusPawn(id, 1.2);
   } else if (c.dead.some((d) => d.id === id)) {
     setSel({ k: 'dead', id });
   }
@@ -120,7 +121,7 @@ let mineHtml = '';
 let nextMine = 0;
 let toastTimer = 0;
 
-const myPawn = (): Pawn | null => c.pawns.find((p) => p.owner === me) ?? null;
+const myPawn = (): Pawn | null => ownedPawn(c, me) ?? null;
 function myDead(): Dead | null {
   for (let i = c.dead.length - 1; i >= 0; i--) if (c.dead[i].owner === me) return c.dead[i];
   return null;
@@ -416,7 +417,7 @@ function frame(dt: number): void {
     }
   }
   // Someone we were looking at has died or left: show their memorial instead.
-  if (sel?.k === 'pawn' && !pawnById(c, sel.id)) {
+  if (sel?.k === 'pawn' && !pawnById(c, sel.id) && !awayById(c, sel.id)) {
     const id = sel.id;
     setSel(c.dead.some((d) => d.id === id) ? { k: 'dead', id } : null);
   }
@@ -455,7 +456,7 @@ async function boot(): Promise<void> {
       c = fresh;
       acc = 0;
       map.setColony(c);
-      if (sel?.k === 'pawn' && !pawnById(c, sel.id)) setSel(null);
+      if (sel?.k === 'pawn' && !pawnById(c, sel.id) && !awayById(c, sel.id)) setSel(null);
       ui?.touch();
     });
     document.body.classList.add('live');
@@ -521,7 +522,7 @@ async function boot(): Promise<void> {
   syncMine();
   // a shared link opens straight onto someone's card
   const who = Number(q.get('who'));
-  if (who && (pawnById(c, who) || c.dead.some((d) => d.id === who))) openPerson(who);
+  if (who && (pawnById(c, who) || awayById(c, who) || c.dead.some((d) => d.id === who))) openPerson(who);
   else void digest();
   if (live) setInterval(() => { if (here && myPawn()) store.set('hl.seen.' + here, String(c.tick)); }, 60_000);
   document.getElementById('mine')?.classList.remove('hidden');
@@ -577,6 +578,8 @@ const hooks = {
   me: (): Pawn | null => myPawn(),
   /** Local test colonies only: set one of the land's events going now ('wildfire', 'flood', 'quake', 'meteors', 'aurora', 'locusts', 'haunt', 'curse', 'dragon', 'elope', 'feud', 'lost', 'duel', 'suitor'). */
   nature: (k: string): boolean => startNat(c, k),
+  /** Local test colonies only: call an expedition now (it musters at the gate at eight the next morning). */
+  expedition: (site?: XSite): boolean => !!callParty(c, site),
   /** Forget the colonist remembered for this seed (they will not be sent in again on reload). */
   forgetMine: (): void => store.del(mineKey),
   map,

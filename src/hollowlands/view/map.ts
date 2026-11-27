@@ -556,7 +556,7 @@ export class MapView {
       }
       v.bubble.visible = talking;
       // what is in their hand: the tool for the work, a weapon in a fight, a guard's spear
-      const hk = asleep || inBed || stage(c, p) <= 1 || p.brk?.k === 'seized' ? '' : heldFor(p, this.blds);
+      const hk = asleep || inBed || stage(c, p) <= 1 || p.brk?.k === 'seized' ? '' : p.act.k === 'trek' ? trekHeld(c, p) : heldFor(p, this.blds);
       if (hk !== v.heldKey) { v.heldKey = hk; drawHeld(v.held, hk); }
       v.held.visible = !!hk && s >= 0.5;
       if (v.held.visible) {
@@ -565,7 +565,7 @@ export class MapView {
         v.held.position.set(6.2 * v.size * boost, v.fig.position.y + 3 * v.size);
         // tools swing while the work goes on; at rest they lean
         const working = !moving && p.act.k === 'work' && c.tick >= p.act.ta;
-        v.held.rotation = working && SWINGING.has(hk) ? -0.2 + Math.sin(this.time * 0.012 + p.id) * 0.7 : p.act.k === 'fight' && !moving ? Math.sin(this.time * 0.02 + p.id) * 0.6 : 0.18;
+        v.held.rotation = working && SWINGING.has(hk) ? -0.2 + Math.sin(this.time * 0.012 + p.id) * 0.7 : p.act.k === 'fight' && !moving ? Math.sin(this.time * 0.02 + p.id) * 0.6 : hk[0] === 'x' ? 0 : 0.18;
       }
       // what they are up to: shown beside them, faded while they walk there
       const ak = asleep || p.brk?.k === 'seized' ? '' : activityKey(p.act.k, p.act.w);
@@ -1538,6 +1538,14 @@ function drawWare(g: Graphics, k: string, x: number, y: number, n: number): void
 }
 
 /** What a colonist has in hand right now ('' for nothing). */
+/** With an expedition: the leader carries the banner, the rest their packs (and a sack of what they found, coming home rich). */
+function trekHeld(c: Colony, p: Pawn): string {
+  const q = c.exp?.l[0];
+  if (!q || !q.ids.includes(p.id)) return '';
+  if (q.lead === p.id) return 'xbanner';
+  return q.m === 3 && (q.relic >= 0 || q.silver + q.goods * 3 + q.iron * 3 >= 30) ? 'xloot' : 'xpack';
+}
+
 function heldFor(p: Pawn, blds: Map<number, Bld>): string {
   const a = p.act;
   // at the mill, the ovens, the kiln, the press: the things of that trade (glazing a home: the glass)

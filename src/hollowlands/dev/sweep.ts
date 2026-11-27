@@ -8,7 +8,8 @@ import { TRAITS } from '../sim/data/traits';
 import { createWorld, stepWorld } from '../sim/world';
 import { evText } from '../text';
 import { bioText, pretty } from '../view/words';
-import { RES } from '../sim/types';
+import { B, RES } from '../sim/types';
+import { awayPawns, RELIC_CAP } from '../sim/exped';
 
 declare const process: { argv: string[]; exit(code: number): never };
 const years = Number(process.argv[2]) || 6;
@@ -24,7 +25,9 @@ for (let s = 1; s <= worlds; s++) {
     for (let k = 0; k < TICKS_PER_DAY; k++) stepWorld(w);
     for (const c of w.colonies) {
       const ids = new Set(c.pawns.map((p) => p.id));
-      const known = new Set([...ids, ...c.dead.map((x) => x.id)]);
+      const away = awayPawns(c);
+      const awayIds = new Set(away.map((p) => p.id));
+      const known = new Set([...ids, ...awayIds, ...c.dead.map((x) => x.id)]);
       for (const k of RES) { const v = c.stock[k]; if (!Number.isFinite(v)) flag(`stock ${k} not a number`); else if (v < -0.01) flag(`stock ${k} negative`); }
       if (c.alarm && c.tick - c.alarm > 400) flag('alarm stuck');
       if (c.gath && c.tick > c.gath.t1 + 5) flag('gathering stuck');
@@ -40,7 +43,7 @@ for (let s = 1; s <= worlds; s++) {
         if (p.coin < -0.5) flag('coin negative');
         if (p.gone) flag('gone colonist still listed');
         if (p.act.t1 < c.tick - 2) { const key = c.id + ':' + p.id; stuck.set(key, (stuck.get(key) ?? 0) + 1); if (stuck.get(key)! > 2) flag(`stuck in ${p.act.k}`); }
-        if (p.sp) { const o = c.pawns.find((x) => x.id === p.sp); if (!o) flag('partner not here'); else if (o.sp !== p.id) flag('partner not mutual'); }
+        if (p.sp) { const o = c.pawns.find((x) => x.id === p.sp) ?? away.find((x) => x.id === p.sp); if (!o) flag('partner not here'); else if (o.sp !== p.id) flag('partner not mutual'); }
         if (p.home && !c.blds.some((b) => b.id === p.home && b.beds.includes(p.id))) flag('home without bed');
         if (p.brk && p.brk.k !== 'seized' && c.tick - p.brk.x > 20) flag(`break ${p.brk.k} never ended`);
         if (p.brk?.k === 'seized' && !c.foes.some((f) => f.held === p.id)) flag('seized with no captor');
@@ -53,7 +56,7 @@ for (let s = 1; s <= worlds; s++) {
         for (const sk of p.sk) if (!Number.isFinite(sk)) flag('skill not a number');
       }
       for (const e of c.log) if (evText(c, e).startsWith(e.k + ':')) flag(`no words for event ${e.k}`);
-      for (const b of c.blds) { if (!Number.isFinite(b.q) || !Number.isFinite(b.prog)) flag('building number bad'); for (const id of b.beds) if (id && !ids.has(id)) flag('bed owned by nobody'); }
+      for (const b of c.blds) { if (!Number.isFinite(b.q) || !Number.isFinite(b.prog)) flag('building number bad'); for (const id of b.beds) if (id && !ids.has(id) && !awayIds.has(id)) flag('bed owned by nobody'); }
       // visitors: on the map, few at a time, and never staying on long past their leaving day
       for (const v of c.vis?.l ?? []) {
         if (v.x < 0 || v.y < 0 || v.x >= c.w || v.y >= c.h) flag('visitor off the map');
@@ -86,6 +89,42 @@ for (let s = 1; s <= worlds; s++) {
         if (n.nw && (!ids.has(n.nw.a) || !ids.has(n.nw.b))) flag('noble match with someone gone');
         for (const k of Object.keys(n)) if ((n as unknown as Record<string, unknown>)[k] === undefined) flag(`nature field ${k} left undefined`);
       }
+      // expeditions: nobody away for ever, nobody both away and on the map, every party in a state that makes sense
+      const x = c.exp;
+      if (x) {
+        const D = TICKS_PER_DAY;
+        if (awayIds.size !== away.length) flag('someone away twice');
+        for (const p of away) {
+          if (ids.has(p.id)) flag('away colonist also on the map');
+          if (p.gone) flag('away colonist marked gone');
+          if (c.dead.some((d) => d.id === p.id)) flag('away colonist among the dead');
+          for (const [n, v] of [['food', p.food], ['rest', p.rest], ['mood', p.mood], ['hp', p.hp]] as const) if (!Number.isFinite(v)) flag(`away ${n} not a number`);
+        }
+        if (x.l.length > 1) flag('two expeditions at once');
+        for (const q of x.l) {
+          if (q.m < 0 || q.m > 4) flag('party in no known state');
+          if (!q.ids.includes(q.lead)) flag('party leader not in the party');
+          if (q.ids.length !== q.ro.length) flag('party roles out of step');
+          if ((q.m === 0 || q.m === 3) && q.pw.length) flag('party at home but held off the map');
+          if ((q.m === 2 || q.m === 4) && !q.pw.length) flag('party away with nobody in it');
+          for (const id of q.ids) if (!ids.has(id) && !q.pw.some((p) => p.id === id) && !q.fallen.includes(id) && q.m !== 3) flag('party member nowhere');
+          if (q.m === 0 && c.tick > q.go + 2) flag('party never set out');
+          if (q.m === 1 && c.tick > q.go + D) flag('party stuck at the gate');
+          if (q.m === 2 && c.tick > q.back + D * 25) flag('party away for ever');
+          if (q.m === 3 && c.tick > q.t3 + D) flag('party never got home from the gate');
+          if (q.m === 4 && c.tick > q.back + D * 9) flag('missing party never given up');
+          if (q.ids.length > 5 || q.ids.length < 1) flag('party of the wrong size');
+        }
+        for (const l of x.late) if (c.tick > l.t + D * 25) flag('survivor never came home');
+        if (x.rel.length > RELIC_CAP) flag('too many relics');
+        for (const r of x.rel) if (r.i >= c.st.length || r.i < -1) flag('relic off the map');
+        let stands = 0;
+        for (let i = 0; i < c.st.length; i++) if (c.st[i] === B.RELIC) stands++;
+        if (stands > x.rel.length) flag('relic stand with no relic');
+        if (x.done.length > 8 || x.sites.length > 3 || x.seen.length > 24) flag('expedition lists piling up');
+        if (away.length > Math.max(5, c.pawns.length * 0.2)) flag('too many away at once');
+      }
+      for (const p of c.pawns) if (p.act.k === 'trek' && !(x && x.l.some((q) => q.ids.includes(p.id)))) { if (p.act.t1 > c.tick + 30) flag('trekking with no party'); }
       for (const f of c.foes) if (!Number.isFinite(f.hp) || f.x < 0 || f.y < 0 || f.x >= c.w || f.y >= c.h) flag('foe off the map');
     }
   }

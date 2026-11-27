@@ -15,7 +15,7 @@ import { chooseCrop } from './farm';
 import { bump, log, note } from './events';
 import { bury } from './life';
 import { think } from './mood';
-import { STAGE, pawnById, stage } from './pawn';
+import { STAGE, awayById, pawnById, stage } from './pawn';
 import { hash32, S } from './rng';
 import { gateWays } from './walls';
 import { B, F, T, type Bld, type Colony, type Pawn } from './types';
@@ -429,7 +429,7 @@ export const canBuild = (c: Colony, b: Bld): boolean => !b.built && (b.need.wood
 
 export function assignBeds(c: Colony, quiet: boolean): void {
   const homes = c.blds.filter((b) => b.built && b.beds.length > 0);
-  for (const b of homes) for (let i = 0; i < b.beds.length; i++) if (b.beds[i] && !pawnById(c, b.beds[i])) b.beds[i] = 0;
+  for (const b of homes) for (let i = 0; i < b.beds.length; i++) if (b.beds[i] && !pawnById(c, b.beds[i]) && !awayById(c, b.beds[i])) b.beds[i] = 0;
   for (const p of c.pawns) {
     if (!p.home) continue;
     const b = homes.find((x) => x.id === p.home);

@@ -432,6 +432,26 @@ export const TH_LIST: ThDef[] = [
   h('duelshy', 'Did not turn up to the duel', -6, DAY * 6),
   h('sawduel', 'Watched a duel at dawn', 2, DAY * 2),
   h('noblefeast', 'A wedding of two noble houses', 8, DAY * 3),
+  // expeditions
+  h('x_relics', 'Old wonders on show in the hall', 2, 0),
+  h('x_relicjoy', 'Proud of what our people brought home', 2, 0),
+  h('x_relicawe', 'Stood a long while before the relic', 4, DAY * 6),
+  h('x_kinaway', '{o} is away with the expedition', -3, DAY * 6),
+  h('x_fear', 'The expedition is overdue', -8, DAY * 6),
+  h('x_lostparty', 'The expedition never came home', -5, DAY * 8),
+  h('x_lostmate', 'Lost {o} out in the wilds', -10, DAY * 12),
+  h('x_kinhome', '{o} came home safe', 8, DAY * 6, { op: 6 }),
+  h('x_miracle', 'One of the lost walked in at the gate', 4, DAY * 4),
+  h('x_survived', 'Came home when all the others were lost', -6, DAY * 20),
+  h('x_freed', '{o} cut my chains', 10, DAY * 20, { op: 30 }),
+  h('x_triumph', 'Came home from a famous expedition', 12, DAY * 12),
+  h('x_goodtrip', 'Came home with something to show for it', 7, DAY * 8),
+  h('x_backhome', 'Home again from the wilds', 4, DAY * 5),
+  h('x_emptytrip', 'All that way for nothing', -3, DAY * 5),
+  h('x_grimtrip', 'We did not all come home', -6, DAY * 10),
+  h('x_roadmate', 'Walked a hard road with {o}', 0, DAY * 20, { op: 12 }),
+  h('x_welcomed', 'Cheered the expedition home', 3, DAY * 3),
+  h('x_leftbe', 'We left the dead their own', 3, DAY * 6),
 ];
 
 export const TH: Record<string, ThDef> = Object.fromEntries(TH_LIST.map((x) => [x.k, x]));

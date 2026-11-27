@@ -7,6 +7,7 @@ import { TPL } from '../sim/data/buildings';
 import { breakLine } from '../sim/mood';
 import { cursedThing } from '../sim/nature';
 import { person } from '../sim/pawn';
+import { TICKS_PER_DAY } from '../config';
 import type { Bio, Colony, Dead, Id, Pawn } from '../sim/types';
 import { evText } from '../text';
 
@@ -43,12 +44,12 @@ const ACT: Record<string, string> = {
   chess: 'Playing chess', darts: 'Throwing darts', music: 'Playing music', read: 'Reading', study: 'At school',
   fight: 'Fighting', flee: 'Running for it', hide: 'Hiding', tend: 'Tending the hurt', train: 'Training',
   shop: 'Buying from {o}', sell: 'Minding a stall',
-  aid: 'Lending a hand', duel: 'Duelling {o}',
+  aid: 'Lending a hand', duel: 'Duelling {o}', trek: 'With the expedition',
 };
 
 /** Lending a hand when the land turns (act.d), and a few acts done for an unusual reason (act.why). */
 const AID_ACT: Record<number, string> = { 1: 'Beating out the fire', 2: 'Heaping earth against the flood', 3: 'Searching the woods for {o}', 4: 'Clearing rubble', 5: 'Driving off the locusts', 6: 'Keeping vigil in the graveyard', 7: 'Getting rid of the cursed thing', 8: 'Going to see the fallen star' };
-const WHY_ACT: Record<string, string> = { lost: 'Lost in the woods', elope: 'Running off with {o}', dragon: 'Hiding from the dragon' };
+const WHY_ACT: Record<string, string> = { x_gather: 'Mustering at the gate with the expedition', x_leave: 'Setting out with the expedition', x_home: 'Home from the expedition', farewell: 'Seeing the expedition off', welcome: 'Welcoming the expedition home', lost: 'Lost in the woods', elope: 'Running off with {o}', dragon: 'Hiding from the dragon' };
 
 const GUEST_ACT: Record<string, string> = {
   minstrel: 'Listening to the minstrel', merchant: 'Looking over the merchant\'s wares', wizard: 'Hearing the wizard out', pilgrim: 'Talking faith with the pilgrims',
@@ -111,9 +112,43 @@ function natBio(c: Colony, b: Bio, o: string): string {
   }
 }
 
+/** Where someone away with an expedition is, as far as the colony knows, and how many days they have been gone (null if they are not away). */
+export function awayWhere(c: Colony, id: Id): { where: string; day: number; site: string } | null {
+  const x = c.exp;
+  if (!x) return null;
+  const today = Math.floor(Math.max(0, c.tick - 1) / TICKS_PER_DAY);
+  for (const q of x.l) {
+    if (!q.pw.some((p) => p.id === id)) continue;
+    const s = q.site;
+    const day = Math.max(1, today - Math.floor(q.go / TICKS_PER_DAY) + 1);
+    const due = Math.floor(q.back / TICKS_PER_DAY);
+    const d = q.m === 4 ? day - 1 : q.day;
+    const where = q.m === 1 ? `Setting out for ${s.name}` : q.od ? `Overdue from ${s.name}: no word` : today > due ? `Due home from ${s.name}` : d < s.far ? `On the road to ${s.name}` : d <= s.far + q.stay ? `At ${s.name}` : `On the road home from ${s.name}`;
+    return { where, day, site: s.name };
+  }
+  for (const l of x.late) if (l.pw.id === id) return { where: `Missing since the expedition to ${l.site}`, day: 0, site: l.site };
+  return null;
+}
+
+/** A line in someone's life story about an expedition (b.s is "place|how it went"). */
+function expBio(b: Bio, o: string): string {
+  const p = (b.s ?? '').split('|');
+  const end = p[1] === 'triumph' ? ', and came home famous' : p[1] === 'grim' ? '. Not everyone came home' : p[1] === 'empty' ? ', and came home with nothing' : p[1] === 'good' ? ', and came home with something to show for it' : '';
+  switch (b.k) {
+    case 'x_led': return `Led an expedition to ${p[0]}${end}.`;
+    case 'x_went': return `Went with ${o}'s expedition to ${p[0]}${end}.`;
+    case 'x_relic': return `Brought ${p[0]} home from ${p[1] ?? 'the wilds'}.`;
+    case 'x_title': return `Came to be called "${b.s ?? ''}".`;
+    case 'x_survived': return `Walked home alone, the last of the party lost at ${p[0]}.`;
+    case 'x_freed': return `Was freed from a cage at ${p[0]} by ${o}, and came home with them.`;
+    default: return 'Went on an expedition.';
+  }
+}
+
 /** A few words for what a colonist is doing right now. */
 export function actText(c: Colony, p: Pawn): string {
   const a = p.act;
+  if (a.why === 'away') { const w = awayWhere(c, p.id); if (w) return w.day ? `${w.where} (day ${w.day})` : w.where; }
   let s = a.k === 'work' && a.w ? WORK[a.w] ?? 'Working' : a.k === 'aid' ? AID_ACT[a.d ?? 0] ?? 'Lending a hand' : WHY_ACT[a.why] ?? ACT[a.k] ?? a.k;
   // at a shop, buying from its master only when the master is there; otherwise just shopping
   if (a.k === 'shop' && a.b) { const o = a.o ? person(c, a.o) : undefined; if (!o || !('act' in o) || o.act.b !== a.b) s = 'Shopping'; }
@@ -225,6 +260,7 @@ export function bioText(c: Colony, b: Bio): string {
     case 'freed': return 'Was freed.';
     default: if (b.k.startsWith('v_')) return visitBio(c, b, o);
       if (b.k.startsWith('n_')) return natBio(c, b, o);
+      if (b.k.startsWith('x_')) return expBio(b, o);
     return pretty(b.k) + (b.o ? ` (${o})` : '') + '.';
   }
 }

@@ -10,6 +10,7 @@ import { foeMap } from './cache';
 import { FOES, canFight, raise } from './combat';
 import { foodDays } from './econ';
 import { bump, log } from './events';
+import { campLeft } from './exped';
 import { think } from './mood';
 import { STAGE, pawnById, per, stage } from './pawn';
 import { Rand, S } from './rng';
@@ -158,6 +159,7 @@ export function endSiege(c: Colony): void {
   const days = Math.max(1, Math.round((c.tick - sg.t0) / TICKS_PER_DAY));
   log(c, 'siege', undefined, undefined, 'end:' + sg.name + ':' + how, days);
   if (how !== 'bought') for (const p of c.pawns) if (stage(c, p) >= STAGE.CHILD) think(c, p, 'siegelifted');
+  if (how !== 'bought') campLeft(c, sg.name);
   c.siege = undefined;
 }
 

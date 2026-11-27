@@ -224,6 +224,10 @@ export function deserialize(json: string): Colony {
   raw.sb = new Uint16Array(sb.buffer.slice(sb.byteOffset, sb.byteOffset + sb.byteLength));
   const c = raw as unknown as Colony;
   c.pawns = c.pawns.map(normPawn);
+  if (c.exp) {
+    for (const q of c.exp.l) q.pw = q.pw.map(normPawn);
+    for (const l of c.exp.late) l.pw = normPawn(l.pw);
+  }
   upgrade(c);
   return c;
 }

@@ -8,6 +8,7 @@ import { bump, log } from './events';
 import { die } from './life';
 import { think } from './mood';
 import { STAGE, has, pawnById, per, stage } from './pawn';
+import { expOf } from './exped';
 import { Rand, S } from './rng';
 import { AX, type Colony, type Input } from './types';
 
@@ -137,6 +138,9 @@ export function dailyMatch(c: Colony): void {
 export function abroadInput(c: Colony, e: Input): boolean {
   if (e.k === 'near') {
     c.near = (e.list as { id: string; name: string }[]) ?? [];
+    // colonies that have died nearby: somewhere for an expedition to search
+    if (Array.isArray(e.dead) && (c.exp || e.dead.length)) expOf(c).dead = (e.dead as string[]).map(String).slice(0, 6);
+    else if (c.exp && c.exp.dead.length) c.exp.dead = [];
     return true;
   }
   if (e.k === 'mod') {

@@ -32,10 +32,12 @@ export function nearLists(sites: Place[]): Delivery[] {
   for (const s of sites) {
     if (s.dead) continue;
     const list = nearest(sites, s.id).slice(0, 4).map((n) => ({ id: n.id, name: n.name }));
-    const key = list.map((n) => n.id).join(',');
+    // dead colonies within a few days' walk: their ruins are somewhere to send an expedition
+    const dead = sites.filter((d) => d.dead && d.id !== s.id && gap(d, s) <= 18 && !sites.some((o) => !o.dead && o.x === d.x && o.y === d.y)).sort((a, b) => gap(a, s) - gap(b, s) || (a.id < b.id ? -1 : 1)).slice(0, 4);
+    const key = list.map((n) => n.id).join(',') + (dead.length ? '|' + dead.map((n) => n.id).join(',') : '');
     if (key === (s.nearSent ?? '')) continue;
     s.nearSent = key;
-    out.push({ to: s.id, input: { k: 'near', list } });
+    out.push({ to: s.id, input: dead.length ? { k: 'near', list, dead: dead.map((n) => n.name) } : { k: 'near', list } });
   }
   return out;
 }

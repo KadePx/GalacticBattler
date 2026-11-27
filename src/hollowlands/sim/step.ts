@@ -25,6 +25,7 @@ import { dailyMarket, tickMarket } from './market';
 import { dailyTech } from './tech';
 import { dailyVisitors, stepVisitors } from './visit';
 import { dailyNature, stepNature } from './nature';
+import { dailyExped, stepExped } from './exped';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
@@ -49,6 +50,7 @@ function daily(c: Colony): void {
   dailyMarket(c);
   dailyVisitors(c);
   dailyNature(c);
+  dailyExped(c);
   // let go of faded memories and of people long forgotten
   for (const p of c.pawns) {
     for (const key in p.rel) {
@@ -73,6 +75,7 @@ export function step(c: Colony): void {
   if (c.herd?.length) stepHerd(c);
   if (c.vis && (c.vis.l.length || c.vis.nx)) stepVisitors(c);
   if (c.nat) stepNature(c);
+  if (c.exp && (c.exp.l.length || c.exp.late.length)) stepExped(c);
   if (c.foes.length) combatTick(c);
   else if (c.alarm) aftermath(c);
   const list = c.pawns;

@@ -125,10 +125,31 @@ export function pawnById(c: Colony, id: Id): Pawn | undefined {
   return undefined;
 }
 
+/** Someone away on an expedition (off the map, but still the colony's own), or undefined. */
+export function awayById(c: Colony, id: Id): Pawn | undefined {
+  const x = c.exp;
+  if (!x || !id) return undefined;
+  for (const q of x.l) for (const p of q.pw) if (p.id === id) return p;
+  for (const l of x.late) if (l.pw.id === id) return l.pw;
+  return undefined;
+}
+
+/** A player's living colonist, at home or away with an expedition. */
+export function ownedPawn(c: Colony, owner: string): Pawn | undefined {
+  if (!owner) return undefined;
+  for (const p of c.pawns) if (p.owner === owner && !p.gone) return p;
+  const x = c.exp;
+  if (x) {
+    for (const q of x.l) for (const p of q.pw) if (p.owner === owner) return p;
+    for (const l of x.late) if (l.pw.owner === owner) return l.pw;
+  }
+  return undefined;
+}
+
 /** Anyone the colony has known, living or dead. */
 export function person(c: Colony, id: Id): Pawn | Dead | undefined {
   if (!id) return undefined;
-  return pawnById(c, id) ?? c.dead.find((d) => d.id === id);
+  return pawnById(c, id) ?? awayById(c, id) ?? c.dead.find((d) => d.id === id);
 }
 
 export function nameOf(c: Colony, id: Id | undefined): string {
@@ -163,7 +184,7 @@ export function normPawn(p: Pawn): Pawn {
     act: { k: a.k, t0: a.t0, ta: a.ta, t1: a.t1, sx: a.sx, sy: a.sy, tx: a.tx, ty: a.ty, path: a.path, w: a.w, b: a.b, o: a.o, d: a.d, why: a.why },
     food: p.food, rest: p.rest, joy: p.joy, soc: p.soc, mood: p.mood, th: p.th, sit: p.sit, rel: p.rel, mo: p.mo, fa: p.fa, sp: p.sp, crush: p.crush, home: p.home, prof: p.prof, rank: p.rank,
     faith: p.faith, dev: p.dev, goal: p.goal, hp: p.hp, brk: p.brk, low: p.low, high: p.high, drunk: p.drunk, cloth: p.cloth, lastBrk: p.lastBrk, preg: p.preg, know: p.know, bio: p.bio,
-    owner: p.owner, coin: p.coin, insp: p.insp, say: p.say, inj: p.inj, perm: p.perm, ill: p.ill, booze: p.booze, phobia: p.phobia, secret: p.secret, heirloom: p.heirloom, res: p.res, resT: p.resT, urge: p.urge, focus: p.focus, prev: p.prev, roots: p.roots, leaveT: p.leaveT, wantProf: p.wantProf, appr: p.appr, graduated: p.graduated, mastered: p.mastered, dreamT: p.dreamT, built: p.built, ask: p.ask, thrall: p.thrall, cult: p.cult, tool: p.tool, gone: p.gone,
+    owner: p.owner, coin: p.coin, insp: p.insp, say: p.say, inj: p.inj, perm: p.perm, ill: p.ill, booze: p.booze, phobia: p.phobia, secret: p.secret, heirloom: p.heirloom, res: p.res, resT: p.resT, urge: p.urge, focus: p.focus, prev: p.prev, roots: p.roots, leaveT: p.leaveT, wantProf: p.wantProf, appr: p.appr, graduated: p.graduated, mastered: p.mastered, dreamT: p.dreamT, built: p.built, ask: p.ask, thrall: p.thrall, cult: p.cult, tool: p.tool, vol: p.vol, gone: p.gone,
   };
 }
 

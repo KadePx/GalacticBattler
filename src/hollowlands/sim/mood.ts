@@ -11,6 +11,7 @@ import { hourlyHealth, pain } from './health';
 import { settleAsk } from './ask';
 import { die } from './life';
 import { STAGE, has, idleAct, pawnById, per, posAt, stage, stat } from './pawn';
+import { relicCount } from './exped';
 import { Rand, S } from './rng';
 import { maybeTalk, opinion } from './social';
 import { AX, type Colony, type Id, type Pawn, type Rel } from './types';
@@ -122,6 +123,8 @@ function situ(c: Colony, p: Pawn, st: number, asleep: boolean): void {
   else if (p.soc > 80 && !has(p, 'loner')) add('goodcompany');
 
   if (st >= STAGE.TEEN) {
+    // old things brought home from far places, on show in the hall
+    if (c.exp && c.exp.rel.length) { add('x_relics'); if (relicCount(c, 'mood')) add('x_relicjoy'); }
     if (!p.home) add('nobed');
     else {
       const b = c.blds.find((x) => x.id === p.home);

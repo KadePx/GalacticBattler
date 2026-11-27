@@ -13,6 +13,8 @@ import type { D1 } from '../../net/db';
 import { DEFAULT_MS_PER_DAY, HARD_CAP, SIM_V, TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
 import { checkSpec, type PawnSpec } from '../sim/create';
 import { NUDGES, heirsOf, resolveOf } from '../sim/player';
+import { ownedPawn } from '../sim/pawn';
+import { awayPawns } from '../sim/exped';
 import type { SettlerMsg } from '../sim/settle';
 import { colonyHash, createColony, deserialize, serialize, step, type Colony, type Input } from '../sim/index';
 
@@ -193,7 +195,7 @@ export class ColonyHost {
     const ruler = c.pawns.find((p) => p.id === c.gov.ruler);
     const msgs = c.out;
     try {
-      const owners = [...c.pawns.filter((p) => p.owner).map((p) => p.owner!), ...c.inq.filter((i) => i.k === 'join').map((i) => String(i.owner))];
+      const owners = [...c.pawns.filter((p) => p.owner).map((p) => p.owner!), ...awayPawns(c).filter((p) => p.owner).map((p) => p.owner!), ...c.inq.filter((i) => i.k === 'join').map((i) => String(i.owner))];
       await this.o.deliver({ from: c.id, msgs, pop: c.pawns.length, ruler: ruler ? `${ruler.first} ${ruler.fam}` : undefined, tick: c.tick, name: c.name, owners, wars: Object.keys(c.wars ?? {}) });
       c.out = [];
     } catch {
@@ -302,7 +304,7 @@ export class ColonyHost {
           const f = url.searchParams.get('f');
           if (!isFounderId(f)) return json({ error: 'bad id' }, 400);
           const h = await founderHash(f);
-          const alive = c.pawns.find((p) => p.owner === h);
+          const alive = ownedPawn(c, h);
           if (alive) return json({ status: 'alive', id: alive.id, hash: h });
           if (c.inq.some((i) => i.k === 'join' && i.owner === h)) return json({ status: 'pending', hash: h });
           const dead = [...c.dead].reverse().find((d) => d.owner === h);
@@ -336,13 +338,14 @@ export class ColonyHost {
             return json({ ok: true, at: e.t });
           }
           if (path === 'act' && body.k === 'answer') {
-            const mine = c.pawns.find((x) => x.owner === h);
+            const mine = ownedPawn(c, h);
             if (!mine?.ask) return json({ error: 'There is nothing to answer.' }, 409);
             const e = await this.queue({ t: 0, k: 'answer', owner: h, v: String(body.v ?? '') });
             return json({ ok: true, at: e.t });
           }
           const p = c.pawns.find((x) => x.owner === h);
           const def = NUDGES[String(body.k)];
+          if (!p && def && ownedPawn(c, h)) return json({ error: 'Your colonist is away with an expedition.' }, 409);
           if (!p || !def) return json({ error: 'You have no colonist to nudge.' }, 409);
           // count nudges already on their way, so a quick double press cannot overspend
           const waiting = c.inq.filter((i) => i.k === 'nudge' && i.owner === h).length;
@@ -392,7 +395,7 @@ export class ColonyHost {
     if (!check.ok) return json({ error: check.errors[0] ?? 'That colonist breaks the rules.', errors: check.errors }, 400);
     for (const s of [spec.first, spec.fam, spec.epi, spec.heirloom]) if (s && !isClean(s)) return json({ error: 'Please choose different words.' }, 400);
     const h = await founderHash(body.f);
-    if (c.pawns.some((p) => p.owner === h) || c.inq.some((i) => i.k === 'join' && i.owner === h)) return json({ error: 'You already have a colonist here.' }, 409);
+    if (ownedPawn(c, h) || c.inq.some((i) => i.k === 'join' && i.owner === h)) return json({ error: 'You already have a colonist here.' }, 409);
     const last = [...c.dead].reverse().find((d) => d.owner === h);
     if (last) {
       const since = (c.tick - last.died) * m.msPerTick;

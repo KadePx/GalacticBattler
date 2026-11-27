@@ -9,7 +9,7 @@ import { Z, frame, onKeep } from '../sim/town';
 import { B, F, T, type Bld, type Colony } from '../sim/types';
 import { css, darken, lighten, mix } from './look';
 import { knows } from '../sim/known';
-import { drawFieldWorks, drawPennant, drawTechThing, drawWindow, isTechThing } from './techart';
+import { drawFieldWorks, drawPennant, drawRelic, drawTechThing, drawWindow, isTechThing } from './techart';
 
 /** Tile size in world pixels at zoom 1. */
 export const TS = 24;
@@ -622,7 +622,7 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
           continue;
         }
       }
-      if (s >= B.BED && roofed && s !== B.GRAVE && (s < B.FLOOR_BARE || s === B.STRAW || CASTLE_FURN.has(s) || (isTechThing(s) && s !== B.WHEEL))) floor();
+      if (s >= B.BED && roofed && s !== B.GRAVE && (s < B.FLOOR_BARE || s === B.STRAW || CASTLE_FURN.has(s) || (isTechThing(s) && s !== B.WHEEL) || s === B.RELIC)) floor();
 
       switch (s) {
         case B.FLOOR_WOOD:
@@ -850,6 +850,11 @@ export function drawStructs(c: Colony, g: Graphics, x0: number, y0: number, x1: 
               g.circle(px + 6.5, py + o, 1.6).fill(0xc9a27a);
             }
           }
+          break;
+        }
+        case B.RELIC: {
+          const rel = c.exp?.rel.find((r) => r.i === i);
+          drawRelic(g, rel ? rel.k : 0, px, py);
           break;
         }
         case B.THRONE: {

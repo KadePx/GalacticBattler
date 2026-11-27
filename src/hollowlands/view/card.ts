@@ -18,7 +18,7 @@ import { RANK_NAMES, rulerTitle } from '../sim/gov';
 import { breakLine, moodTarget } from '../sim/mood';
 import { NUDGES, RESOLVE_CAP, resolveOf, resolveWait } from '../sim/player';
 import { ASKS } from '../sim/ask';
-import { ageYears, fullName, person, posAt, stage, stat } from '../sim/pawn';
+import { ageYears, awayById, fullName, person, posAt, stage, stat } from '../sim/pawn';
 import { opinion } from '../sim/social';
 import { SKILL_INFO, SKILL_LEVELS } from '../sim/data/skills';
 import { SKILL_NAMES, type Bio, type Bld, type Colony, type Dead, type Id, type Pawn } from '../sim/types';
@@ -285,7 +285,9 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
   if (p.hp < 60) flags += '<span class="tie bad">Badly hurt</span>';
   if (flags) h += `<div class="flags">${flags}</div>`;
 
-  if (ui.mine) {
+  const gone = !!awayById(c, p.id);
+  if (ui.mine && gone) h += `<div class="note">${esc(p.first)} is away with an expedition. You can lean on them again when they are home.</div>`;
+  if (ui.mine && !gone) {
     // the player's hand: Resolve, and what they have already leaned on
     if (p.ask && ASKS[p.ask.k]) {
       // a question only the player can answer (or leave to the colonist)
@@ -303,7 +305,7 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
     if (p.urge && p.urge[2] > c.tick) lean.push(`${esc(NUDGES[p.urge[0]]?.name ?? p.urge[0])}: ${whoLink(c, p.urge[1])}`);
     if (p.focus && p.focus[1] > c.tick) lean.push(`Focused on ${esc(SKILL_NAMES[p.focus[0]].toLowerCase())}`);
     h += `<div class="hint">${lean.length ? lean.join(' · ') + '. ' : ''}You cannot command them, only lean on them. Open someone under Relationships to reach out, court, make peace or confront; or pick work to focus on:</div>`;
-    h += `<div class="nudges"><button class="btn sm${p.roots === -1 ? ' on' : ''}" data-act="nudge" data-k="yearn" data-v="0" title="${esc(NUDGES.yearn.blurb)} Costs 1 Resolve."${res >= 1 && p.roots !== -1 ? '' : ' disabled'}>${esc(NUDGES.yearn.name)}</button><button class="btn sm${p.roots === 1 ? ' on' : ''}" data-act="nudge" data-k="stay" data-v="0" title="${esc(NUDGES.stay.blurb)} Costs 1 Resolve."${res >= 1 && p.roots !== 1 ? '' : ' disabled'}>${esc(NUDGES.stay.name)}</button></div>`;
+    h += `<div class="nudges"><button class="btn sm${p.roots === -1 ? ' on' : ''}" data-act="nudge" data-k="yearn" data-v="0" title="${esc(NUDGES.yearn.blurb)} Costs 1 Resolve."${res >= 1 && p.roots !== -1 ? '' : ' disabled'}>${esc(NUDGES.yearn.name)}</button><button class="btn sm${p.vol !== undefined && p.vol > c.tick ? ' on' : ''}" data-act="nudge" data-k="venture" data-v="0" title="${esc(NUDGES.venture.blurb)} Costs 1 Resolve."${res >= 1 && !(p.vol !== undefined && p.vol > c.tick) && stage(c, p) === 3 ? '' : ' disabled'}>${esc(NUDGES.venture.name)}</button><button class="btn sm${p.roots === 1 ? ' on' : ''}" data-act="nudge" data-k="stay" data-v="0" title="${esc(NUDGES.stay.blurb)} Costs 1 Resolve."${res >= 1 && p.roots !== 1 ? '' : ' disabled'}>${esc(NUDGES.stay.name)}</button></div>`;
     if (p.roots === -1) {
       const talk = c.settle ?? 0;
       const days = p.leaveT !== undefined ? Math.max(0, 15 - Math.floor((c.tick - p.leaveT) / 240)) : 15;

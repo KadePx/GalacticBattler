@@ -16,7 +16,7 @@ import { verdict } from './crime';
 import { passHeirloom } from './player';
 import { ask } from './ask';
 import { getRel, think } from './mood';
-import { STAGE, ageYears, has, makePawn, mkAct, pawnById, per, person, posAt, rollPassions, rollTraits, stage, stat, toDead } from './pawn';
+import { STAGE, ageYears, awayById, has, makePawn, mkAct, pawnById, per, person, posAt, rollPassions, rollTraits, stage, stat, toDead } from './pawn';
 import { Rand, S } from './rng';
 import { addFact, attracted, learn, opinion } from './social';
 import { AX, B, type Bld, type Colony, type Id, type Pawn } from './types';
@@ -317,7 +317,8 @@ export function dailyLife(c: Colony): void {
   for (const p of c.pawns) {
     if (p.gone || !p.sp || p.id > p.sp) continue;
     const o = pawnById(c, p.sp);
-    if (!o || o.gone) { p.sp = 0; continue; }
+    // (a partner away with an expedition is still a partner)
+    if (!o || o.gone) { if (!awayById(c, p.sp)) p.sp = 0; continue; }
     if (o.sp !== p.id) { p.sp = 0; continue; }
     const a = opinion(c, p, o);
     const b = opinion(c, o, p);

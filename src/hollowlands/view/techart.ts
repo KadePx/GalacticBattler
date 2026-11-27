@@ -183,6 +183,63 @@ export function drawFieldWorks(g: Graphics, b: Bld, x: number, y: number, ditch:
 }
 
 /** A pennant in the ruling house's colours on a tower, once the colony can dye cloth fast. */
+/** A relic on its stand in the hall: a stone plinth under a red cloth, a soft light, and the thing itself (see RELIC_KINDS). */
+export function drawRelic(g: Graphics, k: number, px: number, py: number): void {
+  const cx = px + 12;
+  const cy = py + 12;
+  const GOLD = 0xf2cf5a;
+  const INK = 0x2a1d12;
+  g.circle(cx, cy, 12.5).fill({ color: 0xffe08a, alpha: 0.2 });
+  g.roundRect(px + 3.6, py + 4.6, 17.5, 17.5, 2.5).fill({ color: 0x0b1220, alpha: 0.28 });
+  g.roundRect(px + 3, py + 3, 18, 18, 2.5).fill(0xa39d90).stroke({ width: 1, color: 0x3a3630 });
+  g.roundRect(px + 5, py + 5, 14, 14, 1.5).fill(0x7a2430).stroke({ width: 0.7, color: 0xe8c75a });
+  switch (k) {
+    case 0: // a crown
+      g.poly([cx - 5, cy + 3.2, cx - 5, cy - 2.2, cx - 2.5, cy + 0.4, cx, cy - 4.4, cx + 2.5, cy + 0.4, cx + 5, cy - 2.2, cx + 5, cy + 3.2]).fill(GOLD).stroke({ width: 0.7, color: INK });
+      g.circle(cx, cy + 1.3, 1.1).fill(0xd8433a);
+      g.circle(cx - 3.2, cy + 1.7, 0.75).circle(cx + 3.2, cy + 1.7, 0.75).fill(0x5ab0ff);
+      break;
+    case 1: // a sword
+      g.poly([cx - 1, cy - 5.6, cx, cy - 7.4, cx + 1, cy - 5.6, cx + 1.2, cy + 2.4, cx - 1.2, cy + 2.4]).fill(0xdfe6ee).stroke({ width: 0.5, color: INK });
+      g.rect(cx - 3.6, cy + 2.2, 7.2, 1.4).fill(GOLD);
+      g.rect(cx - 0.8, cy + 3.6, 1.6, 2.4).fill(0x5a3d28);
+      g.circle(cx, cy + 6.4, 1.05).fill(GOLD);
+      break;
+    case 2: // a chalice
+      g.poly([cx - 4.2, cy - 5, cx + 4.2, cy - 5, cx + 2.2, cy + 0.4, cx - 2.2, cy + 0.4]).fill(GOLD).stroke({ width: 0.6, color: INK });
+      g.rect(cx - 0.8, cy + 0.4, 1.6, 3).fill(GOLD);
+      g.ellipse(cx, cy + 4.4, 3.4, 1.4).fill(GOLD).stroke({ width: 0.5, color: INK });
+      g.ellipse(cx, cy - 5, 4.2, 1.2).fill(0x8a1f2a);
+      break;
+    case 3: // tablets of old writing
+      g.roundRect(cx - 6.2, cy - 5, 5.6, 10.4, 1.8).fill(0xcfc8b6).stroke({ width: 0.6, color: INK });
+      g.roundRect(cx + 0.6, cy - 5, 5.6, 10.4, 1.8).fill(0xcfc8b6).stroke({ width: 0.6, color: INK });
+      for (let n = 0; n < 4; n++) g.rect(cx - 5.2, cy - 2.8 + n * 2, 3.6, 0.6).rect(cx + 1.6, cy - 2.8 + n * 2, 3.6, 0.6).fill(0x6a6456);
+      break;
+    case 4: // a horn
+      g.moveTo(cx - 5.6, cy + 2.4).quadraticCurveTo(cx - 0.6, cy + 5.6, cx + 4.8, cy - 3.4).stroke({ width: 4.2, color: INK, cap: 'round' });
+      g.moveTo(cx - 5.6, cy + 2.4).quadraticCurveTo(cx - 0.6, cy + 5.6, cx + 4.8, cy - 3.4).stroke({ width: 3, color: 0xe9dfc8, cap: 'round' });
+      g.circle(cx + 4.9, cy - 3.6, 2.3).fill(GOLD).stroke({ width: 0.5, color: INK });
+      g.circle(cx - 5.7, cy + 2.4, 1.1).fill(GOLD);
+      break;
+    case 5: // an idol of green stone
+      g.roundRect(cx - 3.2, cy - 2, 6.4, 8.2, 2.2).fill(0x3f8a62).stroke({ width: 0.6, color: INK });
+      g.circle(cx, cy - 3.9, 3).fill(0x3f8a62).stroke({ width: 0.6, color: INK });
+      g.circle(cx - 1.1, cy - 4.2, 0.65).circle(cx + 1.1, cy - 4.2, 0.65).fill(GOLD);
+      break;
+    case 6: // a stone fallen from the sky, still faintly alight
+      g.circle(cx, cy, 7).fill({ color: 0x9fe8ff, alpha: 0.35 });
+      g.poly([cx, cy - 6, cx + 4.6, cy - 1.2, cx + 2.6, cy + 5, cx - 2.6, cy + 5, cx - 4.6, cy - 1.2]).fill(0x34447a).stroke({ width: 0.8, color: 0x9fe8ff });
+      g.circle(cx - 1, cy - 1, 1.3).fill(0xe8fbff);
+      break;
+    default: // an old war banner
+      g.rect(cx - 5.8, cy - 6.4, 1.4, 12.6).fill(0x5a3d28);
+      g.poly([cx - 4.4, cy - 5.8, cx + 6.2, cy - 3.2, cx - 4.4, cy + 0.4]).fill(0x2f4f9a).stroke({ width: 0.6, color: INK });
+      g.circle(cx - 1.4, cy - 3, 1.2).fill(GOLD);
+      g.circle(cx - 5.1, cy - 6.9, 1.05).fill(GOLD);
+  }
+}
+
 export function drawPennant(g: Graphics, x: number, y: number, field: number, metal: number): void {
   const px = x * TS;
   const py = y * TS;
