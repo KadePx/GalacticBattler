@@ -3,8 +3,8 @@
 import * as store from './store';
 import {
   CATS, DAY_LABEL, DAY_TYPES, DEFAULT_DAYS, DOW, MONTHS, SLOTS, addDays, dayType, dow, eventsOn, groceriesFor, ingredientLine,
-  mondayOf, need, niceDate, niceQty, niceTime, parseIngredient, toDate, today, weekDays, worksOn, ymd,
-  type Cat, type DayMark, type DayType, type Ev, type Grocery, type Meal, type Person, type Recipe, type Slot, type World,
+  DEFAULT_PREFS, mondayOf, need, niceDate, niceQty, niceTime, parseIngredient, toDate, today, tripsOn, weekDays, wholeFoodsUrl, worksOn, ymd,
+  type Cat, type DayMark, type DayType, type Ev, type Grocery, type Meal, type Person, type Prefs, type Recipe, type Slot, type Tick, type Trip, type World,
 } from './model';
 
 type Child = Node | string | number | null | undefined | false;
@@ -27,7 +27,7 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs?: Attrs | null, 
 const COLORS = ['#c2553d', '#2f7f79', '#b7832f', '#6a5acd', '#3f7fbf', '#b0457f'];
 const SLOT_LABEL: Record<Slot, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' };
 
-type View = 'week' | 'month' | 'recipes' | 'groceries';
+type View = 'week' | 'month' | 'recipes' | 'groceries' | 'out' | 'trips';
 const ui = {
   view: 'week' as View,
   week: mondayOf(today()),
@@ -43,6 +43,7 @@ const people = () => store.all<Person>('person').map((i) => i.data)
 const world = (): World => ({
   people: people(),
   events: store.all<Ev>('event').map((i) => ({ id: i.id, ev: i.data })),
+  trips: store.all<Trip>('trip').map((i) => ({ id: i.id, trip: i.data })),
   dayMark: (email, date) => store.get<DayMark>(`d:${email}:${date}`),
 });
 const recipes = () => store.all<Recipe>('recipe').sort((a, b) => a.data.name.localeCompare(b.data.name));
@@ -131,6 +132,11 @@ function seedRecipes() {
 
 // ---- events ----
 
+const linkIn = (text?: string) => {
+  const url = text?.match(/https:\/\/\S+/)?.[0];
+  return url ? h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, 'Open link ↗') : null;
+};
+
 function eventDialog(id: string | null, date: string) {
   const old = id ? store.get<Ev>(id) : undefined;
   const ev: Ev = old ? structuredClone(old) : { title: '', who: store.me, cat: 'other', date };
@@ -173,6 +179,7 @@ function eventDialog(id: string | null, date: string) {
     h('p', { class: 'hint' }, 'Leave the times empty for an all-day event.'),
     field('Repeats every', dayBtns), untilField,
     field('Notes', notes),
+    linkIn(ev.notes),
     h('footer', null,
       id && h('button', { type: 'button', class: 'danger', onclick: () => { store.del(id); dlg.close(); } }, old?.repeat ? 'Delete all' : 'Delete'),
       id && old?.repeat && h('button', {
@@ -270,8 +277,9 @@ function needNote(w: World, date: string, slot: Slot): string {
   const bits: string[] = [];
   if (n.pack.length) bits.push(`pack ${n.pack.length}${n.pack.length < w.people.length ? ` (${names(n.pack)})` : ''}`);
   if (n.home.length && n.pack.length) bits.push(`${names(n.home)} at home`);
-  else if (n.home.length && n.comped.length) bits.push(`just ${names(n.home)}`);
+  else if (n.home.length && (n.comped.length || n.away.length)) bits.push(`just ${names(n.home)}`);
   if (n.comped.length) bits.push(`${names(n.comped)} fed at work`);
+  if (n.away.length) bits.push(`${names(n.away)} away`);
   return bits.join(' · ');
 }
 
@@ -289,6 +297,8 @@ function dayCard(w: World, date: string) {
         }, w.people.length > 1 ? `${p.name}: ` : '', DAY_LABEL[t]);
       })),
     h('div', { class: 'events' },
+      tripsOn(w, date).map(({ trip }) => h('button', { class: 'ev trip', style: `--c:${colorOf(trip.who)}`, onclick: () => { ui.view = 'trips'; render(); } },
+        h('time', null, 'trip'), h('span', null, trip.name), h('small', null, trip.where))),
       evs.map(({ id, ev }) => h('button', { class: `ev c-${ev.cat}`, style: `--c:${colorOf(ev.who)}`, onclick: () => eventDialog(id, date) },
         h('time', null, ev.start ? `${niceTime(ev.start)}${ev.end ? '–' + niceTime(ev.end) : ''}` : 'all day'),
         h('span', null, ev.title), ev.who === 'both' && h('small', null, 'both'))),
@@ -379,6 +389,7 @@ function monthView() {
     h('b', null, toDate(date).getDate()),
     varies.map((p) => { const t = dayType(w, p, date); return h('span', { class: `tag t-${t}` }, DAY_LABEL[t]); }),
     w.people.filter((p) => p.schedule === 'fixed' && worksOn(w, p, date)).map((p) => h('span', { class: 'tag', style: `--c:${p.color}` }, `${p.name} work`)),
+    tripsOn(w, date).map(({ trip }) => h('span', { class: 'tag t-trip' }, trip.name)),
     h('span', { class: 'dots' }, evs.filter((e) => e.ev.cat !== 'work').slice(0, 5).map((e) => h('i', { style: `background:${colorOf(e.ev.who)}`, title: e.ev.title })))));
   }
   return [
@@ -428,19 +439,213 @@ function groceriesView() {
         (document.getElementById('gadd') as HTMLInputElement | null)?.focus();
       },
     }, input, h('button', { class: 'primary' }, 'Add')),
+    list.some((g) => !g.data.done) && h('p', { class: 'hint wfhint' }, 'Whole Foods ↗ opens that item in your Amazon Whole Foods store, where you add it to the delivery cart. The item is then marked In cart here so you can both see what is left.'),
     !list.length && h('p', { class: 'hint' }, 'Empty. Build it from a week’s meals on the Week tab, or add items here.'),
     h('ul', { class: 'groceries' }, list.map((g) => h('li', { class: g.data.done ? 'done' : '' },
       h('label', { class: 'check' },
         h('input', { type: 'checkbox', checked: g.data.done, onchange: () => store.put('grocery', g.id, { ...g.data, done: !g.data.done }) }),
         h('span', null, g.data.name), h('small', null, niceQty(g.data.qty, g.data.unit) === '0' ? '' : niceQty(g.data.qty, g.data.unit))),
+      !g.data.done && h('a', {
+        class: `wf${g.data.cart ? ' in' : ''}`, href: wholeFoodsUrl(g.data.name), target: '_blank', rel: 'noopener noreferrer',
+        title: 'Find this at Whole Foods on Amazon', onclick: () => store.put('grocery', g.id, { ...g.data, cart: true }),
+      }, g.data.cart ? 'In cart ✓' : 'Whole Foods ↗'),
       h('button', { class: 'ghost', 'aria-label': `Remove ${g.data.name}`, onclick: () => store.del(g.id) }, '✕')))),
+  ];
+}
+
+// ---- going out: suggested events near home, and away games worth a trip ----
+
+interface Idea { id: string; name: string; url: string; date: string; time: string; venue: string; city: string; kind: 'team' | 'music' | 'food'; tag: string; miles: number | null; local: boolean }
+const prefs = (): Prefs => ({ ...DEFAULT_PREFS, ...store.get<Prefs>('prefs') });
+const ideas = { key: '', loading: false, error: '', area: '', events: [] as Idea[] };
+
+async function loadIdeas(force = false) {
+  const p = prefs();
+  const key = JSON.stringify(p);
+  if (!p.zip || (ideas.key === key && !force) || ideas.loading) return;
+  Object.assign(ideas, { key, loading: true, error: '' });
+  render();
+  try {
+    const q = new URLSearchParams({ zip: p.zip, radius: String(p.radius), teams: p.teams.join('|'), music: p.music ? '1' : '0', food: p.food ? '1' : '0' });
+    const r = await fetch(`/api/homeevents?${q}`, { credentials: 'same-origin' });
+    const out = await r.json();
+    if (!r.ok) throw new Error(out.error ?? 'Could not load events.');
+    Object.assign(ideas, { area: out.area, events: out.events });
+  } catch (e) {
+    Object.assign(ideas, { error: (e as Error).message, events: [] });
+  }
+  ideas.loading = false;
+  render();
+}
+
+function prefsDialog() {
+  const p = prefs();
+  const zip = h('input', { value: p.zip, placeholder: '98101', inputMode: 'numeric', pattern: '\\d{5}', required: true, maxLength: 5 });
+  const radius = select(String(p.radius), [['25', '25 miles'], ['50', '50 miles'], ['100', '100 miles']]);
+  const teams = h('input', { value: p.teams.join(', '), placeholder: 'Seahawks, Anaheim Ducks', maxLength: 160 });
+  const music = h('input', { type: 'checkbox', checked: p.music });
+  const food = h('input', { type: 'checkbox', checked: p.food });
+  openDialog('What to look for', h('form', {
+    onsubmit: (e: Event) => {
+      e.preventDefault();
+      store.put('prefs', 'prefs', {
+        zip: zip.value.trim(), radius: Number(radius.value), music: music.checked, food: food.checked,
+        teams: teams.value.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 4),
+      } satisfies Prefs);
+      dlg.close();
+      void loadIdeas();
+    },
+  },
+  h('div', { class: 'row' }, field('Home ZIP code', zip), field('How far', radius)),
+  field('Teams and artists to follow (up to 4, commas between)', teams),
+  h('p', { class: 'hint' }, 'Teams are found everywhere they play: games near home go under suggestions, the rest under trip ideas.'),
+  h('div', { class: 'row' }, h('label', { class: 'check' }, music, h('span', null, 'Live music nearby')), h('label', { class: 'check' }, food, h('span', null, 'Food events and festivals nearby'))),
+  h('footer', null, h('button', { class: 'primary' }, 'Save'))));
+}
+
+/** What the day already holds, so a suggestion can be judged at a glance. */
+function dayClash(w: World, date: string, self: string): string {
+  const bits = w.people.filter((p) => p.schedule === 'varies' && dayType(w, p, date) === 'shift').map((p) => `${p.name} on shift`);
+  const n = eventsOn(w, date).filter((e) => e.ev.cat !== 'work' && e.id !== `tm:${self}`).length + tripsOn(w, date).filter((t) => t.id !== `trip:${self}`).length;
+  if (n) bits.push(`${n} other plan${n === 1 ? '' : 's'}`);
+  return bits.join(' · ');
+}
+
+function ideaRow(w: World, e: Idea) {
+  const evId = `tm:${e.id}`;
+  const tripId = `trip:${e.id}`;
+  const added = store.get(evId) !== undefined;
+  const clash = dayClash(w, e.date, e.id);
+  const where = [e.venue, e.city].filter(Boolean).join(', ');
+  const addEvent = () => store.put('event', evId, {
+    title: e.name, who: 'both', cat: 'activity', date: e.date, ...(e.time ? { start: e.time } : {}), notes: `${where}\n${e.url}`.trim(),
+  } satisfies Ev);
+  return h('li', { class: 'idea' },
+    h('div', { class: 'when' }, h('b', null, niceDate(e.date)), e.time && h('small', null, niceTime(e.time))),
+    h('div', { class: 'what' },
+      h('b', null, e.name),
+      h('small', null, where, !e.local && e.miles !== null ? ` · ${e.miles} mi away` : ''),
+      clash && h('small', { class: 'clash' }, clash)),
+    h('div', { class: 'acts' },
+      e.url && h('a', { href: e.url, target: '_blank', rel: 'noopener noreferrer' }, 'Tickets ↗'),
+      e.local
+        ? h('button', { disabled: added, onclick: addEvent }, added ? 'On calendar ✓' : '+ Calendar')
+        : h('button', {
+          disabled: store.get(tripId) !== undefined,
+          onclick: () => {
+            store.put('trip', tripId, {
+              name: e.name, where: e.city || e.venue, who: 'both', start: addDays(e.date, -1), end: addDays(e.date, 1), notes: e.url,
+              todo: ['Game tickets', 'Flights', 'Place to stay'].map((text) => ({ text, done: false })), pack: [],
+            } satisfies Trip);
+            if (!added) addEvent();
+            ui.view = 'trips';
+            render();
+          },
+        }, store.get(tripId) !== undefined ? 'Trip planned ✓' : 'Plan a trip')));
+}
+
+function outView() {
+  const p = prefs();
+  const w = world();
+  void loadIdeas();
+  const part = (title: string, list: Idea[], empty: string) => h('section', { class: 'group' }, h('h3', null, title),
+    list.length ? h('ul', { class: 'ideas' }, list.map((e) => ideaRow(w, e))) : h('p', { class: 'hint' }, empty));
+  const local = ideas.events.filter((e) => e.local);
+  return [
+    h('div', { class: 'bar' }, h('h2', null, 'Going out'),
+      p.zip && h('button', { onclick: () => void loadIdeas(true) }, 'Refresh'),
+      h('button', { onclick: prefsDialog }, 'Settings')),
+    !p.zip ? h('aside', { class: 'summary' }, h('p', null, 'Set your ZIP code and what you follow, and this page lists games, shows and food events worth going to.'),
+      h('button', { class: 'primary', onclick: prefsDialog }, 'Set it up'))
+      : ideas.loading ? h('p', { class: 'hint' }, 'Looking for events…')
+        : ideas.error ? h('p', { class: 'trouble' }, ideas.error)
+          : [
+            h('p', { class: 'hint' }, `Within ${p.radius} miles of ${ideas.area || p.zip}. Following ${p.teams.join(', ') || 'no teams'}.`),
+            p.teams.length > 0 && part('Your teams, near home', local.filter((e) => e.kind === 'team'), 'No games near home coming up.'),
+            p.music && part('Live music', local.filter((e) => e.kind === 'music'), 'Nothing found nearby.'),
+            p.food && part('Food and festivals', local.filter((e) => e.kind === 'food'), 'Nothing found nearby.'),
+            p.teams.length > 0 && part('Trip ideas: away games', ideas.events.filter((e) => !e.local).slice(0, 25), 'No away games listed.'),
+          ],
+  ];
+}
+
+// ---- trips ----
+
+function tripDialog(id: string | null) {
+  const old = id ? store.get<Trip>(id) : undefined;
+  const t: Trip = old ? structuredClone(old) : { name: '', where: '', who: 'both', start: today(), end: addDays(today(), 2), todo: [], pack: [] };
+  const name = h('input', { value: t.name, required: true, maxLength: 80, placeholder: 'Seahawks at 49ers weekend' });
+  const where = h('input', { value: t.where, maxLength: 80, placeholder: 'City or place' });
+  const who = select(t.who, [['both', 'Both of us'], ...people().map((p) => [p.email, `Just ${p.name}`] as [string, string])]);
+  const start = h('input', { type: 'date', value: t.start, required: true });
+  const end = h('input', { type: 'date', value: t.end, required: true });
+  const notes = h('textarea', { rows: 3, maxLength: 2000, placeholder: 'Confirmation numbers, addresses, links…' }, t.notes ?? '');
+  openDialog(id ? 'Edit trip' : 'New trip', h('form', {
+    onsubmit: (e: Event) => {
+      e.preventDefault();
+      if (!name.value.trim() || !start.value || !end.value) return;
+      const out: Trip = { ...t, name: name.value.trim(), where: where.value.trim(), who: who.value, start: start.value, end: end.value < start.value ? start.value : end.value };
+      if (notes.value.trim()) out.notes = notes.value.trim(); else delete out.notes;
+      if (!id) out.todo = ['Transport', 'Place to stay'].map((text) => ({ text, done: false }));
+      store.put('trip', id ?? store.newId(), out);
+      dlg.close();
+    },
+  },
+  field('Trip', name), h('div', { class: 'row' }, field('Where', where), field('Who is going', who)),
+  h('div', { class: 'row' }, field('Leave', start), field('Back', end)),
+  h('p', { class: 'hint' }, 'No meals are planned for whoever is away on these days.'),
+  field('Notes', notes),
+  h('footer', null,
+    id && h('button', { type: 'button', class: 'danger', onclick: () => { store.del(id); dlg.close(); } }, 'Delete trip'),
+    h('button', { class: 'primary' }, 'Save'))));
+  if (!id) name.focus();
+}
+
+function checklist(id: string, trip: Trip, key: 'todo' | 'pack', title: string, hint: string) {
+  const list = trip[key];
+  const save = (next: Tick[]) => store.put('trip', id, { ...trip, [key]: next });
+  const input = h('input', { id: `add-${key}-${id}`, placeholder: hint, maxLength: 80 });
+  return h('div', { class: 'list' },
+    h('h4', null, title, list.length ? h('small', null, ` ${list.filter((x) => x.done).length}/${list.length}`) : null),
+    h('ul', null, list.map((item, i) => h('li', { class: item.done ? 'done' : '' },
+      h('label', { class: 'check' },
+        h('input', { type: 'checkbox', checked: item.done, onchange: () => save(list.map((x, j) => (j === i ? { ...x, done: !x.done } : x))) }),
+        h('span', null, item.text)),
+      h('button', { class: 'ghost', 'aria-label': `Remove ${item.text}`, onclick: () => save(list.filter((_, j) => j !== i)) }, '✕')))),
+    h('form', { class: 'row', onsubmit: (e: Event) => { e.preventDefault(); if (input.value.trim()) save([...list, { text: input.value.trim(), done: false }]); } },
+      input, h('button', null, 'Add')));
+}
+
+function tripsView() {
+  const all = store.all<Trip>('trip').sort((a, b) => a.data.start.localeCompare(b.data.start));
+  const ahead = all.filter((t) => t.data.end >= today());
+  const past = all.filter((t) => t.data.end < today()).reverse();
+  const card = ({ id, data: t }: { id: string; data: Trip }, open: boolean) => {
+    const days = Math.round((toDate(t.start).getTime() - toDate(today()).getTime()) / 86_400_000);
+    return h('section', { class: 'day tripcard' },
+      h('header', null,
+        h('h3', null, t.name),
+        open && h('span', { class: 'chip t-office' }, days > 0 ? `in ${days} day${days === 1 ? '' : 's'}` : 'now'),
+        h('button', { onclick: () => tripDialog(id) }, 'Edit')),
+      h('p', { class: 'hint' }, [t.where, `${niceDate(t.start)} – ${niceDate(t.end)}`, t.who === 'both' ? 'both of us' : names(people().filter((p) => p.email === t.who))].filter(Boolean).join(' · ')),
+      t.notes && h('p', { class: 'notes' }, t.notes), linkIn(t.notes),
+      open && h('div', { class: 'lists' },
+        checklist(id, t, 'todo', 'To book and do', 'Add a task'),
+        checklist(id, t, 'pack', 'Packing', 'Add something to pack')));
+  };
+  return [
+    h('div', { class: 'bar' }, h('h2', null, 'Trips'), h('button', { class: 'primary', onclick: () => tripDialog(null) }, '+ Trip')),
+    !all.length && h('p', { class: 'hint' }, 'No trips yet. Add one here, or start from an away game under Going out.'),
+    h('div', { class: 'trips' }, ahead.map((t) => card(t, true))),
+    past.length > 0 && h('section', { class: 'group' }, h('h3', null, 'Past trips'), h('div', { class: 'trips' }, past.map((t) => card(t, false)))),
   ];
 }
 
 // ---- shell ----
 
 const app = document.getElementById('app')!;
-const TABS: [View, string][] = [['week', 'Week'], ['month', 'Month'], ['recipes', 'Recipes'], ['groceries', 'Groceries']];
+const TABS: [View, string][] = [['week', 'Week'], ['month', 'Month'], ['recipes', 'Recipes'], ['groceries', 'Groceries'], ['out', 'Going out'], ['trips', 'Trips']];
+const VIEWS: Record<View, () => Kids[]> = { week: weekView, month: monthView, recipes: recipesView, groceries: groceriesView, out: outView, trips: tripsView };
 
 function render() {
   if (!ui.loaded) {
@@ -448,8 +653,10 @@ function render() {
     return;
   }
   const meP = people().find((p) => p.email === store.me);
-  const body = ui.view === 'week' ? weekView() : ui.view === 'month' ? monthView() : ui.view === 'recipes' ? recipesView() : groceriesView();
-  const typing = document.activeElement?.id === 'gadd' ? (document.activeElement as HTMLInputElement).value : null;
+  const body = VIEWS[ui.view]();
+  // Keep whatever is being typed in an add box when the page redraws under it.
+  const active = document.activeElement instanceof HTMLInputElement && app.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
+  const typing = active ? { id: active.id, value: active.value } : null;
   app.replaceChildren(
     h('nav', null,
       h('h1', null, 'Home'),
@@ -457,8 +664,8 @@ function render() {
       h('button', { class: 'me', style: `--c:${meP?.color ?? 'var(--both)'}`, onclick: () => profileDialog(false) }, meP?.name ?? 'Profile')),
     store.trouble && h('p', { class: 'trouble' }, store.trouble),
     h('main', { class: `v-${ui.view}` }, body));
-  const gadd = document.getElementById('gadd') as HTMLInputElement | null;
-  if (typing !== null && gadd) { gadd.value = typing; gadd.focus(); }
+  const back = typing && (document.getElementById(typing.id) as HTMLInputElement | null);
+  if (typing && back) { back.value = typing.value; back.focus(); }
 }
 
 store.onChange(render);

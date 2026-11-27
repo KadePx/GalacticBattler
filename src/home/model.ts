@@ -29,7 +29,12 @@ export interface Recipe {
   ingredients: Ingredient[]; notes?: string; link?: string;
 }
 export interface Meal { recipe?: string; text?: string }
-export interface Grocery { name: string; qty: number | null; unit: string; done: boolean; week?: string }
+export interface Grocery { name: string; qty: number | null; unit: string; done: boolean; week?: string; cart?: boolean }
+export interface Tick { text: string; done: boolean }
+export interface Trip { name: string; where: string; who: string; start: string; end: string; notes?: string; todo: Tick[]; pack: Tick[] }
+/** Shared settings for the Going out tab. */
+export interface Prefs { zip: string; radius: number; teams: string[]; music: boolean; food: boolean }
+export const DEFAULT_PREFS: Prefs = { zip: '', radius: 50, teams: ['Seahawks', 'Anaheim Ducks'], music: true, food: true };
 
 // ---- dates are local 'YYYY-MM-DD' strings ----
 
@@ -61,6 +66,7 @@ export const DEFAULT_DAYS: DayType[] = ['off', 'office', 'office', 'office', 'of
 export interface World {
   people: Person[];
   events: { id: string; ev: Ev }[];
+  trips: { id: string; trip: Trip }[];
   dayMark(email: string, date: string): DayMark | undefined;
 }
 
@@ -77,9 +83,14 @@ export function worksOn(w: World, p: Person, date: string): boolean {
   return w.events.some((e) => e.ev.cat === 'work' && (e.ev.who === p.email || e.ev.who === 'both') && occursOn(e.ev, date));
 }
 
-/** How one person eats one meal: 'pack' = prepped and taken to work, 'home' = eaten at home, 'comped' = fed on shift. */
-export type Eat = 'pack' | 'home' | 'comped';
+/** How one person eats one meal: 'pack' = prepped and taken to work, 'home' = eaten at home, 'comped' = fed on shift, 'away' = on a trip. */
+export const tripsOn = (w: World, date: string) => w.trips.filter((t) => t.trip.start <= date && date <= t.trip.end);
+/** Away on a trip that day (every day of the trip counts, travel days included). */
+export const awayOn = (w: World, p: Person, date: string) => tripsOn(w, date).some((t) => t.trip.who === 'both' || t.trip.who === p.email);
+
+export type Eat = 'pack' | 'home' | 'comped' | 'away';
 export function eats(w: World, p: Person, date: string, slot: Slot): Eat {
+  if (awayOn(w, p, date)) return 'away';
   if (p.schedule === 'varies') {
     const t = dayType(w, p, date);
     if (t === 'shift') return 'comped';
@@ -88,9 +99,9 @@ export function eats(w: World, p: Person, date: string, slot: Slot): Eat {
   return slot === 'lunch' && worksOn(w, p, date) ? 'pack' : 'home';
 }
 
-export interface Need { portions: number; pack: Person[]; home: Person[]; comped: Person[] }
+export interface Need { portions: number; pack: Person[]; home: Person[]; comped: Person[]; away: Person[] }
 export function need(w: World, date: string, slot: Slot): Need {
-  const n: Need = { portions: 0, pack: [], home: [], comped: [] };
+  const n: Need = { portions: 0, pack: [], home: [], comped: [], away: [] };
   for (const p of w.people) n[eats(w, p, date, slot)].push(p);
   n.portions = n.pack.length + n.home.length;
   return n;
@@ -145,3 +156,6 @@ export function parseIngredient(line: string): Ingredient | null {
   return { qty, unit: '', name: rest || s };
 }
 export const ingredientLine = (i: Ingredient) => `${i.qty === null ? '' : i.qty + ' '}${i.unit ? i.unit + ' ' : ''}${i.name}`;
+
+/** Whole Foods on Amazon has no way to fill a cart from outside, so each item opens its search there. */
+export const wholeFoodsUrl = (name: string) => `https://www.amazon.com/s?k=${encodeURIComponent(name)}&i=wholefoods`;
