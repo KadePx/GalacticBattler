@@ -17,3 +17,6 @@ export const PROPS = {
   swatch: { w: 58, h: 49 }, box: { w: 63, h: 48 },
 } as const;
 export type PropId = keyof typeof PROPS;
+
+/** Lying down and sleeping lives in its own sheet per cat (<name>-sleep.png): one row, wider cells. */
+export const SLEEP = { cell: 80, frames: 9 };
