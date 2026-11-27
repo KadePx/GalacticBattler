@@ -38,6 +38,7 @@ export default defineConfig({
         motomaze: resolve(__dirname, 'moto-maze/index.html'),
         commonworld: resolve(__dirname, 'commonworld/index.html'),
         hollowlands: resolve(__dirname, 'hollow-lands/index.html'),
+        household: resolve(__dirname, 'home/index.html'), // private planner, behind Cloudflare Access
       },
     },
   },
