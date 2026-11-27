@@ -215,3 +215,43 @@ button:disabled { opacity: 0.6; cursor: default; }
 .petacts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .petacts button { padding: 5px 14px; }
 @media (max-width: 560px) { .petcards { grid-template-columns: 1fr; } .petcard + .petcard { border-left: 0; border-top: 1px solid var(--line); } .petline { min-height: 0; } }
+
+/* ---- phone fixes ---- */
+html { overflow-x: clip; }
+body { overflow-x: clip; overscroll-behavior-x: none; }
+/* iOS zooms the whole page when a field's text is under 16px, and then the page pans around */
+input, select, textarea { font-size: 16px; min-width: 0; max-width: 100%; }
+input[type='date'], input[type='time'] { -webkit-appearance: none; appearance: none; min-height: 42px; display: block; }
+/* nothing behind an open dialog should scroll */
+html:has(dialog[open]) { overflow: hidden; }
+dialog { overscroll-behavior: contain; overflow-y: auto; }
+.roomscroll, .tabs { overscroll-behavior-x: contain; }
+.idea > * { min-width: 0; }
+.idea .acts { flex-wrap: wrap; }
+.bar { flex-wrap: wrap; }
+.bar .push { margin-left: auto; }
+.short { display: none; }
+.upnext { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.upnext h4 { margin: 0 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); }
+.upnext ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 14px; }
+.upnext li button { padding: 3px 0; color: var(--ink); text-align: left; }
+.upnext li b { color: var(--dim); font-weight: 600; font-size: 13px; }
+@media (max-width: 560px) {
+  /* tabs become a bar along the bottom, in reach of a thumb */
+  nav { padding: 10px 0; }
+  .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; overflow: visible;
+    background: var(--card); border-top: 1px solid var(--line); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); }
+  .tabs button, .tabs button.on { border: 0; border-radius: 10px; padding: 10px 0; font-size: 13px; background: none; }
+  .tabs button.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--ink); }
+  .long { display: none; } .short { display: inline; }
+  #app { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .bar h2 { min-width: 0; flex: 1; font-size: 18px; }
+  .v-month .bar h2 { flex: 1; }
+  /* dialogs sit on the bottom edge like a sheet */
+  dialog { margin: auto 0 0; width: 100%; max-height: 92dvh; }
+  .sheet { margin: 0; border-radius: 18px 18px 0 0; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .row.when > :first-child { flex-basis: 100%; }
+  .upnext ul { flex-direction: column; }
+}
+.daypick { display: grid; grid-template-columns: repeat(7, 1fr); }
+.daypick button { padding: 8px 0; }

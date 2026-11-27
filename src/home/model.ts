@@ -21,6 +21,8 @@ export interface Person {
 export interface Ev {
   title: string; who: string; cat: Cat; date: string; start?: string; end?: string; notes?: string;
   repeat?: { days: number[]; until?: string }; skip?: string[];
+  /** Comes round on the same date every year: birthdays, anniversaries. */
+  yearly?: boolean;
 }
 export interface DayMark { type: DayType }
 export interface Ingredient { qty: number | null; unit: string; name: string }
@@ -54,6 +56,7 @@ export const niceTime = (t: string) => {
 export const niceDate = (s: string) => { const d = toDate(s); return `${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`; };
 
 export function occursOn(ev: Ev, date: string): boolean {
+  if (ev.yearly) return date >= ev.date && date.slice(5) === ev.date.slice(5);
   if (!ev.repeat) return ev.date === date;
   if (date < ev.date || (ev.repeat.until && date > ev.repeat.until)) return false;
   return ev.repeat.days.includes(dow(date)) && !ev.skip?.includes(date);

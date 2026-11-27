@@ -100,11 +100,27 @@ function profileDialog(first: boolean) {
     usual.hidden = p.schedule !== 'varies';
     usual.replaceChildren(h('p', { class: 'hint' }, 'Your usual week. Change any single day later from the calendar.'),
       h('div', { class: 'usual-row' }, [1, 2, 3, 4, 5, 6, 0].map((d) => h('label', null, DOW[d],
-        select(defaults[d], DAY_TYPES.map((t) => [t, DAY_LABEL[t]]), { onchange: (e: Event) => { defaults[d] = (e.target as HTMLSelectElement).value as DayType; } })))));
+        select(defaults[d], DAY_TYPES.map((t) => [t, DAY_LABEL[t]]), { onchange: (e: Event) => { defaults[d] = (e.target as HTMLSelectElement).value as DayType; } })))),
+      h('p', { class: 'hint' }, 'On shift days meals count as provided at work, so nothing is planned for you. On office days a packed lunch is counted.'));
   };
   drawUsual();
+  // Fixed hours are kept as one repeating Work event, so they can also be edited from the calendar.
+  const job = store.all<Ev>('event').find((e) => e.data.cat === 'work' && e.data.who === store.me && e.data.repeat);
+  const workDays = new Set(job ? job.data.repeat!.days : [1, 2, 3, 4, 5]);
+  const workFrom = h('input', { type: 'time', value: job ? job.data.start ?? '' : '09:00' });
+  const workTo = h('input', { type: 'time', value: job ? job.data.end ?? '' : '17:00' });
+  const workBtns = h('div', { class: 'daypick' });
+  const drawWork = () => workBtns.replaceChildren(...[1, 2, 3, 4, 5, 6, 0].map((d) => h('button', {
+    type: 'button', class: workDays.has(d) ? 'on' : '', onclick: () => { if (!workDays.delete(d)) workDays.add(d); drawWork(); },
+  }, DOW[d])));
+  drawWork();
+  const fixed = h('div', { class: 'usual' },
+    field('Your work days', workBtns),
+    h('div', { class: 'row' }, field('From', workFrom), field('To', workTo)),
+    h('p', { class: 'hint' }, 'These show on the calendar every week and count a packed lunch for you on each work day.'));
   const sched = select(p.schedule, [['fixed', 'Fixed hours: the same work days each week'], ['varies', 'Varies: office days, shifts and days off']],
-    { onchange: (e: Event) => { p.schedule = (e.target as HTMLSelectElement).value as Person['schedule']; drawUsual(); } });
+    { onchange: (e: Event) => { p.schedule = (e.target as HTMLSelectElement).value as Person['schedule']; drawUsual(); fixed.hidden = p.schedule !== 'fixed'; } });
+  fixed.hidden = p.schedule !== 'fixed';
   openDialog(first ? 'Welcome. Set up your side' : 'Your profile',
     h('form', {
       onsubmit: (e: Event) => {
@@ -113,6 +129,14 @@ function profileDialog(first: boolean) {
         if (!p.name) return;
         if (p.schedule === 'varies') p.defaults = defaults; else delete p.defaults;
         if (first && !recipes().length) seedRecipes();
+        if (p.schedule === 'fixed') {
+          if (workDays.size) {
+            const ev: Ev = { ...(job?.data ?? { title: 'Work', who: store.me, cat: 'work', date: mondayOf(today()) }), repeat: { ...job?.data.repeat, days: [...workDays].sort() } };
+            delete ev.start; delete ev.end;
+            if (workFrom.value) { ev.start = workFrom.value; if (workTo.value) ev.end = workTo.value; }
+            store.put('event', job?.id ?? `work:${store.me}`, ev);
+          } else if (job) store.del(job.id);
+        }
         store.put('person', `p:${store.me}`, p);
         dlg.close();
       },
@@ -120,8 +144,7 @@ function profileDialog(first: boolean) {
     h('p', { class: 'hint' }, `Signed in as ${store.me}`),
     field('Name', name), field('Your colour', swatches),
     field('Theme on this device', select(savedTheme(), THEMES, { onchange: (e: Event) => setTheme((e.target as HTMLSelectElement).value) })),
-    field('Work schedule', sched), usual,
-    h('p', { class: 'hint' }, 'On shift days meals count as provided at work, so nothing is planned for you. On office days a packed lunch is counted.'),
+    field('Work schedule', sched), usual, fixed,
     h('footer', null, h('button', { class: 'primary' }, 'Save'))));
 }
 
@@ -152,6 +175,7 @@ function eventDialog(id: string | null, date: string) {
   const days = new Set(ev.repeat?.days ?? []);
   const dayBtns = h('div', { class: 'daypick' });
   const untilField = field('Repeat until (optional)', until);
+  const yearly = h('input', { type: 'checkbox', checked: !!ev.yearly });
   const drawDays = () => {
     untilField.hidden = !days.size;
     dayBtns.replaceChildren(...[1, 2, 3, 4, 5, 6, 0].map((d) => h('button', {
@@ -165,7 +189,8 @@ function eventDialog(id: string | null, date: string) {
     if (!out.title || !out.date) return;
     if (start.value) { out.start = start.value; if (end.value) out.end = end.value; }
     if (notes.value.trim()) out.notes = notes.value.trim();
-    if (days.size) {
+    if (yearly.checked) out.yearly = true;
+    else if (days.size) {
       out.repeat = { days: [...days].sort() };
       if (until.value) out.repeat.until = until.value;
       if (ev.skip?.length) out.skip = ev.skip;
@@ -176,9 +201,10 @@ function eventDialog(id: string | null, date: string) {
   openDialog(id ? 'Edit event' : 'New event', h('form', { onsubmit: save },
     field('Title', title),
     h('div', { class: 'row' }, field('Who', who), field('Type', cat)),
-    h('div', { class: 'row' }, field(days.size ? 'Starts' : 'Date', day), field('From', start), field('To', end)),
+    h('div', { class: 'row when' }, field(days.size ? 'Starts' : 'Date', day), field('From', start), field('To', end)),
     h('p', { class: 'hint' }, 'Leave the times empty for an all-day event.'),
-    field('Repeats every', dayBtns), untilField,
+    field('Repeats every week on', dayBtns), untilField,
+    h('label', { class: 'check' }, yearly, h('span', null, 'Every year on this date (birthday, anniversary)')),
     field('Notes', notes),
     linkIn(ev.notes),
     h('footer', null,
@@ -315,6 +341,20 @@ function dayCard(w: World, date: string) {
     })));
 }
 
+/** The next few things on the calendar (not work), so nothing sneaks up on us. */
+function comingUp(w: World) {
+  const items: { date: string; label: string }[] = [];
+  for (let i = 0; i < 45 && items.length < 5; i++) {
+    const date = addDays(today(), i);
+    for (const t of w.trips) if (t.trip.start === date || (i === 0 && t.trip.start < date && t.trip.end >= date)) items.push({ date, label: `Trip: ${t.trip.name}` });
+    for (const e of eventsOn(w, date)) if (e.ev.cat !== 'work') items.push({ date, label: `${e.ev.start ? niceTime(e.ev.start) + ' ' : ''}${e.ev.title}` });
+  }
+  if (!items.length) return h('p', { class: 'hint upnext' }, 'Nothing coming up yet. Use + Event to add appointments, games, birthdays or anything else to keep track of.');
+  return h('div', { class: 'upnext' }, h('h4', null, 'Coming up'),
+    h('ul', null, items.slice(0, 5).map((it) => h('li', null, h('button', { class: 'ghost', onclick: () => { ui.week = mondayOf(it.date); render(); } },
+      h('b', null, it.date === today() ? 'Today' : niceDate(it.date)), ' ', it.label)))));
+}
+
 function weekSummary(w: World, days: string[]) {
   const lines: Kids[] = [];
   const packs = w.people.map((p) => ({ p, n: days.filter((d) => need(w, d, 'lunch').pack.includes(p)).length })).filter((x) => x.n);
@@ -329,13 +369,15 @@ function weekSummary(w: World, days: string[]) {
   }
   for (const p of w.people.filter((x) => x.schedule === 'fixed')) {
     if (!w.events.some((e) => e.ev.cat === 'work' && (e.ev.who === p.email || e.ev.who === 'both'))) {
-      lines.push(h('p', { class: 'hint' }, `Tip: add ${p.name}'s work hours as a repeating event of type Work, so their packed lunches are counted.`));
+      lines.push(p.email === store.me
+        ? h('p', null, 'Your work days aren\u2019t set yet, so no packed lunches are counted for you. ', h('button', { onclick: () => profileDialog(false) }, 'Set work days'))
+        : h('p', { class: 'hint' }, `${p.name}\u2019s work days aren\u2019t set yet. ${p.name} can add them by tapping their name at the top of the page.`));
     }
   }
   const dinners = days.filter((d) => !mealAt(d, 'dinner') && need(w, d, 'dinner').portions > 0).length;
   if (dinners) lines.push(h('p', null, `${dinners} dinner${dinners === 1 ? '' : 's'} still open.`));
   return h('aside', { class: 'summary' }, lines,
-    h('button', { onclick: () => buildGroceries(w) }, 'Build grocery list for this week'));
+    h('button', { onclick: () => buildGroceries(w) }, 'Build grocery list for this week'), comingUp(w));
 }
 
 function buildGroceries(w: World) {
@@ -390,7 +432,8 @@ function weekView() {
       h('button', { 'aria-label': 'Previous week', onclick: () => { ui.week = addDays(ui.week, -7); render(); } }, '‹'),
       h('h2', null, label),
       h('button', { 'aria-label': 'Next week', onclick: () => { ui.week = addDays(ui.week, 7); render(); } }, '›'),
-      ui.week !== mondayOf(today()) && h('button', { onclick: () => { ui.week = mondayOf(today()); render(); } }, 'This week')),
+      ui.week !== mondayOf(today()) && h('button', { onclick: () => { ui.week = mondayOf(today()); render(); } }, 'This week'),
+      h('button', { class: 'primary push', onclick: () => eventDialog(null, days.includes(today()) ? today() : days[0]) }, '+ Event')),
     petsPanel(people().find((p) => p.email === store.me)?.name ?? '', petLines(w)),
     weekSummary(w, days),
     h('div', { class: 'week' }, days.map((d) => dayCard(w, d))),
@@ -429,7 +472,9 @@ function monthView() {
     h('div', { class: 'bar' },
       h('button', { 'aria-label': 'Previous month', onclick: () => shift(-1) }, '‹'),
       h('h2', null, `${MONTHS[m - 1]} ${y}`),
-      h('button', { 'aria-label': 'Next month', onclick: () => shift(1) }, '›')),
+      h('button', { 'aria-label': 'Next month', onclick: () => shift(1) }, '›'),
+      h('button', { class: 'primary push', onclick: () => eventDialog(null, today().slice(0, 7) === ui.month ? today() : first) }, '+ Event')),
+    h('p', { class: 'hint' }, 'Tap a day to open its week.'),
     varies.map((p) => h('div', { class: 'paint' },
       h('span', null, `Set ${p.name}'s days:`),
       DAY_TYPES.map((t) => {
@@ -677,7 +722,8 @@ function tripsView() {
 // ---- shell ----
 
 const app = document.getElementById('app')!;
-const TABS: [View, string][] = [['week', 'Week'], ['month', 'Month'], ['recipes', 'Recipes'], ['groceries', 'Groceries'], ['out', 'Going out'], ['trips', 'Trips']];
+// [view, label, shorter label for the phone's bottom bar]
+const TABS: [View, string, string][] = [['week', 'Week', 'Week'], ['month', 'Month', 'Month'], ['recipes', 'Recipes', 'Recipes'], ['groceries', 'Groceries', 'Shop'], ['out', 'Going out', 'Out'], ['trips', 'Trips', 'Trips']];
 const VIEWS: Record<View, () => Kids[]> = { week: weekView, month: monthView, recipes: recipesView, groceries: groceriesView, out: outView, trips: tripsView };
 
 function render() {
@@ -693,7 +739,8 @@ function render() {
   app.replaceChildren(
     h('nav', null,
       h('h1', null, 'Home'),
-      h('div', { class: 'tabs' }, TABS.map(([v, t]) => h('button', { class: ui.view === v ? 'on' : '', onclick: () => { ui.view = v; ui.paint = null; render(); } }, t))),
+      h('div', { class: 'tabs' }, TABS.map(([v, t, short]) => h('button', { class: ui.view === v ? 'on' : '', 'aria-label': t, onclick: () => { ui.view = v; ui.paint = null; render(); window.scrollTo(0, 0); } },
+        h('span', { class: 'long' }, t), h('span', { class: 'short' }, short)))),
       h('button', { class: 'me', style: `--c:${meP?.color ?? 'var(--both)'}`, onclick: () => profileDialog(false) }, meP?.name ?? 'Profile')),
     store.trouble && h('p', { class: 'trouble' }, store.trouble),
     h('main', { class: `v-${ui.view}` }, body));
