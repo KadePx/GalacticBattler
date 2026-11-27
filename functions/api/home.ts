@@ -15,7 +15,7 @@ interface Env extends AccessEnv { DB: D1 }
 interface Ctx { request: Request; env: Env }
 interface Row { id: string; kind: string; data: string; updated: number; by: string; deleted: number }
 
-const KINDS = new Set(['person', 'event', 'day', 'recipe', 'meal', 'grocery', 'trip', 'prefs']);
+const KINDS = new Set(['person', 'event', 'day', 'recipe', 'meal', 'grocery', 'trip', 'prefs', 'pet']);
 const MAX_BODY = 300_000;
 const MAX_ITEM = 20_000;
 const MAX_OPS = 300;

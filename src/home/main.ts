@@ -1,6 +1,7 @@
 // Household planner page (/home/): shared week and month calendar, meal plan, recipes, groceries.
 
 import * as store from './store';
+import { PETS, love, petsPanel, tummy, type PetId } from './pets';
 import {
   CATS, DAY_LABEL, DAY_TYPES, DEFAULT_DAYS, DOW, MONTHS, SLOTS, addDays, dayType, dow, eventsOn, groceriesFor, ingredientLine,
   DEFAULT_PREFS, mondayOf, need, niceDate, niceQty, niceTime, parseIngredient, toDate, today, tripsOn, weekDays, wholeFoodsUrl, worksOn, ymd,
@@ -347,6 +348,37 @@ function buildGroceries(w: World) {
   render();
 }
 
+/** What each cat is up to today. Korra runs the kitchen, so she follows the meal plan; Kaia designs, so she follows the house. */
+function petLines(w: World): Record<PetId, string> {
+  const day = Math.floor(toDate(today()).getTime() / 86_400_000);
+  const pick = (list: string[], salt: number) => list[(day + salt) % list.length];
+  const dinner = mealName(mealAt(today(), 'dinner'));
+  const trip = w.trips.map((t) => t.trip).filter((t) => t.end >= today() && t.start <= addDays(today(), 7)).sort((a, b) => a.start.localeCompare(b.start))[0];
+  const packs = need(w, today(), 'lunch').pack.length;
+  const lines: Record<PetId, string> = {
+    korra: dinner ? `Tonight\u2019s special at Korra\u2019s Kitchen: ${dinner}.`
+      : pick([
+        'No special on the board tonight. The owner is not impressed.',
+        packs ? `Inspected today\u2019s ${packs} packed lunch${packs === 1 ? '' : 'es'}. Passed, barely.` : 'Kitchen closed for a private nap.',
+        'Reviewing suppliers. Requests more tuna.',
+        'Tonight\u2019s menu is blank. Considering firing the staff.',
+      ], 0),
+    kaia: trip ? `Designing the suitcase layout for ${trip.name}. Step one: sit in it.`
+      : pick([
+        'Moved one sock to the hallway. Calls it an accent piece.',
+        'Client review of the blanket layout: needs more blanket.',
+        'Rearranged the desk by pushing a pen off it.',
+        'Sourcing textures. The couch arm has been sampled.',
+        'Feng shui audit complete: the sunny spot stays hers.',
+      ], 3),
+  };
+  for (const id of ['korra', 'kaia'] as PetId[]) {
+    if (tummy(id) < 0.25) lines[id] = id === 'korra' ? 'Hungry. The kitchen is closed until the owner is fed.' : 'Hungry. All design work is paused until further notice.';
+    else if (love(id) < 0.25) lines[id] += ` ${PETS[id].name} would accept pets.`;
+  }
+  return lines;
+}
+
 function weekView() {
   const w = world();
   const days = weekDays(ui.week);
@@ -359,6 +391,7 @@ function weekView() {
       h('h2', null, label),
       h('button', { 'aria-label': 'Next week', onclick: () => { ui.week = addDays(ui.week, 7); render(); } }, '›'),
       ui.week !== mondayOf(today()) && h('button', { onclick: () => { ui.week = mondayOf(today()); render(); } }, 'This week')),
+    petsPanel(people().find((p) => p.email === store.me)?.name ?? '', petLines(w)),
     weekSummary(w, days),
     h('div', { class: 'week' }, days.map((d) => dayCard(w, d))),
   ];
