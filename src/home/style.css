@@ -2,14 +2,27 @@
   --bg: #f6f1e7; --card: #fffdf8; --ink: #2a2622; --dim: #7b7166; --line: #e4dbcb; --accent: #2f7f79; --both: #8a7f72;
   --office: #dce9f5; --office-ink: #24507a; --shift: #f6dfc4; --shift-ink: #8a4b10; --off: #e6e9dc; --off-ink: #55603a;
   --danger: #b3402e;
-  color-scheme: light dark;
+  color-scheme: light;
 }
+/* Themes: the profile's Theme choice sets data-theme; with none set the page follows the device. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #1c1a17; --card: #26231f; --ink: #efe8dc; --dim: #a39a8d; --line: #3a362f; --accent: #5fbfb6; --both: #a39a8d;
     --office: #1f3550; --office-ink: #a9cdf0; --shift: #4a3215; --shift-ink: #f2c48c; --off: #2e3324; --off-ink: #c0cc9c;
     --danger: #e8806e;
+    color-scheme: dark;
   }
+}
+:root[data-theme='dark'] {
+  --bg: #1c1a17; --card: #26231f; --ink: #efe8dc; --dim: #a39a8d; --line: #3a362f; --accent: #5fbfb6; --both: #a39a8d;
+  --office: #1f3550; --office-ink: #a9cdf0; --shift: #4a3215; --shift-ink: #f2c48c; --off: #2e3324; --off-ink: #c0cc9c;
+  --danger: #e8806e;
+  color-scheme: dark;
+}
+:root[data-theme='pink'] {
+  --bg: #fdeaf1; --card: #fff8fb; --ink: #4a2134; --dim: #96677a; --line: #f4c9d9; --accent: #d23f7c; --both: #a8798a;
+  --office: #e4e3fb; --office-ink: #40409a; --shift: #ffe0c8; --shift-ink: #96480f; --off: #e8f1dd; --off-ink: #4f6034;
+  --danger: #b3302e;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }

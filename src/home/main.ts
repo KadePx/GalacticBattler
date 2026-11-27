@@ -71,6 +71,15 @@ const select = (value: string, options: [string, string][], attrs: Attrs = {}) =
 const checkbox = (label: string, checked: boolean, attrs: Attrs = {}) =>
   h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, ...attrs }), h('span', null, label));
 
+// ---- theme: kept on this device, so each phone can have its own ----
+
+const THEMES: [string, string][] = [['', 'Match this device'], ['light', 'Light'], ['dark', 'Dark'], ['pink', 'Pink']];
+const savedTheme = () => { try { return localStorage.getItem('home-theme') ?? ''; } catch { return ''; } };
+function setTheme(t: string) {
+  if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  try { if (t) localStorage.setItem('home-theme', t); else localStorage.removeItem('home-theme'); } catch { /* private window */ }
+}
+
 // ---- profile ----
 
 function profileDialog(first: boolean) {
@@ -107,7 +116,9 @@ function profileDialog(first: boolean) {
       },
     },
     h('p', { class: 'hint' }, `Signed in as ${store.me}`),
-    field('Name', name), field('Your colour', swatches), field('Work schedule', sched), usual,
+    field('Name', name), field('Your colour', swatches),
+    field('Theme on this device', select(savedTheme(), THEMES, { onchange: (e: Event) => setTheme((e.target as HTMLSelectElement).value) })),
+    field('Work schedule', sched), usual,
     h('p', { class: 'hint' }, 'On shift days meals count as provided at work, so nothing is planned for you. On office days a packed lunch is counted.'),
     h('footer', null, h('button', { class: 'primary' }, 'Save'))));
 }
