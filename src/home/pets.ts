@@ -4,7 +4,7 @@
 // The sprites were made with PixelLab (sheets in public/home/pets, layout in petSheets.ts).
 
 import * as store from './store';
-import { PROPS, SHEETS, type Anim, type PropId } from './petSheets';
+import { PROPS, SHEETS, SLEEP, type Anim, type PropId } from './petSheets';
 
 export type PetId = 'korra' | 'kaia';
 export interface PetState { fed: number; loved: number; fedBy?: string; meals: number; pets: number }
@@ -22,12 +22,14 @@ const FLOOR = 6; // px from the bottom of the room to where feet stand
 const CAT = SHEETS.korra.cell * SCALE;
 
 // Where each thing stands along the room, 0 (left wall) to 1 (right wall). Korra's kitchen is on
-// the left, Kaia's studio on the right. Beds are drawn in front of the cats so a cat can settle into one.
-// Small things (bowls, yarn) are drawn at half the cats' scale so they stay smaller than a cat.
-const LAYOUT: { id: PropId; x: number; front?: boolean; scale?: number }[] = [
-  { id: 'menu', x: 0 }, { id: 'basket', x: 0.1, front: true }, { id: 'bowlpink', x: 0.235, scale: 1 }, { id: 'plant', x: 0.29 },
-  { id: 'tree', x: 0.43 }, { id: 'yarn', x: 0.52, scale: 1 }, { id: 'box', x: 0.6, front: true },
-  { id: 'shelf', x: 0.8 }, { id: 'swatch', x: 0.74, scale: 1 }, { id: 'bowlteal', x: 0.84, scale: 1 }, { id: 'bedteal', x: 1, front: true },
+// the left, Kaia's studio on the right. Small things (bowls, yarn) are drawn at half the cats'
+// scale so they stay smaller than a cat.
+// `rim` marks something a cat can get into: the sprite row where its front wall starts. From that
+// row down it is drawn again in front of a cat that is inside, so she lies in it and not on it.
+const LAYOUT: { id: PropId; x: number; rim?: number; scale?: number }[] = [
+  { id: 'menu', x: 0 }, { id: 'basket', x: 0.1, rim: 9 }, { id: 'bowlpink', x: 0.235, scale: 1 }, { id: 'plant', x: 0.29 },
+  { id: 'tree', x: 0.43 }, { id: 'yarn', x: 0.52, scale: 1 }, { id: 'box', x: 0.6, rim: 16 },
+  { id: 'shelf', x: 0.8 }, { id: 'swatch', x: 0.74, scale: 1 }, { id: 'bowlteal', x: 0.84, scale: 1 }, { id: 'bedteal', x: 0.98, rim: 8 },
 ];
 // The low platform of the cat tree: how far along the tree it is, and how high (sprite pixels).
 const PERCH = { at: 55 / 74, up: 38 };
@@ -39,10 +41,10 @@ export const tummy = (id: PetId) => level(petState(id).fed, FULL_HOURS);
 export const love = (id: PetId) => level(petState(id).loved, LOVE_HOURS);
 
 /** Something to do once the cat has walked to its spot. */
-interface Plan { anim: Anim; secs: number; lift?: number; face?: 'left' | 'right' }
+interface Plan { anim: Anim | 'sleep'; secs: number; lift?: number; face?: 'left' | 'right'; inside?: boolean; spot?: 'box' | 'tree' }
 interface Actor {
-  id: PetId; x: number; flip: boolean; anim: Anim; frame: number; left: number; // left = ticks until the next decision
-  goal: number | null; plan: Plan | null; lift: number; el: HTMLElement;
+  id: PetId; x: number; flip: boolean; anim: Anim | 'sleep'; frame: number; left: number; // left = ticks until the next decision
+  goal: number | null; plan: Plan | null; lift: number; inside: boolean; sheet: string; spot: string; el: HTMLElement; // spot = the shared place she is using or heading for
 }
 
 const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -73,16 +75,35 @@ function beside(prop: PropId, offset = 0, along = 0.5): number {
 }
 
 function draw(a: Actor) {
-  const sheet = SHEETS[a.id];
-  const row = sheet.rows.findIndex((r) => r.anim === a.anim);
-  a.el.style.backgroundPosition = `-${(a.frame % sheet.rows[row].frames) * CAT}px -${row * CAT}px`;
-  a.el.style.left = `calc(${a.x} * (100% - ${CAT}px))`;
-  a.el.style.bottom = `${FLOOR + a.lift}px`;
-  a.el.style.transform = a.flip ? 'scaleX(-1)' : '';
+  const asleep = a.anim === 'sleep';
+  const main = SHEETS[a.id];
+  const size = (asleep ? SLEEP.cell : main.cell) * SCALE;
+  const st = a.el.style;
+  if (a.sheet !== (asleep ? 'sleep' : 'main')) { // swap between the two sprite sheets
+    a.sheet = asleep ? 'sleep' : 'main';
+    st.width = st.height = `${size}px`;
+    st.backgroundImage = `url(/home/pets/${a.id}${asleep ? '-sleep' : ''}.png)`;
+    st.backgroundSize = asleep ? `${SLEEP.frames * size}px ${size}px`
+      : `${Math.max(...main.rows.map((r) => r.frames)) * size}px ${main.rows.length * size}px`;
+  }
+  if (asleep) {
+    // lie down once, then breathe slowly on the last two frames
+    const f = a.frame < SLEEP.frames ? a.frame : SLEEP.frames - 2 + (Math.floor((a.frame - SLEEP.frames) / 10) % 2);
+    st.backgroundPosition = `-${f * size}px 0`;
+  } else {
+    const row = main.rows.findIndex((r) => r.anim === a.anim);
+    st.backgroundPosition = `-${(a.frame % main.rows[row].frames) * size}px -${row * size}px`;
+  }
+  st.left = `calc(${a.x} * (100% - ${CAT}px) - ${(size - CAT) / 2}px)`;
+  st.bottom = `${FLOOR + a.lift}px`;
+  st.zIndex = a.inside ? '2' : '4'; // walking cats pass in front of the furniture
+  st.transform = a.flip ? 'scaleX(-1)' : '';
 }
 
 function go(a: Actor, x: number, plan: Plan | null) {
   a.lift = 0;
+  a.inside = false;
+  a.spot = plan?.spot ?? '';
   a.goal = x;
   a.plan = plan;
   a.anim = 'walk';
@@ -97,21 +118,24 @@ function decide(a: Actor) {
     a.anim = p.anim;
     a.left = secs(p.secs);
     a.lift = p.lift ?? 0;
+    a.inside = p.inside ?? false;
     if (p.face) a.flip = p.face === 'left';
     return;
   }
-  if (a.lift) { a.lift = 0; a.anim = 'idle'; a.left = secs(1); return; } // hop back down first
-  const bed = (): Plan => ({ anim: 'loaf', secs: night() ? 40 : 8 + Math.random() * 10, lift: 8 });
+  if (a.lift || a.inside) { a.lift = 0; a.inside = false; a.spot = ''; a.anim = 'idle'; a.left = secs(1); return; } // get up or hop down first
+  const bed = (): Plan => ({ anim: 'sleep', secs: night() ? 900 : 12 + Math.random() * 14, lift: 26, inside: true });
   if (night()) { go(a, beside(PETS[a.id].bed), bed()); return; }
   const hungry = tummy(a.id) < 0.25;
+  const free = (spot: string) => !actors.some((o) => o !== a && o.spot === spot); // the box and the tree fit one cat
   const r = Math.random();
   if (r < 0.3) go(a, Math.random(), null);
   else if (r < 0.42 && !hungry) {
     if (Math.random() < 0.65) go(a, beside(PETS[a.id].bed), bed());
-    else go(a, beside('box'), { ...bed(), lift: 22 }); // if it fits, she sits
+    else if (free('box')) go(a, beside('box'), { spot: 'box', anim: Math.random() < 0.5 ? 'idle' : 'lick', secs: 7 + Math.random() * 8, lift: 18, inside: true }); // if it fits, she sits
+    else go(a, Math.random(), null);
   }
-  else if (r < 0.54 && !hungry && !actors.some((o) => o !== a && (o.lift > 40 || (o.plan?.lift ?? 0) > 40))) {
-    go(a, beside('tree', 0, PERCH.at), { anim: Math.random() < 0.5 ? 'loaf' : 'lick', secs: 7 + Math.random() * 8, lift: PERCH.up * SCALE - FLOOR - 12, face: 'left' });
+  else if (r < 0.54 && !hungry && free('tree')) {
+    go(a, beside('tree', 0, PERCH.at), { spot: 'tree', anim: Math.random() < 0.5 ? 'loaf' : 'lick', secs: 7 + Math.random() * 8, lift: PERCH.up * SCALE - FLOOR - 12, face: 'left' });
   } else if (r < 0.62) go(a, beside('yarn', a.x < 0.52 ? -56 : 56), { anim: 'idle', secs: 3 });
   else if (hungry && r < 0.85) go(a, bowlSpot(a.id), { anim: 'idle', secs: 4, face: a.id === 'korra' ? 'left' : 'right' }); // waits by the empty bowl
   else {
@@ -176,24 +200,25 @@ function build() {
     const k = p.scale ?? SCALE;
     const w = PROPS[p.id].w * k;
     const h = PROPS[p.id].h * k;
-    const img = el('img', `prop${p.front ? ' front' : ''}`);
-    img.src = `/home/pets/props/${p.id}.png`;
-    img.alt = '';
-    Object.assign(img.style, { width: `${w}px`, height: `${h}px`, left: `calc(${p.x} * (100% - ${w}px))`, bottom: `${FLOOR - 2}px` });
-    room.append(img);
+    const place = (cls: string) => {
+      const img = el('img', cls);
+      img.src = `/home/pets/props/${p.id}.png`;
+      img.alt = '';
+      Object.assign(img.style, { width: `${w}px`, height: `${h}px`, left: `calc(${p.x} * (100% - ${w}px))`, bottom: `${FLOOR - 2}px` });
+      room.append(img);
+      return img;
+    };
+    place(p.scale === 1 ? 'prop near' : 'prop'); // bowls and yarn sit nearest, so a cat walks behind them
+    if (p.rim !== undefined) place('prop front').style.clipPath = `inset(${p.rim * k}px 0 0 0)`;
   }
   actors = IDS.map((id, i) => {
-    const sheet = SHEETS[id];
     const cat = el('button', 'cat');
     cat.setAttribute('aria-label', `Pet ${PETS[id].name}`);
     cat.title = `Pet ${PETS[id].name}`;
-    Object.assign(cat.style, {
-      width: `${CAT}px`, height: `${CAT}px`, backgroundImage: `url(/home/pets/${id}.png)`,
-      backgroundSize: `${Math.max(...sheet.rows.map((r) => r.frames)) * CAT}px ${sheet.rows.length * CAT}px`,
-    });
     cat.addEventListener('click', () => pet(id));
     room.append(cat);
-    const a: Actor = { id, x: i ? 0.62 : 0.36, flip: !!i, anim: 'idle', frame: 0, left: secs(1 + i), goal: null, plan: null, lift: 0, el: cat };
+    const a: Actor = { id, x: i ? 0.62 : 0.36, flip: !!i, anim: 'idle', frame: 0, left: secs(1 + i), goal: null, plan: null, lift: 0, inside: false, sheet: '', spot: '', el: cat };
+    new Image().src = `/home/pets/${id}-sleep.png`; // ready before the first nap
     draw(a);
     return a;
   });
@@ -240,7 +265,7 @@ function build() {
   requestAnimationFrame(() => { scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2; });
   if (still) {
     // No wandering: each cat rests in her own bed.
-    for (const a of actors) { a.x = beside(PETS[a.id].bed); a.anim = 'loaf'; a.lift = 8; draw(a); }
+    for (const a of actors) { a.x = beside(PETS[a.id].bed); a.anim = 'sleep'; a.frame = SLEEP.frames - 1; a.lift = 26; a.inside = true; draw(a); }
   } else setInterval(tick, TICK);
 }
 
