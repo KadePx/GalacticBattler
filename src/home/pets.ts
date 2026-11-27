@@ -217,7 +217,7 @@ function build() {
     cat.title = `Pet ${PETS[id].name}`;
     cat.addEventListener('click', () => pet(id));
     room.append(cat);
-    const a: Actor = { id, x: i ? 0.62 : 0.36, flip: !!i, anim: 'idle', frame: 0, left: secs(1 + i), goal: null, plan: null, lift: 0, inside: false, sheet: '', spot: '', el: cat };
+    const a: Actor = { id, x: i ? 0.7 : 0.36, flip: !!i, anim: 'idle', frame: 0, left: secs(1 + i), goal: null, plan: null, lift: 0, inside: false, sheet: '', spot: '', el: cat };
     new Image().src = `/home/pets/${id}-sleep.png`; // ready before the first nap
     draw(a);
     return a;
