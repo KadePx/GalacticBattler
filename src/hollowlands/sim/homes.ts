@@ -28,7 +28,8 @@ const GRACE = 6 * TICKS_PER_DAY;
 
 /** A grown colonist's household: them, their partner, and the children of either still at home age. */
 export function household(c: Colony, p: Pawn): Pawn[] {
-  const o = p.sp ? pawnById(c, p.sp) : undefined;
+  // (a partner away with an expedition is still of the household)
+  const o = p.sp ? pawnById(c, p.sp) ?? awayById(c, p.sp) : undefined;
   const out = [p];
   if (o) out.push(o);
   for (const k of c.pawns) {
@@ -134,13 +135,13 @@ function spareBeds(c: Colony): number {
 /** The heir to a family's home: the partner, else the eldest grown child living there. */
 function heirOf(c: Colony, b: Bld, id: number): number | undefined {
   for (const bid of b.beds) {
-    const p = bid ? pawnById(c, bid) : undefined;
+    const p = bid ? pawnById(c, bid) ?? awayById(c, bid) : undefined;
     if (!p) continue;
     if (p.sp === id) return p.id;
   }
   let best: Pawn | undefined;
   for (const bid of b.beds) {
-    const p = bid ? pawnById(c, bid) : undefined;
+    const p = bid ? pawnById(c, bid) ?? awayById(c, bid) : undefined;
     if (!p || stage(c, p) < STAGE.ADULT || (p.mo !== id && p.fa !== id)) continue;
     if (!best || p.born < best.born) best = p;
   }

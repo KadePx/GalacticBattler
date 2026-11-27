@@ -121,6 +121,7 @@ const BAR: Record<string, string[]> = {
   wreck: ['a hold full of black water', 'a hull tipped on its side and groaning', 'a cabin door swollen shut'],
   tower: ['a stair with no rail, climbing into the dark', 'a trapdoor bolted from above', 'a floor half fallen away'],
 };
+const WHERE_FOUND: Record<string, string> = { camp: 'under a tipped wagon', wreck: 'deep in the hold', cave: 'at the back of the deepest cave', tower: 'in the room at the top', tomb: 'in the last chamber', ruin: 'in the last cellar' };
 const HAZ: Record<string, [string, string]> = {
   collapse: ['The roof came down. {a} was dug out hurt but alive.', 'The roof came down on {a}.'],
   fall: ['{a} fell, and was hauled back up on a rope with something broken.', '{a} fell, a long way.'],
@@ -148,11 +149,11 @@ function expText(c: Colony, e: Ev): string {
     case 'x_care': return `${day}${(BAR[p[1]] ?? BAR.ruin)[m % 3]} barred the way. ${a} judged it not worth a life, and they searched what they could reach.`;
     case 'x_hazard': return day + (HAZ[p[1]] ?? HAZ.collapse)[m ? 1 : 0].replace('{a}', a);
     case 'x_find': return `${day}${a} ${p[1] === 'iron' ? `found ${m} bars of good old iron under the rubble` : p[1] === 'goods' ? `brought out ${m} loads of fine old things: glass, bronze and carved bone` : `turned up a rotted chest with ${m} silver in it`}.`;
-    case 'x_relic': return `${day}in the last chamber ${a} found ${p[1] ?? 'something old and precious'}.`;
+    case 'x_relic': return `${day}${WHERE_FOUND[p[2] ?? ''] ?? 'in the last chamber'} ${a} found ${p[1] ?? 'something old and precious'}.`;
     case 'x_left_be': return `${day}${p[1] ?? 'something precious'} lay in the dead one's hands. ${a} would not rob a grave: they said a prayer and left it there.`;
-    case 'x_map': return `${day}${a} found a map scratched into a wall: the way to ${p[1] ?? 'somewhere further'}.`;
-    case 'x_lore': return `${day}${a} spent the day copying old carvings by candlelight.`;
-    case 'x_captive': return `${day}they found someone alive in there, caged and half starved. ${a} broke the lock.`;
+    case 'x_map': return `${day}${a} found a map ${p[2] === 'camp' ? 'among the papers the host left behind' : p[2] === 'wreck' ? 'in an oilcloth, still dry' : p[2] === 'cave' ? 'scratched into the rock' : 'scratched into a wall'}: the way to ${p[1] ?? 'somewhere further'}.`;
+    case 'x_lore': return `${day}${a} spent the day ${p[1] === 'camp' ? 'going through the letters and tallies the host left behind' : p[1] === 'wreck' ? 'drying out a log-book page by page' : 'copying old carvings by candlelight'}.`;
+    case 'x_captive': return `${day}they found someone alive ${p[1] === 'camp' ? 'among the wagons' : p[1] === 'wreck' ? 'below decks' : 'in there'}, caged and half starved. ${a} broke the lock.`;
     case 'x_bare': return `${day}${['nothing but dust, bones and other people\'s footprints. Someone had been there first', 'they searched every corner and found nothing worth the carrying', 'whatever was there once is long gone'][m % 3]}.`;
     case 'x_linger': return `${a} would not leave while there might be more to find. They stayed another day.`;
     case 'x_homeward': return `${day}the party turned for home${p[1] === 'rich' ? ', packs heavy' : p[1] === 'grim' ? ', one fewer than set out' : p[1] === 'hurt' ? ', helping their wounded along' : p[1] === 'bare' ? ' with nothing to show for it' : ''}.`;
@@ -174,7 +175,9 @@ function expText(c: Colony, e: Ev): string {
     case 'x_title': return `People have started calling ${a} "${first(c, e.a)} ${e.s ?? ''}".`;
     case 'x_overdue': return `The party sent to ${site} should have been home days ago. There has been no word.`;
     case 'x_mourned': return `Nobody has come back from ${site}. The colony has given the ${NUM_WORD[n] ?? n} of them up for lost.`;
-    case 'x_survivor': return `${full(c, e.a)} walked in at the gate alone, thin as a rake: the last of the party lost at ${site}.`;
+    case 'x_survivor': return n > 1 ? `${full(c, e.a)} walked in at the gate, thin as a rake: one of the party lost at ${site}, come home after all.` : `${full(c, e.a)} walked in at the gate alone, thin as a rake: the last of the party lost at ${site}.`;
+    case 'x_memorial': return `${n} gathered to remember the party lost at ${site}. There was nothing to bury.`;
+    case 'x_seat_held': return `${full(c, e.a)} is heir to ${full(c, e.b)}, and away with the expedition. The seat is kept empty until they are home.`;
     case 'x_vol': return `${a} has stepped forward to go with the next expedition.`;
     default: return `${e.k}: ${a}`;
   }
@@ -204,7 +207,7 @@ export const WEIGHT: Record<string, number> = {
   v_come: 2, v_gone: 1, v_shelter: 1, v_fair: 1, v_rare: 2, v_nosale: 1, v_finery: 1, v_festival: 2, v_played: 1, v_song: 2, v_saint: 2, v_offering: 1, v_converted: 2,
   v_takenin: 3, v_turnedaway: 3, v_healed: 2, v_blessed: 2, v_fields: 2, v_lights: 2, v_lore: 2, v_fortune: 2, v_paid: 3, v_refused: 3, v_kingmen: 3,
   x_call: 2, x_left: 3, x_off: 1, x_road: 1, x_ambush: 2, x_reach: 2, x_dare: 2, x_care: 2, x_hazard: 3, x_find: 2, x_relic: 3, x_left_be: 2, x_map: 2, x_lore: 2, x_captive: 3, x_bare: 1, x_linger: 1,
-  x_homeward: 1, x_back: 3, x_home: 3, x_relic_set: 3, x_feast: 2, x_title: 3, x_overdue: 3, x_mourned: 3, x_survivor: 3, x_vol: 2,
+  x_homeward: 1, x_back: 3, x_home: 3, x_relic_set: 3, x_feast: 2, x_title: 3, x_overdue: 3, x_mourned: 3, x_survivor: 3, x_vol: 2, x_memorial: 3, x_seat_held: 3,
   v_told: 2, v_miss: 2, v_lost: 1, v_bought: 3, v_beaten: 3, v_wounded: 3, v_fled: 3, v_taken: 3,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
@@ -567,7 +570,7 @@ export function thoughtText(c: Colony, k: string, o?: Id): string {
 }
 
 const WHY: Record<string, string> = {
-  x_gather: 'Chosen for the expedition', x_leave: 'Chosen for the expedition', x_home: 'Back from the wilds', farewell: 'Someone of theirs is going', welcome: 'The expedition is home', away: 'Chosen for the expedition',
+  memorial: 'Remembering the lost', x_gather: 'Chosen for the expedition', x_leave: 'Chosen for the expedition', x_home: 'Back from the wilds', farewell: 'Someone of theirs is going', welcome: 'The expedition is home', away: 'Chosen for the expedition',
   hungry: 'Hungry', starving: 'Starving', tired: 'Worn out', exhausted: 'Collapsed from exhaustion', night: 'Time to sleep', break: 'Not in their right mind',
   bored: 'Needed a break', idle: 'Nothing pressing to do', free: 'Free time', love: 'Wanted to see their love', urge: 'Could not put it off any longer', crush: 'Could not stay away', friend: 'Wanted company', family: 'Wanted family',
   child: 'Being a child', baby: 'Being a baby', wedding: 'At the wedding', audience: 'Before the seat', trial: 'At the trial', sermon: 'Hearing the sermon', funeral: 'At the funeral', feast: 'At the feast', festival: 'At the festival', grief: 'Grieving', new: 'Just arrived',

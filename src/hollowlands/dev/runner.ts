@@ -21,6 +21,7 @@ import { STAGE, ageYears, fullName, stage } from '../sim/pawn';
 import { WEIGHT, dateText, evText } from '../text';
 import { infect } from '../sim/health';
 import { Rand } from '../sim/rng';
+import { callParty } from '../sim/exped';
 
 declare const process: { argv: string[]; exit(code: number): never };
 declare const performance: { now(): number };
@@ -268,7 +269,7 @@ function many(): void {
 async function golden(update: boolean): Promise<void> {
   const fs = await fsMod();
   const path = 'src/hollowlands/dev/golden.json';
-  const run = (): { hash: string; mid: string } => {
+  const run = (): { hash: string; mid: string; exp: string } => {
     const c = createColony({ seed: 7, pop: 16 });
     for (let k = 0; k < TICKS_PER_DAY * 45; k++) step(c);
     // save and load half way: a restored colony must carry on exactly the same
@@ -282,19 +283,41 @@ async function golden(update: boolean): Promise<void> {
     }
     const a = colonyHash(c);
     copies.forEach((x, n) => { const b = colonyHash(x); if (a !== b) { console.error(`FAIL: reloaded copy ${n} drifted (${a} vs ${b})`); process.exit(1); } });
-    return { hash: a, mid };
+    return { hash: a, mid, exp: expCase() };
   };
+  // a second case that reaches an expedition: a town of 50, a party called on day 21, and reload
+  // copies taken while it musters, while it is away and as it comes home
+  function expCase(): string {
+    const c = createColony({ seed: 3, pop: 50 });
+    for (let k = 0; k < TICKS_PER_DAY * 20; k++) step(c);
+    while (c.tick % TICKS_PER_DAY !== 1) step(c);
+    if (c.exp) c.exp.l = [];
+    const q = callParty(c, { k: 'tomb', name: 'the Barrow of Kings', d: 2, p: 'relic', far: 1 });
+    if (!q) { console.error('FAIL: the golden expedition could not form a party'); process.exit(1); }
+    const copies = [deserialize(serialize(c))];
+    const marks = new Set([70, 85, 300, 620, 900, 1100]);
+    for (let k = 0; k < TICKS_PER_DAY * 24; k++) {
+      step(c);
+      for (const x of copies) step(x);
+      if (marks.has(k)) copies.push(deserialize(serialize(c)));
+    }
+    if (!(c.stats.expeditions >= 1) || !c.exp || !c.exp.done.length) { console.error('FAIL: the golden expedition never set out and came home'); process.exit(1); }
+    const a = colonyHash(c);
+    copies.forEach((x, n) => { const b = colonyHash(x); if (a !== b) { console.error(`FAIL: expedition case, reloaded copy ${n} drifted (${a} vs ${b})`); process.exit(1); } });
+    return a;
+  }
   const one = run();
   const two = run();
-  if (one.hash !== two.hash) { console.error(`FAIL: two identical runs differ (${one.hash} vs ${two.hash})`); process.exit(1); }
+  if (one.hash !== two.hash || one.exp !== two.exp) { console.error(`FAIL: two identical runs differ (${one.hash}/${one.exp} vs ${two.hash}/${two.exp})`); process.exit(1); }
   if (update || !fs.existsSync(path)) {
     fs.writeFileSync(path, JSON.stringify(one, null, 2) + '\n');
-    console.log(`golden updated: ${one.hash}`);
+    console.log(`golden updated: ${one.hash} (expedition case ${one.exp})`);
     return;
   }
-  const want = JSON.parse(fs.readFileSync(path, 'utf8')) as { hash: string };
+  const want = JSON.parse(fs.readFileSync(path, 'utf8')) as { hash: string; exp?: string };
+  if (want.exp !== one.exp) { console.error(`FAIL: golden expedition hash changed (${want.exp} -> ${one.exp}). If the sim change is intended, run with --update.`); process.exit(1); }
   if (want.hash !== one.hash) { console.error(`FAIL: golden hash changed (${want.hash} -> ${one.hash}). If the sim change is intended, run with --update.`); process.exit(1); }
-  console.log(`golden ok: ${one.hash}`);
+  console.log(`golden ok: ${one.hash} (expedition case ${one.exp})`);
 }
 
 async function size(): Promise<void> {

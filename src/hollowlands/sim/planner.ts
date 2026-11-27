@@ -455,9 +455,10 @@ export function assignBeds(c: Colony, quiet: boolean): void {
     if (cur && cur !== b && cur.own && (cur.own === head.sp || cur.own === head.id) && (CASTLE_KINDS.has(cur.k) || (!CASTLE_KINDS.has(b.k) && (b.got ?? 0) <= (cur.got ?? 0)))) continue;
     const fam = household(c, head);
     for (const p of fam) {
-      if (p.home === b.id || p.gone) continue;
+      if (p.home === b.id || p.gone || awayById(c, p.id)) continue;
       if (b.beds.indexOf(0) < 0) {
-        const j = b.beds.findIndex((id) => id && !fam.some((f) => f.id === id));
+        // (nobody away with an expedition loses their bed while they are gone)
+        const j = b.beds.findIndex((id) => id && !fam.some((f) => f.id === id) && !awayById(c, id));
         if (j < 0) break;
         const out = pawnById(c, b.beds[j]);
         if (out) out.home = 0;

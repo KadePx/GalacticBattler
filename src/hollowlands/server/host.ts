@@ -196,7 +196,7 @@ export class ColonyHost {
     const msgs = c.out;
     try {
       const owners = [...c.pawns.filter((p) => p.owner).map((p) => p.owner!), ...awayPawns(c).filter((p) => p.owner).map((p) => p.owner!), ...c.inq.filter((i) => i.k === 'join').map((i) => String(i.owner))];
-      await this.o.deliver({ from: c.id, msgs, pop: c.pawns.length, ruler: ruler ? `${ruler.first} ${ruler.fam}` : undefined, tick: c.tick, name: c.name, owners, wars: Object.keys(c.wars ?? {}) });
+      await this.o.deliver({ from: c.id, msgs, pop: c.pawns.length + awayPawns(c).length, ruler: ruler ? `${ruler.first} ${ruler.fam}` : undefined, tick: c.tick, name: c.name, owners, wars: Object.keys(c.wars ?? {}) });
       c.out = [];
     } catch {
       /* the region is busy: keep the messages and try again next time */

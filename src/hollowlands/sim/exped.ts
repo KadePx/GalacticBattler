@@ -59,7 +59,7 @@ const EPITHETS: Record<string, string> = { camp: 'the Seeker', ruin: 'the Seeker
 
 type Exp = NonNullable<Colony['exp']>;
 
-const blank = (): Exp => ({ n: 1, nx: 0, l: [], rel: [], nr: 1, sites: [], seen: [], dead: [], done: [], late: [] });
+const blank = (): Exp => ({ n: 1, nx: 0, l: [], rel: [], nr: 1, sites: [], seen: [], dead: [], done: [], late: [], ak: -99 });
 
 /** The colony's expedition state, begun (with the first party some days off) if it has none yet. */
 export function expOf(c: Colony): Exp {
@@ -75,6 +75,24 @@ export function awayPawns(c: Colony): Pawn[] {
   for (const q of x.l) for (const p of q.pw) out.push(p);
   for (const l of x.late) out.push(l.pw);
   return out;
+}
+
+/** Those away who are expected home: not the missing, nor anyone given up for lost. */
+export function awayDue(c: Colony): Pawn[] {
+  const x = c.exp;
+  if (!x) return [];
+  const out: Pawn[] = [];
+  for (const q of x.l) if (q.m !== 4) for (const p of q.pw) out.push(p);
+  return out;
+}
+
+/** The colony gathers once for a whole party that never came home. */
+export function memorialEnd(c: Colony, there: Pawn[]): void {
+  const x = c.exp;
+  const m = x?.mem;
+  for (const p of there) think(c, p, 'x_memorial');
+  log(c, 'x_memorial', m?.a, undefined, m?.site ?? '', there.length);
+  if (x && m) delete x.mem;
 }
 
 /** Is this colonist away with an expedition (alive, as far as anyone knows, and coming back)? */
@@ -221,17 +239,19 @@ function tiedDown(c: Colony): Set<Id> {
   if (c.vis) for (const v of c.vis.l) if (v.o) out.add(v.o);
   for (const p of c.pawns) {
     if (p.appr) { out.add(p.id); out.add(p.appr[0]); }
+    // nobody leaves with a child on the way
+    if (p.preg) { out.add(p.id); out.add(p.preg.fa); if (p.sp) out.add(p.sp); }
     // small children keep their parents at home
     if (stage(c, p) <= STAGE.CHILD) { out.add(p.mo); out.add(p.fa); }
   }
   return out;
 }
 
-function fit(c: Colony, p: Pawn, tied: Set<Id>): boolean {
+function fit(c: Colony, p: Pawn, tied: Set<Id>, chosen = false): boolean {
   if (p.gone || stage(c, p) !== STAGE.ADULT || tied.has(p.id)) return false;
   if (isDown(p) || needsRest(p) || p.brk || p.preg || p.thrall || p.ill || p.inj.length || p.hp < 75 || p.ask || (p.urge && p.urge[2] > c.tick)) return false;
   if (p.sp && p.rel[p.sp]?.k === 'betrothed') return false;
-  if (p.owner && !(p.vol !== undefined && p.vol > c.tick)) return false;
+  if (p.owner && !chosen && !(p.vol !== undefined && p.vol > c.tick)) return false;
   return true;
 }
 
@@ -362,26 +382,39 @@ export function dailyExped(c: Colony): void {
     if (q.m === 2) awayDay(c, x, q, day);
     else if (q.m === 4) missingDay(c, x, q, day);
   }
+  if (x.mem) {
+    if (!c.gath && !troubled(c)) {
+      const yard = c.blds.find((b) => b.k === 'graveyard' && b.built) ?? c.blds.find((b) => b.k === 'shrine' && b.built) ?? c.blds.find((b) => b.k === 'hall' && b.built);
+      c.gath = { k: 'memorial', t0: c.tick + 10 * H, t1: c.tick + 12 * H, b: yard?.id ?? 0, a: x.mem.a, x: yard ? yard.x + Math.floor(yard.w / 2) : c.cx, y: yard ? yard.y + Math.floor(yard.h / 2) : c.cy };
+    } else if (c.gath?.k !== 'memorial' && day - dayOf(x.mem.t) > 6) delete x.mem;
+  }
   if (x.rel.length) relicsDaily(c, x, day);
   for (const p of c.pawns) if (p.vol !== undefined && p.vol <= c.tick) p.vol = undefined;
   if (x.l.length || day < x.nx - 1) return;
   if (!quietTimes(c)) { if (day >= x.nx) x.nx = day + 2; return; }
   if (day < x.nx) {
-    // the day before: talk of it goes round, and the players' own are asked if they would go
-    for (const p of c.pawns) if (p.owner && !p.ask && p.vol === undefined && stage(c, p) === STAGE.ADULT && !isDown(p) && !p.thrall) askVenture(c, p);
+    // the day before: talk of it goes round, and the players' own are asked if they would go. Only when a
+    // party could really form, and not again for a while after the last time of asking
+    if (day - (x.ak ?? -99) < 10 || !c.pawns.some((p) => p.owner) || !musterSpots(c) || !pickParty(c, new Rand(c.seed, S.EXPED, day, 9))) return;
+    let asked = false;
+    for (const p of c.pawns) if (p.owner && !p.ask && p.vol === undefined && stage(c, p) === STAGE.ADULT && !isDown(p) && !p.thrall) { askVenture(c, p); asked = true; }
+    if (asked) x.ak = day;
     return;
   }
   const q = callParty(c);
   x.nx = day + (q ? 0 : 4);
 }
 
-// set from ask.ts (which this file cannot import without a loop): puts the question to a player
-let askVenture: (c: Colony, p: Pawn) => void = () => undefined;
-export function setAskVenture(f: (c: Colony, p: Pawn) => void): void { askVenture = f; }
+/** Put the question to a player's colonist (as ask() in ask.ts does; that file imports this one). It lapses in a day. */
+function askVenture(c: Colony, p: Pawn): void {
+  p.ask = { k: 'venture', o: undefined, n: undefined, x: c.tick + D };
+  log(c, 'asked', p.id, undefined, 'venture');
+}
 
 /** A colonist steps forward for the next party (a player's choice). */
 export function volunteer(c: Colony, p: Pawn): void {
-  p.vol = c.tick + 30 * D;
+  // (it stands until a party next sets out with them)
+  p.vol = c.tick + 6000 * D;
   log(c, 'x_vol', p.id);
 }
 
@@ -434,7 +467,12 @@ function awayDay(c: Colony, x: Exp, q: XParty, day: number): void {
       const victim = r.chance(Math.max(0.15, 0.7 - str * 0.3)) ? r.pick(q.pw) : undefined;
       if (victim) hurt(c, q, victim, what === 'wolves' ? 'bite' : 'cut', 8 + r.int(12), r);
       beat(c, q, 'x_ambush', victim?.id, undefined, `${s.name}|${what}`, tag);
-    } else beat(c, q, 'x_road', undefined, undefined, s.name, tag + r.int(6) + (d > s.far ? 10 : 0));
+    } else {
+      let v = r.int(6);
+      const last = q.beats[q.beats.length - 1];
+      if (last && last.k === 'x_road' && (last.n ?? 0) % 10 === v) v = (v + 1 + r.int(4)) % 6;
+      beat(c, q, 'x_road', undefined, undefined, s.name, tag + v + (d > s.far ? 10 : 0));
+    }
     return;
   }
   if (d === s.far) { beat(c, q, 'x_reach', lead.id, undefined, `${s.name}|${s.k}`, tag + s.d); return; }
@@ -482,7 +520,7 @@ function awayDay(c: Colony, x: Exp, q: XParty, day: number): void {
     } else {
       q.relic = k;
       q.rn = name;
-      beat(c, q, 'x_relic', finder.id, undefined, `${s.name}|${name}`, tag);
+      beat(c, q, 'x_relic', finder.id, undefined, `${s.name}|${name}|${s.k}`, tag);
     }
     return;
   }
@@ -490,7 +528,7 @@ function awayDay(c: Colony, x: Exp, q: XParty, day: number): void {
   if (r2 < 0.3 / rich) { beat(c, q, 'x_bare', undefined, undefined, s.name, tag + r.int(3)); return; }
   if (r2 < 0.3 / rich + 0.07 && s.d >= 2 && !q.cap && c.pawns.length + awayPawns(c).length < HARD_CAP - 2) {
     q.cap = 1;
-    beat(c, q, 'x_captive', lead.id, undefined, s.name, tag);
+    beat(c, q, 'x_captive', lead.id, undefined, `${s.name}|${s.k}`, tag);
     return;
   }
   if (r2 > 0.9 && !q.map && x.sites.length < 2) {
@@ -498,14 +536,14 @@ function awayDay(c: Colony, x: Exp, q: XParty, day: number): void {
     next.d = Math.min(3, next.d + 1);
     next.p = r.chance(0.6) ? 'relic' : 'silver';
     q.map = next;
-    beat(c, q, 'x_map', (scholar ?? finder).id, undefined, `${s.name}|${next.name}`, tag);
+    beat(c, q, 'x_map', (scholar ?? finder).id, undefined, `${s.name}|${next.name}|${s.k}`, tag);
     return;
   }
   const what = scholar && r2 > 0.72 ? 'lore' : r.chance(0.6) ? p0 : r.pick(['silver', 'goods', 'iron']);
   if (what === 'lore' && scholar) {
     const n = Math.round((6 + r.int(8) + scholar.sk[11] * 0.6) * rich);
     q.lore += n;
-    beat(c, q, 'x_lore', scholar.id, undefined, s.name, tag + n);
+    beat(c, q, 'x_lore', scholar.id, undefined, `${s.name}|${s.k}`, tag + n);
   } else if (what === 'iron') {
     const n = Math.max(2, Math.round((3 + r.int(5)) * rich));
     q.iron += n;
@@ -542,11 +580,16 @@ function missingDay(c: Colony, x: Exp, q: XParty, day: number): void {
   const rest = q.pw.filter((p) => !p.owner);
   if (!live.length && rest.length && r.chance(0.35)) live.push(r.pick(rest));
   beat(c, q, 'x_mourned', q.lead, undefined, q.site.name, q.pw.length);
+  const n0 = q.pw.length;
   for (const p of q.pw.slice()) {
     if (live.includes(p)) continue;
     fall(c, x, q, p, 'x_lost');
+    // remembered together, not one funeral after another
+    const d = c.dead[c.dead.length - 1];
+    if (d && d.id === p.id) d.fun = 1;
   }
-  for (const p of live) x.late.push({ pw: p, t: (day + 5 + r.int(14)) * D + (9 + r.int(8)) * H, site: q.site.name, id: q.id });
+  x.mem = { site: q.site.name, n: n0, a: q.lead, t: c.tick };
+  for (const p of live) x.late.push({ pw: p, t: (day + 5 + r.int(14)) * D + (9 + r.int(8)) * H, site: q.site.name, id: q.id, n: live.length });
   q.pw = [];
   for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, 'x_lostparty');
   conclude(c, x, q, 'lost');
@@ -572,9 +615,11 @@ export function stepExped(c: Colony): void {
     // whoever is fit to go when the hour comes
     const ids: Id[] = [];
     const ro: string[] = [];
+    const tied = tiedDown(c);
     for (let i = 0; i < q.ids.length; i++) {
       const p = pawnById(c, q.ids[i]);
-      if (!p || p.gone || isDown(p) || p.brk || p.thrall) continue;
+      // (anyone hurt, taken ill, or caught up in something since they were chosen stays behind)
+      if (!p || !fit(c, p, tied, true)) continue;
       ids.push(p.id);
       ro.push(q.ro[i]);
       if (p.act.k === 'trek') p.act.t1 = Math.min(p.act.t1, Math.max(t, p.act.ta));
@@ -656,11 +701,12 @@ function comeIn(c: Colony, p: Pawn, since: number): void {
   p.x = ex;
   p.y = ey;
   p.act = mkAct('idle', c.tick, ex, ey, 1, 'x_home');
-  p.food = Math.max(p.food, 50);
+  p.food = Math.max(p.food, 60);
   p.rest = Math.max(30, Math.min(p.rest, 55));
   p.soc = Math.max(p.soc, 50);
   // ties that ended while they were away
   const sp = p.sp ? pawnById(c, p.sp) : undefined;
+  if (p.sp && sp && sp.sp !== p.id) { const rel = p.rel[sp.id]; if (rel?.k && rel.k !== 'ex') rel.k = 'ex'; think(c, p, 'dumped', sp.id); }
   if (p.sp && (!sp || sp.sp !== p.id)) p.sp = 0;
   for (let i = c.dead.length - 1; i >= 0; i--) {
     const d = c.dead[i];
@@ -684,8 +730,8 @@ function survivor(c: Colony, x: Exp, l: Exp['late'][number]): void {
   for (const i of p.inj) { i.tend = 1; i.bleed = 0; }
   if (p.hp < 35) p.hp = 35;
   p.food = 30;
-  log(c, 'x_survivor', p.id, undefined, l.site);
-  note(c, p, 'x_survived', undefined, l.site);
+  log(c, 'x_survivor', p.id, undefined, l.site, l.n ?? 1);
+  note(c, p, 'x_survived', undefined, `${l.site}|${l.n ?? 1}`);
   think(c, p, 'x_survived');
   bump(c, 'expSurvivors');
   for (const o of c.pawns) {
@@ -694,7 +740,7 @@ function survivor(c: Colony, x: Exp, l: Exp['late'][number]): void {
     else think(c, o, 'x_miracle');
   }
   const done = x.done.find((d) => d.id === l.id);
-  if (done) done.beats.push({ t: c.tick, k: 'x_survivor', a: p.id, s: l.site });
+  if (done) done.beats.push({ t: c.tick, k: 'x_survivor', a: p.id, s: l.site, n: l.n ?? 1 });
 }
 
 // ---------------------------------------------------------------- the end of it
@@ -897,7 +943,7 @@ export function expAct(c: Colony, p: Pawn, st: number, go: Go): boolean {
     const s = standAt(c, q.x, q.y, 6 + (p.id % 8));
     return !!s && go('attend', s[0], s[1], Math.max(1, q.go + 6 - t), 'farewell');
   }
-  if (q.m === 3 && t < q.t3 + 3 * H && p.food >= 20 && (kin() || (p.id + q.id) % 3 === 0)) {
+  if (q.m === 3 && t < q.t3 + 3 * H && p.food >= 40 && (kin() || (p.id + q.id) % 3 === 0)) {
     const s = standAt(c, q.wx, q.wy, 6 + ((p.id * 7) % 30));
     return !!s && go('attend', s[0], s[1], Math.max(4, q.t3 + 3 * H - t), 'welcome');
   }

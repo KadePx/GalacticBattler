@@ -139,7 +139,7 @@ function expBio(b: Bio, o: string): string {
     case 'x_went': return `Went with ${o}'s expedition to ${p[0]}${end}.`;
     case 'x_relic': return `Brought ${p[0]} home from ${p[1] ?? 'the wilds'}.`;
     case 'x_title': return `Came to be called "${b.s ?? ''}".`;
-    case 'x_survived': return `Walked home alone, the last of the party lost at ${p[0]}.`;
+    case 'x_survived': return Number(p[1]) > 1 ? `Came home at last, one of the party lost at ${p[0]}.` : `Walked home alone, the last of the party lost at ${p[0]}.`;
     case 'x_freed': return `Was freed from a cage at ${p[0]} by ${o}, and came home with them.`;
     default: return 'Went on an expedition.';
   }

@@ -274,7 +274,8 @@ export class Panels {
       }
     }
     // away with an expedition: still the colony's own, but not here to be counted
-    const away = awayPawns(c);
+    // (the given up for lost are not listed, but for a player's own colonist, shown to that player)
+    const away = awayPawns(c).filter((p) => p.id === v.me || !c.exp!.late.some((l) => l.pw === p));
     if (away.length) {
       const w0 = awayWhere(c, away[0].id);
       h += `<h3>Away <span class="legend">${w0 && w0.day ? `day ${w0.day} · ` : ''}not counted until they are home</span></h3>`;
@@ -497,7 +498,6 @@ function expeditionsBlock(c: Colony, ui: CardUi): string {
     h += `<div class="row disc relic"${r.i >= 0 ? ` data-tile="${r.i}"` : ''}><div class="n"><b>${esc(r.name[0].toUpperCase() + r.name.slice(1))}</b><small class="wrap">Brought home from ${esc(r.from)} by ${who(r.by)} · ${r.i >= 0 ? (c.blds.find((b) => b.id === c.sb[r.i])?.k === 'hall' ? 'on show in the hall' : 'on show in the castle hall') : 'put away safe'}</small><small class="plain wrap">${esc(RELIC_FX[r.fx] ?? '')}.</small></div><div class="yr">${shortDate(r.t)}</div></div>`;
   }
   for (const s of x.sites) h += `<div class="hint">A map shows the way to <b>${esc(s.name)}</b>: ${place(s)}.</div>`;
-  for (const l of x.late) h += `<div class="hint">${who(l.pw.id)} is still missing since the expedition to ${esc(l.site)}.</div>`;
   for (let i = x.done.length - 1; i >= 0; i--) {
     const d = x.done[i];
     const key = 'x' + d.id;

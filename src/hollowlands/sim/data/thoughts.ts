@@ -433,8 +433,9 @@ export const TH_LIST: ThDef[] = [
   h('sawduel', 'Watched a duel at dawn', 2, DAY * 2),
   h('noblefeast', 'A wedding of two noble houses', 8, DAY * 3),
   // expeditions
-  h('x_relics', 'Old wonders on show in the hall', 2, 0),
-  h('x_relicjoy', 'Proud of what our people brought home', 2, 0),
+  h('x_relics', 'Old wonders on show in the hall', 1, 0),
+  h('x_relicjoy', 'Proud of what our people brought home', 1, 0),
+  h('x_memorial', 'Said goodbye to the lost', 3, DAY * 5),
   h('x_relicawe', 'Stood a long while before the relic', 4, DAY * 6),
   h('x_kinaway', '{o} is away with the expedition', -3, DAY * 6),
   h('x_fear', 'The expedition is overdue', -8, DAY * 6),

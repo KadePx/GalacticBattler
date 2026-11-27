@@ -13,6 +13,7 @@ import { depart, die } from './life';
 import { payFeast, wage } from './market';
 import { think } from './mood';
 import { STAGE, ageYears, has, pawnById, per, stage, stat } from './pawn';
+import { awayDue } from './exped';
 import { Rand, S } from './rng';
 import { opinion } from './social';
 import { AX, type Colony, type Pawn, type RaceK } from './types';
@@ -184,9 +185,16 @@ export function succession(c: Colony, old: Pawn | undefined, r: Rand): void {
   if (k === 'council') { election(c, r, old); return; }
   if (k === 'lord' && old) {
     // children first, eldest first; then spouse; then brothers and sisters
-    const kids = c.pawns.filter((p) => !p.gone && (p.mo === old.id || p.fa === old.id)).sort((a, b) => a.born - b.born);
-    const kin = [...kids, ...c.pawns.filter((p) => !p.gone && old.sp === p.id), ...c.pawns.filter((p) => !p.gone && ((!!old.mo && p.mo === old.mo) || (!!old.fa && p.fa === old.fa)))];
+    // (an heir away with an expedition is still the heir: the seat is kept until they are home)
+    const all = [...c.pawns, ...awayDue(c)];
+    const kids = all.filter((p) => !p.gone && (p.mo === old.id || p.fa === old.id)).sort((a, b) => a.born - b.born);
+    const kin = [...kids, ...all.filter((p) => !p.gone && old.sp === p.id), ...all.filter((p) => !p.gone && ((!!old.mo && p.mo === old.mo) || (!!old.fa && p.fa === old.fa)))];
     const heir = kin[0];
+    if (heir && !c.pawns.includes(heir)) {
+      c.gov.held = [heir.id, old.id];
+      log(c, 'x_seat_held', heir.id, old.id);
+      return;
+    }
     if (heir) {
       // a grown, ambitious relative with more friends than the heir may not wait their turn
       const rival = kin.slice(1).find((p) => stage(c, p) >= STAGE.ADULT && per(p, AX.AMBITION) > 0.7 && standing(c, p, adults) > standing(c, heir, adults) * 1.15 + 20);
@@ -249,6 +257,17 @@ export function dailyGov(c: Colony): void {
   const day = dayOf(t);
   const r = new Rand(c.seed, S.GOV, day);
   let ruler = pawnById(c, c.gov.ruler);
+  if (c.gov.held && (!ruler || ruler.gone)) {
+    // the seat was kept for an heir out with an expedition: crowned when they walk in, passed over only if they are lost
+    const heir = pawnById(c, c.gov.held[0]);
+    if (heir && !heir.gone) {
+      const was = c.dead.find((d) => d.id === c.gov.held![1]);
+      delete c.gov.held;
+      crown(c, heir, 'inherited', was as unknown as Pawn | undefined);
+      ruler = heir;
+    } else if (awayDue(c).some((p) => p.id === c.gov.held![0])) return;
+    else delete c.gov.held;
+  } else if (c.gov.held) delete c.gov.held;
   if (!ruler || ruler.gone) {
     const old = c.dead.find((d) => d.id === c.gov.ruler);
     succession(c, old as unknown as Pawn | undefined, r);

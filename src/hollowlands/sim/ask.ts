@@ -9,7 +9,7 @@ import { think, getRel } from './mood';
 import { pawnById, per } from './pawn';
 import { opinion } from './social';
 import { exposeCultist, exposePlot, joinCult, joinPlot } from './intrigue';
-import { setAskVenture, volunteer } from './exped';
+import { volunteer } from './exped';
 import { AX, type Colony, type Id, type Input, type Pawn } from './types';
 
 export interface AskDef { k: string; title: string; text: string; opts: [string, string][] }
@@ -31,8 +31,6 @@ export function ask(c: Colony, p: Pawn, k: string, o?: Id, n?: number, days = 2)
   log(c, 'asked', p.id, o, k);
   return true;
 }
-
-setAskVenture((c, p) => { ask(c, p, 'venture', undefined, undefined, 1); });
 
 function betroth(c: Colony, p: Pawn, o: Pawn): void {
   getRel(p, o.id).k = 'betrothed';

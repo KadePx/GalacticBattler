@@ -4,7 +4,7 @@
 import { dayOf } from '../config';
 import { bump, log, note } from './events';
 import { think } from './mood';
-import { STAGE, pawnById, stage } from './pawn';
+import { STAGE, awayById, pawnById, stage } from './pawn';
 import { opinion } from './social';
 import type { Colony, Pawn } from './types';
 
@@ -16,8 +16,8 @@ const kids = (c: Colony, p: Pawn): Pawn[] => c.pawns.filter((o) => !o.gone && (o
 export const DREAMS: Record<string, Dream> = {
   love: {
     k: 'love', done: 'married for love',
-    check: (c, p) => { const o = p.sp ? pawnById(c, p.sp) : undefined; return !!o && p.rel[o.id]?.k === 'spouse' && opinion(c, p, o) >= 40; },
-    progress: (c, p) => { const o = p.sp ? pawnById(c, p.sp) : undefined; return !o ? 'still looking' : p.rel[o.id]?.k === 'spouse' ? `married to ${o.first}, but is it love?` : `with ${o.first}, not yet wed`; },
+    check: (c, p) => { const o = p.sp ? pawnById(c, p.sp) ?? awayById(c, p.sp) : undefined; return !!o && p.rel[o.id]?.k === 'spouse' && opinion(c, p, o) >= 40; },
+    progress: (c, p) => { const o = p.sp ? pawnById(c, p.sp) ?? awayById(c, p.sp) : undefined; return !o ? 'still looking' : p.rel[o.id]?.k === 'spouse' ? `married to ${o.first}, but is it love?` : `with ${o.first}, not yet wed`; },
   },
   dynasty: {
     k: 'dynasty', done: 'founded a family that will outlive them',

@@ -270,7 +270,8 @@ export function pawnCard(c: Colony, p: Pawn, ui: CardUi): string {
     const fit = p.act.k === 'work' && p.act.w && TOOL_FOR[p.act.w] ? (TOOL_FOR[p.act.w] === p.tool[0] ? '' : ' (not the right tool for this work)') : '';
     h += `<div class="sub" title="The right tool makes work go faster; without one it goes slower. Tools wear out with use.">Carries ${esc(TOOL_NAMES[p.tool[0]] ?? p.tool[0])}, ${p.tool[1] > 66 ? 'in good shape' : p.tool[1] > 33 ? 'well used' : 'nearly worn out'}${fit}</div>`;
   }
-  h += `<div class="btns"><button class="btn sm${ui.following ? ' on' : ''}" data-act="follow">${ui.following ? 'Following' : 'Follow'}</button><button class="btn sm" data-act="find">Show on map</button></div></div></div>`;
+  // (nobody away with an expedition is on the map to be followed or found)
+  h += `${awayById(c, p.id) ? '' : `<div class="btns"><button class="btn sm${ui.following ? ' on' : ''}" data-act="follow">${ui.following ? 'Following' : 'Follow'}</button><button class="btn sm" data-act="find">Show on map</button></div>`}</div></div>`;
 
   let flags = '';
   if (p.brk) flags += `<span class="tie bad">Broken: ${BREAK_NOW[p.brk.k] ?? p.brk.k}</span>`;

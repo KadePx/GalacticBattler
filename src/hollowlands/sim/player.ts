@@ -6,7 +6,7 @@ import { PROF_LIST } from './data/professions';
 import { TICKS_PER_DAY } from '../config';
 import { log, note } from './events';
 import { think } from './mood';
-import { volunteer } from './exped';
+import { awayPawns, volunteer } from './exped';
 import { STAGE, ownedPawn, pawnById, stage } from './pawn';
 import { SKILLS, type Colony, type Dead, type Input, type Pawn } from './types';
 
@@ -135,8 +135,10 @@ export function takeHeir(c: Colony, e: Input): void {
 /** A keepsake passes on when its keeper dies: to the eldest child, else the partner, else a friend. */
 export function passHeirloom(c: Colony, p: Pawn): void {
   if (!p.heirloom) return;
-  const kids = c.pawns.filter((o) => !o.gone && (o.mo === p.id || o.fa === p.id)).sort((a, b) => a.born - b.born);
-  const to = kids.find((o) => !o.heirloom) ?? c.pawns.find((o) => !o.gone && o.id === p.sp && !o.heirloom) ?? c.pawns.find((o) => !o.gone && !o.heirloom && o.rel[p.id]?.f === 1);
+  // (kin away with an expedition inherit all the same: it is kept for them)
+  const all = [...c.pawns, ...awayPawns(c)];
+  const kids = all.filter((o) => !o.gone && o !== p && (o.mo === p.id || o.fa === p.id)).sort((a, b) => a.born - b.born);
+  const to = kids.find((o) => !o.heirloom) ?? all.find((o) => !o.gone && o !== p && o.id === p.sp && !o.heirloom) ?? c.pawns.find((o) => !o.gone && !o.heirloom && o.rel[p.id]?.f === 1);
   if (!to) return;
   to.heirloom = p.heirloom;
   think(c, to, 'heirloom', p.id);

@@ -83,7 +83,7 @@ export function foundFrom(w: World, msg: SettlerMsg): Colony {
 /** One tick for every living colony, then deliver whatever they sent out. */
 export function stepWorld(w: World): void {
   for (const c of w.colonies) {
-    if (!c.pawns.length) continue;
+    if (!c.pawns.length && !c.exp?.l.length && !c.exp?.late.length) continue;
     step(c);
   }
   w.tick++;
@@ -108,7 +108,7 @@ export function stepWorld(w: World): void {
   for (const s of w.sites) {
     if (s.dead) continue;
     const c = w.colonies.find((x) => x.id === s.id);
-    if (c && !c.pawns.length) s.dead = w.tick;
+    if (c && !c.pawns.length && !c.exp?.l.length && !c.exp?.late.length) s.dead = w.tick;
   }
   if (w.tick % TICKS_PER_DAY === 0) {
     send(nearLists(w.sites));

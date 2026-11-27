@@ -13,6 +13,7 @@ import { bump, log, note } from './events';
 import { dailyHealth } from './health';
 import { maybeSaint, sermonEnd } from './faith';
 import { verdict } from './crime';
+import { memorialEnd } from './exped';
 import { passHeirloom } from './player';
 import { ask } from './ask';
 import { getRel, think } from './mood';
@@ -123,7 +124,7 @@ function birth(c: Colony, mo: Pawn, r: Rand): void {
   const fa = person(c, preg.fa);
   if (r.chance(has(mo, 'frail') ? 0.12 : 0.05)) {
     think(c, mo, 'stillbirth');
-    const dad = pawnById(c, preg.fa);
+    const dad = pawnById(c, preg.fa) ?? awayById(c, preg.fa);
     if (dad && dad.sp === mo.id) think(c, dad, 'stillbirth');
     log(c, 'stillbirth', mo.id);
     note(c, mo, 'stillbirth');
@@ -152,8 +153,9 @@ function birth(c: Colony, mo: Pawn, r: Rand): void {
   c.pawns.push(baby);
   think(c, mo, 'gavebirth');
   note(c, mo, 'birth', baby.id);
-  const dad = pawnById(c, preg.fa);
-  const husband = mo.sp && mo.rel[mo.sp]?.k === 'spouse' ? pawnById(c, mo.sp) : undefined;
+  // (a father or husband away with an expedition is still the father, and hears of it when he is home)
+  const dad = pawnById(c, preg.fa) ?? awayById(c, preg.fa);
+  const husband = mo.sp && mo.rel[mo.sp]?.k === 'spouse' ? pawnById(c, mo.sp) ?? awayById(c, mo.sp) : undefined;
   if (dad && (dad.sp === mo.id || !husband)) { think(c, dad, 'childborn'); note(c, dad, 'birth', baby.id); }
   for (const p of c.pawns) if (p !== mo && p !== dad && p !== baby && stage(c, p) >= STAGE.CHILD) think(c, p, 'birthincolony');
   log(c, 'birth', baby.id, mo.id, undefined, preg.fa);
@@ -402,6 +404,8 @@ export function endGathering(c: Colony): void {
   } else if (g.k === 'funeral') {
     for (const p of there) think(c, p, 'funeral');
     log(c, 'funeral', g.a, undefined, undefined, there.length);
+  } else if (g.k === 'memorial') {
+    memorialEnd(c, there);
   } else if (g.k === 'trial') {
     verdict(c, there);
   } else if (g.k === 'sermon') {

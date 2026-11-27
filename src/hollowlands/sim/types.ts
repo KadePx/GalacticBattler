@@ -491,7 +491,7 @@ export interface Colony {
   /** the abandoned colony this one was built over */
   ruins?: string;
   /** who rules and how: kind of rule, ruler, laws in force, titles held, next election, regent for a child ruler */
-  gov: { k: string; ruler: Id; since: number; laws: Record<string, number>; titles: Record<string, Id>; next: number; regent: Id };
+  gov: { k: string; ruler: Id; since: number; laws: Record<string, number>; titles: Record<string, Id>; next: number; regent: Id; /** the seat kept for an heir away with an expedition: [heir, the ruler who died] */ held?: Id[] };
   /** how strongly people want to leave and found a new colony */
   settle: number;
   /** things this colony sends to the rest of the world (settler parties, news); the host delivers them */
@@ -554,7 +554,7 @@ export interface Colony {
    * dead colonies nearby (told to us by the region), expeditions past, and lone survivors of a lost
    * party still on their way home (who, when they come in, from where, which expedition)
    */
-  exp?: { n: number; nx: number; l: XParty[]; rel: XRelic[]; nr: number; sites: XSite[]; seen: string[]; dead: string[]; done: XDone[]; late: { pw: Pawn; t: number; site: string; id: number }[] };
+  exp?: { n: number; nx: number; l: XParty[]; rel: XRelic[]; nr: number; sites: XSite[]; seen: string[]; dead: string[]; done: XDone[]; late: { pw: Pawn; t: number; site: string; id: number; /** how many of that party lived */ n?: number }[]; /** the day the players' own were last asked if they would go */ ak?: number; /** a lost party still to be remembered together: where, how many, who led, since when */ mem?: { site: string; n: number; a: Id; t: number } };
 }
 
 export const idx = (c: { w: number }, x: number, y: number): number => y * c.w + x;
