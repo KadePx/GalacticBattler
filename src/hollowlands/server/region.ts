@@ -5,13 +5,13 @@
 import { colonySeed, pickSpot, startColonies, type Site } from '../sim/world';
 import type { SettlerMsg } from '../sim/settle';
 import type { KV } from './host';
-import { landThreat, nearLists, routeMsg, ruinFor, type Delivery } from '../sim/routes';
+import { landThreat, nearLists, pactsDaily, routeMsg, routePact, ruinFor, type Delivery, type Pacts, type SiteStat } from '../sim/routes';
 
 export interface RegionOpts { seed?: number; /** colonies a new world starts with (default: 6 to 8, from the seed) */ colonies?: number; pop: number; preDays: number; now: () => number; adminKey?: string }
 
 /** What the region knows about a colony at a glance (kept fresh by the colony's own reports). */
 export interface SiteInfo extends Site { pop: number; ruler?: string; tick?: number; owners?: string[]; /** colonies this one is at war with */ wars?: string[] }
-interface WorldRec { seed: number; count: number; /** colonies the world starts with; creation carries on until there are this many */ n?: number; sites: SiteInfo[]; created: number; day?: number; lastThreat?: number }
+interface WorldRec { seed: number; count: number; /** colonies the world starts with; creation carries on until there are this many */ n?: number; sites: SiteInfo[]; created: number; day?: number; lastThreat?: number; /** how neighbours stand with each other, and who is on the road between them (see routes.ts) */ pacts?: Pacts }
 
 /** Call a colony's keeper: path under its own API, optional JSON body (POST). */
 export type Link = (id: string, path: string, body?: unknown) => Promise<Record<string, unknown>>;
@@ -63,7 +63,7 @@ export class RegionHost {
   }
 
   /** A colony reports in, and hands over anything it has sent out into the world. */
-  private async deliver(body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name?: string; owners?: string[]; wars?: string[] }): Promise<void> {
+  private async deliver(body: { from: string; msgs: { k: string }[]; pop: number; ruler?: string; tick: number; name?: string; owners?: string[]; wars?: string[]; st?: SiteStat }): Promise<void> {
     const w = this.w!;
     const site = w.sites.find((s) => s.id === body.from);
     if (site) {
@@ -72,13 +72,20 @@ export class RegionHost {
       site.tick = body.tick;
       site.owners = body.owners ?? [];
       site.wars = body.wars ?? [];
+      if (body.st) site.st = body.st;
       if (!body.pop && !site.dead) site.dead = body.tick;
     }
     const send = async (list: Delivery[]): Promise<void> => {
       for (const d of list) await this.link(d.to, 'input', d.input).catch(() => undefined);
     };
     for (const m of body.msgs ?? []) {
-      if (m.k !== 'settlers') { await send(routeMsg(w.sites, body.from, body.name ?? site?.name ?? '', m as unknown as Record<string, unknown>)); continue; }
+      if (m.k !== 'settlers') {
+        const list = routeMsg(w.sites, body.from, body.name ?? site?.name ?? '', m as unknown as Record<string, unknown>);
+        const more = routePact(w.sites, w, body.from, body.tick, m as unknown as Record<string, unknown>, list);
+        await send(list);
+        await send(more);
+        continue;
+      }
       const msg = m as unknown as SettlerMsg;
       const id = (w.seed % 46656).toString(36) + 'c' + w.count; // unique to this world, so archives never mix
       const ruin = ruinFor(w.seed, w.sites, site, w.count);
@@ -97,6 +104,7 @@ export class RegionHost {
       w.day = day;
       await send(nearLists(w.sites));
       await send(landThreat(w.seed, day, w.sites, w));
+      await send(pactsDaily(w.seed, day, body.tick, w.sites, w));
     }
     await this.save();
   }
@@ -108,7 +116,8 @@ export class RegionHost {
       // with ?me=<public hash>, also say which colony that player's colonist lives in
       const me = new URL(req.url).searchParams.get('me') ?? '';
       const mine = me ? this.w!.sites.find((s) => !s.dead && s.owners?.includes(me))?.id : undefined;
-      return json({ seed: this.w!.seed, sites: this.w!.sites.map((s) => ({ ...s, owners: undefined, nearSent: undefined })), mine, now: this.o.now() });
+      const pacts = this.w!.pacts;
+      return json({ seed: this.w!.seed, sites: this.w!.sites.map((s) => ({ ...s, owners: undefined, nearSent: undefined, st: undefined })), mine, now: this.o.now(), ties: pacts?.ties ?? {}, trips: pacts?.trips ?? [], tourney: pacts?.tn });
     }
     if (req.method === 'POST' && path === 'wipe') {
       // owner only: retire every colony, then begin a new world with new colonies

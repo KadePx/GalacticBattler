@@ -57,7 +57,8 @@ export type ActK =
   | 'shop' | 'sell'
   // lending a hand when the land turns on the colony (see nature.ts: act.d says what), and a duel
   | 'aid' | 'duel'
-  // an expedition: mustering at the gate, walking out, walking home (act.why says which)
+  // an expedition: mustering at the gate, walking out, walking home (act.why says which);
+  // also an envoy, a knight or a bride taking the road to a neighbour (see neigh.ts)
   | 'trek';
 
 export interface Act {
@@ -431,6 +432,45 @@ export interface XParty {
 /** An expedition that is over: who went, where, when, how it ended, and its tale. */
 export interface XDone { id: number; site: XSite; lead: Id; ids: Id[]; t0: number; t1: number; out: string; beats: Ev[] }
 
+/** How we stand with one neighbour (see neigh.ts). Days are game days; every part but the name comes and goes. */
+export interface NbTie {
+  name: string;
+  /** a trade agreement, an alliance, a marriage between the houses: the day each was made */
+  trade?: number; ally?: number; kin?: number;
+  /** tribute: 1 we pay them, 2 they pay us; and since which day */
+  trib?: number; tribT?: number;
+  /** which of these the chronicle has told of (bits: 1 trade, 2 alliance, 4 tribute) */
+  said?: number;
+  /** caravans that have come in from them, tribute carts sent or received, and the day of the last dealing */
+  cv?: number; tb?: number; last?: number;
+}
+
+/** One of ours who has taken the road to a neighbour and will be back: an envoy, a knight at a tournament, fighters sent to an ally. */
+export interface NbAway {
+  pw: Pawn;
+  /** why they went ('trade', 'ally', 'tribute', 'tourney', 'relief'), where (the colony's name), when they left and when they are due home */
+  k: string; to: string; t0: number; t: number;
+  /** what came of it, once word has come back: rounds won, hurt, champion, the purse */
+  wins?: number; hurt?: number; won?: number; prize?: number; word?: string;
+}
+
+/** A tournament held here (see neigh.ts): the day, its hours, the ground, who rides, and how the bouts have gone. */
+export interface NbTourney {
+  day: number; t0: number; t1: number;
+  /** the middle of the lists, and which way they run (1 along x, 0 along y) */
+  x: number; y: number; h: number;
+  /** the colonies bidden */
+  guests: { id: string; name: string }[];
+  /** the riders: one of ours (id > 0, a colonist) or a guest (v > 0, a visitor), their name and town, their skill, wins, whether they are out, hurt */
+  kn: { id: Id; v: number; name: string; from: string; fromId: string; home: Id; sk: number; w: number; out: number; hurt: number }[];
+  /** bouts fought: [winner index, loser index, tick] */
+  b: number[][];
+  /** 0 called, 1 riding, 2 over */
+  st: number;
+  /** the purse the champion took */
+  pz?: number;
+}
+
 /** Something that happened (or is said to have) that people can know and pass on. */
 export interface Fact { id: number; k: string; a: Id; b?: Id; t: number; real: boolean; s?: string }
 
@@ -555,6 +595,22 @@ export interface Colony {
    * party still on their way home (who, when they come in, from where, which expedition)
    */
   exp?: { n: number; nx: number; l: XParty[]; rel: XRelic[]; nr: number; sites: XSite[]; seen: string[]; dead: string[]; done: XDone[]; late: { pw: Pawn; t: number; site: string; id: number; /** how many of that party lived */ n?: number }[]; /** the day the players' own were last asked if they would go */ ak?: number; /** a lost party still to be remembered together: where, how many, who led, since when */ mem?: { site: string; n: number; a: Id; t: number } };
+  /**
+   * Dealings with the neighbours (see neigh.ts): how we stand with each (by colony id, as the region
+   * keeps it), our own on the road to a neighbour and those getting ready to go (who, why, where, the
+   * hour they leave, how long the road is, and what they carry), what is loaded on the carts of the
+   * parties here (by party id), a tournament called here, a bride or groom come to marry (who, whom,
+   * from where), and the siege we last asked our allies' help against.
+   */
+  nb?: {
+    ties: Record<string, NbTie>;
+    away: NbAway[];
+    go: { id: Id; k: string; to: string; toId: string; t: number; road: number; back: number; x?: number }[];
+    loads: { g: number; res: [string, number][]; silver: number; back?: [string, number][]; bs?: number; to?: string; leg?: number }[];
+    tn?: NbTourney;
+    wed?: { a: Id; b: Id; from: string; fromId: string; house: string; /** their names as they were before the wedding, and who the newcomer was at home */ an: string; bn: string; was: Id };
+    aid?: number;
+  };
 }
 
 export const idx = (c: { w: number }, x: number, y: number): number => y * c.w + x;

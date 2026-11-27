@@ -13,6 +13,8 @@ import { FAITHS, mainFaith } from '../sim/faith';
 import { GOVS, approval, rulerTitle } from '../sim/gov';
 import { awayById, fullName, pawnById, person, stage } from '../sim/pawn';
 import { RELIC_CAP, RELIC_KINDS, awayPawns } from '../sim/exped';
+import { NB_INFO, roadPawns } from '../sim/neigh';
+import { isBeast } from '../sim/visit';
 import type { Colony, Dead, Ev, Id, Pawn } from '../sim/types';
 import { WEIGHT, clockText, dateText, dangerWord, evText, outcomeWord, promiseWord, raceName, roleWord, siteWord, wareName } from '../text';
 import { bldCard, deadCard, face, guestCard, guestFace, linkNames, pawnCard, shortDate, type CardUi } from './card';
@@ -268,21 +270,22 @@ export class Panels {
       const gSel = v.sel && v.sel.k === 'guest' ? v.sel.id : 0;
       h += `<h3>Guests <span class="legend">passing through, not counted</span></h3>`;
       for (const g of here) {
-        const n = c.vis!.l.filter((x) => x.g === g.id && x.k !== 'mule').length;
+        const n = c.vis!.l.filter((x) => x.g === g.id && !isBeast(x.k)).length;
         const doing = g.m === 0 ? 'Coming up the road' : g.m === 2 ? 'Leaving' : c.tick < g.ta ? 'Walking about' : 'In the colony';
-        h += `<div class="row guest${g.id === gSel ? ' sel' : ''}" data-g="${g.id}">${guestFace(c, g, 38)}<div class="n"><b><i class="gm">✦</i>${esc(g.first + ' ' + g.fam)}</b><small>${esc(VIS_INFO[g.k]?.name ?? g.k)}${n > 1 ? ` · party of ${n}` : ''}</small><small class="plain">${doing}</small></div><div class="v"><span class="tie guest">Guest</span></div></div>`;
+        h += `<div class="row guest${g.id === gSel ? ' sel' : ''}" data-g="${g.id}">${guestFace(c, g, 38)}<div class="n"><b><i class="gm">✦</i>${esc(g.first + ' ' + g.fam)}</b><small>${esc(VIS_INFO[g.k]?.name ?? (NB_INFO[g.k] ? `${NB_INFO[g.k].name}, ${g.f}` : g.k))}${n > 1 ? ` · party of ${n}` : ''}</small><small class="plain">${doing}</small></div><div class="v"><span class="tie guest">Guest</span></div></div>`;
       }
     }
     // away with an expedition: still the colony's own, but not here to be counted
     // (the given up for lost are not listed, but for a player's own colonist, shown to that player)
-    const away = awayPawns(c).filter((p) => p.id === v.me || !c.exp!.late.some((l) => l.pw === p));
+    const away = [...awayPawns(c).filter((p) => p.id === v.me || !c.exp!.late.some((l) => l.pw === p)), ...roadPawns(c)];
     if (away.length) {
       const w0 = awayWhere(c, away[0].id);
       h += `<h3>Away <span class="legend">${w0 && w0.day ? `day ${w0.day} · ` : ''}not counted until they are home</span></h3>`;
       for (const p of away) {
         const w = awayWhere(c, p.id);
-        const q = c.exp!.l.find((o) => o.ids.includes(p.id));
-        const role = q ? roleWord(q.ro[q.ids.indexOf(p.id)]) : '';
+        const q = c.exp?.l.find((o) => o.ids.includes(p.id));
+        const on = c.nb?.away.find((a) => a.pw === p);
+        const role = on ? (on.k === 'tourney' ? 'knight' : on.k === 'relief' ? 'rider' : 'envoy') : q ? roleWord(q.ro[q.ids.indexOf(p.id)]) : '';
         const mine = p.id === v.me;
         h += `<div class="row away${p.id === selId ? ' sel' : ''}" data-p="${p.id}">${face(c, p, 38)}<div class="n"><b class="${mine ? 'mine' : p.owner ? 'player' : ''}">${mine || p.owner ? '<i class="pm">◆</i>' : ''}${esc(fullName(p))}</b><small>${esc(raceName(p.race))}${role ? ' · ' + esc(role) : ''}</small><small class="plain wrap">${esc(w ? w.where : 'Away')}</small></div><div class="v"><span class="tie away">${w && w.day ? `Day ${w.day}` : 'Missing'}</span></div></div>`;
       }
@@ -317,10 +320,12 @@ export class Panels {
       const what = c.gath.k === 'wedding' ? `The wedding of ${a?.first ?? 'someone'} and ${o?.first ?? 'someone'}` : c.gath.k === 'funeral' ? `The funeral of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'trial' ? `The trial of ${a ? fullName(a) : 'someone'}` : c.gath.k === 'sermon' ? `${a?.first ?? 'The priest'} will preach` : c.gath.k === 'feast' ? 'A feast in the hall' : c.gath.k === 'festival' ? festivalName(c, c.gath.f === 'summer' ? 'summer' : 'spring').replace(/^the /, 'The ') : c.gath.k === 'audience' ? `${a?.first ?? 'The ruler'} will hear petitions` : 'A gathering';
       h += `<div class="note">${linkNames(c, what, [c.gath.a, c.gath.o])}: ${dateText(c.gath.t0, true)}.</div>`;
     }
+    const tn = c.nb?.tn;
+    if (tn && tn.st < 2) h += `<div class="note">${tn.st === 1 ? 'The tournament is being ridden now, on the green' : `A tournament will be held here: ${dateText(tn.t0, true)}`}${tn.guests.length ? `. Knights of ${tn.guests.map((g) => esc(g.name)).join(', ')} are bidden` : ''}.</div>`;
 
     // who is passing through
     const here = guests(c);
-    if (here.length) h += `<div class="note">Guests in the colony: ${here.map((g) => `<a class="who" data-g="${g.id}">${esc(g.first + ' ' + g.fam)}</a> (${esc((VIS_INFO[g.k]?.name ?? g.k).toLowerCase())})`).join(', ')}.</div>`;
+    if (here.length) h += `<div class="note">Guests in the colony: ${here.map((g) => `<a class="who" data-g="${g.id}">${esc(g.first + ' ' + g.fam)}</a> (${esc((VIS_INFO[g.k]?.name ?? (NB_INFO[g.k] ? `${NB_INFO[g.k].name}, ${g.f}` : g.k)).replace(/^[A-Z]/, (m) => m.toLowerCase()))})`).join(', ')}.</div>`;
 
     // who rules, and how
     const ruler = pawnById(c, c.gov.ruler);
@@ -367,8 +372,8 @@ export class Panels {
     if (chained) bits.push(`${chained} held in thrall`);
     if (sworn) bits.push(`${sworn} secretly sworn to the Hollow Mother`);
     if (c.ruins) bits.push(`built over the ruins of ${esc(c.ruins)}`);
-    if (c.near?.length) bits.push(`neighbours: ${c.near.map((n) => esc(n.name)).join(', ')}`);
     if (bits.length) h += `<div class="hint">${bits.join(' · ')}.</div>`;
+    h += neighboursBlock(c);
     if (c.trials.length) {
       const tr = c.trials[0];
       const acc = pawnById(c, tr.a);
@@ -473,6 +478,38 @@ export class Panels {
     this.put(this.cbody, body);
     if (was) this.hooks.layout();
   }
+}
+
+/** Neighbours in the colony panel: each town near us and how we stand with it, with who of theirs is here and who of ours is there. */
+function neighboursBlock(c: Colony): string {
+  const nb = c.nb;
+  const list: { id: string; name: string }[] = (c.near ?? []).slice();
+  if (nb) for (const id in nb.ties) if (!list.some((n) => n.id === id)) list.push({ id, name: nb.ties[id].name });
+  if (!list.length) return '';
+  let h = `<h3>Neighbours <span class="legend">${list.length} ${list.length === 1 ? 'town' : 'towns'} within a few days' road</span></h3>`;
+  const since = (d: number): string => { const w = when(d * TICKS_PER_DAY); return `${SEASON_NAMES[w.season].toLowerCase()} of year ${w.year}`; };
+  for (const n of list) {
+    const t = nb?.ties[n.id];
+    const war = c.wars?.[n.id];
+    const sore = (c.grudge?.[n.id] ?? 0) >= 8;
+    const tag = war ? '<span class="tie bad">At war</span>' : t?.ally !== undefined ? '<span class="tie kin">Allies</span>' : t?.kin !== undefined ? '<span class="tie love">Kin by marriage</span>'
+      : t?.trib === 2 ? '<span class="tie player">Pays us tribute</span>' : t?.trib === 1 ? '<span class="tie bad">We pay tribute</span>' : t?.trade !== undefined ? '<span class="tie good">Trading</span>' : sore ? '<span class="tie bad">Bad blood</span>' : '<span class="tie">No dealings</span>';
+    const lines: string[] = [];
+    if (war) lines.push(`${war.ours ? 'We declared war' : 'They declared war'} on ${dateText(war.since)}`);
+    if (t?.ally !== undefined) lines.push(`Allied since ${since(t.ally)}: if either is besieged, the other rides`);
+    if (t?.kin !== undefined) lines.push(`Our houses were joined by marriage in ${since(t.kin)}`);
+    if (t?.trib === 2) lines.push(`They send us tribute every season${t.tb ? ` (${t.tb} ${t.tb === 1 ? 'cart' : 'carts'} so far)` : ''}`);
+    if (t?.trib === 1) lines.push(`We send them tribute every season${t.tb ? ` (${t.tb} ${t.tb === 1 ? 'cart' : 'carts'} so far)` : ''}`);
+    if (t?.trade !== undefined) lines.push(`Trade agreement since ${since(t.trade)}${t.cv ? `: ${t.cv} ${t.cv === 1 ? 'caravan has' : 'caravans have'} come in from them` : ''}`);
+    if (!war && sore) lines.push('There is bad blood between us');
+    // who of theirs is here, and who of ours is there
+    const here = (c.vis?.l ?? []).filter((v) => v.g === v.id && NB_INFO[v.k] && v.f === n.name);
+    for (const v of here) lines.push(`Here now: <a class="who" data-g="${v.id}">${esc(v.first + (v.fam ? ' ' + v.fam : ''))}</a>, ${esc(NB_INFO[v.k].name.toLowerCase())}`);
+    for (const a of nb?.away ?? []) if (a.to === n.name) lines.push(`There now: <a class="who" data-p="${a.pw.id}">${esc(fullName(a.pw))}</a>, ${a.k === 'tourney' ? 'riding in their tournament' : a.k === 'relief' ? 'gone to their aid' : 'our envoy'}`);
+    if (!lines.length) lines.push('Nothing stands between us yet, for good or ill');
+    h += `<div class="xcard past"><div class="xhead"><b>${esc(n.name)}</b>${tag}</div>${lines.map((l) => `<small class="plain">${l}.</small>`).join('')}</div>`;
+  }
+  return h;
 }
 
 const RELIC_FX: Record<string, string> = { mood: 'It lifts the heart to see it', def: 'Those who fight for the colony stand a little firmer', dev: 'People come to pray before it', lore: 'The learned study it' };

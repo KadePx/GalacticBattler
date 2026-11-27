@@ -10,7 +10,8 @@ import { TOOL_FOR } from '../sim/jobs';
 import { CROPS, HOMES, TPL, cellCode, cells, shapeOf } from '../sim/data/buildings';
 import { STAGE, stage } from '../sim/pawn';
 import { B, F, type Bld, type Colony, type Id, type Pawn } from '../sim/types';
-import { TECH_HELD, drawMule, drawVisitorProp } from './figures';
+import { TECH_HELD, drawCart, drawMule, drawVisitorProp } from './figures';
+import { NB_INFO } from '../sim/neigh';
 import { VIS_INFO, VIS_SAY } from '../sim/visit';
 import type { Visitor } from '../sim/types';
 import { drawSails, drawWheel } from './techart';
@@ -126,6 +127,10 @@ export class MapView {
   /** a besieging host's camp outside the walls: tents, fires, its ladders and ram */
   private camp = new Graphics();
   private campKey = '';
+  /** a tournament ground: the lists, the pavilions and their pennons; and the riders in a course */
+  private lists = new Graphics();
+  private listsKey = '';
+  private joust = new Graphics();
   /** the market's stalls in the square (one graphic each, so people stand in front of and behind them), and the carters' carts */
   private stalls: Graphics[] = [];
   private mktKey = '';
@@ -260,6 +265,12 @@ export class MapView {
     this.sailKey = '';
     this.camp = new Graphics();
     this.pawnLayer.addChild(this.camp);
+    this.lists.destroy();
+    this.joust.destroy();
+    this.lists = new Graphics();
+    this.joust = new Graphics();
+    this.pawnLayer.addChild(this.lists, this.joust);
+    this.listsKey = '';
     // a new colony: its market is drawn afresh
     for (const g of this.stalls) g.destroy();
     this.stalls = [];
@@ -319,6 +330,7 @@ export class MapView {
     this.syncPiles(c);
     this.syncSails(c, dt);
     this.syncCamp(c);
+    this.syncLists(c, tf);
     this.syncMarket(c);
     this.stepCamera(dt);
     this.cull();
@@ -647,18 +659,20 @@ export class MapView {
         this.guestViews.set(v.id, g);
       }
       g.stamp = stamp;
-      const mule = v.k === 'mule';
+      const mule = v.k === 'mule' || v.k === 'cart';
       if (!g.key) {
         g.key = v.k;
-        if (mule) { drawMule(g.fig); g.size = FIG * 1.05; }
+        if (v.k === 'cart') { drawCart(g.fig, /gifts/.test(v.first)); g.size = FIG * 1.15; }
+        else if (mule) { drawMule(g.fig); g.size = FIG * 1.05; }
         else {
           const years = yearsAt(v.born, c.tick);
           const st = stageOfAge(v.race, years);
           drawFigure(g.fig, { race: v.race, look: v.look, sex: v.sex, stage: st, years });
           drawVisitorProp(g.prop, v.k);
           g.size = Math.max(0.55, (SHAPE[v.race]?.size ?? 1) * STAGE_SIZE[st] * FIG);
-          const info = VIS_INFO[v.k];
-          g.label.text = v.k === 'guard' ? 'King\'s guard' : `✦ ${v.first} · ${(info?.name ?? v.k).toLowerCase().replace('travelling ', '').replace('wandering ', '')}`;
+          const info = VIS_INFO[v.k] ?? NB_INFO[v.k];
+          // (those on a neighbour's business are named for their town)
+          g.label.text = v.k === 'guard' ? 'King\'s guard' : NB_INFO[v.k] ? (v.k === 'trader' || v.k === 'carter' ? `✦ ${v.first} · ${NB_INFO[v.k].name.toLowerCase()}` : `✦ ${v.first} · ${v.k} of ${v.f}`) : `✦ ${v.first} · ${(info?.name ?? v.k).toLowerCase().replace('travelling ', '').replace('wandering ', '')}`;
         }
       }
       // where they are: part-way along the road they are walking, or standing still
@@ -666,8 +680,10 @@ export class MapView {
       let y: number;
       let moving = false;
       const p = v.path;
-      if (p && p.length > 1 && tf < v.ta && v.ta > v.t0) {
-        const f = Math.max(0, (tf - v.t0) / (v.ta - v.t0)) * (p.length - 1);
+      // a caravan, an envoy's party or knights come strung out along the road: each a couple of tiles behind the one in front
+      const lag = v.g !== v.id && NB_INFO[v.k] && p && p.length > 1 && v.ta > v.t0 ? ((v.id - v.g) * (v.k === 'cart' ? 2.6 : 1.5) * (v.ta - v.t0)) / (p.length - 1) : 0;
+      if (p && p.length > 1 && tf < v.ta + lag && v.ta > v.t0) {
+        const f = Math.max(0, Math.min(1, (tf - lag - v.t0) / (v.ta - v.t0))) * (p.length - 1);
         const i = Math.min(p.length - 2, Math.floor(f));
         const u = f - i;
         const x0 = p[i] % W, y0 = (p[i] - x0) / W, x1 = p[i + 1] % W, y1 = (p[i + 1] - x1) / W;
@@ -851,6 +867,123 @@ export class MapView {
       g.roundRect(rx - 20, ry - 2, 40, 5, 2).fill(0x6a4426).stroke({ width: 1, color: 0x2a1d12 });
       g.circle(rx + 20, ry + 0.5, 3).fill(0x2c2f36);
       g.poly([rx - 16, ry - 2, rx - 10, ry - 12, rx + 10, ry - 12, rx + 16, ry - 2]).fill(0x7a5a3a).stroke({ width: 1, color: 0x2a1d12 });
+    }
+  }
+
+  /**
+   * A tournament ground (see sim/neigh.ts): the tilt rail down the middle of the lists, a pavilion for
+   * each town that sent knights, pennons on poles. While a course is being run, two riders come down
+   * either side of the rail with lances couched; the loser is unhorsed at the middle.
+   */
+  private syncLists(c: Colony, tf: number): void {
+    const tn = c.nb?.tn;
+    const on = tn && tn.x >= 0 ? tn : undefined;
+    const key = on ? `${on.day}|${on.x},${on.y},${on.h}|${on.kn.length}` : '';
+    const HUES = [0xa8323a, 0x2f6fa8, 0x2f7a4a, 0xd4a030, 0x6a2a8a, 0xe9dcc0, 0xd4692a, 0x24808a];
+    if (key !== this.listsKey) {
+      this.listsKey = key;
+      const g = this.lists;
+      g.clear();
+      if (on) {
+        const cx = (on.x + 0.5) * TS;
+        const cy = (on.y + 0.5) * TS;
+        const at = (a: number, b: number): [number, number] => (on.h ? [cx + a * TS, cy + b * TS] : [cx + b * TS, cy + a * TS]);
+        g.zIndex = cy - TS * 4;
+        // trodden turf, and sand down each side of the rail
+        const [ew, eh] = on.h ? [TS * 7.6, TS * 2.2] : [TS * 2.2, TS * 7.6];
+        g.ellipse(cx, cy, ew, eh).fill({ color: 0x6a5a3a, alpha: 0.3 });
+        const [sw, sh] = on.h ? [TS * 12.4, TS * 1.9] : [TS * 1.9, TS * 12.4];
+        g.roundRect(cx - sw / 2, cy - sh / 2, sw, sh, 8).fill({ color: 0xd9c69a, alpha: 0.55 });
+        // the tilt: a rail on posts, hung with cloth in the colours of the day
+        const [x0, y0] = at(-5.6, 0);
+        const [x1, y1] = at(5.6, 0);
+        g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 5, color: 0x2a1d12, alpha: 0.35 });
+        for (let k = 0; k < 14; k++) {
+          const [ax, ay] = at(-5.6 + k * 0.8, 0);
+          const [bx, by] = at(-5.6 + (k + 1) * 0.8, 0);
+          g.moveTo(ax, ay - 3).lineTo(bx, by - 3).stroke({ width: 4.4, color: k % 2 ? 0xf3ead6 : 0xa8323a });
+        }
+        g.moveTo(x0, y0 - 5.4).lineTo(x1, y1 - 5.4).stroke({ width: 1.6, color: 0x5a3d22 });
+        for (let k = 0; k <= 7; k++) { const [px, py] = at(-5.6 + k * 1.6, 0); g.rect(px - 1.2, py - 7, 2.4, 9).fill(0x5a3d22); }
+        // pennons at the four corners
+        [[-6.6, -1.6], [6.6, -1.6], [-6.6, 1.6], [6.6, 1.6]].forEach(([a, b], n) => {
+          const [px, py] = at(a, b);
+          g.moveTo(px, py + 4).lineTo(px, py - 22).stroke({ width: 1.4, color: 0x3a2a1a });
+          g.poly([px, py - 22, px + 11, py - 19.5, px, py - 16]).fill(HUES[n % HUES.length]).stroke({ width: 0.6, color: 0x1a0a0a });
+        });
+        // pavilions beyond the crowd on one side: one for the host, one for each town bidden
+        const tents = Math.min(5, 1 + on.guests.length);
+        for (let n = 0; n < tents; n++) {
+          const [tx, ty] = at((n - (tents - 1) / 2) * 2.6, -5);
+          const w = TS * 0.95;
+          const hue = HUES[(n * 3 + on.day) % HUES.length];
+          g.ellipse(tx, ty + w * 0.6, w, w * 0.3).fill({ color: 0x0b1220, alpha: 0.25 });
+          g.poly([tx - w * 0.85, ty + w * 0.55, tx - w * 0.85, ty - w * 0.15, tx, ty - w * 1.05, tx + w * 0.85, ty - w * 0.15, tx + w * 0.85, ty + w * 0.55]).fill(0xf3ead6).stroke({ width: 1.1, color: 0x2a1d12 });
+          for (let k = -1; k <= 1; k++) g.poly([tx + k * w * 0.56 - w * 0.14, ty + w * 0.55, tx + k * w * 0.56 - w * 0.14, ty - w * 0.15 - (1 - Math.abs(k)) * w * 0.5, tx + k * w * 0.56 + w * 0.14, ty - w * 0.15 - (1 - Math.abs(k)) * w * 0.5, tx + k * w * 0.56 + w * 0.14, ty + w * 0.55]).fill({ color: hue, alpha: 0.9 });
+          g.poly([tx - w * 0.2, ty + w * 0.55, tx, ty + w * 0.05, tx + w * 0.2, ty + w * 0.55]).fill(0x2a1d12);
+          g.moveTo(tx, ty - w * 1.05).lineTo(tx, ty - w * 1.5).stroke({ width: 1.1, color: 0x2a1d12 });
+          g.poly([tx, ty - w * 1.5, tx + 8, ty - w * 1.38, tx, ty - w * 1.26]).fill(hue);
+        }
+      }
+    }
+    // a course being run: the last bout called, for three ticks after its trumpet
+    const j = this.joust;
+    j.clear();
+    if (!on || !on.b.length) return;
+    const b = on.b[on.b.length - 1];
+    const u = (tf - b[2]) / 3;
+    if (u < 0 || u > 1.25) return;
+    const cx = (on.x + 0.5) * TS;
+    const cy = (on.y + 0.5) * TS;
+    j.zIndex = cy + TS;
+    const rider = (idx: number, dir: number, lost: boolean): void => {
+      // down their own side of the rail, from one end to the other
+      const a = dir * (-6 + Math.min(1, u) * 12);
+      const off = dir * 0.62;
+      const past = dir * a > 0.2;
+      const x = on.h ? cx + a * TS : cx + off * TS;
+      const y = on.h ? cy + off * TS : cy + a * TS;
+      const hue = HUES[idx % HUES.length];
+      const fx = on.h ? dir : 0;
+      const fy = on.h ? 0 : dir;
+      const gallop = Math.sin(this.time * 0.03 + idx) * 1.6;
+      const q = 1.7;
+      const gy2 = gallop * 0.5;
+      j.ellipse(x, y + 8 * q, 12 * q, 3.2 * q).fill({ color: 0x0b1220, alpha: 0.25 });
+      // legs, the horse under its caparison, neck and head forward
+      const [lw, lh] = on.h ? [11 * q, 6 * q] : [6 * q, 11 * q];
+      for (const s2 of [-0.6, 0.6]) j.rect(x + (on.h ? s2 * lw : -lw * 0.5) - 1.4, y + (on.h ? lh * 0.5 : s2 * lh) + gy2, 2.8, 5 * q + (s2 > 0 ? gallop : -gallop)).fill(0x3a2a1a);
+      j.ellipse(x, y + gy2, lw, lh).fill(hue).stroke({ width: 1.2, color: 0x1a0a0a });
+      j.ellipse(x - fx * 3 * q, y - fy * 3 * q + gy2, lw * 0.5, lh * 0.5).fill({ color: 0xf3ead6, alpha: 0.5 });
+      j.circle(x + fx * 12 * q, y + fy * 12 * q - 2 * q + gy2, 3.8 * q).fill(0x6a4a30).stroke({ width: 1, color: 0x1a0a0a });
+      j.circle(x + fx * 15 * q, y + fy * 15 * q - 1.4 * q + gy2, 2.4 * q).fill(0x5a3d26).stroke({ width: 0.8, color: 0x1a0a0a });
+      if (lost && past) {
+        // unhorsed: left lying by the rail where the lances met, the horse running on
+        const lx = on.h ? cx + dir * 0.9 * TS : cx + off * TS * 1.7;
+        const ly = on.h ? cy + off * TS * 1.7 : cy + dir * 0.9 * TS;
+        j.ellipse(lx, ly, 7.5 * q, 3.6 * q).fill(0xaab2bd).stroke({ width: 1, color: 0x3a3f48 });
+        j.circle(lx + 6.5 * q, ly - 0.5, 3 * q).fill(0x8a929d).stroke({ width: 0.8, color: 0x3a3f48 });
+        j.moveTo(lx - 9 * q, ly + 3 * q).lineTo(lx - 2 * q, ly + 5 * q).stroke({ width: 1.6, color: 0xe9dcc0, cap: 'round' });
+        return;
+      }
+      // the rider: body, helm and plume, a shield, the lance couched across the rail
+      const ry = y - 6 * q + gy2;
+      j.ellipse(x - fx * 1 * q, ry + 3 * q, 3.6 * q, 4 * q).fill(0x8a929d).stroke({ width: 0.9, color: 0x3a3f48 });
+      j.circle(x, ry - 1.5 * q, 3.4 * q).fill(0xaab2bd).stroke({ width: 0.9, color: 0x3a3f48 });
+      j.rect(x - 2.2 * q + fx * 1.2 * q, ry - 2 * q, 4.4 * q, 0.9 * q).fill(0x1d2026);
+      j.poly([x - fx * 2 * q, ry - 4 * q, x - fx * 8 * q, ry - 8.5 * q, x - fx * 3 * q, ry - 2.5 * q]).fill(hue);
+      j.circle(x + fx * 3 * q - (on.h ? 0 : off * 3 * q), ry + 3 * q - (on.h ? off * 3 * q : 0), 2.8 * q).fill(hue).stroke({ width: 0.9, color: 0x1a0a0a });
+      j.moveTo(x - fx * 5 * q, ry + 2 * q - fy * 5 * q).lineTo(x + fx * 22 * q - (on.h ? 0 : off * 12 * q), ry + 2 * q + fy * 22 * q - (on.h ? off * 12 * q : 0)).stroke({ width: 2, color: 0xe9dcc0, cap: 'round' });
+    };
+    rider(b[0], 1, false);
+    rider(b[1], -1, true);
+    // splinters where they met
+    if (u > 0.45 && u < 0.7) {
+      for (let k = 0; k < 6; k++) {
+        const an = k * 1.05 + b[2];
+        const d = (u - 0.45) * 60;
+        j.moveTo(cx + Math.cos(an) * d * 0.5, cy - 6 + Math.sin(an) * d * 0.5).lineTo(cx + Math.cos(an) * d, cy - 6 + Math.sin(an) * d).stroke({ width: 1.2, color: 0xe9dcc0 });
+      }
     }
   }
 
@@ -1092,6 +1225,8 @@ export class MapView {
     if (sg) key += `camp${sg.band}`;
     const mkt = marketOpen(c);
     if (mkt) key += 'mkt';
+    const tn = c.nb?.tn && c.nb.tn.x >= 0 ? c.nb.tn : undefined;
+    if (tn) key += `tn${tn.day}${tn.st}`;
     if (key === this.signKey) return;
     this.signKey = key;
     for (const s of this.signs) { s.g.destroy(); s.label.destroy(); }
@@ -1102,6 +1237,13 @@ export class MapView {
       label.anchor.set(0.5, 0);
       this.labelLayer.addChild(label);
       this.signs.push({ g: new Graphics(), label, x: (sg.x + 0.5) * TS, y: (sg.y + 3.2) * TS, field: false });
+    }
+    if (tn) {
+      // the tournament ground is named, readable from far out
+      const label = new Text({ text: tn.st === 2 ? 'The lists' : 'Tournament', resolution: 2, style: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: 13, fontWeight: '700', fill: 0xffe08a, stroke: { color: 0x0a0d14, width: 3, join: 'round' } } });
+      label.anchor.set(0.5, 1);
+      this.labelLayer.addChild(label);
+      this.signs.push({ g: new Graphics(), label, x: (tn.x + 0.5) * TS, y: (tn.y - (tn.h ? 6.6 : 8.4)) * TS, field: false, big: true });
     }
     if (mkt) {
       // market day is named over the square, readable from far out
@@ -1540,6 +1682,8 @@ function drawWare(g: Graphics, k: string, x: number, y: number, n: number): void
 /** What a colonist has in hand right now ('' for nothing). */
 /** With an expedition: the leader carries the banner, the rest their packs (and a sack of what they found, coming home rich). */
 function trekHeld(c: Colony, p: Pawn): string {
+  // (an envoy or a knight taking the road to a neighbour carries a pack too)
+  if (c.nb?.go.some((g) => g.id === p.id)) return 'xpack';
   const q = c.exp?.l[0];
   if (!q || !q.ids.includes(p.id)) return '';
   if (q.lead === p.id) return 'xbanner';

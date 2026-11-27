@@ -26,6 +26,7 @@ import { dailyTech } from './tech';
 import { dailyVisitors, stepVisitors } from './visit';
 import { dailyNature, stepNature } from './nature';
 import { dailyExped, stepExped } from './exped';
+import { dailyNeigh, stepNeigh } from './neigh';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
@@ -51,6 +52,7 @@ function daily(c: Colony): void {
   dailyVisitors(c);
   dailyNature(c);
   dailyExped(c);
+  if (c.nb) dailyNeigh(c);
   // let go of faded memories and of people long forgotten
   for (const p of c.pawns) {
     for (const key in p.rel) {
@@ -76,6 +78,7 @@ export function step(c: Colony): void {
   if (c.vis && (c.vis.l.length || c.vis.nx)) stepVisitors(c);
   if (c.nat) stepNature(c);
   if (c.exp && (c.exp.l.length || c.exp.late.length)) stepExped(c);
+  if (c.nb && (c.nb.go.length || c.nb.away.length || c.nb.tn)) stepNeigh(c);
   if (c.foes.length) combatTick(c);
   else if (c.alarm) aftermath(c);
   const list = c.pawns;

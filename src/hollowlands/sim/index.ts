@@ -228,6 +228,7 @@ export function deserialize(json: string): Colony {
     for (const q of c.exp.l) q.pw = q.pw.map(normPawn);
     for (const l of c.exp.late) l.pw = normPawn(l.pw);
   }
+  if (c.nb) for (const a of c.nb.away) a.pw = normPawn(a.pw);
   upgrade(c);
   return c;
 }

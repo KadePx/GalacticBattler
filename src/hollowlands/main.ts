@@ -9,8 +9,9 @@
 import { HARD_CAP, DEFAULT_MS_PER_DAY, TICKS_PER_DAY } from './config';
 import { RACES } from './sim/data/races';
 import { heirsOf } from './sim/player';
-import { connect, fetchRegion, myHash, myId, regionMine, regionSeed, useColony, type Live, type RegionSite } from './net';
+import { connect, fetchRegion, myHash, myId, regionMine, regionPacts, regionSeed, useColony, type Live, type RegionSite } from './net';
 import { WorldView } from './view/world';
+import { forcePact } from './sim/neigh';
 import { createColony, step, type Colony, type Ev, type Id, type RaceK } from './sim/index';
 import { checkSpec, type PawnSpec } from './sim/create';
 import { awayById, fullName, ownedPawn, pawnById } from './sim/pawn';
@@ -450,7 +451,7 @@ async function boot(): Promise<void> {
     const world = new WorldView((id) => { location.search = '?c=' + id; });
     const wb = document.getElementById('worldbtn');
     wb?.classList.remove('hidden');
-    wb?.addEventListener('click', () => { void fetchRegion().then((fresh) => world.open(fresh ?? region, here, store.get('hl.col') ?? '', regionSeed)); });
+    wb?.addEventListener('click', () => { void fetchRegion().then((fresh) => world.open(fresh ?? region, here, store.get('hl.col') ?? '', regionSeed, regionPacts, () => c.tick)); });
     me = await myHash();
     live = await connect((fresh) => {
       c = fresh;
@@ -580,6 +581,24 @@ const hooks = {
   nature: (k: string): boolean => startNat(c, k),
   /** Local test colonies only: call an expedition now (it musters at the gate at eight the next morning). */
   expedition: (site?: XSite): boolean => !!callParty(c, site),
+  /**
+   * Local test colonies only: set one of the dealings with a neighbour going now, as if a neighbouring town were at the other end.
+   * 'trade' or 'ally' (an envoy comes to the hall), 'envoy' (ours rides out and comes home), 'caravan' (carts come in at the gate and trade
+   * in the square), 'caravan_out' (carters load our goods), 'tribute' (a tribute cart comes in), 'tribute_out' (ours goes), 'wed' (a bride
+   * or groom arrives with an escort; the wedding follows), 'tourney' (a tournament here today, or tomorrow if it is past nine), 'tourney_out'
+   * (our knights ride to one), 'relief' (an ally's riders come).
+   */
+  neighbour: (k: string): boolean => forcePact(c, k),
+  /** Open the world map over made-up neighbours, to look at the seals and the travellers on the roads (local test colonies only). */
+  worldDemo: (): void => {
+    const sites = [{ id: 'a0', name: c.name, x: 30, y: 26, founded: 0, pop: c.pawns.length }, { id: 'a1', name: 'Greywater', x: 46, y: 18, founded: 0, pop: 48 }, { id: 'a2', name: 'Thornwick', x: 16, y: 38, founded: 0, pop: 39 }, { id: 'a3', name: 'Coldharbour', x: 50, y: 40, founded: 0, pop: 61 }];
+    const t = c.tick;
+    new WorldView(() => undefined).open(sites, 'a0', '', 7, {
+      ties: { 'a0|a1': { trade: 1, ally: 2 }, 'a0|a2': { trib: 'a2' }, 'a1|a3': { kin: 3, trade: 4 }, 'a0|a3': { trade: 5 } },
+      trips: [{ a: 'a0', b: 'a1', t0: t - 60, t1: t + 140, k: 'caravan' }, { a: 'a2', b: 'a0', t0: t - 100, t1: t + 80, k: 'tribute' }, { a: 'a3', b: 'a0', t0: t - 30, t1: t + 200, k: 'knights' }, { a: 'a1', b: 'a3', t0: t - 90, t1: t + 90, k: 'bride' }, { a: 'a3', b: 'a1', t0: t - 150, t1: t + 40, k: 'envoy' }],
+      tourney: { host: 'a0', day: Math.floor(t / 240) + 2 },
+    }, () => c.tick);
+  },
   /** Forget the colonist remembered for this seed (they will not be sent in again on reload). */
   forgetMine: (): void => store.del(mineKey),
   map,

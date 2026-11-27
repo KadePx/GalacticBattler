@@ -49,11 +49,11 @@ const ACT: Record<string, string> = {
 
 /** Lending a hand when the land turns (act.d), and a few acts done for an unusual reason (act.why). */
 const AID_ACT: Record<number, string> = { 1: 'Beating out the fire', 2: 'Heaping earth against the flood', 3: 'Searching the woods for {o}', 4: 'Clearing rubble', 5: 'Driving off the locusts', 6: 'Keeping vigil in the graveyard', 7: 'Getting rid of the cursed thing', 8: 'Going to see the fallen star' };
-const WHY_ACT: Record<string, string> = { x_gather: 'Mustering at the gate with the expedition', x_leave: 'Setting out with the expedition', x_home: 'Home from the expedition', farewell: 'Seeing the expedition off', welcome: 'Welcoming the expedition home', lost: 'Lost in the woods', elope: 'Running off with {o}', dragon: 'Hiding from the dragon' };
+const WHY_ACT: Record<string, string> = { d_leave: 'Taking the road to a neighbour', d_home: 'Home from the road', tourney: 'Watching the tournament', joust: 'Riding in the tournament', x_gather: 'Mustering at the gate with the expedition', x_leave: 'Setting out with the expedition', x_home: 'Home from the expedition', farewell: 'Seeing the expedition off', welcome: 'Welcoming the expedition home', lost: 'Lost in the woods', elope: 'Running off with {o}', dragon: 'Hiding from the dragon' };
 
 const GUEST_ACT: Record<string, string> = {
   minstrel: 'Listening to the minstrel', merchant: 'Looking over the merchant\'s wares', wizard: 'Hearing the wizard out', pilgrim: 'Talking faith with the pilgrims',
-  refugee: 'Bringing bread to the refugees', hunter: 'Talking to the bounty hunter',
+  refugee: 'Bringing bread to the refugees', hunter: 'Talking to the bounty hunter', trader: 'Looking over what the caravan brought', knight: 'Gone to look at the knights',
 };
 
 const firstOf = (c: Colony, id: Id | undefined): string => {
@@ -114,6 +114,12 @@ function natBio(c: Colony, b: Bio, o: string): string {
 
 /** Where someone away with an expedition is, as far as the colony knows, and how many days they have been gone (null if they are not away). */
 export function awayWhere(c: Colony, id: Id): { where: string; day: number; site: string } | null {
+  // on the road to a neighbour, or at one
+  const road = c.nb?.away.find((a) => a.pw.id === id);
+  if (road) {
+    const what = road.k === 'tourney' ? `Riding in the tournament at ${road.to}` : road.k === 'relief' ? `Gone to the relief of ${road.to}` : `Our envoy to ${road.to}`;
+    return { where: what, day: Math.max(1, Math.floor(c.tick / TICKS_PER_DAY) - Math.floor(road.t0 / TICKS_PER_DAY) + 1), site: road.to };
+  }
   const x = c.exp;
   if (!x) return null;
   const today = Math.floor(Math.max(0, c.tick - 1) / TICKS_PER_DAY);
@@ -142,6 +148,21 @@ function expBio(b: Bio, o: string): string {
     case 'x_survived': return Number(p[1]) > 1 ? `Came home at last, one of the party lost at ${p[0]}.` : `Walked home alone, the last of the party lost at ${p[0]}.`;
     case 'x_freed': return `Was freed from a cage at ${p[0]} by ${o}, and came home with them.`;
     default: return 'Went on an expedition.';
+  }
+}
+
+/** A line in someone's life story about the colony's dealings with a neighbour (b.s is "town|detail"). */
+function dipBio(c: Colony, b: Bio, o: string): string {
+  const p = (b.s ?? '').split('|');
+  switch (b.k) {
+    case 'd_envoy': return `Rode to ${p[0]} as the colony's envoy, ${p[1] === 'ally' ? 'to make an alliance' : p[1] === 'tribute' ? 'to demand tribute' : 'to make a trade agreement'}.`;
+    case 'd_tn_won': return `Won the tournament at ${p[0]}.`;
+    case 'd_tn_rode': return p[1] === 'won' ? `Won the tournament at ${p[0]}.` : p[1] === 'hurt' ? `Rode in the tournament at ${p[0]}, and was unhorsed and hurt.` : p[1] === 'some' ? `Rode well in the tournament at ${p[0]}.` : p[1] === 'out' ? `Rode in the tournament at ${p[0]}, and was unhorsed.` : `Rode to the tournament at ${p[0]}.`;
+    case 'd_relief': return `Rode to the relief of ${p[0]}.`;
+    case 'd_wed_came': return `Came from ${p[0]}, of the house of ${p[1]}, to marry here.`;
+    case 'd_wed_match': return `Was promised to ${o} of ${p[0]}, to join the two houses.`;
+    case 'd_wed': return `Married ${o}, joining the houses of ${p[0]} and ${c.name}.`;
+    default: return 'Had dealings with a neighbour.';
   }
 }
 
@@ -261,6 +282,7 @@ export function bioText(c: Colony, b: Bio): string {
     default: if (b.k.startsWith('v_')) return visitBio(c, b, o);
       if (b.k.startsWith('n_')) return natBio(c, b, o);
       if (b.k.startsWith('x_')) return expBio(b, o);
+      if (b.k.startsWith('d_')) return dipBio(c, b, o);
     return pretty(b.k) + (b.o ? ` (${o})` : '') + '.';
   }
 }

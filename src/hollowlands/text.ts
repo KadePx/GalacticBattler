@@ -209,6 +209,10 @@ export const WEIGHT: Record<string, number> = {
   x_call: 2, x_left: 3, x_off: 1, x_road: 1, x_ambush: 2, x_reach: 2, x_dare: 2, x_care: 2, x_hazard: 3, x_find: 2, x_relic: 3, x_left_be: 2, x_map: 2, x_lore: 2, x_captive: 3, x_bare: 1, x_linger: 1,
   x_homeward: 1, x_back: 3, x_home: 3, x_relic_set: 3, x_feast: 2, x_title: 3, x_overdue: 3, x_mourned: 3, x_survivor: 3, x_vol: 2, x_memorial: 3, x_seat_held: 3,
   v_told: 2, v_miss: 2, v_lost: 1, v_bought: 3, v_beaten: 3, v_wounded: 3, v_fled: 3, v_taken: 3,
+  d_envoy_out: 2, d_envoy_home: 3, d_envoy_come: 2, d_trade: 3, d_ally: 3, d_trib_pay: 3, d_trib_take: 3, d_trib_out: 2, d_trib_in: 2, d_trib_none: 2, d_trib_missed: 2, d_trib_end: 3,
+  d_lapsed: 2, d_broken: 3, d_cv_load: 1, d_cv_in: 2, d_cv_trade: 2, d_cv_home: 2, d_wed_sent: 3, d_wed_come: 3, d_wed: 3, d_wed_news: 3,
+  d_tn_call: 3, d_tn_bid: 2, d_tn_ride: 3, d_tn_come: 2, d_tn_day: 2, d_tn_off: 2, d_tn_end: 3, d_tn_crowd: 2, d_tn_draw: 2, d_tn_home: 3,
+  d_aid_ask: 3, d_aid_sent: 3, d_aid_none: 2, d_aid_no: 2, d_aid_home: 2, d_relief: 3, d_relief_late: 2,
   insult: 1, argue: 1, comfort: 1, deeptalk: 1, gossip: 1, story: 1, apology: 1, gift: 1, rebuff: 1, flirt: 1, drunk: 1, unfriend: 1, pregnant: 2,
 };
 
@@ -279,6 +283,7 @@ function siegeText(c: Colony, e: Ev): string {
     case 'gaveup': return `After ${n} days the besiegers' food has run out. They are breaking camp and going home.`;
     case 'assault': return `${host.charAt(0).toUpperCase() + host.slice(1)} is coming on with ladders and a ram: ${n} of them, against the walls!`;
     case 'ladder': return 'A ladder is up against the wall, and one of them is over the top!';
+    case 'relief': return `Riders from ${more ?? 'our allies'} fell on the camp from behind! ${host.charAt(0).toUpperCase() + host.slice(1)} is breaking camp.`;
     case 'end': return more === 'won' ? `The siege is over. ${host.charAt(0).toUpperCase() + host.slice(1)} is broken, after ${n} day${n === 1 ? '' : 's'}.` : more === 'bought' ? `The siege is over, bought off after ${n} day${n === 1 ? '' : 's'}.` : `The siege is lifted. The last of ${host.charAt(0).toLowerCase() + host.slice(1)} has gone down the road.`;
   }
   return 'The siege goes on.';
@@ -290,6 +295,7 @@ export function evText(c: Colony, e: Ev): string {
   if (e.k.startsWith('v_')) return visitText(c, e);
   if (e.k.startsWith('n_')) return natText(c, e);
   if (e.k.startsWith('x_')) return expText(c, e);
+  if (e.k.startsWith('d_')) return dipText(c, e);
   switch (e.k) {
     case 'death': return `${full(c, e.a)} ${CAUSES[e.s ?? ''] ?? 'died'}${e.b && e.s === 'brawl' ? ` at the hands of ${full(c, e.b)}` : ''}.`;
     case 'birth': return `${full(c, e.b)} gave birth to ${a}${e.n && person(c, e.n) ? `, child of ${first(c, e.n)}` : ''}.`;
@@ -563,6 +569,121 @@ function visitText(c: Colony, e: Ev): string {
   }
 }
 
+const GOODS: Record<string, [string, string]> = {
+  grain: ['sack of grain', 'sacks of grain'], veg: ['basket of greens', 'baskets of greens'], flour: ['sack of flour', 'sacks of flour'], bread: ['loaf', 'loaves'], ale: ['cask of ale', 'casks of ale'],
+  hops: ['sack of hops', 'sacks of hops'], wood: ['log', 'logs'], stone: ['block of stone', 'blocks of stone'], brick: ['brick', 'bricks'], ore: ['load of ore', 'loads of ore'], iron: ['bar of iron', 'bars of iron'],
+  leather: ['hide', 'hides'], cloth: ['bolt of cloth', 'bolts of cloth'], clothes: ['suit of clothes', 'suits of clothes'], tools: ['tool', 'tools'], weapons: ['weapon', 'weapons'], goods: ['crate of wares', 'crates of wares'],
+  glass: ['pane of glass', 'panes of glass'], herbs: ['bundle of herbs', 'bundles of herbs'], medicine: ['jar of medicine', 'jars of medicine'],
+};
+const listOf = (l: string[]): string => (l.length <= 1 ? l[0] ?? '' : l.slice(0, -1).join(', ') + ' and ' + l[l.length - 1]);
+/** "grain:40,cloth:6" as "40 sacks of grain and 6 bolts of cloth" (silver first, if any). */
+export function goodsText(s: string | undefined, silver = 0): string {
+  const out: string[] = silver > 0 ? [`${silver} silver`] : [];
+  for (const part of (s ?? '').split(',')) {
+    const [k, v] = part.split(':');
+    const n = Number(v);
+    if (!k || !(n > 0)) continue;
+    const w = GOODS[k];
+    out.push(`${n} ${w ? w[n === 1 ? 0 : 1] : k}`);
+  }
+  return listOf(out);
+}
+
+/** Dealings with the neighbours (see sim/neigh.ts). Names of other towns and their people travel in e.s, so a line reads the same years later. */
+function dipText(c: Colony, e: Ev): string {
+  const p = (e.s ?? '').split('|');
+  const a = first(c, e.a);
+  const fa = full(c, e.a);
+  const n = e.n ?? 0;
+  const pa = e.a ? person(c, e.a) : undefined;
+  const pb = e.b ? person(c, e.b) : undefined;
+  const title = (x: typeof pa): string => (x ? `${rulerTitle(c, x)} ${x.first}` : 'The colony');
+  const days = (d: number): string => (d <= 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`);
+  const rider = (name: string, from: string): string => (from === c.name ? `our own ${name}` : `${name} of ${from}`);
+  switch (e.k) {
+    case 'd_envoy_out':
+      if (p[1] === 'ally') return `${title(pb)} sent ${fa} down the road to ${p[0]}, to offer them an alliance.`;
+      if (p[1] === 'tribute') return `${title(pb)} sent ${fa} to ${p[0]}, to tell them what being left in peace will cost.`;
+      return `${title(pb)} sent ${fa} down the road to ${p[0]}, to offer them a trade agreement.`;
+    case 'd_envoy_home':
+      if (p[2] !== 'ok') return `${fa} is home from ${p[0]}, with nothing to show for the journey.`;
+      if (p[1] === 'ally') return `${fa} is home from ${p[0]} with an alliance sworn. If either town is besieged, the other will ride to its aid.`;
+      if (p[1] === 'tribute') return `${fa} is home from ${p[0]}. They will pay: tribute, every season.`;
+      return `${fa} is home from ${p[0]} with the trade agreement sealed. Their carts will come to our market, and ours will go to theirs.`;
+    case 'd_envoy_come': return `${p[1]}, an envoy of ${p[0]}, rode in behind a herald and asked for ${pa ? title(pa) : 'whoever rules here'}.`;
+    case 'd_trade':
+      if (p[1] === 'envoy') return `${title(pa)} heard out ${p[2]} in the hall, and it is agreed: ${p[0]}'s carts will come to our market, and ours will go to theirs.`;
+      return `Word came down the road: a trade agreement stands between us and ${p[0]}.`;
+    case 'd_ally':
+      if (p[1] === 'envoy') return `${title(pa)} and the envoy ${p[2]} have sworn an alliance between us and ${p[0]}. If either town is besieged, the other will ride to its aid.`;
+      return `Word came down the road: we are allied with ${p[0]} now.`;
+    case 'd_trib_pay':
+      if (p[1] === 'peace') return `By the terms of the peace, we will send ${p[0]} tribute every season for two years.`;
+      if (p[1] === 'envoy') return `${p[2]} of ${p[0]} named the price of being left in peace, and ${title(pa)} has agreed to it: tribute, every season.`;
+      return `It is settled: we will send ${p[0]} tribute every season, rather than face their spears.`;
+    case 'd_trib_take':
+      if (p[1] === 'peace') return `By the terms of the peace, ${p[0]} will send us tribute every season for two years.`;
+      return `${p[0]} has agreed to send us tribute every season.`;
+    case 'd_trib_out': return `The season's tribute has left for ${p[0]}: ${goodsText(p[2], n) || 'what could be spared'}.${p[1] ? ` ${p[1]} drove the cart.` : ''}`;
+    case 'd_trib_in': return `The season's tribute came in from ${p[0]}: ${goodsText(p[2], n) || 'not much'}.`;
+    case 'd_trib_none': return `There was nothing to spare for ${e.s}'s tribute this season. They will not take it kindly.`;
+    case 'd_trib_missed': return `No tribute came from ${e.s} this season. It has been noted.`;
+    case 'd_trib_end':
+      if (p[1] === 'pay') return p[2] === 'strong' ? `We are too strong now to pay ${p[0]} for peace. The tribute is at an end.` : `The two years are up: we owe ${p[0]} no more tribute.`;
+      return p[2] === 'strong' ? `${p[0]} has grown strong, and will send no more tribute.` : `The two years are up: ${p[0]}'s tribute is at an end.`;
+    case 'd_lapsed': return p[1] === 'ally' ? `The alliance with ${p[0]} has run its course.` : `The trade agreement with ${p[0]} has run its course. The carts will stop until a new one is made.`;
+    case 'd_broken': return `Every agreement with ${e.s} is void now: there is war between us.`;
+    case 'd_cv_load': {
+      const what = goodsText(p[2]);
+      return what ? `${p[1]}'s wagons loaded up in the square for ${p[0]}: ${what}.` : `${p[1]}'s wagons left for ${p[0]} with ${n} silver, to buy what they have to spare.`;
+    }
+    case 'd_cv_in': {
+      const what = goodsText(p[2]) || 'silver to buy with';
+      return p[1] ? `A caravan from ${p[0]} came in at the gate: ${p[1]}, with ${n > 1 ? `${n} ox-carts` : 'an ox-cart'} carrying ${what}.` : `Goods came in from ${p[0]}: ${what}.`;
+    }
+    case 'd_cv_trade': {
+      const theirs = goodsText(p[2]);
+      const ours = goodsText(p[3]);
+      const paid = n > 0 ? ` The treasury paid ${n} silver for the difference.` : n < 0 ? ` ${p[1]} paid ${-n} silver for the difference.` : '';
+      if (!theirs) return ours ? `${p[1]} of ${p[0]} bought ${ours} in the square${n < 0 ? ` for ${-n} silver` : ''}.` : `${p[1]} of ${p[0]} found nothing here to buy.`;
+      return `In the square, ${theirs} from ${p[0]} came off the carts${ours ? `, and ${ours} of ours went on` : ''}.${paid}`;
+    }
+    case 'd_cv_home': {
+      if (p[3] === 'turned') return `${p[1]}'s wagons are back from ${p[0]} still loaded: the gates there were shut.`;
+      const what = goodsText(p[2], n);
+      return what ? `${p[1]}'s wagons are back from ${p[0]} with ${what}.` : `${p[1]}'s wagons are back from ${p[0]} with empty carts.`;
+    }
+    case 'd_wed_sent': return `${fa}, ${p[2] === 'ward' ? 'a ward' : ''} of the house of ${p[1]}, has left for ${p[0]} to marry into its ruling house${n ? `, with ${n} silver in gifts` : ''}. ${pa && pa.sex ? 'He' : 'She'} will not be back.`.replace(',  of', ', of');
+    case 'd_wed_come': return `${fa}, ${p[2] === 'ward' ? 'a ward of' : 'of'} the house of ${p[1]} in ${p[0]}, came in at the gate with an escort and a cart of gifts${pb ? `, to marry ${full(c, e.b)}` : ''}.${n ? ` ${n} silver came as dowry.` : ''}`;
+    case 'd_wed': return `The marriage of ${a} and ${first(c, e.b)} joins the house of ${p[1]} in ${p[0]} to ${c.name}. ${a} came as a stranger and is one of ours now, and there was feasting until late.`;
+    case 'd_wed_news': return `Word from ${p[0]}: ${p[1]} has been wed to ${p[2]}. Our houses are joined.`;
+    case 'd_tn_call': return `${title(pa)} has called a tournament, ${days(n)}. Knights of ${listOf((e.s ?? '').split(', '))} are bidden to ride.`;
+    case 'd_tn_bid': return `${e.s} will hold a tournament ${days(n)}, and has bidden our knights to ride.`;
+    case 'd_tn_ride': return `${fa}${pb ? ` and ${full(c, e.b)}` : ''} rode out for the tournament at ${e.s}.`;
+    case 'd_tn_come': return `${n > 1 ? 'Knights' : 'A knight'} of ${p[0]} rode in: ${p[1]}.`;
+    case 'd_tn_day': return `The lists are up on the green and the tournament has begun: ${n} riders will break lances this afternoon${e.s ? `, ours against the knights of ${listOf(e.s.split(', '))}` : ''}.`;
+    case 'd_tn_off': return 'The tournament has been called off.';
+    case 'd_tn_end': return `${rider(p[0], p[1]).replace(/^o/, 'O')} unhorsed ${rider(p[2], p[3])} in the last course and took the purse${n ? ` of ${n} silver` : ''}.`;
+    case 'd_tn_crowd': return `${n} people watched the tournament from the rail. They will be talking about ${p[0]}'s riding for a long while.`;
+    case 'd_tn_draw': return 'The tournament ended with no champion named.';
+    case 'd_tn_home':
+      if (p[2] === 'off') return `${fa} is home from ${p[0]}: the tournament was never held.`;
+      if (p[1] === 'won') return `${fa} is home from ${p[0]} as champion of the tournament${n ? `, with a purse of ${n} silver` : ''}.`;
+      if (p[1] === 'hurt') return `${fa} is home from the tournament at ${p[0]}, unhorsed and bruised, but with a tale to tell.`;
+      if (p[1] === 'some') return `${fa} is home from the tournament at ${p[0]}, having won ${n === 1 ? 'a course' : `${n} courses`} before being unhorsed.${p[2] ? ` ${p[2]} took the purse.` : ''}`;
+      if (p[1] === 'out') return `${fa} is home from the tournament at ${p[0]}, unhorsed in the first course.${p[2] ? ` ${p[2]} took the purse.` : ''}`;
+      return `${fa} is home from ${p[0]}.`;
+    case 'd_aid_ask': return `Riders slipped out past the camp in the night, to ask ${listOf((e.s ?? '').split(', '))} for help.`;
+    case 'd_aid_sent': return `${fa} led ${n} riders out to the relief of our allies in ${e.s}.`;
+    case 'd_aid_none': return `${e.s} is besieged and has asked our help, but we have no one to send.`;
+    case 'd_aid_no': return `Word from ${e.s}: they cannot come to our aid.`;
+    case 'd_aid_home': return `${fa} and the others are home from ${e.s}.`;
+    case 'd_relief': return `The riders of ${p[0]} who broke the siege came in at the gate to cheers, ${p[1]} at their head.`;
+    case 'd_relief_late': return `${n} riders of ${p[0]} came to our aid, ${p[1]} at their head. The danger had passed, but they were fed and thanked.`;
+    default: return 'Word came from a neighbour.';
+  }
+}
+
 export function thoughtText(c: Colony, k: string, o?: Id): string {
   const d = TH[k];
   if (!d) return k;
@@ -570,6 +691,7 @@ export function thoughtText(c: Colony, k: string, o?: Id): string {
 }
 
 const WHY: Record<string, string> = {
+  d_leave: 'Taking the road to a neighbour', d_home: 'Home from the road', tourney: 'At the tournament', joust: 'Riding in the tournament',
   memorial: 'Remembering the lost', x_gather: 'Chosen for the expedition', x_leave: 'Chosen for the expedition', x_home: 'Back from the wilds', farewell: 'Someone of theirs is going', welcome: 'The expedition is home', away: 'Chosen for the expedition',
   hungry: 'Hungry', starving: 'Starving', tired: 'Worn out', exhausted: 'Collapsed from exhaustion', night: 'Time to sleep', break: 'Not in their right mind',
   bored: 'Needed a break', idle: 'Nothing pressing to do', free: 'Free time', love: 'Wanted to see their love', urge: 'Could not put it off any longer', crush: 'Could not stay away', friend: 'Wanted company', family: 'Wanted family',

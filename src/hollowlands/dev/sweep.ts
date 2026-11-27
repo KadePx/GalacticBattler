@@ -10,6 +10,8 @@ import { evText } from '../text';
 import { bioText, pretty } from '../view/words';
 import { B, RES } from '../sim/types';
 import { awayPawns, RELIC_CAP } from '../sim/exped';
+import { roadPawns } from '../sim/neigh';
+import { pairKey } from '../sim/routes';
 
 declare const process: { argv: string[]; exit(code: number): never };
 const years = Number(process.argv[2]) || 6;
@@ -25,7 +27,7 @@ for (let s = 1; s <= worlds; s++) {
     for (let k = 0; k < TICKS_PER_DAY; k++) stepWorld(w);
     for (const c of w.colonies) {
       const ids = new Set(c.pawns.map((p) => p.id));
-      const away = awayPawns(c);
+      const away = [...awayPawns(c), ...roadPawns(c)];
       const awayIds = new Set(away.map((p) => p.id));
       const known = new Set([...ids, ...awayIds, ...c.dead.map((x) => x.id)]);
       for (const k of RES) { const v = c.stock[k]; if (!Number.isFinite(v)) flag(`stock ${k} not a number`); else if (v < -0.01) flag(`stock ${k} negative`); }
@@ -63,7 +65,8 @@ for (let s = 1; s <= worlds; s++) {
         if (c.tick > v.dep + TICKS_PER_DAY * 4) flag(`visitor ${v.k} overstayed`);
         if (v.g !== v.id && !c.vis!.l.some((x) => x.id === v.g)) flag('visitor party without a leader');
       }
-      if ((c.vis?.l.length ?? 0) > 8) flag('too many visitors');
+      // (a tournament may bring knights from four towns while a caravan is in)
+      if ((c.vis?.l.length ?? 0) > 20) flag('too many visitors');
       // the land's events: their marks on the map stay in bounds and clear up, and nothing outstays its end
       const n = c.nat;
       if (n) {
@@ -122,10 +125,46 @@ for (let s = 1; s <= worlds; s++) {
         for (let i = 0; i < c.st.length; i++) if (c.st[i] === B.RELIC) stands++;
         if (stands > x.rel.length) flag('relic stand with no relic');
         if (x.done.length > 8 || x.sites.length > 3 || x.seen.length > 24) flag('expedition lists piling up');
-        if (away.length > Math.max(5, c.pawns.length * 0.2)) flag('too many away at once');
+        if (away.length > Math.max(8, c.pawns.length * 0.25)) flag('too many away at once');
       }
-      for (const p of c.pawns) if (p.act.k === 'trek' && !(x && x.l.some((q) => q.ids.includes(p.id)))) { if (p.act.t1 > c.tick + 30) flag('trekking with no party'); }
+      for (const p of c.pawns) if (p.act.k === 'trek' && !(x && x.l.some((q) => q.ids.includes(p.id))) && !c.nb?.go.some((g) => g.id === p.id)) { if (p.act.t1 > c.tick + 30) flag('trekking with no party'); }
+      // neighbours: nobody on the road for ever or in two places, nothing left half done
+      const nb = c.nb;
+      if (nb) {
+        const D = TICKS_PER_DAY;
+        if (!x && awayIds.size !== away.length) flag('someone away twice');
+        for (const a of nb.away) {
+          if (ids.has(a.pw.id)) flag('envoy or knight both away and on the map');
+          if (a.pw.gone || a.pw.owner) flag('wrong sort of colonist on the road');
+          if (c.dead.some((d) => d.id === a.pw.id)) flag('away colonist among the dead');
+          if (c.tick > a.t + D * 14) flag(`${a.k} never came home`);
+        }
+        for (const g of nb.go) if (c.tick > g.t + D) flag(`${g.k} never set out`);
+        if (nb.tn && nb.tn.st === 1 && c.tick > nb.tn.t1 + 2) flag('tournament never ended');
+        if (nb.tn && Math.floor(c.tick / D) > nb.tn.day + 1) flag('old tournament never cleared');
+        if (nb.loads.length > 6) flag('cart loads piling up');
+        if (nb.wed && (!ids.has(nb.wed.a) || !ids.has(nb.wed.b))) flag('match between houses with someone gone');
+        for (const k of Object.keys(nb)) if ((nb as unknown as Record<string, unknown>)[k] === undefined) flag(`neighbour field ${k} left undefined`);
+        for (const id in nb.ties) for (const k of Object.keys(nb.ties[id])) if ((nb.ties[id] as unknown as Record<string, unknown>)[k] === undefined) flag(`tie field ${k} left undefined`);
+        if (Object.keys(nb.ties).length > 12) flag('ties piling up');
+      }
       for (const f of c.foes) if (!Number.isFinite(f.hp) || f.x < 0 || f.y < 0 || f.x >= c.w || f.y >= c.h) flag('foe off the map');
+    }
+    // the two ends of every tie agree with each other, and with what the land keeps
+    const live = w.colonies.filter((c) => c.pawns.length);
+    for (const a of live) {
+      for (const b of live) {
+        if (a.id >= b.id) continue;
+        const ta = a.nb?.ties[b.id];
+        const tb = b.nb?.ties[a.id];
+        const tw = w.pacts?.ties[pairKey(a.id, b.id)];
+        for (const f of ['trade', 'ally', 'kin'] as const) {
+          if ((ta?.[f] !== undefined) !== (tb?.[f] !== undefined)) flag(`neighbours disagree about ${f}`);
+          if ((ta?.[f] !== undefined) !== (tw?.[f] !== undefined)) flag(`colony and land disagree about ${f}`);
+        }
+        if ((ta?.trib ?? 0) + (tb?.trib ?? 0) !== 0 && (ta?.trib ?? 0) + (tb?.trib ?? 0) !== 3) flag('neighbours disagree about tribute');
+        if ((ta?.trib !== undefined) !== (tw?.trib !== undefined)) flag('colony and land disagree about tribute');
+      }
     }
   }
   console.log(`world ${s}: ${w.colonies.length} colonies, ${w.colonies.reduce((a, c) => a + c.pawns.length, 0)} people after ${years} years`);

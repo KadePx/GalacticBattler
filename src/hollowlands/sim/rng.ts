@@ -98,4 +98,5 @@ export const S = {
   VISIT: 24,
   NATURE: 25,
   EXPED: 26,
+  PACT: 27,
 } as const;

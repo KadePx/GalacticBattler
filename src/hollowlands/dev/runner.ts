@@ -22,6 +22,7 @@ import { WEIGHT, dateText, evText } from '../text';
 import { infect } from '../sim/health';
 import { Rand } from '../sim/rng';
 import { callParty } from '../sim/exped';
+import { forcePact } from '../sim/neigh';
 
 declare const process: { argv: string[]; exit(code: number): never };
 declare const performance: { now(): number };
@@ -269,7 +270,7 @@ function many(): void {
 async function golden(update: boolean): Promise<void> {
   const fs = await fsMod();
   const path = 'src/hollowlands/dev/golden.json';
-  const run = (): { hash: string; mid: string; exp: string } => {
+  const run = (): { hash: string; mid: string; exp: string; nb: string } => {
     const c = createColony({ seed: 7, pop: 16 });
     for (let k = 0; k < TICKS_PER_DAY * 45; k++) step(c);
     // save and load half way: a restored colony must carry on exactly the same
@@ -283,7 +284,7 @@ async function golden(update: boolean): Promise<void> {
     }
     const a = colonyHash(c);
     copies.forEach((x, n) => { const b = colonyHash(x); if (a !== b) { console.error(`FAIL: reloaded copy ${n} drifted (${a} vs ${b})`); process.exit(1); } });
-    return { hash: a, mid, exp: expCase() };
+    return { hash: a, mid, exp: expCase(), nb: neighCase() };
   };
   // a second case that reaches an expedition: a town of 50, a party called on day 21, and reload
   // copies taken while it musters, while it is away and as it comes home
@@ -306,18 +307,42 @@ async function golden(update: boolean): Promise<void> {
     copies.forEach((x, n) => { const b = colonyHash(x); if (a !== b) { console.error(`FAIL: expedition case, reloaded copy ${n} drifted (${a} vs ${b})`); process.exit(1); } });
     return a;
   }
+  // a third case that lives through dealings with neighbours: an envoy received and one sent, caravans in and
+  // out, tribute, a bride with her escort, knights sent to a tournament and one held here; with reload copies
+  // taken while people are on the road, carts are in the square and the lists are up
+  function neighCase(): string {
+    const c = createColony({ seed: 5, pop: 50 });
+    for (let k = 0; k < TICKS_PER_DAY * 20; k++) step(c);
+    while (c.tick % TICKS_PER_DAY !== 70) step(c);
+    const plan: Record<number, string[]> = { 0: ['trade', 'caravan'], 1: ['tribute', 'wed', 'caravan_out'], 2: ['envoy', 'tourney_out'], 3: ['tourney', 'tribute_out'], 6: ['relief'] };
+    const copies: Colony[] = [];
+    const marks = new Set([40, 130, 300, 505, 560, 700, 790, 830, 900, 1500]);
+    for (let k = 0; k < TICKS_PER_DAY * 14; k++) {
+      if (k % TICKS_PER_DAY === 0) for (const what of plan[k / TICKS_PER_DAY] ?? []) for (const x of [c, ...copies]) if (!forcePact(x, what)) { console.error(`FAIL: the golden neighbours case could not start ${what}`); process.exit(1); }
+      step(c);
+      for (const x of copies) step(x);
+      if (marks.has(k)) copies.push(deserialize(serialize(c)));
+    }
+    const st = c.stats;
+    const ok = st.caravans >= 1 && st.envoys >= 1 && st.tributeIn >= 1 && st.royalCame >= 1 && st.tourneys >= 1 && c.nb && !c.nb.away.length && !c.nb.go.length;
+    if (!ok) { console.error(`FAIL: the golden neighbours case did not live through everything (caravans ${st.caravans}, envoys ${st.envoys}, tribute ${st.tributeIn}, bride ${st.royalCame}, tourneys ${st.tourneys}, away ${c.nb?.away.length}, going ${c.nb?.go.length})`); process.exit(1); }
+    const a = colonyHash(c);
+    copies.forEach((x, n) => { const b = colonyHash(x); if (a !== b) { console.error(`FAIL: neighbours case, reloaded copy ${n} drifted (${a} vs ${b})`); process.exit(1); } });
+    return a;
+  }
   const one = run();
   const two = run();
-  if (one.hash !== two.hash || one.exp !== two.exp) { console.error(`FAIL: two identical runs differ (${one.hash}/${one.exp} vs ${two.hash}/${two.exp})`); process.exit(1); }
+  if (one.hash !== two.hash || one.exp !== two.exp || one.nb !== two.nb) { console.error(`FAIL: two identical runs differ (${one.hash}/${one.exp}/${one.nb} vs ${two.hash}/${two.exp}/${two.nb})`); process.exit(1); }
   if (update || !fs.existsSync(path)) {
     fs.writeFileSync(path, JSON.stringify(one, null, 2) + '\n');
-    console.log(`golden updated: ${one.hash} (expedition case ${one.exp})`);
+    console.log(`golden updated: ${one.hash} (expedition case ${one.exp}, neighbours case ${one.nb})`);
     return;
   }
-  const want = JSON.parse(fs.readFileSync(path, 'utf8')) as { hash: string; exp?: string };
+  const want = JSON.parse(fs.readFileSync(path, 'utf8')) as { hash: string; exp?: string; nb?: string };
+  if (want.nb !== one.nb) { console.error(`FAIL: golden neighbours hash changed (${want.nb} -> ${one.nb}). If the sim change is intended, run with --update.`); process.exit(1); }
   if (want.exp !== one.exp) { console.error(`FAIL: golden expedition hash changed (${want.exp} -> ${one.exp}). If the sim change is intended, run with --update.`); process.exit(1); }
   if (want.hash !== one.hash) { console.error(`FAIL: golden hash changed (${want.hash} -> ${one.hash}). If the sim change is intended, run with --update.`); process.exit(1); }
-  console.log(`golden ok: ${one.hash} (expedition case ${one.exp})`);
+  console.log(`golden ok: ${one.hash} (expedition case ${one.exp}, neighbours case ${one.nb})`);
 }
 
 async function size(): Promise<void> {

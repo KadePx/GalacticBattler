@@ -9,9 +9,11 @@ import { Rand, S, hash32 } from './rng';
 import type { SettlerMsg } from './settle';
 import { step } from './step';
 import type { Colony } from './types';
-import { landThreat, nearLists, routeMsg, ruinFor, type Delivery } from './routes';
+import { landThreat, nearLists, pactsDaily, routeMsg, routePact, ruinFor, type Delivery, type Pacts, type SiteStat } from './routes';
+import { siteStat } from './neigh';
+import { awayPawns } from './exped';
 
-export interface Site { id: string; name: string; x: number; y: number; founded: number; from?: string; seed: number; dead?: number; nearSent?: string; ruins?: string }
+export interface Site { id: string; name: string; x: number; y: number; founded: number; from?: string; seed: number; dead?: number; nearSent?: string; ruins?: string; st?: SiteStat; wars?: string[] }
 
 export interface World {
   seed: number;
@@ -21,6 +23,8 @@ export interface World {
   /** colonies founded so far, for naming and seeding the next */
   count: number;
   lastThreat?: number;
+  /** how neighbours stand with each other, and who is on the road between them */
+  pacts?: Pacts;
 }
 
 /** The region map, in cells (the world view draws the same grid). */
@@ -83,7 +87,7 @@ export function foundFrom(w: World, msg: SettlerMsg): Colony {
 /** One tick for every living colony, then deliver whatever they sent out. */
 export function stepWorld(w: World): void {
   for (const c of w.colonies) {
-    if (!c.pawns.length && !c.exp?.l.length && !c.exp?.late.length) continue;
+    if (!c.pawns.length && !awayPawns(c).length && !c.nb?.away.length) continue;
     step(c);
   }
   w.tick++;
@@ -102,16 +106,29 @@ export function stepWorld(w: World): void {
         const made = foundFrom(w, m as unknown as SettlerMsg);
         // the old home hears where they ended up
         c.inq.push({ t: c.tick + 1, k: 'news', what: 'founded', name: made.name });
-      } else send(routeMsg(w.sites, c.id, c.name, m));
+      } else {
+        const list = routeMsg(w.sites, c.id, c.name, m);
+        const more = routePact(w.sites, w, c.id, w.tick, m, list);
+        send(list);
+        send(more);
+      }
     }
   }
   for (const s of w.sites) {
     if (s.dead) continue;
     const c = w.colonies.find((x) => x.id === s.id);
-    if (c && !c.pawns.length && !c.exp?.l.length && !c.exp?.late.length) s.dead = w.tick;
+    if (c && !c.pawns.length && !awayPawns(c).length && !c.nb?.away.length) s.dead = w.tick;
   }
   if (w.tick % TICKS_PER_DAY === 0) {
     send(nearLists(w.sites));
     send(landThreat(w.seed, Math.floor(w.tick / TICKS_PER_DAY), w.sites, w));
+    // what each colony would report of itself, and then how the neighbours stand
+    for (const s of w.sites) {
+      const c = s.dead ? undefined : w.colonies.find((x) => x.id === s.id);
+      if (!c) continue;
+      s.st = siteStat(c);
+      s.wars = Object.keys(c.wars ?? {});
+    }
+    send(pactsDaily(w.seed, Math.floor(w.tick / TICKS_PER_DAY), w.tick, w.sites, w));
   }
 }

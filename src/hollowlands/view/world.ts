@@ -8,6 +8,8 @@ import { REGION_H, REGION_W } from '../sim/world';
 import { esc } from './words';
 
 export interface WorldSite { id: string; name: string; x: number; y: number; founded: number; from?: string; pop: number; ruler?: string; dead?: number; ruins?: string; wars?: string[] }
+/** How colonies stand with each other (by pair, 'a|b'), who is on the road between them, and the tournament called (see sim/routes.ts). */
+export interface WorldPacts { ties: Record<string, { trade?: number; ally?: number; kin?: number; trib?: string }>; trips: { a: string; b: string; t0: number; t1: number; k: string }[]; tourney?: { host: string; day: number } }
 
 // Region size in cells (the same grid as sim/world.ts), and canvas pixels per cell.
 const W = REGION_W;
@@ -317,16 +319,129 @@ function warLine(ctx: CanvasRenderingContext2D, a: WorldSite, b: WorldSite): voi
   ctx.beginPath(); ctx.moveTo(mx - 5, my + 5); ctx.lineTo(mx + 5, my - 5); ctx.moveTo(mx + 5, my + 5); ctx.lineTo(mx - 5, my - 5); ctx.stroke();
 }
 
-/** A dirt road that wanders a little between two places (faded when either end is abandoned). */
-function road(ctx: CanvasRenderingContext2D, seed: number, a: WorldSite, b: WorldSite): void {
-  ctx.globalAlpha = a.dead || b.dead ? 0.4 : 1;
+/** The line a road takes between two places: its two ends and the point it bends toward (the same whichever end is named first). */
+function roadLine(seed: number, p: WorldSite, q: WorldSite): { ax: number; ay: number; mx: number; my: number; bx: number; by: number } {
+  const [a, b] = p.id < q.id ? [p, q] : [q, p];
   const ax = a.x * CELL + CELL / 2;
   const ay = a.y * CELL + CELL / 2;
   const bx = b.x * CELL + CELL / 2;
   const by = b.y * CELL + CELL / 2;
   const bend = ((hash32(seed, 779, a.x, a.y, b.x * 64 + b.y) / 4294967296) - 0.5) * 60;
-  const mx = (ax + bx) / 2 - (by - ay) * (bend / 200);
-  const my = (ay + by) / 2 + (bx - ax) * (bend / 200);
+  return { ax, ay, mx: (ax + bx) / 2 - (by - ay) * (bend / 200), my: (ay + by) / 2 + (bx - ax) * (bend / 200), bx, by };
+}
+
+/** A point part of the way along the road from p to q (f from 0 to 1), and which way the road runs there. */
+function alongRoad(seed: number, p: WorldSite, q: WorldSite, f: number): { x: number; y: number; dx: number } {
+  const l = roadLine(seed, p, q);
+  const u = p.id < q.id ? f : 1 - f;
+  const v = 1 - u;
+  const x = v * v * l.ax + 2 * v * u * l.mx + u * u * l.bx;
+  const y = v * v * l.ay + 2 * v * u * l.my + u * u * l.by;
+  const tx = 2 * v * (l.mx - l.ax) + 2 * u * (l.bx - l.mx);
+  return { x, y, dx: (p.id < q.id ? tx : -tx) >= 0 ? 1 : -1 };
+}
+
+/** What binds two colonies, as small seals side by side where their road is half run: a coin for trade, a shield for an alliance, a ring for a marriage, a chest for tribute. */
+function tieSeals(ctx: CanvasRenderingContext2D, seed: number, a: WorldSite, b: WorldSite, t: { trade?: number; ally?: number; kin?: number; trib?: string }): void {
+  const kinds: string[] = [];
+  if (t.ally !== undefined) kinds.push('ally');
+  if (t.trade !== undefined) kinds.push('trade');
+  if (t.kin !== undefined) kinds.push('kin');
+  if (t.trib !== undefined) kinds.push('trib');
+  if (!kinds.length) return;
+  const mid = alongRoad(seed, a, b, 0.5);
+  kinds.forEach((k, n) => {
+    const x = mid.x + (n - (kinds.length - 1) / 2) * 23;
+    const y = mid.y;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1.35, 1.35);
+    ctx.translate(-x, -y);
+    ctx.fillStyle = 'rgba(20,14,10,0.85)';
+    ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (k === 'trade') {
+      ctx.fillStyle = '#e8c75a';
+      ctx.beginPath(); ctx.arc(x, y, 4.6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#8a6a1a';
+      ctx.beginPath(); ctx.arc(x, y, 2.4, 0, Math.PI * 2); ctx.stroke();
+    } else if (k === 'ally') {
+      ctx.fillStyle = '#7c9cff';
+      ctx.beginPath(); ctx.moveTo(x - 4.4, y - 4.6); ctx.lineTo(x + 4.4, y - 4.6); ctx.lineTo(x + 4.4, y); ctx.quadraticCurveTo(x + 3.6, y + 4.6, x, y + 5.6); ctx.quadraticCurveTo(x - 3.6, y + 4.6, x - 4.4, y); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#e6ecff';
+      ctx.beginPath(); ctx.moveTo(x, y - 3.4); ctx.lineTo(x, y + 3.6); ctx.moveTo(x - 3, y - 0.6); ctx.lineTo(x + 3, y - 0.6); ctx.stroke();
+    } else if (k === 'kin') {
+      ctx.strokeStyle = '#f59ab4';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.arc(x - 1.8, y, 3.2, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + 1.8, y, 3.2, 0, Math.PI * 2); ctx.stroke();
+    } else {
+      // a chest, and an arrow toward the town that is paid
+      const to = t.trib === a.id ? b : a;
+      const from = to === a ? b : a;
+      const dir = to.x === from.x ? 0 : to.x > from.x ? 1 : -1;
+      ctx.fillStyle = '#b98be0';
+      ctx.fillRect(x - 4, y - 2.4, 8, 5.6);
+      ctx.fillStyle = '#8a5ab8';
+      ctx.fillRect(x - 4, y - 3.6, 8, 2);
+      ctx.strokeStyle = '#f0e2ff';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.moveTo(x - 2.6 * dir, y + 0.6); ctx.lineTo(x + 2.6 * dir, y + 0.6); if (dir) { ctx.moveTo(x + 2.6 * dir, y + 0.6); ctx.lineTo(x + 0.6 * dir, y - 1.2); ctx.moveTo(x + 2.6 * dir, y + 0.6); ctx.lineTo(x + 0.6 * dir, y + 2.4); } ctx.stroke();
+    }
+    ctx.restore();
+  });
+}
+
+/** Someone on the road: a caravan's carts, a tribute cart, an envoy or knights on horseback, a bridal cart. */
+function traveller(ctx: CanvasRenderingContext2D, x: number, y: number, dx: number, k: string, bob: number): void {
+  ctx.save();
+  ctx.translate(x, y - 4 + bob);
+  ctx.scale(dx * 1.5, 1.5);
+  ctx.lineCap = 'round';
+  const cart = (cx: number, body: string, cover: string): void => {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.ellipse(cx, 4.6, 7, 2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = body;
+    ctx.fillRect(cx - 5.5, -1.5, 10, 4.4);
+    ctx.fillStyle = cover;
+    ctx.beginPath(); ctx.moveTo(cx - 5.5, -1.5); ctx.quadraticCurveTo(cx - 0.5, -8.5, cx + 4.5, -1.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2a1d12';
+    ctx.beginPath(); ctx.arc(cx - 3.4, 3.6, 2, 0, Math.PI * 2); ctx.arc(cx + 2.6, 3.6, 2, 0, Math.PI * 2); ctx.fill();
+    // the ox in front
+    ctx.fillStyle = '#8a6a4a';
+    ctx.beginPath(); ctx.ellipse(cx + 9, 1.4, 3.6, 2.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 12.6, 0.2, 1.7, 0, Math.PI * 2); ctx.fill();
+  };
+  const horse = (cx: number, coat: string, flag: string, lance: boolean): void => {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.ellipse(cx, 4.8, 5.4, 1.8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = coat;
+    ctx.beginPath(); ctx.ellipse(cx, 1, 4.6, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 4.8, -1.6, 1.9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(cx - 3.4, 2.4, 1.2, 2.8); ctx.fillRect(cx + 2.2, 2.4, 1.2, 2.8);
+    ctx.fillStyle = '#d9dee6';
+    ctx.beginPath(); ctx.arc(cx - 0.4, -3.4, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#e9dcc0';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.moveTo(cx - 2.4, -2); ctx.lineTo(cx - 2.4, lance ? -13 : -11.5); ctx.stroke();
+    ctx.fillStyle = flag;
+    ctx.beginPath(); ctx.moveTo(cx - 2.4, lance ? -13 : -11.5); ctx.lineTo(cx + 3.6, lance ? -11.6 : -10); ctx.lineTo(cx - 2.4, lance ? -10.2 : -8); ctx.closePath(); ctx.fill();
+  };
+  if (k === 'caravan') { cart(-9, '#7a5434', '#e3d6b4'); cart(8, '#7a5434', '#cbbf9e'); }
+  else if (k === 'tribute') cart(0, '#5a3d6a', '#b98be0');
+  else if (k === 'bride') { horse(-11, '#6a4a30', '#f59ab4', false); cart(4, '#8a2a3a', '#f8d6e2'); }
+  else if (k === 'envoy') horse(0, '#d9d2c2', '#2f7a4a', false);
+  else if (k === 'relief') { horse(-7, '#3a3028', '#7c9cff', true); horse(4, '#6a4a30', '#7c9cff', true); }
+  else { horse(-6, '#6a4a30', '#e2574c', true); horse(5, '#3a3028', '#e2574c', true); }
+  ctx.restore();
+}
+
+/** A dirt road that wanders a little between two places (faded when either end is abandoned). */
+function road(ctx: CanvasRenderingContext2D, seed: number, a: WorldSite, b: WorldSite): void {
+  ctx.globalAlpha = a.dead || b.dead ? 0.4 : 1;
+  const { ax, ay, mx, my, bx, by } = roadLine(seed, a, b);
   ctx.strokeStyle = 'rgba(60,45,30,0.6)';
   ctx.lineWidth = 4;
   ctx.lineCap = 'round';
@@ -386,8 +501,12 @@ function settlement(ctx: CanvasRenderingContext2D, s: WorldSite, here: boolean, 
   ctx.restore();
 }
 
+const TRIP_WORD: Record<string, string> = { caravan: 'A caravan', tribute: 'A tribute cart', envoy: 'An envoy', knights: 'Knights', relief: 'Riders', bride: 'A bridal party' };
+
 export class WorldView {
   private el: HTMLElement;
+  /** redraws those on the roads while the map is open */
+  private timer = 0;
 
   constructor(private go: (id: string) => void) {
     this.el = document.createElement('div');
@@ -404,15 +523,35 @@ export class WorldView {
 
   close(): void {
     this.el.classList.add('hidden');
+    if (this.timer) { clearInterval(this.timer); this.timer = 0; }
   }
 
-  open(sites: WorldSite[], here: string, mine: string, seed = 1): void {
+  /** `pacts` is how the colonies stand and who is on the road; `tick` gives the hour of the world now, so travellers can be put where they have got to. */
+  open(sites: WorldSite[], here: string, mine: string, seed = 1, pacts?: WorldPacts, tick?: () => number): void {
     const by = new Map(sites.map((s) => [s.id, s]));
+    if (this.timer) { clearInterval(this.timer); this.timer = 0; }
+    const ties = Object.entries(pacts?.ties ?? {}).map(([key, t]) => { const [x, y] = key.split('|'); return { a: by.get(x), b: by.get(y), t }; }).filter((x): x is { a: WorldSite; b: WorldSite; t: WorldPacts['ties'][string] } => !!x.a && !!x.b && !x.a.dead && !x.b.dead);
+    const bonds = (s: WorldSite): string => {
+      const out: string[] = [];
+      const names = (f: (t: WorldPacts['ties'][string], o: WorldSite) => boolean): string => ties.filter((x) => (x.a === s || x.b === s) && f(x.t, x.a === s ? x.b : x.a)).map((x) => esc((x.a === s ? x.b : x.a).name)).join(' and ');
+      const ally = names((t) => t.ally !== undefined);
+      const trade = names((t) => t.trade !== undefined);
+      const kin = names((t) => t.kin !== undefined);
+      const pays = names((t) => t.trib === s.id);
+      const paid = names((t) => t.trib !== undefined && t.trib !== s.id);
+      if (ally) out.push(`allied with ${ally}`);
+      if (trade) out.push(`trades with ${trade}`);
+      if (kin) out.push(`kin by marriage to ${kin}`);
+      if (pays) out.push(`pays tribute to ${pays}`);
+      if (paid) out.push(`takes tribute from ${paid}`);
+      if (pacts?.tourney?.host === s.id) out.push('holding a tournament');
+      return out.length ? ` · <span class="up">${out.join(' · ')}</span>` : '';
+    };
     const year = (t: number): number => Math.floor(t / (TICKS_PER_DAY * 60)) + 1;
     const rows = sites.slice().sort((a, b) => (a.dead ? 1 : 0) - (b.dead ? 1 : 0) || b.pop - a.pop).map((s) => {
       const p = s.from ? by.get(s.from) : undefined;
       const foes = (s.wars ?? []).map((id) => by.get(id)?.name).filter(Boolean);
-      const sub = s.dead ? 'Abandoned' : `${s.pop} people${s.ruler ? ' · ruled by ' + esc(s.ruler) : ''}${foes.length ? ` · <span class="down">at war with ${foes.map((n) => esc(n!)).join(' and ')}</span>` : ''}`;
+      const sub = s.dead ? 'Abandoned' : `${s.pop} people${s.ruler ? ' · ruled by ' + esc(s.ruler) : ''}${foes.length ? ` · <span class="down">at war with ${foes.map((n) => esc(n!)).join(' and ')}</span>` : ''}${bonds(s)}`;
       const origin = p ? `Founded from ${esc(p.name)} in year ${year(s.founded)}${s.ruins ? `, on the ruins of ${esc(s.ruins)}` : ''}` : 'One of the first colonies';
       return `<button class="wrow${s.id === here ? ' here' : ''}" data-c="${s.id}"><b>${esc(s.name)}${s.id === mine ? ' <span class="tie kin">Yours</span>' : ''}${s.id === here ? ' <span class="tie dim">Viewing</span>' : ''}</b><span>${sub}</span><span>${origin}</span></button>`;
     }).join('');
@@ -420,7 +559,7 @@ export class WorldView {
     // a colony founded on a ruin stands on the same spot: only the living one is named
     const named = sites.filter((s) => !s.dead || !sites.some((o) => !o.dead && o.x === s.x && o.y === s.y));
     const labels = named.map((s) => `<button class="wlabel${s.id === here ? ' here' : ''}${s.dead ? ' dead' : ''}" data-c="${s.id}" style="left:${(((s.x + 0.5) / W) * 100).toFixed(2)}%;top:${((((s.y + 0.5) * CELL + 14) / (H * CELL)) * 100).toFixed(2)}%">${esc(s.name)}</button>`).join('');
-    this.el.innerHTML = `<div class="wbox panel"><div class="whead"><b>The Hollow Lands</b><span>${sites.filter((s) => !s.dead).length} colonies</span><button class="icon" data-x title="Close" aria-label="Close">&times;</button></div><div class="wmapbox"><canvas class="wmap" width="${W * CELL}" height="${H * CELL}"></canvas>${labels}</div><div class="wlist">${rows}</div></div>`;
+    this.el.innerHTML = `<div class="wbox panel"><div class="whead"><b>The Hollow Lands</b><span>${sites.filter((s) => !s.dead).length} colonies</span><button class="icon" data-x title="Close" aria-label="Close">&times;</button></div><div class="wmapbox"><canvas class="wmap" width="${W * CELL}" height="${H * CELL}"></canvas><canvas class="wtrips" width="${W * CELL}" height="${H * CELL}" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none"></canvas>${labels}</div>${ties.length || pacts?.trips.length ? '<div class="hint wkey" style="margin:8px 2px 0">On the roads: a coin for a trade agreement, a shield for an alliance, rings for a marriage between houses, a chest for tribute (the arrow points to the town that is paid). Carts and riders are caravans, envoys and knights on their way. <span class="wnow"></span></div>' : ''}<div class="wlist">${rows}</div></div>`;
     const canvas = this.el.querySelector('canvas') as HTMLCanvasElement;
     const ctx = canvas.getContext('2d');
     const layer = ctx ? landLayer(seed, sites) : null;
@@ -440,8 +579,27 @@ export class WorldView {
         for (const b of near.slice(0, 2)) if (Math.hypot(b.x - a.x, b.y - a.y) < 30) link(a, b);
       }
       // wars: a red line of crossed blades between the two
+      // those bound to each other have a road between them, whoever else is nearer
+      for (const x of ties) link(x.a, x.b);
       for (const s of sites) for (const id of s.wars ?? []) { const o = by.get(id); if (o && !o.dead && !s.dead && (s.id < o.id || !(o.wars ?? []).includes(s.id))) warLine(ctx, s, o); }
+      for (const x of ties) tieSeals(ctx, seed, x.a, x.b, x.t);
       for (const s of sites) settlement(ctx, s, s.id === here, s.id === mine);
+      // a tournament called: crossed lances over the town that holds it
+      const th = pacts?.tourney ? by.get(pacts.tourney.host) : undefined;
+      if (th && !th.dead) {
+        const x = th.x * CELL + CELL / 2;
+        const y = th.y * CELL + CELL / 2 - 16;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#2a1d12';
+        ctx.lineWidth = 3.4;
+        ctx.beginPath(); ctx.moveTo(x - 8, y + 6); ctx.lineTo(x + 8, y - 7); ctx.moveTo(x + 8, y + 6); ctx.lineTo(x - 8, y - 7); ctx.stroke();
+        ctx.strokeStyle = '#f3ead6';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(x - 8, y + 6); ctx.lineTo(x + 8, y - 7); ctx.moveTo(x + 8, y + 6); ctx.lineTo(x - 8, y - 7); ctx.stroke();
+        ctx.fillStyle = '#e2574c';
+        ctx.beginPath(); ctx.moveTo(x + 8, y - 7); ctx.lineTo(x + 14, y - 5); ctx.lineTo(x + 8, y - 2.4); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x - 8, y - 7); ctx.lineTo(x - 14, y - 5); ctx.lineTo(x - 8, y - 2.4); ctx.closePath(); ctx.fill();
+      }
       // a dark edge, like an old map
       const g = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.height * 0.35, canvas.width / 2, canvas.height / 2, canvas.width * 0.62);
       g.addColorStop(0, 'rgba(0,0,0,0)');
@@ -452,5 +610,28 @@ export class WorldView {
     this.el.classList.remove('hidden');
     const box = this.el.querySelector<HTMLElement>('.wmapbox');
     if (box) spreadLabels(box);
+    // those on the roads, moved along a little at a time while the map is open
+    const over = this.el.querySelector<HTMLCanvasElement>('.wtrips');
+    const octx = over?.getContext('2d');
+    const trips = (pacts?.trips ?? []).map((t) => ({ t, a: by.get(t.a), b: by.get(t.b) })).filter((x): x is { t: WorldPacts['trips'][number]; a: WorldSite; b: WorldSite } => !!x.a && !!x.b);
+    const nowEl = this.el.querySelector<HTMLElement>('.wnow');
+    if (over && octx && trips.length) {
+      let frame = 0;
+      const draw = (): void => {
+        frame++;
+        const now = tick ? tick() : Math.max(...trips.map((x) => x.t.t0));
+        octx.clearRect(0, 0, over.width, over.height);
+        const said: string[] = [];
+        for (const { t, a, b } of trips) {
+          if (now < t.t0 || now > t.t1 || t.t1 <= t.t0) continue;
+          const p = alongRoad(seed, a, b, (now - t.t0) / (t.t1 - t.t0));
+          traveller(octx, p.x, p.y, p.dx, t.k, frame % 2 ? 0 : -1);
+          said.push(`${TRIP_WORD[t.k] ?? 'Travellers'} from ${a.name} to ${b.name}`);
+        }
+        if (nowEl) nowEl.textContent = said.length ? `Now: ${said.slice(0, 4).join('; ')}${said.length > 4 ? `; and ${said.length - 4} more` : ''}.` : '';
+      };
+      draw();
+      this.timer = window.setInterval(draw, 450);
+    }
   }
 }

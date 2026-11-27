@@ -9,6 +9,7 @@ import { die } from './life';
 import { think } from './mood';
 import { STAGE, has, pawnById, per, stage } from './pawn';
 import { expOf } from './exped';
+import { bound, friendly } from './neigh';
 import { Rand, S } from './rng';
 import { AX, type Colony, type Input } from './types';
 
@@ -39,14 +40,18 @@ export function dailyAbroad(c: Colony): void {
     const worst = near.slice(0, 3).sort((a, b) => (g[b.id] ?? 0) - (g[a.id] ?? 0))[0];
     const n = worst && (g[worst.id] ?? 0) > 3 && r.chance(0.6) ? worst : near[r.int(Math.min(3, near.length))];
     const k = r.int(INCIDENTS.length);
-    g[n.id] = (g[n.id] ?? 0) + 5 + r.int(7);
-    log(c, 'incident', undefined, undefined, n.name, k);
+    const sore = 5 + r.int(7);
+    // between friends a slight is soon smoothed over, and between allies it is not worth the telling
+    if (!bound(c, n.id)) {
+      g[n.id] = (g[n.id] ?? 0) + (friendly(c, n.id) ? Math.floor(sore / 2) : sore);
+      log(c, 'incident', undefined, undefined, n.name, k);
+    }
   }
 
   // a grudge deep enough becomes a war
   if (day % 3 === 1) {
     for (const n of near) {
-      if (wars[n.id] || (g[n.id] ?? 0) < 18 || fighters < 10 || thin) continue;
+      if (wars[n.id] || (g[n.id] ?? 0) < 18 || fighters < 10 || thin || bound(c, n.id)) continue;
       const temper = per(ruler, AX.TEMPER) + (fierce ? 1 : 0) - per(ruler, AX.KIND) * 0.6;
       if (!r.chance(Math.min(0.8, 0.2 + temper * 0.2 + (g[n.id] - 20) / 60))) continue;
       wars[n.id] = { name: n.name, since: c.tick, sent: 0, came: 0, lost: 0, slain: 0, ours: true };
@@ -91,6 +96,8 @@ export function dailyAbroad(c: Colony): void {
     if (!fierce && !(hungry && per(ruler, AX.KIND) < 0.3)) return;
     if (fighters < 6 || !r.chance(hungry ? 0.5 : per(ruler, AX.GREED) > 0.8 ? 0.25 : 0.1)) return;
     target = near[r.int(Math.min(2, near.length))];
+    // not those we are bound to by alliance, marriage or tribute
+    if (target && bound(c, target.id)) return;
   }
   if (!target) return;
   const n = Math.min(enemy ? 8 : 7, Math.max(3, Math.floor(fighters / 3)));
@@ -112,7 +119,8 @@ export function dailyAbroad(c: Colony): void {
 export function dailyMatch(c: Colony): void {
   const near = c.near;
   const day = dayOf(c.tick);
-  if (!near?.length || day % 15 !== 4 || c.gov.k !== 'lord' || c.foes.length) return;
+  // (once the land keeps the neighbours' dealings, matches between houses are made there: see neigh.ts)
+  if (!near?.length || day % 15 !== 4 || c.gov.k !== 'lord' || c.foes.length || c.nb) return;
   const ruler = pawnById(c, c.gov.ruler);
   if (!ruler) return;
   const kids = c.pawns.filter((p) => !p.gone && !p.owner && (p.mo === ruler.id || p.fa === ruler.id) && stage(c, p) === STAGE.ADULT && !p.sp && !has(p, 'chaste')).sort((a, b) => b.born - a.born);

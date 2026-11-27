@@ -453,6 +453,22 @@ export const TH_LIST: ThDef[] = [
   h('x_roadmate', 'Walked a hard road with {o}', 0, DAY * 20, { op: 12 }),
   h('x_welcomed', 'Cheered the expedition home', 3, DAY * 3),
   h('x_leftbe', 'We left the dead their own', 3, DAY * 6),
+  // neighbours (see neigh.ts)
+  h('d_kinaway', '{o} is away at a neighbour\'s', -2, DAY * 4),
+  h('d_caravan', 'A caravan came in from away', 2, DAY * 2),
+  h('d_allied', 'We have allies now', 3, DAY * 8),
+  h('d_relieved', 'Our allies came when we called', 10, DAY * 10),
+  h('d_rodeout', 'Rode to the aid of our allies', 6, DAY * 10),
+  h('d_envoydone', 'Spoke for the colony, and was heard', 6, DAY * 8),
+  h('d_tribute_pay', 'We pay tribute to a neighbour', -3, DAY * 10),
+  h('d_tribute_take', 'A neighbour pays us tribute', 3, DAY * 10),
+  h('d_tourney', 'Watched the tournament', 7, DAY * 5),
+  h('d_sawknight', 'Saw the knights ride in', 3, DAY * 2),
+  h('d_champion', 'Champion of the tournament', 14, DAY * 15),
+  h('d_rodewell', 'Rode well in the tournament', 6, DAY * 8),
+  h('d_unhorsed', 'Unhorsed in front of everyone', -3, DAY * 4),
+  h('d_royalwed', 'Feasted at a wedding of two houses', 6, DAY * 6),
+  h('d_kinwed', '{o} has married well, far from home', 4, DAY * 10),
 ];
 
 export const TH: Record<string, ThDef> = Object.fromEntries(TH_LIST.map((x) => [x.k, x]));

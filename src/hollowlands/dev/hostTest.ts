@@ -267,6 +267,66 @@ mine = deserialize((await get<{ colony: string }>(host2, 'snapshot')).colony);
   check('a restarted keeper finishes a world left half made', done.sites.length === 4 && new Set(done.sites.map((s) => s.name)).size === 4 && done.sites.every((s, k) => s.id.endsWith('c' + k)), done.sites.map((s) => s.name).join(', '));
 }
 
+// ---------- Neighbours: pacts kept by the region, lived by the colonies, replayed by a browser ----------
+{
+  const stores = new Map<string, Map<string, string>>();
+  const kvFor = (name: string): KV => {
+    let m = stores.get(name);
+    if (!m) { m = new Map(); stores.set(name, m); }
+    const mm = m;
+    return { get: async (k) => mm.get(k), put: async (k, v) => void mm.set(k, v) };
+  };
+  const t00 = now;
+  const world = new LocalWorld(kvFor, null, {
+    host: { msPerDay: 240_000, maxStep: 4000, pop: 30, preDays: 2, now: () => now },
+    region: { seed: 53, colonies: 3, pop: 30, preDays: 2, now: () => now },
+  });
+  const call = async <T>(path: string): Promise<T> => {
+    await world.advance();
+    const r = await world.handle(new Request('http://x/api/hl/' + path));
+    const text = r.headers.get('x-gz') === '1' ? await new Response(new Blob([await r.arrayBuffer()]).stream().pipeThrough(new DecompressionStream('gzip'))).text() : await r.text();
+    return JSON.parse(text) as T;
+  };
+  interface Tie { trade?: number; ally?: number; kin?: number; trib?: string }
+  interface Region { sites: { id: string; name: string; st?: unknown }[]; ties: Record<string, Tie>; trips: { a: string; b: string; k: string }[] }
+  const r0 = await call<Region>('region');
+  const ids = r0.sites.map((s) => s.id);
+  // a browser watching one colony from the start
+  const snap0 = await call<State & { colony: string }>(`c/${ids[1]}/snapshot`);
+  const copy = deserialize(snap0.colony);
+  let cseq = snap0.seq;
+  let trips = 0;
+  let pactInputs = 0;
+  let drift = 0;
+  for (let k = 0; k < 135; k++) {
+    now += 1000 * 80;
+    const st = await call<State>(`c/${ids[1]}/sync?seq=${cseq}`);
+    for (const i of st.inputs ?? []) { const { seq: _s, ...input } = i; void _s; copy.inq.push(input as Input); cseq = Math.max(cseq, i.seq); if (i.k === 'pact' || i.k === 'caravan' || i.k === 'envoy') pactInputs++; }
+    while (copy.tick < st.tick) step(copy);
+    for (const [t, h] of st.checks) if (t === copy.tick && h !== colonyHash(copy)) drift++;
+    if (k % 10 === 9) trips = Math.max(trips, (await call<Region>('region')).trips.length);
+  }
+  const r1 = await call<Region>('region');
+  const keys = Object.keys(r1.ties);
+  check('the region keeps how neighbours stand, and does not tell the world what colonies report of themselves', keys.length > 0 && r1.sites.every((s) => s.st === undefined), `${keys.length} ties: ${keys.map((key) => key + ' ' + Object.keys(r1.ties[key]).filter((f) => f === 'trade' || f === 'ally' || f === 'kin' || f === 'trib').join('+')).join(', ')}`);
+  check('travellers between colonies are on the map', trips > 0, `${trips} on the roads at once`);
+  const live = new Map<string, Colony>();
+  for (const id of ids) live.set(id, deserialize((await call<{ colony: string }>(`c/${id}/snapshot`)).colony));
+  let agree = true;
+  for (const key of keys) {
+    const [a, b] = key.split('|');
+    const ta = live.get(a)?.nb?.ties[b];
+    const tb = live.get(b)?.nb?.ties[a];
+    for (const f of ['trade', 'ally', 'kin'] as const) if ((r1.ties[key][f] !== undefined) !== (ta?.[f] !== undefined) || (ta?.[f] !== undefined) !== (tb?.[f] !== undefined)) agree = false;
+  }
+  check('both ends of every tie agree with the region', agree);
+  const st = await call<State>(`c/${ids[1]}/sync?seq=${cseq}`);
+  for (const i of st.inputs ?? []) { const { seq: _s, ...input } = i; void _s; copy.inq.push(input as Input); }
+  while (copy.tick < st.tick) step(copy);
+  const now0 = deserialize((await call<{ colony: string }>(`c/${ids[1]}/snapshot`)).colony);
+  check('a browser replaying a colony with neighbours stays identical', drift === 0 && colonyHash(copy) === colonyHash(now0) && pactInputs > 0, `tick ${copy.tick}, ${pactInputs} inputs from neighbours, ${drift} drifts, ${Math.round((now - t00) / 240_000)} days`);
+}
+
 // ---------- A long sleep archives every event ----------
 {
   const events = new Map<number, string>();

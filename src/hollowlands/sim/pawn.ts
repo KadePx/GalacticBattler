@@ -125,10 +125,13 @@ export function pawnById(c: Colony, id: Id): Pawn | undefined {
   return undefined;
 }
 
-/** Someone away on an expedition (off the map, but still the colony's own), or undefined. */
+/** Someone away on an expedition or on the road to a neighbour (off the map, but still the colony's own), or undefined. */
 export function awayById(c: Colony, id: Id): Pawn | undefined {
+  if (!id) return undefined;
+  const nb = c.nb;
+  if (nb && nb.away.length) for (const a of nb.away) if (a.pw.id === id) return a.pw;
   const x = c.exp;
-  if (!x || !id) return undefined;
+  if (!x) return undefined;
   for (const q of x.l) for (const p of q.pw) if (p.id === id) return p;
   for (const l of x.late) if (l.pw.id === id) return l.pw;
   return undefined;

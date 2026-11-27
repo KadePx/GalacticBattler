@@ -24,6 +24,7 @@ import { Rand, S, hash32 } from './rng';
 import { addFact, findFact, learn, opinion } from './social';
 import { addLore, costOf, nextTech } from './tech';
 import { AX, type Bld, type Colony, type Look, type Pawn, type RaceK, type Visitor } from './types';
+import { NB_INFO, nbBeats, nbCall, nbGone, nbMet, nbStop } from './neigh';
 
 const H = TICKS_PER_HOUR;
 const D = TICKS_PER_DAY;
@@ -44,12 +45,19 @@ export const VIS_INFO: Record<string, { name: string; why: string }> = {
   mule: { name: 'Pack mule', why: 'Carries the merchant\'s wares.' },
 };
 
+/** Those who come because of the colony's dealings with its neighbours (see neigh.ts): they are no part of the round of passing visitors. */
+export const isNb = (k: string): boolean => NB_INFO[k] !== undefined;
+/** Ox-carts and pack mules: they follow their party's leader and are nobody. */
+export const isBeast = (k: string): boolean => k === 'mule' || k === 'cart';
+
 /** A few words a visitor says aloud, by key (shown over their heads). */
 export const VIS_SAY: Record<string, string> = {
   wares: 'Fine wares!', silk: 'Silk from the south!', deal: 'A bargain, friend.', song: '♪ ♫ ♪', tune: '♫', bow: 'My thanks!', pray: 'Peace on this house.',
   alms: 'Bless you.', beg: 'Please, shelter...', thanks: 'Thank you!', sad: 'We will go on.', hello: 'Well met.', bless: '✧ Be blessed ✧', fortune: 'I see...',
   lights: '✧ Look up! ✧', demand: 'For the King!', paid: 'The King thanks you.', refused: 'You will regret this.', ask: 'Seen this face?', found: 'There you are.',
   gone: 'Cold trail.', ouch: 'Curse you!', paidoff: 'Keep them, then.', hide: 'Inside, quickly!',
+  load: 'Mind the axle!', unload: 'Where do you want it?', trade: 'Fair weights, fair price.', road: 'Walk on!', terms: 'I bring terms.', sealed: 'Sealed and witnessed.', dues: 'The season\'s dues.',
+  joust: 'For the purse!', yield: 'Well ridden.', relief: 'We came as fast as we could.', gifts: 'Gifts for the house.',
 };
 
 // ---------- Names and faces ----------
@@ -94,12 +102,12 @@ function lookFor(r: Rand, race: RaceK, sex: 0 | 1, old: boolean, garb: number): 
 
 // ---------- Bookkeeping ----------
 
-function vs(c: Colony): NonNullable<Colony['vis']> {
+export function vs(c: Colony): NonNullable<Colony['vis']> {
   return (c.vis ??= { l: [], n: 1, gone: dayOf(c.tick), seen: {}, nx: '', at: 0, wrath: 0, paid: 0, refused: 0 });
 }
 
 /** Fighting on the map, the alarm up, or a host camped outside. */
-const trouble = (c: Colony): boolean => c.foes.length > 0 || !!c.alarm || (!!c.siege && c.siege.phase < 2);
+export const trouble = (c: Colony): boolean => c.foes.length > 0 || !!c.alarm || (!!c.siege && c.siege.phase < 2);
 
 /** The tile a visitor is on at tick t (part-way along the road if still walking). */
 export function visTile(c: Colony, v: Visitor, t: number): number {
@@ -127,7 +135,7 @@ function vnote(c: Colony, p: Pawn, v: Visitor, beat: string, o?: number, x = '')
   note(c, p, 'v_' + beat, o || undefined, `${v.k}|${v.first} ${v.fam}|${x}`);
 }
 
-function say(c: Colony, v: Visitor, k: string): void {
+export function say(c: Colony, v: Visitor, k: string): void {
   v.say = [k, c.tick];
 }
 
@@ -136,7 +144,7 @@ function say(c: Colony, v: Visitor, k: string): void {
 const isOpen = (c: Colony, i: number): boolean => { const k = cacheOf(c); return !!k.walk[i] && !!k.reach[i]; };
 
 /** An open tile near (x, y), out in the street. */
-function openNear(c: Colony, x: number, y: number, rad: number, r: Rand): [number, number] | null {
+export function openNear(c: Colony, x: number, y: number, rad: number, r: Rand): [number, number] | null {
   for (let k = 0; k < 14; k++) {
     const nx = x + r.range(-rad, rad);
     const ny = y + r.range(-rad, rad);
@@ -148,7 +156,7 @@ function openNear(c: Colony, x: number, y: number, rad: number, r: Rand): [numbe
 }
 
 /** A floor tile inside a building (seat-like spots first). */
-function inside(c: Colony, b: Bld, n: number, chars = 'c.'): [number, number] {
+export function inside(c: Colony, b: Bld, n: number, chars = 'c.'): [number, number] {
   let list = spots(shapeOf(b), chars[0]);
   if (!list.length) list = spots(shapeOf(b), '.');
   if (!list.length) return [b.x + Math.floor(b.w / 2), b.y + Math.floor(b.h / 2)];
@@ -168,6 +176,8 @@ function walk(c: Colony, v: Visitor, x: number, y: number, adj: boolean): boolea
   v.y = (end - v.x) / c.w;
   v.t0 = c.tick;
   v.ta = c.tick + walkTicks(found.cost, v.k === 'mule' ? 0.75 : 0.7);
+  // a party with a cart goes at the cart's pace
+  if (v.k === 'cart' || (c.vis && c.vis.l.some((x) => x.g === v.g && x.k === 'cart'))) v.ta = c.tick + Math.round((v.ta - c.tick) * 1.5);
   if (found.path.length > 1) v.path = found.path;
   else delete v.path;
   return true;
@@ -178,13 +188,13 @@ const OFFS = [[1, 0], [-1, 0], [0, 1], [1, 1], [-1, 1], [0, -1]];
 const MULE_OFFS = [[2, 0], [-2, 0], [2, 1], [-2, 1], [1, 1], [0, 2]];
 
 /** The whole party walks to (x, y): the leader there, the rest close by. */
-function go(c: Colony, v: Visitor, x: number, y: number): boolean {
+export function go(c: Colony, v: Visitor, x: number, y: number): boolean {
   if (!walk(c, v, x, y, false) && !walk(c, v, x, y, true)) return false;
   let n = 0;
   for (const m of partyOf(c, v)) {
     if (m === v) continue;
     let ok = false;
-    const offs = m.k === 'mule' ? MULE_OFFS : OFFS;
+    const offs = isBeast(m.k) ? MULE_OFFS : OFFS;
     for (let k = 0; k < offs.length && !ok; k++) {
       const [dx, dy] = offs[(n + k) % offs.length];
       const tx = v.x + dx;
@@ -199,7 +209,7 @@ function go(c: Colony, v: Visitor, x: number, y: number): boolean {
 }
 
 /** Where the road leaves the map. */
-const roadEnd = (c: Colony): [number, number] => [clamp(c.gx, 0, c.w - 1), clamp(c.gy, 1, c.h - 2)];
+export const roadEnd = (c: Colony): [number, number] => [clamp(c.gx, 0, c.w - 1), clamp(c.gy, 1, c.h - 2)];
 
 // ---------- Who comes ----------
 
@@ -368,6 +378,43 @@ function arrive(c: Colony, kind: string, r: Rand): void {
   arrivalBeat(c, lead, party, r);
 }
 
+export interface GuestSpec { k: string; first: string; fam: string; race: RaceK; sex: 0 | 1; born: number; look: Look }
+
+/** A made-up traveller of the roads between colonies (a carter, a herald): always the same one for the same key. */
+export function roadFolk(c: Colony, k: string, r: Rand, garb: number, old = 0.4): GuestSpec {
+  const race: RaceK = r.chance(0.6) ? 'human' : r.pick(PLAYABLE);
+  const sex: 0 | 1 = r.chance(0.5) ? 0 : 1;
+  const R = RACES[race];
+  const years = R.adult + (R.old - R.adult) * (old * 0.6 + r.float() * 0.5);
+  return { k, first: givenName(r, race, sex), fam: familyName(r, race), race, sex, born: c.tick - Math.round(years * TICKS_PER_YEAR), look: lookFor(r, race, sex, years > R.old * 0.8, garb) };
+}
+
+/**
+ * A party that comes because of the colony's dealings with a neighbour (see neigh.ts) walks in off
+ * the road: the first of the specs leads, f says where they are from, and they mean to stay so many
+ * ticks. Returns the leader, or null if there was no way in.
+ */
+export function admit(c: Colony, specs: GuestSpec[], f: string, dest: [number, number] | null, stay: number): Visitor | null {
+  const V = vs(c);
+  const [sx, sy] = roadEnd(c);
+  const party: Visitor[] = [];
+  for (const s of specs) {
+    const v: Visitor = {
+      id: V.n++, k: s.k, g: 0, first: s.first, fam: s.fam, race: s.race, sex: s.sex, born: s.born, look: { ...s.look, marks: s.look.marks.slice() },
+      x: sx, y: sy, t0: c.tick, ta: c.tick, t1: c.tick, arr: c.tick, dep: c.tick + stay, m: 0, o: 0, n: 0, d: 0, b: 0, f,
+    };
+    v.g = party.length ? party[0].id : v.id;
+    party.push(v);
+  }
+  const lead = party[0];
+  if (!lead || !dest) return null;
+  V.l.push(...party);
+  if (!go(c, lead, dest[0], dest[1])) { V.l = V.l.filter((x) => x.g !== lead.g); return null; }
+  lead.t1 = lead.ta;
+  for (const m of party) m.t1 = lead.t1;
+  return lead;
+}
+
 /** Where a party heads first. */
 function firstStop(c: Colony, v: Visitor, r: Rand): [number, number] | null {
   switch (v.k) {
@@ -380,7 +427,7 @@ function firstStop(c: Colony, v: Visitor, r: Rand): [number, number] | null {
 }
 
 /** The hall, or the keep's great hall once there is a keep. */
-function seatOfRule(c: Colony, v: Visitor): [number, number] | null {
+export function seatOfRule(c: Colony, v: Visitor): [number, number] | null {
   const b = bldOf(c, 'keep') ?? bldOf(c, 'hall');
   return b ? inside(c, b, v.id, '.') : [c.cx, c.cy];
 }
@@ -394,7 +441,7 @@ function holyPlace(c: Colony, v: Visitor, r: Rand): [number, number] | null {
   return openNear(c, c.cx, c.cy, 4, r);
 }
 
-function lodging(c: Colony, v: Visitor): [number, number] | null {
+export function lodging(c: Colony, v: Visitor): [number, number] | null {
   const b = bldOf(c, 'tavern') ?? bldOf(c, 'hall');
   return b ? inside(c, b, v.id * 3 + 1, '.') : null;
 }
@@ -417,11 +464,12 @@ export function dailyVisitors(c: Colony): void {
   // guests eat: those who can pay at the tavern, the refugees on the colony's charity
   const lean = foodDays(c) < 1.5;
   for (const v of V.l) {
-    if (lean || v.k === 'mule' || v.m === 2) continue;
+    if (lean || isBeast(v.k) || v.m === 2) continue;
     const meal = takeMeal(c, true);
     if (meal && v.k !== 'refugee') c.stock.silver += 1;
   }
-  if (V.nx || V.l.length || trouble(c) || c.pawns.length < 6) return;
+  // (those here on a neighbour's business are no part of this round: a merchant may come while a caravan is in)
+  if (V.nx || V.l.some((v) => !isNb(v.k)) || trouble(c) || c.pawns.length < 6) return;
   if (day - V.gone < 4 || !r.chance(0.13)) return;
   const k = pickKind(c, r, day);
   if (!k) return;
@@ -463,7 +511,7 @@ function decide(c: Colony, v: Visitor): void {
   if (v.m === 2) {
     if (t >= v.ta) {
       V.l = V.l.filter((x) => x.g !== v.g);
-      V.gone = dayOf(t);
+      if (!isNb(v.k)) V.gone = dayOf(t);
       goneBeat(c, v);
     } else v.t1 = v.ta;
     return;
@@ -486,7 +534,8 @@ function decide(c: Colony, v: Visitor): void {
   if (beats(c, v, party, r, hour)) return;
   // night: a bed at the tavern, or a corner of the hall
   if (hour >= 22 || hour < 6) {
-    const s = lodging(c, v);
+    // (carters sleep by their carts)
+    const s = party.some((m) => m.k === 'cart') ? null : lodging(c, v);
     if (s && (v.x !== s[0] || v.y !== s[1])) go(c, v, s[0], s[1]);
     const toSix = ((30 - hour) % 24) * H - (t % H);
     setNext(c, v, party, Math.max(H, toSix));
@@ -498,7 +547,7 @@ function decide(c: Colony, v: Visitor): void {
   setNext(c, v, party, (2 + r.int(2)) * H + r.int(H));
 }
 
-function setNext(c: Colony, v: Visitor, party: Visitor[], wait: number): void {
+export function setNext(c: Colony, v: Visitor, party: Visitor[], wait: number): void {
   v.t1 = Math.max(v.ta, c.tick) + wait;
   for (const m of party) m.t1 = v.t1;
 }
@@ -531,7 +580,7 @@ function dayStop(c: Colony, v: Visitor, r: Rand, hour: number): [number, number]
       if (pub && (evening || r.chance(0.4))) return inside(c, pub, v.id + r.int(5), 'c');
       return openNear(c, c.cx, c.cy, 6, r);
     }
-    default: return null;
+    default: return nbStop(c, v, r, hour);
   }
 }
 
@@ -545,18 +594,20 @@ function showSay(c: Colony, v: Visitor, r: Rand, hour: number): void {
     case 'refugee': say(c, v, 'beg'); break;
     case 'wizard': say(c, v, hour >= 18 ? 'fortune' : 'hello'); break;
     case 'hunter': say(c, v, 'ask'); break;
+    case 'trader': say(c, v, v.d === 2 ? r.pick(['wares', 'trade']) : 'road'); break;
+    case 'carter': say(c, v, 'dues'); break;
     default: break;
   }
 }
 
-function leave(c: Colony, v: Visitor, party: Visitor[]): void {
+export function leave(c: Colony, v: Visitor, party: Visitor[]): void {
   const [ex, ey] = roadEnd(c);
   v.m = 2;
   for (const m of party) m.m = 2;
   if (!go(c, v, ex, ey)) {
     // no way out on foot (a wall going up across the road): they are gone all the same
     c.vis!.l = c.vis!.l.filter((x) => x.g !== v.g);
-    c.vis!.gone = dayOf(c.tick);
+    if (!isNb(v.k)) c.vis!.gone = dayOf(c.tick);
     goneBeat(c, v);
     return;
   }
@@ -646,7 +697,7 @@ function beats(c: Colony, v: Visitor, party: Visitor[], r: Rand, hour: number): 
       }
       return false;
     }
-    default: return false;
+    default: return nbBeats(c, v, party, r, hour);
   }
 }
 
@@ -942,7 +993,7 @@ function goneBeat(c: Colony, v: Visitor): void {
   switch (v.k) {
     case 'merchant': vlog(c, v, 'gone', undefined, undefined, '', v.d); if (v.d) bump(c, 'trinkets', v.d); break;
     case 'minstrel': case 'wizard': case 'pilgrim': vlog(c, v, 'gone', undefined, undefined, '', v.n); break;
-    default: break;
+    default: nbGone(c, v); break;
   }
 }
 
@@ -967,7 +1018,7 @@ export function guestCall(c: Colony, p: Pawn, st: number, hour: number): [Visito
       case 'pilgrim': if (st >= STAGE.TEEN && hour >= 7 && hour < 20) w = p.dev * 0.5 + (has(p, 'pious') ? 1 : 0); break;
       case 'refugee': if (st >= STAGE.ADULT && hour >= 7 && hour < 20 && per(p, AX.KIND) > 0.2) w = 0.4 + per(p, AX.KIND) * 0.6; break;
       case 'hunter': if (st >= STAGE.ADULT && p.id !== v.o && hour >= 8 && hour < 22 && per(p, AX.GOSSIP) > 0.4) w = 0.6; break;
-      default: break;
+      default: w = nbCall(c, p, v, st, hour); break;
     }
     if (w > 0) return [v, w];
   }
@@ -1069,7 +1120,7 @@ export function metGuest(c: Colony, p: Pawn, id: number, r: Rand): void {
       }
       break;
     }
-    default: break;
+    default: nbMet(c, p, v, r); break;
   }
 }
 

@@ -757,8 +757,92 @@ export function drawVisitorProp(g: Graphics, k: string): void {
       g.circle(-4.6, 2.6, 1).fill(0x6a5a3a);
       g.rect(1.2, 2.2, 1.8, 1.6).fill({ color: 0x5a4a32, alpha: 0.8 });
       break;
+    // those who come on a neighbour's business (see sim/neigh.ts)
+    case 'trader':
+      // a caravan master: a broad travelling hat with a feather, a ledger under the arm, a goad
+      g.moveTo(7.2, 7).lineTo(8.6, -9).stroke({ width: 1.3, color: wood, cap: 'round' });
+      g.roundRect(-7.4, 0.6, 3.4, 4.6, 0.8).fill(0x6a2a2a).stroke({ width: 0.5, color: 0x1a0a0a });
+      g.rect(-7, 1.4, 2.6, 0.7).fill(0xe9dcc0);
+      g.ellipse(0, -5.8, 8, 2.4).fill(0x3d4a2a).stroke({ width: 0.6, color: 0x1a2010 });
+      g.ellipse(0, -7.5, 4, 2.5).fill(0x4d5c34);
+      g.poly([3, -8.4, 8.6, -13, 5, -7.2]).fill(0xe2574c);
+      break;
+    case 'carter':
+      // a carter: a flat cap and a whip
+      g.moveTo(6.8, 6).lineTo(7.6, -7).stroke({ width: 1.1, color: wood, cap: 'round' });
+      g.moveTo(7.6, -7).quadraticCurveTo(12, -9, 11, -3).stroke({ width: 0.6, color: 0x2a1d12 });
+      g.ellipse(0.6, -6.3, 5.4, 2).fill(0x5a4a3a).stroke({ width: 0.5, color: 0x24160a });
+      g.ellipse(3.6, -5.6, 3, 1).fill(0x4a3c2e);
+      break;
+    case 'envoy':
+      // an envoy: a plumed cap, a chain of office, a sealed scroll
+      g.ellipse(0, -6.4, 5.2, 2.2).fill(0x1f3f7a).stroke({ width: 0.6, color: 0x0c1830 });
+      g.poly([-2.4, -7.6, -8.4, -13.4, -4.4, -6.6]).fill(0xf3ead6);
+      g.moveTo(-3, -1).quadraticCurveTo(0, 2.4, 3, -1).stroke({ width: 0.9, color: 0xf2c94a });
+      g.circle(0, 1.4, 1.1).fill(0xf2c94a);
+      g.roundRect(4.4, 0.8, 4.8, 2.2, 1).fill(0xf3ead6).stroke({ width: 0.5, color: 0x6b5a44 });
+      g.circle(6.8, 3.2, 1.1).fill(0xa8323a);
+      break;
+    case 'herald':
+      // a herald: a tabard and the neighbour's banner, green and white
+      g.moveTo(-7.2, 7).lineTo(-7.2, -24).stroke({ width: 1.4, color: 0x3a2a1a, cap: 'round' });
+      g.circle(-7.2, -24.6, 1.1).fill(0xe9dcc0);
+      g.poly([-7.2, -23, 5.4, -23, 5.4, -14, -7.2, -14]).fill(0x2f7a4a).stroke({ width: 0.9, color: 0xf3ead6 });
+      g.rect(-7.2, -18.9, 12.6, 1.6).fill(0xf3ead6);
+      g.roundRect(-2.8, -0.2, 5.6, 5.6, 1).fill(0x2f7a4a);
+      g.rect(-2.8, 2, 5.6, 1.2).fill(0xf3ead6);
+      g.ellipse(0, -6.2, 4.6, 2).fill(0x24523a);
+      break;
+    case 'knight':
+      // a knight: a plumed helm, a shield on the arm, a lance held upright with its pennon
+      g.moveTo(7.4, 7).lineTo(7.4, -22).stroke({ width: 1.5, color: 0xcdbb94, cap: 'round' });
+      g.poly([7.4, -22, 14, -20.2, 7.4, -18.2]).fill(0xe2574c).stroke({ width: 0.5, color: 0x40101a });
+      g.poly([7.4, -25, 8.4, -22, 6.4, -22]).fill(0xc9ced8);
+      g.poly([-8.6, -1.4, -3, -1.4, -3, 3, -5.8, 6.4, -8.6, 3]).fill(0xe9dcc0).stroke({ width: 0.8, color: 0x2a1d12 });
+      g.poly([-5.8, -1.4, -3, -1.4, -3, 3, -5.8, 6.4]).fill(0xa8323a);
+      g.ellipse(0, -6.4, 5.2, 3.5).fill(0xaab2bd).stroke({ width: 0.7, color: 0x3a3f48 });
+      g.rect(-3.6, -6.6, 7.2, 1.1).fill(0x1d2026);
+      g.poly([-0.6, -9.6, -5.6, -14.6, -1.6, -9]).fill(0xe2574c);
+      break;
+    case 'escort':
+      // a rider of the bridal escort: a helm with a white favour, a spear with ribbons
+      g.moveTo(6.8, 7).lineTo(6.8, -16).stroke({ width: 1.3, color: wood, cap: 'round' });
+      g.poly([6.8, -19, 8.2, -15.4, 6.8, -14.6, 5.4, -15.4]).fill(0xc9ced8).stroke({ width: 0.5, color: 0x2a1d12 });
+      g.moveTo(6.8, -14).quadraticCurveTo(10, -12, 9.6, -8.6).stroke({ width: 0.9, color: 0xf3ead6 });
+      g.moveTo(6.8, -14).quadraticCurveTo(11.4, -13, 12, -10).stroke({ width: 0.9, color: 0xf2a6c0 });
+      g.ellipse(0, -6.4, 5, 3.2).fill(0x9aa3ad).stroke({ width: 0.6, color: 0x3a3f48 });
+      g.rect(-0.5, -6, 1, 4).fill(0x6b7280);
+      g.roundRect(-2.8, -0.2, 5.6, 5.6, 1).fill(0xf3ead6).stroke({ width: 0.5, color: 0x8a8272 });
+      break;
     default: break;
   }
+}
+
+/** An ox-cart on the road, facing right: the ox in the shafts, the load under a lashed cover (a chest and bolts of cloth on a cart of gifts). */
+export function drawCart(g: Graphics, gifts = false): void {
+  g.clear();
+  g.ellipse(2, 7.4, 17, 3.2).fill({ color: 0x0b1220, alpha: 0.26 });
+  // the ox
+  const ox = 0x8a6a4a;
+  for (const x of [8.6, 11.2, 15, 17.4]) g.rect(x, 2.6, 1.4, 4.4).fill(darken(ox, 0.3));
+  g.ellipse(13, 1.2, 6.6, 3.9).fill(ox).stroke({ width: 0.6, color: 0x3a2a1a });
+  g.ellipse(20, -0.6, 3, 2.5).fill(lighten(ox, 0.08)).stroke({ width: 0.6, color: 0x3a2a1a });
+  g.moveTo(19.4, -2.8).lineTo(17.8, -5.2).moveTo(21.4, -2.8).lineTo(23, -5).stroke({ width: 0.9, color: 0xe9dcc0 });
+  g.circle(21, -1, 0.5).fill(0x1d1a1c);
+  // shafts and the cart's bed
+  g.moveTo(2, 1.4).lineTo(12, 0.4).moveTo(2, 4).lineTo(12, 3.4).stroke({ width: 1, color: 0x4a3424 });
+  g.roundRect(-15, -3.4, 18, 7.6, 1.4).fill(0x7a5434).stroke({ width: 0.8, color: 0x2a1d12 });
+  g.rect(-15, -0.2, 18, 0.8).fill({ color: 0x2a1d12, alpha: 0.4 });
+  if (gifts) {
+    g.roundRect(-13.4, -8.6, 7.6, 5.4, 1).fill(0x8a2a3a).stroke({ width: 0.6, color: 0x2a0a12 });
+    g.rect(-13.4, -6.6, 7.6, 0.9).fill(0xf2c94a);
+    g.roundRect(-4.8, -7, 6.4, 2, 1).fill(0x2f6fa8).roundRect(-4.4, -9, 5.8, 2, 1).fill(0xf2a6c0).roundRect(-4.6, -5, 6.2, 1.8, 0.9).fill(0xe9dcc0);
+  } else {
+    g.poly([-14.6, -3.4, -12.4, -8.4, 0.4, -8.8, 2.6, -3.4]).fill(0xcbbf9e).stroke({ width: 0.7, color: 0x5a4a32 });
+    g.moveTo(-9.6, -8.5).lineTo(-10.4, -3.4).moveTo(-3.6, -8.7).lineTo(-3.2, -3.4).stroke({ width: 0.6, color: 0x5a4a32 });
+  }
+  g.circle(-10.4, 5.4, 3.5).circle(-0.8, 5.4, 3.5).fill(0x3a2a1a);
+  g.circle(-10.4, 5.4, 1.1).circle(-0.8, 5.4, 1.1).fill(0x8a6440);
 }
 
 /** The merchant's pack mule with its panniers, facing right. */

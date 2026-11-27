@@ -16,6 +16,9 @@ export function useColony(id: string): void {
 
 export interface RegionSite { id: string; name: string; x: number; y: number; founded: number; from?: string; pop: number; ruler?: string; dead?: number; ruins?: string; wars?: string[] }
 
+/** How colonies stand with each other and who is on the road between them, from the last region fetch (for the world map). */
+export interface RegionPacts { ties: Record<string, { trade?: number; ally?: number; kin?: number; trib?: string }>; trips: { a: string; b: string; t0: number; t1: number; k: string }[]; tourney?: { host: string; day: number } }
+export let regionPacts: RegionPacts = { ties: {}, trips: [] };
 /** The world's seed, from the last region fetch (the world map is drawn from it). */
 export let regionSeed = 1;
 /** The colony my colonist lives in, from the last region fetch ('' if none or unknown). */
@@ -27,7 +30,8 @@ export async function fetchRegion(): Promise<RegionSite[] | null> {
     const me = await myHash().catch(() => '');
     const r = await fetch(ROOT + 'region' + (me ? '?me=' + me : ''), { cache: 'no-store' });
     if (!r.ok) return null;
-    const body = (await r.json()) as { sites?: RegionSite[]; seed?: number; mine?: string };
+    const body = (await r.json()) as { sites?: RegionSite[]; seed?: number; mine?: string; ties?: RegionPacts['ties']; trips?: RegionPacts['trips']; tourney?: RegionPacts['tourney'] };
+    regionPacts = { ties: body.ties ?? {}, trips: Array.isArray(body.trips) ? body.trips : [], tourney: body.tourney };
     regionMine = body.mine ?? '';
     if (typeof body.seed === 'number') regionSeed = body.seed;
     return Array.isArray(body.sites) ? body.sites : null;

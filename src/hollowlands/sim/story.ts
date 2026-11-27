@@ -13,6 +13,7 @@ import { accuse } from './crime';
 import { nudge, takeHeir } from './player';
 import { answer } from './ask';
 import { abroadInput } from './abroad';
+import { neighInput } from './neigh';
 import { oddThing } from './odd';
 import { importPawns } from './settle';
 import { cells } from './data/buildings';
@@ -83,6 +84,7 @@ export function applyInputs(c: Colony): void {
     const e = c.inq[i];
     if (e.t > c.tick) { i++; continue; }
     c.inq.splice(i, 1);
+    if (neighInput(c, e)) continue;
     if (abroadInput(c, e)) continue;
     if (e.k === 'raid') {
       // trouble sent from elsewhere may still be a day or two down the road

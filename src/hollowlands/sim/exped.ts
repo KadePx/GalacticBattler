@@ -216,7 +216,7 @@ export function campLeft(c: Colony, name: string): void {
 const arms = (p: Pawn): number => Math.max(p.sk[0], p.sk[1]);
 
 /** People who cannot be spared or are caught up in something: titles, masters, plots, trials, weddings, dramas, today's stalls, a visitor's business. */
-function tiedDown(c: Colony): Set<Id> {
+export function tiedDown(c: Colony): Set<Id> {
   const out = new Set<Id>();
   for (const k in c.gov.titles) out.add(c.gov.titles[k]);
   out.add(c.gov.ruler);
@@ -247,7 +247,7 @@ function tiedDown(c: Colony): Set<Id> {
   return out;
 }
 
-function fit(c: Colony, p: Pawn, tied: Set<Id>, chosen = false): boolean {
+export function fit(c: Colony, p: Pawn, tied: Set<Id>, chosen = false): boolean {
   if (p.gone || stage(c, p) !== STAGE.ADULT || tied.has(p.id)) return false;
   if (isDown(p) || needsRest(p) || p.brk || p.preg || p.thrall || p.ill || p.inj.length || p.hp < 75 || p.ask || (p.urge && p.urge[2] > c.tick)) return false;
   if (p.sp && p.rel[p.sp]?.k === 'betrothed') return false;
@@ -696,7 +696,7 @@ function callOff(c: Colony, x: Exp, q: XParty): void {
 }
 
 /** Someone walks back onto the map at the end of the road, and learns what happened while they were gone. */
-function comeIn(c: Colony, p: Pawn, since: number): void {
+export function comeIn(c: Colony, p: Pawn, since: number): void {
   const [ex, ey] = roadEnd(c);
   p.x = ex;
   p.y = ey;
