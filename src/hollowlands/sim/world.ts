@@ -9,7 +9,7 @@ import { Rand, S, hash32 } from './rng';
 import type { SettlerMsg } from './settle';
 import { step } from './step';
 import type { Colony } from './types';
-import { landThreat, nearLists, pactsDaily, routeMsg, routePact, ruinFor, type Delivery, type Pacts, type SiteStat } from './routes';
+import { bounced, landThreat, nearLists, pactsDaily, routeMsg, routePact, ruinFor, type Delivery, type Pacts, type SiteStat } from './routes';
 import { siteStat } from './neigh';
 import { awayPawns } from './exped';
 
@@ -95,6 +95,11 @@ export function stepWorld(w: World): void {
     for (const d of list) {
       const to = w.colonies.find((x) => x.id === d.to);
       if (to && to.pawns.length) to.inq.push({ t: to.tick + 1, k: String(d.input.k), ...d.input });
+      else if (d.input.k === 'migrant' && d.input.why === 'royal' && !d.input.back && typeof d.input.fromId === 'string') {
+        // nobody there to take them in: they turn back
+        const home = w.colonies.find((x) => x.id === d.input.fromId);
+        if (home && home.pawns.length) home.inq.push({ t: home.tick + 1, k: 'migrant', ...bounced(d.input) });
+      }
     }
   };
   for (const c of w.colonies.slice()) {
@@ -117,7 +122,13 @@ export function stepWorld(w: World): void {
   for (const s of w.sites) {
     if (s.dead) continue;
     const c = w.colonies.find((x) => x.id === s.id);
-    if (c && !c.pawns.length && !awayPawns(c).length && !c.nb?.away.length) s.dead = w.tick;
+    if (c && !c.pawns.length && !awayPawns(c).length && !c.nb?.away.length) {
+      s.dead = w.tick;
+      // whoever was on the road here to marry finds nobody: they turn for home
+      // (a colony's own keeper does this as its last act; here the dead are no longer stepped)
+      for (const e of c.inq) if (e.k === 'migrant' && e.why === 'royal' && !e.back && typeof e.fromId === 'string') send([{ to: e.fromId, input: bounced(e) }]);
+      c.inq = c.inq.filter((e) => !(e.k === 'migrant' && e.why === 'royal'));
+    }
   }
   if (w.tick % TICKS_PER_DAY === 0) {
     send(nearLists(w.sites));

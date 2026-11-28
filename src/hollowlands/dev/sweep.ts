@@ -165,6 +165,12 @@ for (let s = 1; s <= worlds; s++) {
         if ((ta?.trib ?? 0) + (tb?.trib ?? 0) !== 0 && (ta?.trib ?? 0) + (tb?.trib ?? 0) !== 3) flag('neighbours disagree about tribute');
         if ((ta?.trib !== undefined) !== (tw?.trib !== undefined)) flag('colony and land disagree about tribute');
       }
+      // nothing still stands with a town that died more than a couple of days ago
+      for (const id in a.nb?.ties ?? {}) {
+        const t = a.nb!.ties[id];
+        const s2 = w.sites.find((x) => x.id === id);
+        if (s2?.dead && w.tick - s2.dead > TICKS_PER_DAY * 2 && (t.trade !== undefined || t.ally !== undefined || t.kin !== undefined || t.trib !== undefined)) flag('a tie still stands with a dead town');
+      }
     }
   }
   console.log(`world ${s}: ${w.colonies.length} colonies, ${w.colonies.reduce((a, c) => a + c.pawns.length, 0)} people after ${years} years`);

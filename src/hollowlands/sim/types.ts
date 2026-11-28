@@ -448,7 +448,7 @@ export interface NbTie {
 /** One of ours who has taken the road to a neighbour and will be back: an envoy, a knight at a tournament, fighters sent to an ally. */
 export interface NbAway {
   pw: Pawn;
-  /** why they went ('trade', 'ally', 'tribute', 'tourney', 'relief'), where (the colony's name), when they left and when they are due home */
+  /** why they went ('trade', 'ally', 'tribute', 'tourney', 'relief'; 'wed' for one sent to marry, held until word comes that they arrived), where (the colony's name), when they left and when they are due home */
   k: string; to: string; t0: number; t: number;
   /** what came of it, once word has come back: rounds won, hurt, champion, the purse */
   wins?: number; hurt?: number; won?: number; prize?: number; word?: string;
@@ -606,10 +606,12 @@ export interface Colony {
     ties: Record<string, NbTie>;
     away: NbAway[];
     go: { id: Id; k: string; to: string; toId: string; t: number; road: number; back: number; x?: number }[];
-    loads: { g: number; res: [string, number][]; silver: number; back?: [string, number][]; bs?: number; to?: string; leg?: number }[];
+    loads: { g: number; res: [string, number][]; silver: number; back?: [string, number][]; bs?: number; to?: string; leg?: number; /** what was carried out, for the telling when the carts come home */ sent?: string }[];
     tn?: NbTourney;
     wed?: { a: Id; b: Id; from: string; fromId: string; house: string; /** their names as they were before the wedding, and who the newcomer was at home */ an: string; bn: string; was: Id };
     aid?: number;
+    /** marks of the last things that came down the road, so one delivered twice is taken in once */
+    seen?: string[];
   };
 }
 

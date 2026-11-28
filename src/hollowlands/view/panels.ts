@@ -285,7 +285,7 @@ export class Panels {
         const w = awayWhere(c, p.id);
         const q = c.exp?.l.find((o) => o.ids.includes(p.id));
         const on = c.nb?.away.find((a) => a.pw === p);
-        const role = on ? (on.k === 'tourney' ? 'knight' : on.k === 'relief' ? 'rider' : 'envoy') : q ? roleWord(q.ro[q.ids.indexOf(p.id)]) : '';
+        const role = on ? (on.k === 'tourney' ? 'knight' : on.k === 'relief' ? 'rider' : on.k === 'wed' ? 'to be married' : 'envoy') : q ? roleWord(q.ro[q.ids.indexOf(p.id)]) : '';
         const mine = p.id === v.me;
         h += `<div class="row away${p.id === selId ? ' sel' : ''}" data-p="${p.id}">${face(c, p, 38)}<div class="n"><b class="${mine ? 'mine' : p.owner ? 'player' : ''}">${mine || p.owner ? '<i class="pm">◆</i>' : ''}${esc(fullName(p))}</b><small>${esc(raceName(p.race))}${role ? ' · ' + esc(role) : ''}</small><small class="plain wrap">${esc(w ? w.where : 'Away')}</small></div><div class="v"><span class="tie away">${w && w.day ? `Day ${w.day}` : 'Missing'}</span></div></div>`;
       }
@@ -321,7 +321,7 @@ export class Panels {
       h += `<div class="note">${linkNames(c, what, [c.gath.a, c.gath.o])}: ${dateText(c.gath.t0, true)}.</div>`;
     }
     const tn = c.nb?.tn;
-    if (tn && tn.st < 2) h += `<div class="note">${tn.st === 1 ? 'The tournament is being ridden now, on the green' : `A tournament will be held here: ${dateText(tn.t0, true)}`}${tn.guests.length ? `. Knights of ${tn.guests.map((g) => esc(g.name)).join(', ')} are bidden` : ''}.</div>`;
+    if (tn && tn.st < 2) h += `<div class="note">${tn.st === 1 ? 'The tournament is being ridden now, on the green' : `A tournament will be held here: ${dateText(tn.t0, true)}`}${tn.guests.length ? `. Knights of ${tn.guests.map((g) => esc(g.name)).join(', ').replace(/, ([^,]*)$/, ' and $1')} are bidden` : ''}.</div>`;
 
     // who is passing through
     const here = guests(c);
@@ -505,7 +505,7 @@ function neighboursBlock(c: Colony): string {
     // who of theirs is here, and who of ours is there
     const here = (c.vis?.l ?? []).filter((v) => v.g === v.id && NB_INFO[v.k] && v.f === n.name);
     for (const v of here) lines.push(`Here now: <a class="who" data-g="${v.id}">${esc(v.first + (v.fam ? ' ' + v.fam : ''))}</a>, ${esc(NB_INFO[v.k].name.toLowerCase())}`);
-    for (const a of nb?.away ?? []) if (a.to === n.name) lines.push(`There now: <a class="who" data-p="${a.pw.id}">${esc(fullName(a.pw))}</a>, ${a.k === 'tourney' ? 'riding in their tournament' : a.k === 'relief' ? 'gone to their aid' : 'our envoy'}`);
+    for (const a of nb?.away ?? []) if (a.to === n.name) lines.push(`There now: <a class="who" data-p="${a.pw.id}">${esc(fullName(a.pw))}</a>, ${a.k === 'tourney' ? 'riding in their tournament' : a.k === 'relief' ? 'gone to their aid' : a.k === 'wed' ? 'on the road, to marry there' : 'our envoy'}`);
     if (!lines.length) lines.push('Nothing stands between us yet, for good or ill');
     h += `<div class="xcard past"><div class="xhead"><b>${esc(n.name)}</b>${tag}</div>${lines.map((l) => `<small class="plain">${l}.</small>`).join('')}</div>`;
   }

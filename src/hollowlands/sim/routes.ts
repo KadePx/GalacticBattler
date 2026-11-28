@@ -11,7 +11,7 @@ import { hash32, hashStr, S } from './rng';
  */
 export interface SiteStat { pop: number; fight: number; silver: number; gov: string; castle: number; walls: number; fierce: number; spare: number; hand: number; busy: number }
 
-export interface Place { id: string; name: string; x: number; y: number; dead?: number; nearSent?: string; ruins?: string; st?: SiteStat; wars?: string[] }
+export interface Place { id: string; name: string; x: number; y: number; dead?: number; nearSent?: string; ruins?: string; st?: SiteStat; wars?: string[]; /** the colony this one was founded from */ from?: string }
 export interface Delivery { to: string; input: Record<string, unknown> }
 
 /** How two colonies stand with each other, as the land keeps it (days are game days). */
@@ -34,6 +34,8 @@ export interface Pacts {
   tnLast?: number;
   /** the day each colony last sent or received someone to marry */
   wed?: Record<string, number>;
+  /** the account of its ties each colony was last sent (see pactsDaily) */
+  sent?: Record<string, string>;
 }
 
 const gap = (a: Place, b: Place): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
@@ -108,6 +110,9 @@ export function ruinFor<T extends Place>(seed: number, sites: T[], parent: Place
 
 // ---------------------------------------------------------------- neighbours: pacts, caravans, tournaments
 
+/** A town smaller than this is not made to pay tribute. */
+const TRIB_POP = 30;
+
 export const pairKey = (a: string, b: string): string => (a < b ? a + '|' + b : b + '|' + a);
 
 /** Ticks of road between two places: half a day to a day and a half for neighbours. */
@@ -125,10 +130,14 @@ const TRIP_OF: Record<string, string> = { caravan: 'caravan', tribute: 'tribute'
 export function routePact(sites: Place[], state: { pacts?: Pacts }, fromId: string, now: number, m: Record<string, unknown>, out: Delivery[]): Delivery[] {
   const P = state.pacts;
   const extra: Delivery[] = [];
-  if (!P || typeof m.to !== 'string') return extra;
+  if (typeof m.to !== 'string') return extra;
   const a = sites.find((s) => s.id === fromId);
   const b = sites.find((s) => s.id === m.to && !s.dead);
-  if (!a || !b) return extra;
+  // someone on their way home again (the town they were sent to was gone): nothing else comes of it
+  if (m.back) return extra;
+  // someone sent to marry into a town that is no more: the road leads nowhere, and they turn back
+  if (m.k === 'migrant' && m.why === 'royal' && a && !a.dead && !out.some((d) => d.to === m.to)) { extra.push({ to: a.id, input: bounced(m) }); return extra; }
+  if (!P || !a || !b) return extra;
   const key = pairKey(a.id, b.id);
   const k = String(m.k);
   const day = Math.floor(now / 240);
@@ -157,13 +166,18 @@ export function routePact(sites: Place[], state: { pacts?: Pacts }, fromId: stri
     // and nobody pays two masters)
     let pays = false;
     for (const key2 in P.ties) if (P.ties[key2].trib === a.id) pays = true;
-    if (t.trib === undefined && t.ally === undefined && !pays && day >= P.day0 + 10) {
+    // (nor is a small town bled, nor a mother town paid by her daughter or the other way)
+    const small = (a.st?.pop ?? 0) < TRIB_POP || a.from === b.id || b.from === a.id;
+    if (t.trib === undefined && t.ally === undefined && !pays && !small && day >= P.day0 + 10) {
       t.trib = a.id; t.tribT = day; t.due = day;
       extra.push({ to: a.id, input: { k: 'pact', what: 'tribute', role: 'pay', with: b.id, name: b.name, day, road: roadTicks(a, b), why: 'peace' } }, { to: b.id, input: { k: 'pact', what: 'tribute', role: 'take', with: a.id, name: a.name, day, road: roadTicks(a, b), why: 'peace' } });
     }
   }
   return extra;
 }
+
+/** What goes back to the sender when a traveller could not be delivered. */
+export const bounced = (m: Record<string, unknown>): Record<string, unknown> => { const { to, delay, w, t, ...rest } = m; void to; void delay; void w; void t; return { ...rest, back: 1 }; };
 
 const season = (day: number): number => Math.floor((day % 60) / 15);
 
@@ -185,7 +199,17 @@ export function pactsDaily(seed: number, day: number, now: number, sites: Place[
   // ties with the dead are over
   for (const key of Object.keys(P.ties)) {
     const [x, y] = key.split('|');
-    if (!by.has(x) || !by.has(y)) { if (sites.some((s) => (s.id === x || s.id === y) && s.dead)) delete P.ties[key]; continue; }
+    if (!by.has(x) || !by.has(y)) {
+      const gone = sites.find((s) => (s.id === x || s.id === y) && s.dead);
+      if (gone) {
+        // one of the two is no more: whatever stood between them is ended, and the survivor is told
+        const left = by.get(gone.id === x ? y : x);
+        const t0 = P.ties[key];
+        if (left && (t0.trade !== undefined || t0.ally !== undefined || t0.kin !== undefined || t0.trib !== undefined)) out.push({ to: left.id, input: { k: 'pact', what: 'broken', why: 'dead', with: gone.id, name: gone.name, day } });
+        delete P.ties[key];
+      }
+      continue;
+    }
     const t = P.ties[key];
     if (t.trade === undefined && t.ally === undefined && t.kin === undefined && t.trib === undefined) delete P.ties[key];
   }
@@ -274,7 +298,8 @@ export function pactsDaily(seed: number, day: number, now: number, sites: Place[
         let paying = 0;
         let taking = 0;
         for (const key2 in P.ties) { const tr = P.ties[key2].trib; if (tr === w.id) paying++; else if (tr !== undefined && key2.split('|').includes(s.id)) taking++; }
-        if (lean && !paying && taking < 2 && W1.silver >= 40 && roll(5) < (S1.fierce >= 2 ? 20 : 5)) {
+        const kin = w.from === s.id || s.from === w.id;
+        if (lean && !paying && taking < 2 && !kin && W1.pop >= TRIB_POP && W1.silver >= 40 && roll(5) < (S1.fierce >= 2 ? 20 : 5)) {
           t = P.ties[key] ??= {};
           t.trib = w.id; t.tribT = day; t.due = day;
           tell(s, w, 'tribute', { role: 'take', why: 'demand' }, { role: 'pay', why: 'demand' });
@@ -297,6 +322,26 @@ export function pactsDaily(seed: number, day: number, now: number, sites: Place[
       }
     }
   }
+  // each colony's own account of its ties, whenever it has changed and every fifteen days besides: a
+  // colony holds to this over anything it remembers, which mends a message that never arrived
+  const sent = (P.sent ??= {});
+  for (const s of alive) {
+    const list: Record<string, unknown>[] = [];
+    for (const key in P.ties) {
+      const [x, y] = key.split('|');
+      if (x !== s.id && y !== s.id) continue;
+      const o = by.get(x === s.id ? y : x);
+      const t = P.ties[key];
+      if (!o || (t.trade === undefined && t.ally === undefined && t.kin === undefined && t.trib === undefined)) continue;
+      list.push({ id: o.id, name: o.name, ...(t.trade !== undefined ? { trade: t.trade } : {}), ...(t.ally !== undefined ? { ally: t.ally } : {}), ...(t.kin !== undefined ? { kin: t.kin } : {}), ...(t.trib !== undefined ? { trib: t.trib === s.id ? 1 : 2, tribT: t.tribT ?? day } : {}) });
+    }
+    const sig = list.map((l) => `${l.id}:${l.trade !== undefined ? 't' : ''}${l.ally !== undefined ? 'a' : ''}${l.kin !== undefined ? 'k' : ''}${l.trib ?? ''}`).join(',');
+    const due = sig !== '' && (day + hashStr(s.id)) % 15 === 0;
+    if (sig === (sent[s.id] ?? '') && !due) continue;
+    sent[s.id] = sig;
+    out.push({ to: s.id, input: { k: 'pact', what: 'sync', day, ties: list } });
+  }
+  for (const id of Object.keys(sent)) if (!by.has(id)) delete sent[id];
   // a tournament, now and then, in the warm half of the year: one town hosts, its neighbours send knights
   if (P.tn && day > P.tn.day) delete P.tn;
   if (!P.tn && season(day) < 3 && day % 15 <= 9 && day - (P.tnLast ?? P.day0 - 20) >= 40 + (hash32(seed, S.PACT, 900, P.tnLast ?? 0) % 25)) {

@@ -32,7 +32,7 @@ import { heardOf, knows, traderTalk } from './tech';
 import { frame } from './town';
 import { admit, inside, openNear, roadEnd, roadFolk, say, seatOfRule, setNext, trouble, type GuestSpec } from './visit';
 import { wallR } from './walls';
-import { AX, SK, type ActK, type Bld, type Colony, type Id, type Input, type NbAway, type NbTie, type NbTourney, type Pawn, type ResK, type Visitor } from './types';
+import { AX, F, SK, type ActK, type Bld, type Colony, type Id, type Input, type NbAway, type NbTie, type NbTourney, type Pawn, type ResK, type Visitor } from './types';
 
 const H = TICKS_PER_HOUR;
 const D = TICKS_PER_DAY;
@@ -92,6 +92,15 @@ function ofHouse(ruler: Pawn, p: Pawn): boolean {
   return p.mo === ruler.id || p.fa === ruler.id || (ruler.mo !== 0 && p.mo === ruler.mo) || (ruler.fa !== 0 && p.fa === ruler.fa) || p.fam === ruler.fam;
 }
 
+/** Free to be sent to marry away, as things stand this minute: asked when they are chosen and again at the hour they leave. */
+function canWed(c: Colony, p: Pawn, tied: Set<Id>): boolean {
+  if (p.gone || p.owner || p.sp || p.thrall || p.preg || p.brk || tied.has(p.id) || p.id === c.gov.ruler || p.id === c.gov.regent) return false;
+  return stage(c, p) === STAGE.ADULT && !has(p, 'chaste') && !isDown(p) && !p.ill;
+}
+
+/** Is this neighbour still there, as far as we know? */
+const known = (c: Colony, id: string): boolean => !!c.near?.some((n) => n.id === id) || !!c.nb?.ties[id];
+
 /** Those of the ruling house (or of good family: the house's wards) who could be sent to marry into a neighbour's: the heir stays home. */
 function sendable(c: Colony): Pawn[] {
   const ruler = pawnById(c, c.gov.ruler);
@@ -99,14 +108,18 @@ function sendable(c: Colony): Pawn[] {
   const tied = tiedDown(c);
   let heir: Pawn | undefined;
   if (c.gov.k === 'lord') for (const p of c.pawns) if ((p.mo === ruler.id || p.fa === ruler.id) && (!heir || p.born < heir.born)) heir = p;
+  // (nobody with a child still growing up at home is sent away)
+  const parents = new Set<Id>();
+  for (const p of c.pawns) if (stage(c, p) < STAGE.ADULT) { parents.add(p.mo); parents.add(p.fa); }
   const out: Pawn[] = [];
   for (const p of c.pawns) {
-    if (p === ruler || p === heir || p.gone || p.owner || p.sp || p.thrall || p.preg || p.brk || tied.has(p.id)) continue;
-    if (stage(c, p) !== STAGE.ADULT || has(p, 'chaste') || isDown(p) || p.ill) continue;
+    if (p === heir || parents.has(p.id) || !canWed(c, p, tied)) continue;
     if (!ofHouse(ruler, p) && p.rank < 3) continue;
     out.push(p);
   }
-  const w = (p: Pawn): number => (p.mo === ruler.id || p.fa === ruler.id ? 20 : ofHouse(ruler, p) ? 10 : 0) + p.rank;
+  // the ruler's own children first, then brothers and sisters, then the rest of the name, then the house's wards
+  const sib = (p: Pawn): boolean => (ruler.mo !== 0 && p.mo === ruler.mo) || (ruler.fa !== 0 && p.fa === ruler.fa);
+  const w = (p: Pawn): number => (p.mo === ruler.id || p.fa === ruler.id ? 30 : sib(p) ? 20 : ofHouse(ruler, p) ? 10 : 0) + p.rank;
   return out.sort((a, b) => w(b) - w(a) || a.id - b.id);
 }
 
@@ -233,6 +246,7 @@ function pick(c: Colony, n: number, score: (p: Pawn) => number, ok: (p: Pawn) =>
   for (const p of c.pawns) {
     if (p.owner || !fit(c, p, tied) || !ok(p)) continue;
     if (nb && nb.go.some((g) => g.id === p.id)) continue;
+    if (c.exp && c.exp.l.some((q) => q.ids.includes(p.id))) continue;
     out.push(p);
   }
   return out.sort((a, b) => score(b) - score(a) || a.id - b.id).slice(0, n);
@@ -254,9 +268,10 @@ function takeRoad(c: Colony, p: Pawn, g: NB['go'][number]): void {
   p.say = undefined;
   c.pawns = c.pawns.filter((o) => o !== p);
   if (g.k === 'wed') {
-    // gone for good, to a new life: the neighbour's keeper has them now
-    c.dead.push(toDead(c, p, 'match', undefined, true));
-    for (const b of c.blds) for (let i = 0; i < b.beds.length; i++) if (b.beds[i] === p.id) b.beds[i] = 0;
+    // on the road to a new life. They are still ours (bed, home and all) until word comes that they
+    // have arrived: should the road lead nowhere, they turn back. With no word at all in twenty days,
+    // they are taken to have got there.
+    nbOf(c).away.push({ pw: p, k: 'wed', to: g.to, t0: c.tick, t: c.tick + 20 * D });
     for (const o of c.pawns) {
       if (o.id === p.mo || o.id === p.fa) think(c, o, 'missing', p.id);
       if (o.crush === p.id) o.crush = 0;
@@ -266,6 +281,9 @@ function takeRoad(c: Colony, p: Pawn, g: NB['go'][number]): void {
   nbOf(c).away.push({ pw: p, k: g.k, to: g.to, t0: c.tick, t: g.back });
   for (const o of c.pawns) if (o.sp === p.id || ((o.mo === p.id || o.fa === p.id) && stage(c, o) >= STAGE.CHILD)) think(c, o, 'd_kinaway', p.id);
 }
+
+/** A mark on something sent down the road, so that the same thing delivered twice is taken in once. */
+const mid = (c: Colony): string => `${c.id}:${c.tick}:${c.out.length}`;
 
 /** A party of ours has taken the road (or as many of it as reached the gate): the chronicle says so, and word goes ahead. */
 function partyOut(c: Colony, k: string, toId: string, to: string, gone: Pawn[]): void {
@@ -277,16 +295,16 @@ function partyOut(c: Colony, k: string, toId: string, to: string, gone: Pawn[]):
       const ruler = rulerOf(c);
       log(c, 'd_envoy_out', lead.id, ruler?.id, `${to}|${k}`);
       note(c, lead, 'd_envoy', undefined, `${to}|${k}`);
-      c.out.push({ k: 'envoy', to: toId, ...from, what: k, who: [specOf(lead, 'envoy')] });
+      c.out.push({ k: 'envoy', to: toId, ...from, mid: mid(c), what: k, who: [specOf(lead, 'envoy')] });
       break;
     }
     case 'tourney':
       log(c, 'd_tn_ride', lead.id, gone[1]?.id, to, gone.length);
-      c.out.push({ k: 'knights', to: toId, ...from, who: gone.map((p) => specOf(p, 'knight')) });
+      c.out.push({ k: 'knights', to: toId, ...from, mid: mid(c), who: gone.map((p) => specOf(p, 'knight')) });
       break;
     case 'relief':
       log(c, 'd_aid_sent', lead.id, undefined, to, gone.length);
-      c.out.push({ k: 'relief', to: toId, ...from, who: gone.map((p) => specOf(p, 'knight')) });
+      c.out.push({ k: 'relief', to: toId, ...from, mid: mid(c), who: gone.map((p) => specOf(p, 'knight')) });
       break;
     case 'wed': {
       const ruler = pawnById(c, c.gov.ruler);
@@ -294,7 +312,7 @@ function partyOut(c: Colony, k: string, toId: string, to: string, gone: Pawn[]):
       c.stock.silver -= dowry;
       const ward = ruler && !ofHouse(ruler, lead) ? 1 : 0;
       log(c, 'd_wed_sent', lead.id, ruler?.id, `${to}|${ruler?.fam ?? lead.fam}|${ward ? 'ward' : ''}`, dowry);
-      c.out.push({ k: 'migrant', to: toId, why: 'royal', ...from, house: ruler?.fam ?? lead.fam, ward, dowry, pawn: JSON.parse(JSON.stringify({ ...lead, gone: undefined })) });
+      c.out.push({ k: 'migrant', to: toId, why: 'royal', ...from, mid: mid(c), house: ruler?.fam ?? lead.fam, ward, dowry, pawn: JSON.parse(JSON.stringify({ ...lead, gone: undefined })) });
       bump(c, 'matches');
       bump(c, 'royalSent');
       break;
@@ -312,6 +330,13 @@ export function stepNeigh(c: Colony): void {
     const bad = trouble(c);
     const done = new Set<string>();
     const left = new Map<Id, Pawn>();
+    // (who is caught up in something is worked out only at the moments it is asked)
+    let tied: Set<Id> | undefined;
+    const still = (p: Pawn, o: NB['go'][number]): boolean => {
+      tied ??= tiedDown(c);
+      if (!known(c, o.toId)) return false;
+      return o.k === 'wed' ? canWed(c, p, tied) : !p.owner && fit(c, p, tied, true);
+    };
     for (const g of nb.go) {
       const key = g.k + '|' + g.toId;
       if (done.has(key)) continue;
@@ -322,8 +347,15 @@ export function stepNeigh(c: Colony): void {
         if (o.x) continue;
         const p = pawnById(c, o.id);
         if (!p || p.gone || bad || isDown(p) || p.brk || t > o.t + 4 * H) { o.x = 2; continue; }
-        if (t === o.t && p.act.k !== 'trek' && p.act.k !== 'fight' && p.act.k !== 'flee' && p.act.k !== 'attend') p.act.t1 = Math.min(p.act.t1, Math.max(t, p.act.ta));
-        if (p.act.k === 'trek' && p.act.why === 'd_leave' && t >= p.act.ta && t >= o.t) { takeRoad(c, p, o); left.set(p.id, p); o.x = 1; continue; }
+        // things change between the choosing and the going: asked again at the hour, and again at the gate
+        if (t === o.t) {
+          if (!still(p, o)) { o.x = 2; continue; }
+          if (p.act.k !== 'trek' && p.act.k !== 'fight' && p.act.k !== 'flee' && p.act.k !== 'attend') p.act.t1 = Math.min(p.act.t1, Math.max(t, p.act.ta));
+        }
+        if (p.act.k === 'trek' && p.act.why === 'd_leave' && t >= p.act.ta && t >= o.t) {
+          if (!still(p, o)) { o.x = 2; continue; }
+          takeRoad(c, p, o); left.set(p.id, p); o.x = 1; continue;
+        }
         waiting++;
       }
       if (waiting) continue;
@@ -345,7 +377,8 @@ export function stepNeigh(c: Colony): void {
         const a = nb.away[i];
         if (t < a.t) continue;
         nb.away.splice(i--, 1);
-        homeAgain(c, a);
+        if (a.k === 'wed') wedGone(c, a.pw);
+        else homeAgain(c, a);
       }
     }
   }
@@ -361,6 +394,28 @@ export function stepNeigh(c: Colony): void {
     if (c.vis) for (const v of c.vis.l) if (v.k === 'knight' && v.g === v.id && v.m === 1) v.t1 = Math.min(v.t1, Math.max(t, v.ta));
   }
   if (tn.st === 1) tourneyTick(c, tn);
+}
+
+/** Word has come (or long enough has passed) that the one we sent to marry is settled in their new town: they are ours no longer. */
+function wedGone(c: Colony, p: Pawn): void {
+  c.dead.push(toDead(c, p, 'match', undefined, true));
+  for (const b of c.blds) for (let i = 0; i < b.beds.length; i++) if (b.beds[i] === p.id) b.beds[i] = 0;
+  for (const o of c.pawns) { const rel = o.rel[p.id]; if (rel?.k && rel.k !== 'ex') rel.k = 'ex'; }
+}
+
+/** The road led nowhere (the town they were sent to is no more): they walk back in at the gate, and the gifts with them. */
+function wedBack(c: Colony, e: Input): void {
+  const id = Number((e.pawn as Pawn | undefined)?.id) || 0;
+  const nb = c.nb;
+  const i = nb ? nb.away.findIndex((a) => a.k === 'wed' && a.pw.id === id) : -1;
+  if (!nb || i < 0) return;
+  const a = nb.away[i];
+  nb.away.splice(i, 1);
+  comeIn(c, a.pw, a.t0);
+  a.pw.act.why = 'd_home';
+  c.stock.silver += clamp(Number(e.dowry) || 0, 0, 60);
+  log(c, 'd_wed_back', a.pw.id, undefined, a.to);
+  for (const o of c.pawns) if (o !== a.pw && (o.id === a.pw.mo || o.id === a.pw.fa)) think(c, o, 'x_kinhome', a.pw.id);
 }
 
 /** One of ours walks back in at the end of the road, with whatever came of it. */
@@ -425,10 +480,11 @@ export function dailyNeigh(c: Colony): void {
   // a host camped outside the walls: riders slip out to the allies
   const sg = c.siege;
   if (sg && sg.phase === 0 && nb.aid !== sg.t0 && c.tick - sg.t0 >= D / 2) {
-    const allies = Object.keys(nb.ties).filter((id) => nb.ties[id].ally !== undefined && c.near?.some((n) => n.id === id)).slice(0, 2);
+    // (every ally, whether or not they are among the nearest we are told of; not the one camped outside)
+    const allies = Object.keys(nb.ties).filter((id) => nb.ties[id].ally !== undefined && id !== sg.fromId).slice(0, 2);
     if (allies.length) {
       nb.aid = sg.t0;
-      for (const id of allies) c.out.push({ k: 'aid', to: id, fromId: c.id, fromName: c.name, host: sg.name });
+      for (const id of allies) c.out.push({ k: 'aid', to: id, fromId: c.id, fromName: c.name, host: sg.name, n: c.foes.filter((f) => f.band === sg.band).length, ...(sg.fromId ? { foe: sg.fromId } : {}) });
       log(c, 'd_aid_ask', rulerOf(c)?.id, undefined, allies.map((id) => nb.ties[id].name).join(', '));
     }
   }
@@ -451,7 +507,20 @@ export function neighInput(c: Colony, e: Input): boolean {
     c.inq.push({ ...rest, t: c.tick + Number(delay) } as Input);
     return true;
   }
-  if (!c.pawns.length) return true;
+  if (k === 'migrant' && e.back) { wedBack(c, e); return true; }
+  if (!c.pawns.length) {
+    // nobody is left here to receive them: whoever came to marry turns for home
+    if (k === 'migrant' && e.fromId) c.out.push({ ...e, k: 'migrant', to: String(e.fromId), back: 1 });
+    return true;
+  }
+  // the same thing delivered twice (a keeper that tried again) is taken in once
+  if (typeof e.mid === 'string' && e.w === undefined) {
+    const nb = nbOf(c);
+    const seen = (nb.seen ??= []);
+    if (seen.includes(e.mid)) return true;
+    seen.push(e.mid);
+    if (seen.length > 16) seen.shift();
+  }
   const from = String(e.fromName ?? e.name ?? '');
   const fromId = String(e.fromId ?? e.with ?? '');
   switch (k) {
@@ -477,7 +546,12 @@ export function neighInput(c: Colony, e: Input): boolean {
       break;
     }
     case 'pactnews': {
-      if (e.what === 'wed') {
+      if (e.what === 'came') {
+        // they have arrived: ours no longer
+        const nb = c.nb;
+        const i = nb ? nb.away.findIndex((a) => a.k === 'wed' && a.pw.id === Number(e.id)) : -1;
+        if (nb && i >= 0) { const a = nb.away[i]; nb.away.splice(i, 1); wedGone(c, a.pw); }
+      } else if (e.what === 'wed') {
         log(c, 'd_wed_news', undefined, undefined, `${from}|${String(e.a ?? '')}|${String(e.b ?? '')}`);
         const d = c.dead.find((x) => x.id === Number(e.id) && x.left);
         if (d) for (const p of c.pawns) if (p.id === d.mo || p.id === d.fa) think(c, p, 'd_kinwed', d.id);
@@ -500,6 +574,7 @@ function pact(c: Colony, e: Input, id: string, name: string): void {
   if (what === 'tourney') { tourneyCalled(c, e, id, name); return; }
   if (what === 'caravan') { c.inq.push({ t: byDay(c.tick + 6 * H, c.seed), k: 'nbdo', what: 'cv_go', with: id, name, road, n: Number(e.n) || 0 }); return; }
   if (what === 'wed') { wedSend(c, e, id, name, road); return; }
+  if (what === 'sync') { reconcile(c, e); return; }
   if (!id) return;
   const tie = tieOf(c, id, name);
   tie.last = day;
@@ -552,11 +627,39 @@ function pact(c: Colony, e: Input, id: string, name: string): void {
       break;
     }
     case 'broken': {
-      if (tie.trade !== undefined || tie.ally !== undefined || tie.trib !== undefined) log(c, 'd_broken', undefined, undefined, name);
+      const gone = e.why === 'dead';
+      if (tie.trade !== undefined || tie.ally !== undefined || tie.trib !== undefined || (gone && tie.kin !== undefined)) log(c, 'd_broken', undefined, undefined, `${name}|${gone ? 'dead' : ''}`);
       delete tie.trade; delete tie.ally; delete tie.trib; delete tie.tribT;
+      if (gone) delete tie.kin;
       break;
     }
     default: break;
+  }
+}
+
+/**
+ * The land's own account of how we stand with everyone (sent when it changes, and now and then besides):
+ * anything we hold that the land does not is let go, anything we lack is taken up, quietly. This is what
+ * mends a message that never arrived.
+ */
+function reconcile(c: Colony, e: Input): void {
+  const list = (e.ties as { id: string; name: string; trade?: number; ally?: number; kin?: number; trib?: number; tribT?: number }[]) ?? [];
+  if (!c.nb && !list.length) return;
+  const nb = nbOf(c);
+  const by = new Map(list.map((x) => [String(x.id), x]));
+  for (const id of Object.keys(nb.ties)) {
+    if (by.has(id)) continue;
+    const t = nb.ties[id];
+    delete t.trade; delete t.ally; delete t.kin; delete t.trib; delete t.tribT;
+  }
+  for (const x of list) {
+    const t = tieOf(c, String(x.id), String(x.name ?? ''));
+    for (const f of ['trade', 'ally', 'kin'] as const) {
+      if (typeof x[f] === 'number') { if (t[f] === undefined) t[f] = x[f]; }
+      else if (t[f] !== undefined) delete t[f];
+    }
+    if (x.trib === 1 || x.trib === 2) { if (t.trib !== x.trib) { t.trib = x.trib; t.tribT = Number(x.tribT) || dayOf(c.tick); t.said = (t.said ?? 0) | 4; } }
+    else if (t.trib !== undefined) { delete t.trib; delete t.tribT; }
   }
 }
 
@@ -652,7 +755,7 @@ function caravanOut(c: Colony, e: Input, id: string): void {
     // no way in for a cart (a wall going up across the road): the load goes out by hand, unseen
     const took = takeStock(c, res);
     c.stock.silver -= silver;
-    c.out.push({ k: 'caravan', to: id, fromId: c.id, fromName: c.name, leg: 0, res: took, silver, who: caravanFolk(c, c.id, id, 1) });
+    c.out.push({ k: 'caravan', to: id, fromId: c.id, fromName: c.name, mid: mid(c), leg: 0, res: took, silver, who: caravanFolk(c, c.id, id, 1) });
     return;
   }
   lead.d = 1;
@@ -669,7 +772,7 @@ function caravanIn(c: Colony, e: Input, id: string, name: string): void {
   const r = new Rand(c.seed, S.PACT, c.tick, 13);
   if (leg === 0 && trouble(c)) {
     // the gates are shut against trouble: the carters turn round with their load
-    c.out.push({ k: 'caravan', to: id, fromId: c.id, fromName: c.name, leg: 1, res, silver, who, turned: 1 });
+    c.out.push({ k: 'caravan', to: id, fromId: c.id, fromName: c.name, mid: mid(c), leg: 1, res, silver, who, turned: 1 });
     return;
   }
   // (carters home while there is still trouble at the gate unload out of sight)
@@ -678,14 +781,12 @@ function caravanIn(c: Colony, e: Input, id: string, name: string): void {
     giveStock(c, res);
     c.stock.silver += silver;
     if (leg === 0) { log(c, 'd_cv_in', undefined, undefined, `${name}||${resStr(res)}|0`, 0); bump(c, 'caravans'); }
-    else { log(c, 'd_cv_home', undefined, undefined, `${name}|${who[0] ? `${who[0].first} ${who[0].fam}` : 'The carters'}|${resStr(res)}|${e.turned ? 'turned' : ''}|0`, silver); bump(c, 'caravansHome'); }
+    else { log(c, 'd_cv_home', undefined, undefined, `${name}|${who[0] ? `${who[0].first} ${who[0].fam}` : 'The carters'}|${resStr(res)}|${e.turned ? 'turned' : ''}|${String(e.sent ?? '')}|0`, silver); bump(c, 'caravansHome'); }
     return;
   }
   lead.d = leg === 0 ? 2 : 3;
-  nb.loads.push({ g: lead.g, res, silver, to: id, leg: leg === 0 ? 1 : 2 });
+  nb.loads.push({ g: lead.g, res, silver, to: id, leg: leg === 0 ? 1 : 2, ...(leg === 0 ? {} : { sent: String(e.sent ?? '') }) });
   if (leg === 0) {
-    const carts = who.filter((x) => x.k === 'cart').length;
-    log(c, 'd_cv_in', undefined, undefined, `${name}|${lead.first} ${lead.fam}|${resStr(res)}|${lead.g}`, carts);
     bump(c, 'caravans');
     const tie = nb.ties[id];
     if (tie) { tie.cv = (tie.cv ?? 0) + 1; tie.last = dayOf(c.tick); }
@@ -712,10 +813,10 @@ function caravanTrade(c: Colony, v: Visitor, party: Visitor[]): void {
   c.stock.silver -= pay;
   load.back = back;
   load.bs = load.silver + pay;
-  log(c, 'd_cv_trade', undefined, undefined, `${v.f}|${v.first} ${v.fam}|${resStr(load.res)}|${resStr(back)}|${v.g}`, pay);
+  load.sent = resStr(load.res);
+  log(c, 'd_cv_trade', undefined, undefined, `${v.f}|${v.first} ${v.fam}|${resStr(load.res)}|${resStr(back)}|${party.filter((m) => m.k === 'cart').length}|${v.g}`, pay);
   say(c, v, 'trade');
   for (const p of c.pawns) if (stage(c, p) >= STAGE.CHILD && (p.id + v.id) % 3 === 0) think(c, p, 'd_caravan');
-  void party;
 }
 
 // ---------------------------------------------------------------- tribute
@@ -743,7 +844,7 @@ function tributeOut(c: Colony, e: Input, id: string): void {
     const took = takeStock(c, res);
     c.stock.silver -= silver;
     log(c, 'd_trib_out', rulerOf(c)?.id, undefined, `${tie.name}||${resStr(took)}`, silver);
-    c.out.push({ k: 'tribute', to: id, fromId: c.id, fromName: c.name, res: took, silver, who: folk });
+    c.out.push({ k: 'tribute', to: id, fromId: c.id, fromName: c.name, mid: mid(c), res: took, silver, who: folk });
     tie.tb = (tie.tb ?? 0) + 1;
     return;
   }
@@ -776,7 +877,7 @@ function tributeIn(c: Colony, e: Input, id: string, name: string): void {
 
 /** Someone of our ruling house is sent to marry into a neighbour's. */
 function wedSend(c: Colony, e: Input, id: string, name: string, road: number): void {
-  if (trouble(c) || c.nb?.go.some((g) => g.k === 'wed')) return;
+  if (trouble(c) || !known(c, id) || c.nb?.go.some((g) => g.k === 'wed') || c.nb?.away.some((a) => a.k === 'wed')) return;
   const hand = Number(e.hand) || 3;
   // a woman goes where a man's hand is free, a man where a woman's is
   const who = sendable(c).find((p) => (p.sex === 0 ? (hand & 2) !== 0 : (hand & 1) !== 0) && !c.nb?.go.some((g) => g.id === p.id));
@@ -794,6 +895,8 @@ function brideIn(c: Colony, e: Input, id: string, name: string): void {
   const nid = importPawns(c, { k: 'settlers', t: c.tick, from: '', fromName: name, leader: old.id, pawns: [old], stock: {} }, r);
   const p = c.pawns.find((x) => x.id === nid);
   if (!p) return;
+  // word goes back that they have come: only then does their old town count them gone
+  if (id) c.out.push({ k: 'pactnews', to: id, fromId: c.id, fromName: c.name, what: 'came', id: old.id });
   const [ex, ey] = roadEnd(c);
   p.x = ex;
   p.y = ey;
@@ -856,7 +959,9 @@ function aidAsked(c: Colony, e: Input, id: string, name: string): void {
   }
   let fighters = 0;
   for (const p of c.pawns) if (canFight(c, p)) fighters++;
-  const who = trouble(c) || fighters < 9 ? [] : pick(c, fighters >= 16 ? 3 : 2, (p) => p.sk[SK.melee] + per(p, AX.BRAVE) * 2, (p) => canFight(c, p) && p.sk[SK.melee] >= 3);
+  // (we do not ride against those we are bound to ourselves)
+  const friend = typeof e.foe === 'string' && bound(c, e.foe);
+  const who = friend || trouble(c) || fighters < 9 ? [] : pick(c, fighters >= 16 ? 3 : 2, (p) => p.sk[SK.melee] + per(p, AX.BRAVE) * 2, (p) => canFight(c, p) && p.sk[SK.melee] >= 3);
   if (who.length < 2) {
     log(c, 'd_aid_none', rulerOf(c)?.id, undefined, name);
     c.out.push({ k: 'pactnews', to: id, fromId: c.id, fromName: c.name, what: 'noaid' });
@@ -874,10 +979,10 @@ function reliefIn(c: Colony, e: Input, id: string, name: string): void {
   let broke = Number(e.broke) || 0;
   const sg = c.siege;
   if (sg && sg.phase === 0 && !broke) {
-    relieved(c, name, who.length);
+    // a few riders break a small host; a great one they can only harry (2 says so)
+    broke = relieved(c, name, who.length) ? 1 : 2;
     for (const p of c.pawns) if (stage(c, p) >= STAGE.TEEN) think(c, p, 'd_relieved');
-    bump(c, 'reliefs');
-    broke = 1;
+    bump(c, broke === 1 ? 'reliefs' : 'harried');
   }
   const hour = hourOf(c.tick);
   if (trouble(c) || hour < 6 || hour >= 20) {
@@ -885,7 +990,8 @@ function reliefIn(c: Colony, e: Input, id: string, name: string): void {
     if (w < 14) { c.inq.push({ ...e, t: c.tick + 3 * H, w: w + 1, broke }); return; }
   }
   const r = new Rand(c.seed, S.PACT, c.tick, 19);
-  log(c, broke ? 'd_relief' : 'd_relief_late', rulerOf(c)?.id, undefined, `${name}|${leadName}`, who.length);
+  // (riders who could only harry a great host, and still cannot get in, have been told of already)
+  if (!(broke === 2 && trouble(c))) log(c, broke ? 'd_relief' : 'd_relief_late', rulerOf(c)?.id, undefined, `${name}|${leadName}|${broke === 2 ? 'harry' : ''}`, who.length);
   const lead = trouble(c) ? null : admit(c, who.map((x) => ({ ...x, k: 'knight' })), name, openNear(c, c.cx, c.cy, 3, r), byDay(c.tick + 16 * H, 3) - c.tick);
   if (lead) { lead.d = 9; say(c, lead, 'relief'); }
   if (c.grudge && id) c.grudge[id] = 0;
@@ -913,7 +1019,9 @@ export function listsSpot(c: Colony): { x: number; y: number; h: number } | null
           for (let xx = x - rx; xx <= x + rx; xx++) {
             const i = yy * c.w + xx;
             n++;
-            if (k.walk[i] && k.reach[i] && !c.sb[i] && !c.st[i] && !c.crop[i]) open++;
+            // (open ground: nothing built or sown, no tree or boulder standing)
+            const ft = c.feat[i];
+            if (k.walk[i] && k.reach[i] && !c.sb[i] && !c.st[i] && !c.crop[i] && ft !== F.TREE && ft !== F.PINE && ft !== F.BOULDER && ft !== F.SAPLING) open++;
             else if (h ? yy === y : xx === x) return false;
           }
         }
@@ -1196,7 +1304,7 @@ export function nbBeats(c: Colony, v: Visitor, party: Visitor[], r: Rand, hour: 
         load.res = takeStock(c, load.res);
         load.silver = Math.floor(Math.min(load.silver, Math.max(0, c.stock.silver)));
         c.stock.silver -= load.silver;
-        log(c, 'd_cv_load', undefined, undefined, `${v.f}|${v.first} ${v.fam}|${resStr(load.res)}|${v.g}`, load.silver);
+        // (told when they come home with what it fetched)
         say(c, v, 'load');
         v.dep = t + 2 * H;
       } else if (v.d === 2) {
@@ -1207,7 +1315,7 @@ export function nbBeats(c: Colony, v: Visitor, party: Visitor[], r: Rand, hour: 
         // home again: what they got for our goods comes off the carts
         giveStock(c, load.res);
         c.stock.silver += load.silver;
-        log(c, 'd_cv_home', undefined, undefined, `${v.f}|${v.first} ${v.fam}|${resStr(load.res)}|${v.b & 8 ? 'turned' : ''}|${v.g}`, load.silver);
+        log(c, 'd_cv_home', undefined, undefined, `${v.f}|${v.first} ${v.fam}|${resStr(load.res)}|${v.b & 8 ? 'turned' : ''}|${load.sent ?? ''}|${v.g}`, load.silver);
         say(c, v, 'unload');
         load.res = [];
         load.silver = 0;
@@ -1285,20 +1393,20 @@ export function nbGone(c: Colony, v: Visitor): void {
       // our goods, on their way to the neighbour (unloaded again here if they never got loaded)
       if (!(v.b & 1)) return;
       const tech = c.tech ? c.tech.got.slice(-3).map((g) => g.k) : [];
-      c.out.push({ k: 'caravan', to: load.to, fromId: c.id, fromName: c.name, leg: 0, res: load.res, silver: load.silver, who: who(load.res.length >= 3 ? 2 : 1), tech });
+      c.out.push({ k: 'caravan', to: load.to, fromId: c.id, fromName: c.name, mid: mid(c), leg: 0, res: load.res, silver: load.silver, who: who(load.res.length >= 3 ? 2 : 1), tech });
       bump(c, 'caravansOut');
     } else if (load.leg === 1) {
       // the neighbour's carters going home with what they got here (or with their own load, if nothing changed hands)
       const traded = (v.b & 1) !== 0;
       const res = traded ? load.back ?? [] : load.res;
-      c.out.push({ k: 'caravan', to: load.to, fromId: c.id, fromName: c.name, leg: 1, res, silver: traded ? load.bs ?? 0 : load.silver, who: who(res.length >= 3 ? 2 : 1), ...(v.b & 8 ? { turned: 1 } : {}) });
+      c.out.push({ k: 'caravan', to: load.to, fromId: c.id, fromName: c.name, mid: mid(c), leg: 1, res, silver: traded ? load.bs ?? 0 : load.silver, sent: traded ? load.sent ?? '' : '', who: who(res.length >= 3 ? 2 : 1), ...(v.b & 8 || !traded ? { turned: 1 } : {}) });
     } else if (load.res.length || load.silver) {
       // (home, but gone again before the carts were emptied: the goods stay)
       giveStock(c, load.res);
       c.stock.silver += load.silver;
     }
   } else if (v.k === 'carter') {
-    if (load.leg === 0 && (v.b & 1)) c.out.push({ k: 'tribute', to: load.to, fromId: c.id, fromName: c.name, res: load.res, silver: load.silver, who: who(1) });
+    if (load.leg === 0 && (v.b & 1)) c.out.push({ k: 'tribute', to: load.to, fromId: c.id, fromName: c.name, mid: mid(c), res: load.res, silver: load.silver, who: who(1) });
   }
 }
 
@@ -1342,7 +1450,7 @@ export function forcePact(c: Colony, what: string): boolean {
   const base = { with: n.id, name: n.name, day, road: 120 };
   const from = { fromId: n.id, fromName: n.name };
   const folk = (k: string, s: number): GuestSpec => roadFolk(c, k, new Rand(c.seed, S.PACT, c.tick, 98, s), 0, 0.3);
-  const knightSpec = (s: number): GuestSpec & { id: Id; sk: number } => ({ ...folk('knight', s), id: 900 + s, sk: 5 + (s * 3) % 7 });
+  const knightSpec = (s: number): GuestSpec & { id: Id; sk: number } => ({ ...folk('knight', s + 20), id: 900 + s, sk: 5 + (s * 3) % 7 });
   switch (what) {
     case 'trade': case 'ally':
       c.inq.push({ t, k: 'pact', what, role: 'host', ...base }, { t: t + 1, k: 'envoy', what, ...from, who: [folk('envoy', 1)] });

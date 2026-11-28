@@ -95,12 +95,24 @@ function leave(c: Colony): void {
   for (const f of c.foes) if (f.band === sg.band) { f.mode = 2; f.wait = c.tick; }
 }
 
-/** An ally's riders fall on the camp from behind: the host breaks camp and goes. */
-export function relieved(c: Colony, by: string, n: number): void {
+/**
+ * An ally's riders fall on the camp from behind. A small host (four to a rider, or fewer) breaks camp
+ * and goes: true. A great one is only harried: its supplies are burned, so it must storm or go home
+ * sooner, but it stays: false.
+ */
+export function relieved(c: Colony, by: string, n: number): boolean {
   const sg = c.siege;
-  if (!sg || sg.phase !== 0) return;
-  log(c, 'siege', undefined, undefined, 'relief:' + sg.name + ':' + by, n);
-  leave(c);
+  if (!sg || sg.phase !== 0) return false;
+  let host = 0;
+  for (const f of c.foes) if (f.band === sg.band) host++;
+  if (n * 4 >= host) {
+    log(c, 'siege', undefined, undefined, 'relief:' + sg.name + ':' + by, n);
+    leave(c);
+    return true;
+  }
+  sg.sup = Math.max(1, sg.sup - 3);
+  log(c, 'siege', undefined, undefined, 'harry:' + sg.name + ':' + by, n);
+  return false;
 }
 
 /** Once a day while a host is camped outside (in the small hours, at its own hour): supplies run down, siege engines are made, and both sides weigh their chances. */

@@ -5,7 +5,7 @@
 import { colonySeed, pickSpot, startColonies, type Site } from '../sim/world';
 import type { SettlerMsg } from '../sim/settle';
 import type { KV } from './host';
-import { landThreat, nearLists, pactsDaily, routeMsg, routePact, ruinFor, type Delivery, type Pacts, type SiteStat } from '../sim/routes';
+import { bounced, landThreat, nearLists, pactsDaily, routeMsg, routePact, ruinFor, type Delivery, type Pacts, type SiteStat } from '../sim/routes';
 
 export interface RegionOpts { seed?: number; /** colonies a new world starts with (default: 6 to 8, from the seed) */ colonies?: number; pop: number; preDays: number; now: () => number; adminKey?: string }
 
@@ -76,7 +76,13 @@ export class RegionHost {
       if (!body.pop && !site.dead) site.dead = body.tick;
     }
     const send = async (list: Delivery[]): Promise<void> => {
-      for (const d of list) await this.link(d.to, 'input', d.input).catch(() => undefined);
+      for (const d of list) {
+        await this.link(d.to, 'input', d.input).catch(async () => {
+          // someone sent to marry who could not be handed over turns back to where they came from
+          const i = d.input;
+          if (i.k === 'migrant' && i.why === 'royal' && !i.back && typeof i.fromId === 'string') await this.link(i.fromId, 'input', bounced(i)).catch(() => undefined);
+        });
+      }
     };
     for (const m of body.msgs ?? []) {
       if (m.k !== 'settlers') {

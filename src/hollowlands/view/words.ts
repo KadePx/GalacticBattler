@@ -117,7 +117,7 @@ export function awayWhere(c: Colony, id: Id): { where: string; day: number; site
   // on the road to a neighbour, or at one
   const road = c.nb?.away.find((a) => a.pw.id === id);
   if (road) {
-    const what = road.k === 'tourney' ? `Riding in the tournament at ${road.to}` : road.k === 'relief' ? `Gone to the relief of ${road.to}` : `Our envoy to ${road.to}`;
+    const what = road.k === 'wed' ? `On the road to ${road.to}, to be married there` : road.k === 'tourney' ? `Riding in the tournament at ${road.to}` : road.k === 'relief' ? `Gone to the relief of ${road.to}` : `Our envoy to ${road.to}`;
     return { where: what, day: Math.max(1, Math.floor(c.tick / TICKS_PER_DAY) - Math.floor(road.t0 / TICKS_PER_DAY) + 1), site: road.to };
   }
   const x = c.exp;
