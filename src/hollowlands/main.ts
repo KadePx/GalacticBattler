@@ -16,7 +16,7 @@ import { createColony, step, type Colony, type Ev, type Id, type RaceK } from '.
 import { checkSpec, type PawnSpec } from './sim/create';
 import { awayById, fullName, ownedPawn, pawnById } from './sim/pawn';
 import { startNat } from './sim/nature';
-import { forceScene } from './sim/street';
+import { forceScene } from './dev/scenes';
 import type { Dead, Pawn, XSite } from './sim/types';
 import { callParty } from './sim/exped';
 import { WEIGHT, dateText, evText } from './text';

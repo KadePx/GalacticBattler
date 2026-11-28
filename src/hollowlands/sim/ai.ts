@@ -108,6 +108,14 @@ function isNight(p: Pawn, hour: number): boolean {
 }
 
 function goEat(c: Colony, p: Pawn, r: Rand, why: string): boolean {
+  // as often as not a meal is taken at home, at their own table, if they have one (the food comes from the common store either way)
+  if (p.home && why === 'hungry' && stage(c, p) > STAGE.BABY && r.chance(0.5)) {
+    const home = c.blds.find((b) => b.id === p.home);
+    if (home && spots(shapeOf(home), 'c').length) {
+      const [x, y] = seat(c, p, home, 'c', r);
+      if (setAct(c, p, 'eat', x, y, 3, why, { b: home.id })) return true;
+    }
+  }
   const hall = bldOf(c, 'hall') ?? bldOf(c, 'tavern');
   if (hall && stage(c, p) > STAGE.BABY) {
     const [x, y] = seat(c, p, hall, 'c', r);
@@ -581,14 +589,14 @@ export function decide(c: Colony, p: Pawn): void {
   if (c.exp && c.exp.l.length && expAct(c, p, st, (k, x, y, dur, why) => setAct(c, p, k, x, y, dur, why))) return;
   // on a neighbour's business: an envoy or a knight taking the road, and the lists on a tournament day
   if (c.nb && (c.nb.go.length || c.nb.tn) && neighAct(c, p, st, (k, x, y, dur, why) => setAct(c, p, k, x, y, dur, why))) return;
+  // dusk: whoever is free first goes round the street lamps (before a feast or a sermon, not instead of it; the two the gathering is for are let off)
+  if (hour >= 17 && hour < 21 && st === STAGE.ADULT && !p.brk && p.food >= 30 && !(c.gath && (p.id === c.gath.a || p.id === c.gath.o)) && lampAct(c, p, (k, x, y, dur, why, o) => setAct(c, p, k, x, y, dur, why, o ?? {}))) return;
   // a wedding or a funeral walks to its place together
   if (c.gath && (c.gath.k === 'wedding' || c.gath.k === 'funeral') && t < c.gath.t0 && processionAct(c, p, st, (k, x, y, dur, why, o) => setAct(c, p, k, x, y, dur, why, o ?? {}))) return;
   if (c.gath && t >= c.gath.t0 - 12 && t < c.gath.t1 - 4 && wantsToAttend(c, p, st) && attend(c, p, r)) return;
   if (((night && p.rest < 80) || p.rest < 22) && !p.brk && goSleep(c, p, night ? 'night' : 'tired')) return;
   // when food is rationed, only the ruler's table eats its fill
   if (p.food < (c.gov.laws.ration && p.rank < 5 ? 28 : 42) && hasFood(c) && goEat(c, p, r, 'hungry')) return;
-  // dusk: whoever's turn it is goes round the street lamps
-  if (hour >= 17 && hour < 21 && st === STAGE.ADULT && !p.brk && lampAct(c, p, (k, x, y, dur, why, o) => setAct(c, p, k, x, y, dur, why, o ?? {}))) return;
   // market day: the stallholders to their stalls, everyone else round the stalls with their silver
   if (st >= STAGE.TEEN && !p.brk && !night && marketOpen(c) && goMarket(c, p, r, (x, y, k, dur, why, o, d) => setAct(c, p, k, x, y, dur, why, { o: o || undefined, d }))) return;
 
@@ -608,7 +616,9 @@ export function decide(c: Colony, p: Pawn): void {
     }
     const roll = r.float();
     if (roll < 0.6) {
-      const s = randomSpot(c, r, c.cx, c.cy, 2, 9);
+      // out of doors: in the square, or as often in the street by their own door
+      const hb = p.home ? c.blds.find((b) => b.id === p.home) : undefined;
+      const s = hb && r.chance(0.5) ? randomSpot(c, r, hb.x + (hb.w >> 1), hb.y + (hb.h >> 1), 2, 6) ?? randomSpot(c, r, c.cx, c.cy, 2, 9) : randomSpot(c, r, c.cx, c.cy, 2, 9);
       if (s && setAct(c, p, 'play', s[0], s[1], 10 + r.int(10), 'child')) return;
     } else if (roll < 0.85) {
       const kin = pawnById(c, r.chance(0.5) ? p.mo : p.fa) ?? favourite(c, p, r);

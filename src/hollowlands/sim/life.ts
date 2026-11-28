@@ -14,7 +14,7 @@ import { bump, log, note } from './events';
 import { dailyHealth } from './health';
 import { maybeSaint, sermonEnd } from './faith';
 import { verdict } from './crime';
-import { memorialEnd } from './exped';
+import { memorialEnd, partyLoses } from './exped';
 import { passHeirloom } from './player';
 import { ask } from './ask';
 import { getRel, think } from './mood';
@@ -190,6 +190,7 @@ function comeOfAge(c: Colony, p: Pawn, r: Rand): void {
 export function die(c: Colony, p: Pawn, cause: string, by?: Id): void {
   if (p.gone) return;
   p.gone = true;
+  if (c.exp && c.exp.l.length) partyLoses(c, p.id);
   const d = toDead(c, p, cause, by);
   c.dead.push(d);
   log(c, 'death', p.id, by, cause);

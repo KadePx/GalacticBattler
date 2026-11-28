@@ -578,7 +578,9 @@ export class MapView {
       else v.mark.position.set(0, -5);
       const say = p.say;
       const age = say ? tf - say[2] : 99;
-      const talking = !!say && age > -1.5 && age < TICKS_PER_HOUR;
+      // (in a procession nobody's talk or name is shown but the two it is for: the garland or the bier says the rest)
+      const filed = p.act.why === 'procession' && !(c.gath?.k === 'wedding' && (p.id === c.gath.a || p.id === c.gath.o));
+      const talking = !!say && age > -1.5 && age < TICKS_PER_HOUR && p.act.why !== 'procession';
       if (talking && say) {
         const bk = say[0] + say[3];
         if (bk !== v.bubbleKey) { v.bubbleKey = bk; drawBubble(v.bubble, say[0], !!say[3]); }
@@ -596,7 +598,8 @@ export class MapView {
         v.held.position.set(6.2 * v.size * boost, v.fig.position.y + 3 * v.size);
         // tools swing while the work goes on; at rest they lean
         const working = !moving && p.act.k === 'work' && c.tick >= p.act.ta;
-        v.held.rotation = working && SWINGING.has(hk) ? -0.2 + Math.sin(this.time * 0.012 + p.id) * 0.7 : p.act.k === 'fight' && !moving ? Math.sin(this.time * 0.02 + p.id) * 0.6 : hk[0] === 'x' ? 0 : 0.18;
+        // (work with no swing to it still has its own small stir: a ladle going round, a spear at drill, a basket shifted)
+        v.held.rotation = working ? (SWINGING.has(hk) ? -0.2 + Math.sin(this.time * 0.012 + p.id) * 0.7 : p.act.w === 'guard' && p.act.d === 1 ? 0.5 + Math.sin(this.time * 0.01 + p.id) * 0.8 : 0.18 + Math.sin(this.time * 0.006 + p.id) * 0.32) : p.act.k === 'fight' && !moving ? Math.sin(this.time * 0.02 + p.id) * 0.6 : hk[0] === 'x' ? 0 : 0.18;
       }
       // what they are up to: shown beside them, faded while they walk there
       // (those walking in a procession carry no badge: the garland or the bier says what they are about)
@@ -608,7 +611,7 @@ export class MapView {
         v.act.position.set(11, talking ? 5 : 2);
         v.act.scale.set(1.45);
         // a tool in use swings a little
-        v.act.rotation = !moving && SWINGS.has(ak) ? Math.sin(this.time * 0.012 + p.id) * 0.45 : 0;
+        v.act.rotation = moving ? 0 : SWINGS.has(ak) ? Math.sin(this.time * 0.012 + p.id) * 0.45 : ak[0] === 'w' ? Math.sin(this.time * 0.006 + p.id) * 0.22 : 0;
       }
       v.over.position.set(v.x, v.y - (asleep ? 6 : 10 * v.size * boost + 2));
       v.over.scale.set(overScale);
@@ -620,7 +623,7 @@ export class MapView {
       const isSel = p.id === this.selected;
       if (isSel) sel = v;
       if (p.id === this.mineId) mine = v;
-      v.label.visible = showNames || isSel || p.id === this.followId || p.id === this.mineId || (!!p.owner && s >= 0.75);
+      v.label.visible = (showNames && !filed) || isSel || p.id === this.followId || p.id === this.mineId || (!!p.owner && s >= 0.75);
       // the one you are looking at also says what they are doing; someone a player made wears a gold diamond
       const name = p.owner ? `◆ ${p.first}` : p.first;
       const want = isSel || p.id === this.followId ? `${name} · ${actText(c, p).toLowerCase()}` : name;

@@ -1,16 +1,16 @@
 // Daily life in the streets, drawn: hens scratching in the yards, a dog by a door and a cat on a
 // step, pigeons round the fountain that go up when someone walks through them, children passing a
-// ball and bowling a hoop, a warden walking the wall, a wedding party with its garland and a funeral
-// with its bier, sheaves standing in a reaped field, and the street lamps coming on one by one as the
-// lamplighter reaches them. What is where comes from streetlife.ts (the colony and the clock, nothing
+// ball and bowling a hoop, a warden walking the wall, someone sweeping a step or splitting wood or
+// off to the well with the buckets, the small business of a game or a meal or a lesson, a wedding
+// party with its garland and a funeral with its bier, sheaves standing in a reaped field, and the
+// street lamps coming on one by one as the lamplighter reaches them. What is where comes from streetlife.ts (the colony and the clock, nothing
 // kept); this file only draws it, and only what is on screen.
 
 import type { Graphics } from 'pixi.js';
-import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
-import { marketOpen } from '../sim/market';
+import { TICKS_PER_HOUR } from '../config';
 import { B, type Colony, type Pawn } from '../sim/types';
 import type { Bounds, FxPawn } from './fx';
-import { FLOCK, ROOKS, beatAt, hensOut, lampOn, onBeat, pigeon, rook, rooksOut, scan, yardActor, type Actor, type Scene } from './streetlife';
+import { FLOCK, PASTIMES, ROOKS, hensOut, lampOn, pigeon, pigeonsOut, rook, rooksOut, scan, stageOf, yardActor, type Actor, type Scene, type Staged } from './streetlife';
 import { TS, hash2 } from './tiles';
 
 const INK = 0x2a1d12;
@@ -26,7 +26,9 @@ export class Street {
   private key = '';
   private stamp = -1;
   private act: Actor = { k: 'hen', x: 0, y: 0, face: 1, moving: false, u: 0, id: 0 };
-  private at = { x: 0, y: 0, moving: false };
+  private st: Staged = { k: '', x: 0, y: 0, moving: false };
+  /** who the view has staged this frame, and as what (filled as people are placed, read when the props are drawn) */
+  private staged = new Map<number, string>();
   private kids: FxPawn[] = [];
   private walkers: FxPawn[] = [];
 
@@ -69,8 +71,10 @@ export class Street {
 
   /**
    * Where the view shows someone, when that is not quite where the colony has them: a warden on
-   * watch walks the wall by his tower, the pairs of a procession walk side by side, two on a bench
-   * sit apart, and children at play outdoors scamper about their spot.
+   * watch walks the wall by his tower, a teacher the front of the class, a toddler crawls about the
+   * room, someone at home at their ease is out at a chore by the door or on the way to the well (all
+   * from streetlife's stageOf); the pairs of a procession walk side by side, two on a bench sit
+   * apart, and children at play outdoors scamper about their spot.
    */
   shift(c: Colony, p: Pawn, tf: number, time: number, pos: { x: number; y: number; moving: boolean }): void {
     const a = p.act;
@@ -88,11 +92,14 @@ export class Street {
       pos.y += (dx / len) * side * 7;
       return;
     }
-    if (a.k === 'work') {
-      if (!this.scene || !onBeat(p, tf)) return;
-      const beat = this.scene.beats.get(a.b as number);
-      if (beat && beatAt(beat, p, tf, this.at)) { pos.x = this.at.x; pos.y = this.at.y; pos.moving = true; }
-    } else if (a.k === 'relax') {
+    if (this.scene && stageOf(c, p, tf, this.scene, this.st)) {
+      pos.x = this.st.x;
+      pos.y = this.st.y;
+      pos.moving = this.st.moving;
+      this.staged.set(p.id, this.st.k);
+      return;
+    }
+    if (a.k === 'relax') {
       if (a.why === 'bench' && tf >= a.ta) { pos.x += p.id & 1 ? 5 : -5; pos.y -= 2; }
     } else if (a.k === 'play') {
       if (a.why !== 'child' || tf < a.ta || c.sb[a.ty * c.w + a.tx] !== 0) return;
@@ -111,7 +118,7 @@ export class Street {
     lit.clear();
     const s = this.rescan(c, time, ground);
     ground.visible = zoom >= 0.45;
-    if (zoom < 0.45) return;
+    if (zoom < 0.45) { this.staged.clear(); return; }
     const seenT = (x: number, y: number, pad = 1): boolean => x >= view.x0 - pad && x <= view.x1 + pad && y >= view.y0 - pad && y <= view.y1 + pad;
     const a = this.act;
     // from far off the small creatures are drawn as a couple of dabs each: nothing finer would show
@@ -131,9 +138,7 @@ export class Street {
     }
 
     // ---- pigeons round the fountain (not on market day, when the square is full of stalls) ----
-    const day = Math.floor(tf / TICKS_PER_DAY);
-    const winterStorm = c.weather >= 2 && c.temp < 0;
-    if (hens && !winterStorm && !marketOpen(c)) {
+    if (pigeonsOut(c, tf)) {
       for (const at of s.flocks) {
         const fx = at % c.w;
         const fy = Math.floor(at / c.w);
@@ -150,7 +155,6 @@ export class Street {
         for (let k = 0; k < FLOCK; k++) if (pigeon(c, at, k, tf, near, a)) { if (far) dab(a.lift ? top : low, a, 0x8d95a3, 3, time); else bird(a.lift ? top : low, a, time); }
       }
     }
-    void day;
 
     // ---- rooks on the towers ----
     if (rooksOut(c, tf)) {
@@ -163,11 +167,18 @@ export class Street {
     // ---- children's games, the procession, the lamplighter at a lamp ----
     const kids = this.kids;
     const walkers = this.walkers;
+    // the little things in people's hands show only from fairly close
+    const props = zoom >= 0.7;
     kids.length = 0;
     walkers.length = 0;
     for (const p of pawns) {
       if (p.why === 'procession' || p.why === 'form') { if (p.why === 'procession' ? p.moving : tf >= p.ta) walkers.push(p); continue; }
       if (p.x < view.x0 * TS || p.x > view.x1 * TS || p.y < view.y0 * TS || p.y > view.y1 * TS) continue;
+      if (props && tf >= p.ta) {
+        const sk = this.staged.get(p.id);
+        if (sk) chore(low, top, sk, p, time);
+        else if (!p.moving && (p.k === 'study' || PASTIMES.has(p.k))) pastime(top, p.k, p, time, c.gath?.k);
+      }
       if (p.kid && !p.moving && tf >= p.ta) kids.push(p);
       else if (p.k === 'lamps' && !p.moving && tf >= p.ta && p.d !== undefined && s.lamps[p.d] !== undefined) {
         // the pole goes up, the wick catches
@@ -181,6 +192,7 @@ export class Street {
         lit.circle(lx, ly, 6 + u * 6).fill({ color: 0xffc24a, alpha: 0.12 + 0.15 * u * fl });
       }
     }
+    this.staged.clear();
     this.games(top, kids, time);
     if (walkers.length >= 2 && c.gath) this.procession(low, top, c.gath.k === 'funeral', walkers, time);
 
@@ -324,6 +336,199 @@ export class Street {
 }
 
 const GRP: FxPawn[] = [];
+
+/** What someone staged by the view has in their hands: a broom, an axe at the block, grain for the hens, a yoke of buckets, a teacher's pointer. */
+function chore(low: Graphics, g: Graphics, k: string, p: FxPawn, time: number): void {
+  const x = p.x;
+  const y = p.y;
+  const s = p.size;
+  const ph = time * 0.001 + p.id * 0.7;
+  switch (k) {
+    case 'sweep': {
+      // the broom goes to and fro across the step, a little dust ahead of it
+      const u = Math.sin(ph * 5);
+      const bx = x + 9 * s + u * 5;
+      const by = y + 7 * s;
+      g.moveTo(x + 4 * s, y - 3 * s).lineTo(bx, by).stroke({ width: 1.3, color: 0x8a6440, cap: 'round' });
+      g.poly([bx - 3, by - 1, bx + 3, by - 1, bx + 4 + u, by + 3, bx - 4 + u, by + 3]).fill(0xd9b24a).stroke({ width: 0.5, color: 0x7a5a1e });
+      low.circle(bx + u * 5, by + 3, 1.6 + Math.abs(u) * 1.4).fill({ color: 0xc9b48a, alpha: 0.35 * Math.abs(u) });
+      break;
+    }
+    case 'chop': {
+      // the block, the billet on it, and the axe coming down
+      const bx = x + 12 * s;
+      const by = y + 5 * s;
+      const sw = Math.abs(Math.sin(ph * 3.2));
+      low.ellipse(bx + 0.6, by + 3, 5.5, 2).fill({ color: 0x0b1220, alpha: 0.2 });
+      g.roundRect(bx - 4, by - 2, 8, 5, 1.5).fill(0x8a6440).stroke({ width: 0.7, color: INK });
+      g.rect(bx - 1.5, by - 5, 3, 3.4).fill(0xd9b88a).stroke({ width: 0.5, color: INK });
+      const ang = -2.3 + sw * 1.9;
+      const hx = x + 5 * s;
+      const hy = y - 3 * s;
+      const ax = hx + Math.cos(ang) * 10;
+      const ay = hy + Math.sin(ang) * 10;
+      g.moveTo(hx, hy).lineTo(ax, ay).stroke({ width: 1.4, color: 0x8a6440, cap: 'round' });
+      g.poly([ax - 1, ay - 2.4, ax + 3.4, ay - 1.4, ax + 3, ay + 2.4, ax - 1, ay + 1]).fill(0xc9ced8).stroke({ width: 0.5, color: INK });
+      if (sw > 0.85) for (let n = 0; n < 3; n++) g.circle(bx - 4 + n * 4, by - 6 - n % 2 * 2, 0.9).fill(0xd9b88a);
+      // what is split already, stacked beside
+      for (let n = 0; n < 3; n++) low.roundRect(bx + 6, by + 1 - n * 2.4, 6, 2, 1).fill(0xa47a4c).stroke({ width: 0.4, color: INK });
+      break;
+    }
+    case 'hens':
+      // a handful of grain thrown, again and again
+      for (let n = 0; n < 4; n++) {
+        const q = (ph * 0.9 + n * 0.25) % 1;
+        const a = -0.6 + n * 0.5;
+        g.circle(x + 6 * s + Math.cos(a) * q * 14, y - 2 * s + Math.sin(a) * q * 9 + q * q * 9, 0.8).fill({ color: 0xe6c45c, alpha: 1 - q * 0.6 });
+      }
+      break;
+    case 'water': {
+      // a yoke across the shoulders, a bucket swinging at each end
+      const swing = p.moving ? Math.sin(time * 0.012 + p.id) * 1.6 : 0;
+      const yy = y - 5 * s;
+      g.moveTo(x - 9 * s, yy).lineTo(x + 9 * s, yy).stroke({ width: 1.4, color: 0x8a6440, cap: 'round' });
+      for (const sx of [-1, 1]) {
+        const bx = x + sx * 9 * s + swing * sx;
+        g.moveTo(x + sx * 9 * s, yy).lineTo(bx, yy + 5).stroke({ width: 0.6, color: INK });
+        g.poly([bx - 2.6, yy + 5, bx + 2.6, yy + 5, bx + 2.1, yy + 9.4, bx - 2.1, yy + 9.4]).fill(0x8a6440).stroke({ width: 0.6, color: INK });
+        g.rect(bx - 2, yy + 5.4, 4, 1).fill(0x6fa8d0);
+      }
+      break;
+    }
+    case 'teach': {
+      // the pointer, tapping along the lesson
+      const a = -1.2 + Math.sin(ph * 3) * 0.5;
+      g.moveTo(x + 5 * s, y - 3 * s).lineTo(x + 5 * s + Math.cos(a) * 11, y - 3 * s + Math.sin(a) * 11).stroke({ width: 1, color: 0x5a3d28, cap: 'round' });
+      break;
+    }
+    default: break;
+  }
+}
+
+/** The small life in a game, a meal, a book or a talk: one little thing moving beside whoever is at it. */
+function pastime(g: Graphics, k: string, p: FxPawn, time: number, gath: string | undefined): void {
+  const x = p.x;
+  const y = p.y;
+  const s = p.size;
+  const ph = time * 0.001 + p.id * 0.61;
+  switch (k) {
+    case 'chess': case 'dice': case 'shop': case 'sell': {
+      // a piece moved, a die thrown, a coin counted out: something small hops on the table
+      const q = (ph * (k === 'chess' ? 0.35 : 0.9)) % 1;
+      if (q > 0.45) break;
+      const u = q / 0.45;
+      const col = k === 'chess' ? 0xf4efe4 : k === 'dice' ? 0xf4efe4 : 0xffd36a;
+      const bx = x + 8 * s + u * 5;
+      const by = y + 2 * s - Math.sin(u * Math.PI) * 6;
+      if (k === 'chess' || k === 'dice') g.rect(bx - 1.3, by - 1.3, 2.6, 2.6).fill(col).stroke({ width: 0.5, color: INK });
+      else g.circle(bx, by, 1.5).fill(col).stroke({ width: 0.5, color: 0x7a5a1e });
+      break;
+    }
+    case 'darts': {
+      const q = (ph * 0.6) % 1;
+      if (q > 0.3) break;
+      const u = q / 0.3;
+      const dir = p.id & 1 ? 1 : -1;
+      const bx = x + dir * (6 + u * 16);
+      const by = y - 5 * s - Math.sin(u * Math.PI) * 3;
+      g.moveTo(bx - dir * 4, by).lineTo(bx, by).stroke({ width: 1.1, color: 0xe9e3d5, cap: 'round' });
+      g.poly([bx - dir * 4, by - 1.4, bx - dir * 6, by, bx - dir * 4, by + 1.4]).fill(0xd2445a);
+      break;
+    }
+    case 'music': case 'perform': case 'listen':
+      // notes drifting up from the player (those listening tap along more quietly)
+      for (let n = 0; n < (k === 'listen' ? 1 : 2); n++) {
+        const q = (ph * 0.45 + n * 0.5) % 1;
+        const nx = x + 7 * s + Math.sin(q * 6 + n * 2) * 3 + q * 4;
+        const ny = y - 6 * s - q * 13;
+        g.circle(nx, ny, 1.4).fill({ color: 0x2a2f3d, alpha: 1 - q });
+        g.moveTo(nx + 1.2, ny).lineTo(nx + 1.2, ny - 4).lineTo(nx + 3, ny - 3.2).stroke({ width: 0.8, color: 0x2a2f3d, alpha: 1 - q });
+      }
+      break;
+    case 'read': case 'study': {
+      // a page turning, or the pen going along the line
+      if (k === 'read') {
+        const q = (ph * 0.3) % 1;
+        if (q < 0.25) { const w = Math.cos((q / 0.25) * Math.PI) * 3; g.poly([x + 7 * s, y - 1, x + 7 * s + w, y - 2, x + 7 * s + w, y + 3, x + 7 * s, y + 4]).fill(0xf4efe4).stroke({ width: 0.4, color: INK }); }
+      } else {
+        const u = (ph * 0.8) % 1;
+        const px = x + 4 * s + u * 6;
+        const py = y + 5 * s + Math.sin(u * 25) * 0.7;
+        g.moveTo(px, py).lineTo(px + 2.4, py - 5).stroke({ width: 0.9, color: 0xf4efe4, cap: 'round' });
+        g.circle(px, py, 0.5).fill(INK);
+      }
+      break;
+    }
+    case 'pray': case 'mourn': case 'attend': {
+      if (k === 'attend' && (gath === 'feast' || gath === 'festival')) {
+        // a cup raised
+        const up = Math.max(0, Math.sin(ph * 1.7)) * 5;
+        g.roundRect(x + 6 * s, y - 2 * s - up, 3.4, 4, 1).fill(0xc9a27a).stroke({ width: 0.5, color: INK });
+        break;
+      }
+      // a candle's worth of light going up: small motes
+      for (let n = 0; n < 2; n++) {
+        const q = (ph * 0.3 + n * 0.5) % 1;
+        g.circle(x + (n ? 5 : -4) * s + Math.sin(q * 5 + n) * 1.5, y - 8 * s - q * 10, 0.9).fill({ color: k === 'mourn' ? 0xbfd3e6 : 0xffe9a8, alpha: (1 - q) * 0.8 });
+      }
+      break;
+    }
+    case 'eat': {
+      // the spoon between bowl and mouth
+      const u = (Math.sin(ph * 3.4) + 1) / 2;
+      g.roundRect(x + 5 * s, y + 3 * s, 5, 2.6, 1.2).fill(0xb48a54).stroke({ width: 0.5, color: INK });
+      g.moveTo(x + 7 * s, y + 3 * s - u * 7).lineTo(x + 8.5 * s, y + 0.5 * s - u * 7).stroke({ width: 0.9, color: 0xc9ced8, cap: 'round' });
+      break;
+    }
+    case 'drink': {
+      const up = Math.max(0, Math.sin(ph * 1.4)) * 4.5;
+      g.roundRect(x + 6 * s, y - 1 * s - up, 3.6, 4.2, 1).fill(0xc9a27a).stroke({ width: 0.5, color: INK });
+      if (up < 0.5) g.ellipse(x + 7.8 * s, y - 1.4 * s, 1.8, 0.8).fill(0xf6f1e4);
+      break;
+    }
+    case 'bathe':
+      for (let n = 0; n < 3; n++) {
+        const q = (ph * 0.8 + n / 3) % 1;
+        const a = -2.4 + n * 0.8;
+        g.circle(x + Math.cos(a) * q * 9, y - 2 + Math.sin(a) * q * 9 + q * q * 7, 0.9).fill({ color: 0xbfe0f2, alpha: 1 - q });
+      }
+      break;
+    case 'hobby':
+      // shavings from whatever they are whittling
+      for (let n = 0; n < 2; n++) {
+        const q = (ph * 0.7 + n * 0.5) % 1;
+        g.rect(x + 6 * s + q * 5 * (n ? 1 : -0.4), y + 1 * s + q * q * 8, 1.6, 0.8).fill({ color: 0xd9b88a, alpha: 1 - q });
+      }
+      break;
+    case 'relax':
+      if (p.why !== 'bench') {
+        // at ease by the fire: a pipe going
+        for (let n = 0; n < 2; n++) {
+          const q = (ph * 0.25 + n * 0.5) % 1;
+          g.circle(x + 6 * s + q * 3, y - 6 * s - q * 11, 1 + q * 2.2).fill({ color: 0xe9edf2, alpha: (1 - q) * 0.4 });
+        }
+        break;
+      }
+      talk(g, p, ph);
+      break;
+    default:
+      talk(g, p, ph);
+  }
+}
+
+/** Talk: the little marks of speech beside the head, coming and going as they have their say. */
+function talk(g: Graphics, p: FxPawn, ph: number): void {
+  if (Math.sin(ph * 2.2) < -0.2) return;
+  const sx = p.id & 1 ? 1 : -1;
+  const x = p.x + sx * 7 * p.size;
+  const y = p.y - 9 * p.size;
+  for (let n = 0; n < 3; n++) {
+    const a = -0.9 + n * 0.55;
+    const r0 = 2.5;
+    const r1 = 5 + Math.sin(ph * 7 + n) * 1.2;
+    g.moveTo(x + sx * Math.cos(a) * r0, y + Math.sin(a) * r0).lineTo(x + sx * Math.cos(a) * r1, y + Math.sin(a) * r1).stroke({ width: 0.9, color: 0xf4efe4, alpha: 0.8, cap: 'round' });
+  }
+}
 const USED: number[] = [];
 
 /** A small creature seen from far off: a body and a head, or a pair of wings if it is in the air. */

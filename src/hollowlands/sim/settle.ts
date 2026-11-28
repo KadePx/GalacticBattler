@@ -138,7 +138,8 @@ export function importPawns(c: Colony, msg: SettlerMsg, r: Rand): Id {
   for (const p of msg.pawns) map.set(p.id, c.nextId++);
   const m = (id: Id): Id => map.get(id) ?? 0;
   for (const old of msg.pawns) {
-    const p = normPawn(old);
+    // (a copy all the way down: the message is kept by whoever carried it, and must not change as the newcomer's skills grow)
+    const p = normPawn(JSON.parse(JSON.stringify(old)) as Pawn);
     p.id = m(old.id);
     p.mo = m(p.mo); p.fa = m(p.fa); p.sp = m(p.sp); p.crush = m(p.crush);
     const rel: Pawn['rel'] = {};

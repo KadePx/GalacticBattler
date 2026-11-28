@@ -1,13 +1,16 @@
 // The small life of the streets, worked out from the colony as it stands and the clock: hens, dogs
 // and cats in the yards beside homes, pigeons round the fountain, where a warden on the wall walks
-// his beat, which fields are being reaped and where the sheaves stand, which street lamps are lit.
+// his beat, which fields are being reaped and where the sheaves stand, which street lamps are lit,
+// and what the people who are at home, at school or at their ease are seen to be doing there (a
+// toddler crawling about, someone sweeping the step or fetching water from the well).
 // Nothing here is stored in the colony and nothing here draws: these are pure functions of the
 // colony and the tick, so two people watching the same town see the same hen in the same place, and
 // a test can count what is moving without a screen. street.ts draws what this works out.
 
-import { DAYS_PER_SEASON, TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../config';
 import { CROPS, HOMES, cells, shapeOf } from '../sim/data/buildings';
 import { marketOpen } from '../sim/market';
+import { STAGE, stage } from '../sim/pawn';
 import { lampLit, lampRound } from '../sim/street';
 import { B, F, T, type Bld, type Colony, type Pawn } from '../sim/types';
 import { TS, hash2 } from './tiles';
@@ -20,8 +23,15 @@ export interface Yard { b: number; x: number; y: number; w: number; h: number; k
 export interface Beat { xs: number[]; ys: number[]; cum: number[]; len: number; top: boolean }
 /** A field being reaped (or just reaped): the bare tiles the sheaves stand on, and what was grown. */
 export interface Reaped { b: number; tiles: number[]; veg: boolean; cx: number; cy: number }
+/** What the view needs to know about a home for the chores done at its door: the tile outside the door, a tile beside that, its hens (if it keeps any), and its id. */
+export interface HomeSpot { b: number; door: number; side: number; hens: Yard | null }
 export interface Scene {
   yards: Yard[];
+  homes: Map<number, HomeSpot>;
+  /** the wells people draw water from (tile index) */
+  wells: number[];
+  /** the windmills and watermills, whose sails and wheels always turn (tile index of the middle of each) */
+  mills: number[];
   beats: Map<number, Beat>;
   /** where pigeons gather: the fountain and the pump (tile index) */
   flocks: number[];
@@ -34,7 +44,7 @@ export interface Scene {
 }
 
 /** One small creature (or a guard on his beat): where it is in world pixels and what it is up to. */
-export interface Actor { k: 'hen' | 'dog' | 'cat' | 'pigeon' | 'rook' | 'patrol'; x: number; y: number; face: number; moving: boolean; /** 0..1 through whatever it does when still */ u: number; id: number; lift?: number }
+export interface Actor { k: string; x: number; y: number; face: number; moving: boolean; /** 0..1 through whatever it does when still */ u: number; id: number; lift?: number }
 
 /** Bare ground a small animal can be on: no building, no street, no water, nothing growing big. */
 function open(c: Colony, x: number, y: number): boolean {
@@ -82,7 +92,8 @@ const WALLK = new Set(['twall', 'wtower', 'tgate']);
  */
 function beatOf(c: Colony, b: Bld, kinds: Map<number, string>): Beat | null {
   const W = c.w;
-  const wallAt = (i: number): boolean => (c.st[i] === B.CWALL || c.st[i] === B.PALISADE) && kinds.get(c.sb[i]) === 'twall';
+  // (the wall-walk runs on over the little posterns and the next tower's own stonework)
+  const wallAt = (i: number): boolean => { const st = c.st[i]; return (st === B.CWALL || st === B.PALISADE || st === B.GATE || st === B.CTOWER) && c.sb[i] !== b.id && WALLK.has(kinds.get(c.sb[i]) ?? ''); };
   // the two ends of wall that meet this tower
   const starts: number[] = [];
   for (let y = b.y - 1; y <= b.y + b.h; y++) {
@@ -94,7 +105,7 @@ function beatOf(c: Colony, b: Bld, kinds: Map<number, string>): Beat | null {
     }
   }
   if (!starts.length) return null;
-  const stone = c.st[starts[0]] === B.CWALL;
+  const stone = c.st[starts[0]] !== B.PALISADE;
   const runs: number[][] = [];
   for (const s of starts.slice(0, 2)) {
     const run = [s];
@@ -127,7 +138,7 @@ function beatOf(c: Colony, b: Bld, kinds: Map<number, string>): Beat | null {
   for (const run of runs) {
     const leg: [number, number][] = [];
     for (const i of run) leg.push(pt(i));
-    if (leg.length >= 2) legs.push(leg);
+    if (leg.length >= 1) legs.push(leg);
   }
   if (!legs.length) return null;
   // where he stands when he is not walking: the tower's own floor (or the gateway)
@@ -145,6 +156,30 @@ function beatOf(c: Colony, b: Bld, kinds: Map<number, string>): Beat | null {
   const cum = [0];
   for (let k = 1; k < xs.length; k++) cum.push(cum[k - 1] + Math.sqrt((xs[k] - xs[k - 1]) ** 2 + (ys[k] - ys[k - 1]) ** 2));
   return { xs, ys, cum, len: cum[cum.length - 1], top: stone };
+}
+
+/** Towers with rooks on them, at most. */
+const MAX_ROOSTS = 7;
+
+/** The tile outside a home's door, and a clear tile beside that one (for the chopping block). */
+function doorSpot(c: Colony, b: Bld): HomeSpot {
+  const W = c.w;
+  const out: HomeSpot = { b: b.id, door: -1, side: -1, hens: null };
+  for (const q of cells(shapeOf(b))) {
+    const x = b.x + q.dx;
+    const y = b.y + q.dy;
+    if (c.st[y * W + x] !== B.DOOR) continue;
+    for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      const i = (y + dy) * W + x + dx;
+      if (c.sb[i] === 0 && passable(c, i) && c.st[i] !== B.TILLED) {
+        out.door = i;
+        // beside the step, along the wall
+        for (const j of dx ? [i + W, i - W] : [i + 1, i - 1]) if (c.sb[j] === 0 && passable(c, j) && c.st[j] === B.NONE && c.ter[j] !== T.PATH && c.ter[j] !== T.SHALLOW) { out.side = j; break; }
+        return out;
+      }
+    }
+  }
+  return out;
 }
 
 /** The fields being reaped now, or reaped in the last day and not yet sown again. */
@@ -179,33 +214,45 @@ export function scan(c: Colony): Scene {
   const yards: Yard[] = [];
   const beats = new Map<number, Beat>();
   const roosts: number[] = [];
+  const homes = new Map<number, HomeSpot>();
+  const towers: Bld[] = [];
+  const mills: number[] = [];
   const kinds = new Map<number, string>();
   for (const b of c.blds) if (b.built) kinds.set(b.id, b.k);
   for (const b of c.blds) {
     if (!b.built) continue;
     if (HOME.has(b.k)) {
       // not every home keeps animals, and nobody keeps them at an empty house
+      if (!b.beds.some((x) => x)) continue;
+      const spot = doorSpot(c, b);
+      homes.set(b.id, spot);
       const roll = hash2(b.id, 7, 61);
-      if (roll > 0.86 || !b.beds.some((x) => x)) continue;
+      if (roll > 0.86) continue;
       const y = yardOf(c, b);
       if (!y) continue;
       const k = roll < 0.56 ? 'hen' : roll < 0.71 ? 'dog' : 'cat';
-      yards.push({ b: b.id, x: y[0], y: y[1], w: y[2], h: y[3], k, n: k === 'hen' ? 2 + Math.floor(hash2(b.id, 8, 62) * 3) : 1 });
-    } else if ((b.k === 'wtower' || b.k === 'tgate') && !b.br) {
+      const yard: Yard = { b: b.id, x: y[0], y: y[1], w: y[2], h: y[3], k, n: k === 'hen' ? 2 + Math.floor(hash2(b.id, 8, 62) * 3) : 1 };
+      yards.push(yard);
+      if (k === 'hen') spot.hens = yard;
+    } else if ((b.k === 'wtower' || b.k === 'tgate') && !b.br && b.s !== 'tgate~p') {
       const beat = beatOf(c, b, kinds);
       if (beat) beats.set(b.id, beat);
-      // (not every tower has its pair of rooks)
-      if (hash2(b.id, 5, 59) < 0.6) roosts.push((b.x + b.w / 2) * TS, (b.y + b.h / 2) * TS);
-    }
+      if (b.k === 'wtower') towers.push(b);
+    } else if (b.k === 'windmill' || b.k === 'watermill') mills.push((b.y + (b.h >> 1)) * c.w + b.x + (b.w >> 1));
   }
+  // a few towers have their pair of rooks, never more than seven in a town: the same ones every day
+  towers.sort((a, b) => hash2(a.id, 5, 59) - hash2(b.id, 5, 59) || a.id - b.id);
+  for (const b of towers.slice(0, Math.min(MAX_ROOSTS, Math.ceil(towers.length / 3)))) roosts.push((b.x + b.w / 2) * TS, (b.y + b.h / 2) * TS);
   const flocks: number[] = [];
   const seats: number[] = [];
+  const wells: number[] = [];
   for (let i = 0; i < c.st.length; i++) {
     const s = c.st[i];
     if (s === B.FOUNTAIN || s === B.PUMP) flocks.push(i);
     else if (s === B.SEAT) seats.push(i);
+    else if (s === B.WELL) wells.push(i);
   }
-  return { yards, beats, flocks, roosts, reaped: reapedFields(c), lamps: lampRound(c), seats };
+  return { yards, homes, wells, mills, beats, flocks, roosts, reaped: reapedFields(c), lamps: lampRound(c), seats };
 }
 
 const memo = new WeakMap<Colony, { key: string; s: Scene }>();
@@ -261,6 +308,9 @@ export function yardActor(y: Yard, k: number, tf: number, out: Actor): void {
   if (x1 !== x0) out.face = x1 > x0 ? 1 : -1;
   else out.face = hash2(seed, 3, 67) < 0.5 ? 1 : -1;
 }
+
+/** Are the pigeons on the square? By day, not in a storm or in snow or hard cold, and not on market day when it is full of stalls. */
+export const pigeonsOut = (c: Colony, tf: number): boolean => hensOut(c, tf) && !(c.weather >= 2 && c.temp < 0) && !marketOpen(c);
 
 /** How many pigeons keep to a fountain. */
 export const FLOCK = 6;
@@ -368,20 +418,18 @@ export function onBeat(p: Pawn, tf: number): boolean {
 }
 
 /**
- * Where a warden is on his beat at tick tf: he sets out from his post when he arrives, walks the
- * wall both ways at a slow pace, and is back at the post as his turn ends. Returns false if he
- * is standing at the post.
+ * Where someone is on a there-and-back walk at tick tf, between arriving (ta) and the end of their turn
+ * (t1): a whole number of rounds at about `pace` tiles a tick, with `rest` ticks stood still at the
+ * start of each. Returns false while they stand.
  */
-export function beatAt(beat: Beat, p: Pawn, tf: number, out: { x: number; y: number; moving: boolean }): boolean {
-  const a = p.act;
-  const dur = a.t1 - a.ta;
-  // about a tile in two seconds; a whole number of rounds in the turn, with a rest at the post between
-  const round = beat.len / (TS * 3.2) + REST;
+function loopAt(beat: Beat, ta: number, t1: number, tf: number, pace: number, rest: number, out: { x: number; y: number; moving: boolean }): boolean {
+  const dur = t1 - ta;
+  const round = beat.len / (TS * pace) + rest;
   const n = Math.max(1, Math.round(dur / round));
-  const t = ((tf - a.ta) / dur) * n;
+  const t = ((tf - ta) / dur) * n;
   const u = (t - Math.floor(t)) * round;
-  const walk = round - REST;
-  if (u >= walk) return false;
+  const walk = round - rest;
+  if (u >= walk || tf >= t1) return false;
   const d = (u / walk) * beat.len;
   let k = 1;
   while (k < beat.cum.length - 1 && beat.cum[k] < d) k++;
@@ -393,17 +441,157 @@ export function beatAt(beat: Beat, p: Pawn, tf: number, out: { x: number; y: num
   return true;
 }
 
+/**
+ * Where a warden is on his beat at tick tf: he sets out from his post when he arrives, walks the
+ * wall both ways at a slow pace, and is back at the post as his turn ends. Returns false if he
+ * is standing at the post.
+ */
+export function beatAt(beat: Beat, p: Pawn, tf: number, out: { x: number; y: number; moving: boolean }): boolean {
+  return loopAt(beat, p.act.ta, p.act.t1, tf, 3.2, REST, out);
+}
+
+// ---------------------------------------------------------------- what people are seen doing
+
+/** Someone the view shows a little off where the colony has them, or busy with something: what, and where (world pixels). */
+export interface Staged { k: string; x: number; y: number; moving: boolean }
+
+/** Things done at ease that the view gives a little life of their own (see street.ts for each). */
+export const PASTIMES = new Set(['chess', 'dice', 'darts', 'music', 'perform', 'listen', 'read', 'pray', 'eat', 'drink', 'bathe', 'hobby', 'relax', 'visit', 'court', 'shop', 'sell', 'attend', 'mourn']);
+/** Work with a tool that already swung before the street scenes (the rest is given a stir of its own). */
+const SWUNG = new Set(['wood', 'mine', 'build', 'smith', 'farm']);
+
+const waterWays = new WeakMap<Colony, Map<string, Beat | null>>();
+/** The way from a home's door to the nearest well and back (if there is one within a short walk). */
+function waterWay(c: Colony, h: HomeSpot, s: Scene): Beat | null {
+  if (h.door < 0 || !s.wells.length) return null;
+  const W = c.w;
+  const dx = h.door % W;
+  const dy = Math.floor(h.door / W);
+  let well = -1;
+  let bd = 17;
+  for (const i of s.wells) {
+    const d = Math.abs((i % W) - dx) + Math.abs(Math.floor(i / W) - dy);
+    if (d < bd) { bd = d; well = i; }
+  }
+  if (well < 0 || bd < 3) return null;
+  let m = waterWays.get(c);
+  if (!m) waterWays.set(c, (m = new Map()));
+  const key = `${h.door}:${well}:${c.blds.length}`;
+  let got = m.get(key);
+  if (got === undefined) {
+    // (to the open tile beside the well, not onto it)
+    let end = -1;
+    for (const j of [well + 1, well - 1, well + W, well - W]) if (passable(c, j) && c.sb[j] === 0) { end = j; break; }
+    const path = end >= 0 ? route(c, dx, dy, end % W, Math.floor(end / W)) : null;
+    got = null;
+    if (path && path.length >= 2 && path.length < 40) {
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (const i of path) { xs.push((i % W + 0.5) * TS); ys.push((Math.floor(i / W) + 0.5) * TS); }
+      for (let k = path.length - 2; k >= 0; k--) { xs.push(xs[k]); ys.push(ys[k]); }
+      const cum = [0];
+      for (let k = 1; k < xs.length; k++) cum.push(cum[k - 1] + Math.sqrt((xs[k] - xs[k - 1]) ** 2 + (ys[k] - ys[k - 1]) ** 2));
+      got = { xs, ys, cum, len: cum[cum.length - 1], top: false };
+    }
+    if (m.size > 200) m.clear();
+    m.set(key, got);
+  }
+  return got;
+}
+
+/**
+ * What someone at home with nothing pressing is seen doing out of doors on a fair day: sweeping the
+ * step, splitting wood beside it, throwing grain to the hens, or going to the well with the buckets.
+ * Which it is depends on who they are and when they sat down, so it does not change while they are at it.
+ */
+function chore(c: Colony, p: Pawn, tf: number, s: Scene, o: Staged): boolean {
+  const a = p.act;
+  if (!p.home || a.why === 'bench' || a.t1 - a.ta < 4 || c.weather >= 2 || c.temp < -6) return false;
+  if (c.sb[a.ty * c.w + a.tx] !== p.home) return false;
+  const hour = (((tf % TICKS_PER_DAY) + TICKS_PER_DAY) % TICKS_PER_DAY) / TICKS_PER_HOUR;
+  if (hour < 7 || hour >= 19 || stage(c, p) < STAGE.TEEN) return false;
+  const h = s.homes.get(p.home);
+  if (!h || h.door < 0 || hash2(p.id, a.t0, 90) > 0.85) return false;
+  const roll = hash2(p.id, a.t0, 91);
+  const W = c.w;
+  o.moving = false;
+  if (h.hens && roll < 0.3 && hensOut(c, tf)) {
+    o.k = 'hens';
+    o.x = (h.hens.x + h.hens.w / 2) * TS;
+    o.y = (h.hens.y + h.hens.h / 2) * TS;
+    return true;
+  }
+  if (roll < 0.6) {
+    const way = waterWay(c, h, s);
+    if (way) {
+      o.k = 'water';
+      if (!loopAt(way, a.ta, a.t1, tf, 3.6, 0.6, o)) { o.x = way.xs[0]; o.y = way.ys[0]; o.moving = false; }
+      return true;
+    }
+  }
+  if (roll < 0.8 && h.side >= 0) {
+    o.k = 'chop';
+    o.x = (h.side % W + 0.5) * TS;
+    o.y = (Math.floor(h.side / W) + 0.5) * TS;
+    return true;
+  }
+  o.k = 'sweep';
+  o.x = (h.door % W + 0.5) * TS + Math.sin(tf * 1.3 + p.id) * 4;
+  o.y = (Math.floor(h.door / W) + 0.5) * TS;
+  return true;
+}
+
+/**
+ * How the view stages someone who has arrived at what they are doing, if it does: a warden walks the
+ * wall by his post (or paces his tower, or drills in the yard), a teacher walks the front of the
+ * class, a toddler crawls about the room, someone at home at their ease is out at a chore. `o` is
+ * filled with what and where. Everything here follows from the colony and the tick alone.
+ */
+export function stageOf(c: Colony, p: Pawn, tf: number, s: Scene, o: Staged): boolean {
+  const a = p.act;
+  if (tf < a.ta || a.k === 'sleep') return false;
+  const x = (a.tx + 0.5) * TS;
+  const y = (a.ty + 0.5) * TS;
+  if (a.k === 'work') {
+    if (a.w === 'guard') {
+      if (a.d === 1) { o.k = 'drill'; o.x = x; o.y = y; o.moving = false; return true; }
+      const beat = a.b ? s.beats.get(a.b) : undefined;
+      if (beat && a.t1 - a.ta >= 6 && loopAt(beat, a.ta, a.t1, tf, 3.2, REST, o)) { o.k = 'patrol'; return true; }
+      // no wall to walk: a few paces to and fro where he stands
+      o.k = 'watch';
+      o.x = x + Math.sin(tf * 1.1 + p.id) * 6;
+      o.y = y + Math.cos(tf * 0.7 + p.id * 1.3) * 4;
+      o.moving = false;
+      return true;
+    }
+    if (a.w === 'teach' || a.w === 'preach') { o.k = 'teach'; o.x = x + Math.sin(tf * 0.9 + p.id) * 7; o.y = y; o.moving = false; return true; }
+    return false;
+  }
+  if (a.k === 'play') {
+    if (a.why !== 'baby') return false;
+    // on hands and knees round the room (never off its own tile)
+    o.k = 'toddler';
+    o.x = x + Math.sin(tf * 0.9 + p.id * 1.7) * 6;
+    o.y = y + Math.cos(tf * 0.63 + p.id * 2.3) * 4.5;
+    o.moving = false;
+    return true;
+  }
+  if (a.k === 'relax' || a.k === 'idle' || a.k === 'hobby') return chore(c, p, tf, s, o);
+  return false;
+}
+
 /** How lit a street lamp is right now (0 or 1), by its place in the lamplighter's round. */
 export function lampOn(c: Colony, tf: number, n: number): boolean {
   return lampLit(c, Math.floor(tf), n);
 }
 
-/** Is it harvest for the carts: any field with sheaves standing? */
-export const harvestOn = (s: Scene): boolean => s.reaped.length > 0;
-
 /**
  * Everything of the street scenes that is alive at tick tf, for counting: the animals in the yards,
- * the pigeons, the rooks on the towers, and the wardens walking their beats. (What colonists themselves do is in the colony.)
+ * the pigeons, the rooks on the towers, and the people the view stages or gives something to do with
+ * their hands ('patrol' a warden walking the wall, 'water' someone on the way to the well, 'toddler',
+ * 'chore' at the door, 'school' a pupil writing, 'pastime' a game or a meal or a talk, 'atwork' work
+ * that had no movement of its own before). Walking, tool-swinging and children's games are in the
+ * colony itself and are not listed here.
  */
 export function streetActors(c: Colony, tf: number, s: Scene = sceneOf(c)): Actor[] {
   const out: Actor[] = [];
@@ -416,8 +604,7 @@ export function streetActors(c: Colony, tf: number, s: Scene = sceneOf(c)): Acto
       out.push(a);
     }
   }
-  const season = Math.floor((Math.floor(tf / TICKS_PER_DAY) % (DAYS_PER_SEASON * 4)) / DAYS_PER_SEASON);
-  if (hens && !marketOpen(c) && !(season === 3 && c.weather >= 2)) {
+  if (pigeonsOut(c, tf)) {
     for (const at of s.flocks) {
       for (let k = 0; k < FLOCK; k++) {
         const a: Actor = { k: 'pigeon', x: 0, y: 0, face: 1, moving: false, u: 0, id: 0 };
@@ -434,11 +621,126 @@ export function streetActors(c: Colony, tf: number, s: Scene = sceneOf(c)): Acto
       }
     }
   }
-  const o = { x: 0, y: 0, moving: false };
+  for (const i of s.mills) out.push({ k: 'mill', x: (i % c.w + 0.5) * TS, y: (Math.floor(i / c.w) + 0.5) * TS, face: 1, moving: false, u: 0, id: i });
+  // people: those the view stages, and those it gives something to do with their hands where they are
+  const o: Staged = { k: '', x: 0, y: 0, moving: false };
   for (const p of c.pawns) {
-    if (!onBeat(p, tf)) continue;
-    const beat = s.beats.get(p.act.b as number);
-    if (beat && beatAt(beat, p, tf, o)) out.push({ k: 'patrol', x: o.x, y: o.y, face: 1, moving: true, u: 0, id: p.id });
+    const a = p.act;
+    if (tf < a.ta || a.k === 'sleep') continue;
+    if (stageOf(c, p, tf, s, o)) { out.push({ k: o.k === 'patrol' || o.k === 'toddler' || o.k === 'water' ? o.k : o.k === 'drill' || o.k === 'watch' || o.k === 'teach' ? 'atwork' : 'chore', x: o.x, y: o.y, face: 1, moving: o.moving, u: 0, id: p.id }); continue; }
+    const k = a.k === 'study' ? 'school' : PASTIMES.has(a.k) ? 'pastime' : a.k === 'work' && a.w && !SWUNG.has(a.w) ? 'atwork' : '';
+    if (k) out.push({ k, x: (a.tx + 0.5) * TS, y: (a.ty + 0.5) * TS, face: 1, moving: false, u: 0, id: p.id });
   }
   return out;
+}
+
+/** A tile a cart can roll over: open ground, roads and paving, the gate. */
+export function passable(c: Colony, i: number): boolean {
+  const s = c.st[i];
+  if (s !== B.NONE && s !== B.PAVING && s !== B.GATE && s !== B.TILLED) return false;
+  const t = c.ter[i];
+  if (t === T.DEEP || t === T.ROCK) return false;
+  const f = c.feat[i];
+  return f === F.NONE || f === F.FLOWERS || f === F.HERB || f === F.MUSHROOM || f === F.STUMP;
+}
+
+/**
+ * The way a cart (or someone with a yoke of buckets) goes from one tile to another, keeping to the
+ * roads where it can (the view's own search, run only when the ends change, so the colony's pathing
+ * is untouched).
+ */
+export function route(c: Colony, sx: number, sy: number, tx: number, ty: number): number[] | null {
+  const W = c.w;
+  const x0 = 0;
+  const y0 = 0;
+  const x1 = W - 1;
+  const y1 = c.h - 1;
+  const bw = x1 - x0 + 1;
+  const bh = y1 - y0 + 1;
+  const n = bw * bh;
+  const dist = new Int32Array(n).fill(0x3fffffff);
+  const prev = new Int32Array(n).fill(-1);
+  // a bucket queue: steps cost 2 on a road and 5 off it
+  const buckets: number[][] = [];
+  const at = (x: number, y: number): number => (y - y0) * bw + (x - x0);
+  const s0 = at(sx, sy);
+  const goal = at(tx, ty);
+  dist[s0] = 0;
+  buckets[0] = [s0];
+  let cur = 0;
+  let left = 1;
+  while (left > 0) {
+    const bk = buckets[cur];
+    if (!bk || !bk.length) { cur++; continue; }
+    const v = bk.pop() as number;
+    left--;
+    if (dist[v] !== cur) continue;
+    if (v === goal) break;
+    const vx = (v % bw) + x0;
+    const vy = Math.floor(v / bw) + y0;
+    for (let k = 0; k < 4; k++) {
+      const nx = vx + (k === 0 ? 1 : k === 1 ? -1 : 0);
+      const ny = vy + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (nx < x0 || ny < y0 || nx > x1 || ny > y1) continue;
+      const gi = ny * W + nx;
+      const u = at(nx, ny);
+      if (u !== goal && u !== s0 && !passable(c, gi)) continue;
+      const t = c.ter[gi];
+      const road = t === T.PATH || t === T.STONE || c.wear[gi] > 40 || c.st[gi] === B.PAVING || c.st[gi] === B.GATE;
+      // (a ford through the shallows if there is no other way)
+      const nd = cur + (road ? 2 : t === T.SHALLOW ? 12 : 5);
+      if (nd >= dist[u]) continue;
+      dist[u] = nd;
+      prev[u] = v;
+      (buckets[nd] ??= []).push(u);
+      left++;
+    }
+  }
+  if (prev[goal] < 0) return null;
+  const out: number[] = [];
+  for (let v = goal; v >= 0; v = prev[v]) {
+    out.push((Math.floor(v / bw) + y0) * W + (v % bw) + x0);
+    if (v === s0) break;
+  }
+  out.reverse();
+  // drop the tiles the cart can glide past (it cuts across little jogs in the road instead of
+  // turning at every step)
+  const keep = new Uint8Array(out.length);
+  keep[0] = 1;
+  keep[out.length - 1] = 1;
+  const simplify = (a: number, b: number): void => {
+    const ax = out[a] % W;
+    const ay = Math.floor(out[a] / W);
+    const bx = out[b] % W;
+    const by = Math.floor(out[b] / W);
+    const len = Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay)) || 1;
+    let far = 0;
+    let at = -1;
+    for (let k = a + 1; k < b; k++) {
+      const px = out[k] % W;
+      const py = Math.floor(out[k] / W);
+      const d = Math.abs((bx - ax) * (ay - py) - (ax - px) * (by - ay)) / len;
+      if (d > far) { far = d; at = k; }
+    }
+    // a straight run is kept only if every tile it crosses is open
+    let clear = true;
+    if (at >= 0 && far <= 0.75) {
+      const n = Math.ceil(len * 2);
+      for (let k = 1; k < n && clear; k++) {
+        const qx = Math.round(ax + ((bx - ax) * k) / n);
+        const qy = Math.round(ay + ((by - ay) * k) / n);
+        const qi = qy * W + qx;
+        if (qi !== out[a] && qi !== out[b] && !passable(c, qi)) clear = false;
+      }
+    }
+    if (at >= 0 && (far > 0.75 || !clear)) {
+      keep[at] = 1;
+      simplify(a, at);
+      simplify(at, b);
+    }
+  };
+  simplify(0, out.length - 1);
+  const pts: number[] = [];
+  for (let k = 0; k < out.length; k++) if (keep[k]) pts.push(out[k]);
+  return pts.length >= 2 ? pts : null;
 }

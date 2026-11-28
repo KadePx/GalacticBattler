@@ -12,7 +12,10 @@ import { HOMES, cells, shapeOf } from '../sim/data/buildings';
 import { cartSlots, marketOpen } from '../sim/market';
 import { B, F, T, type Bld, type Colony } from '../sim/types';
 import type { Bounds, FxPawn } from './fx';
+import { passable, route } from './streetlife';
 import { TS, hash2 } from './tiles';
+
+export { route };
 
 /** Furniture that moves when its trade is at work (or its fire is lit). */
 const ANIM = new Set<number>([
@@ -28,7 +31,7 @@ const WASH = [0xf2ead6, 0xc9d6e3, 0xd9c08a, 0xa8b89a, 0xe3c9c9, 0x8a9ab8];
 interface Spot { x: number; y: number; s: number; b: number; k: string; ax: number; ay: number }
 interface Win { x: number; y: number; h: boolean; b: number; gl: boolean }
 interface Line { x: number; y: number; h: boolean; n: number; b: number; dye: boolean }
-interface Route { kind: 'field' | 'market'; key: string; xs: Float32Array; ys: Float32Array; cum: Float32Array; len: number; g: Container; load: Graphics; seed: number }
+interface Route { kind: 'field' | 'market' | 'haul' | 'round'; key: string; xs: Float32Array; ys: Float32Array; cum: Float32Array; len: number; g: Container; load: Graphics; seed: number }
 
 /** Steady 0..1 from two numbers. */
 const h = (a: number, b: number, k: number): number => hash2(a, b, k);
@@ -46,7 +49,9 @@ export class Life {
   private failed = new Map<string, number>();
   /** the fields with sheaves standing (their building ids), told to us by the street scenes */
   reaped: number[] = [];
-  private reapKey = '';
+  private reapWas: number[] = this.reaped;
+  /** the buildings someone is working at, as of the last time the town was re-read (for the supply carts) */
+  private worked: number[] = [];
 
   /** Forget everything (a new colony): carts are removed from their layer. */
   reset(): void {
@@ -62,11 +67,11 @@ export class Life {
   }
 
   /** Re-read where the working things, windows and washing lines are, every few seconds. */
-  private rescan(c: Colony, time: number, layer: Container): void {
+  private rescan(c: Colony, time: number, layer: Container, busy: Set<number>): void {
     const key = Math.floor(time / 4000);
-    const rk = this.reaped.join(',');
-    if (key === this.scan && c.blds.length === this.nb && layer === this.layer && rk === this.reapKey) return;
-    this.reapKey = rk;
+    if (key === this.scan && c.blds.length === this.nb && layer === this.layer && this.reaped === this.reapWas) return;
+    this.reapWas = this.reaped;
+    this.worked = [...busy];
     this.scan = key;
     this.nb = c.blds.length;
     this.layer = layer;
@@ -130,7 +135,7 @@ export class Life {
 
   /** Where the carts run: from the fields being reaped to the granary, and from the gate to the market. */
   private planRoutes(c: Colony, layer: Container, time: number): void {
-    const want = cartWants(c, this.reaped);
+    const want = cartWants(c, this.reaped, this.worked);
     const keep: Route[] = [];
     for (const w of want) {
       const key = `${w.kind}:${w.from}:${w.to}`;
@@ -150,9 +155,9 @@ export class Life {
       }
       const g = new Container();
       const body = new Graphics();
-      drawCart(body, w.kind === 'market');
+      drawCart(body, w.kind !== 'field');
       const load = new Graphics();
-      drawLoad(load, w.kind === 'market');
+      drawLoad(load, w.kind !== 'field');
       g.addChild(body, load);
       g.visible = false;
       layer.addChild(g);
@@ -174,7 +179,7 @@ export class Life {
       for (const r of this.routes) r.g.visible = false;
       return;
     }
-    this.rescan(c, time, layer);
+    this.rescan(c, time, layer, busy);
     const seenT = (x: number, y: number): boolean => x >= view.x0 - 1 && x <= view.x1 + 1 && y >= view.y0 - 1 && y <= view.y1 + 1;
     const tick = Math.floor(tf);
     const hour = ((tick % TICKS_PER_DAY) + TICKS_PER_DAY) % TICKS_PER_DAY / TICKS_PER_HOUR;
@@ -477,14 +482,16 @@ export class Life {
 
 /** Should the fire on tile i be smoking? Shared with the chimney smoke in fx. */
 /** One cart's run: what it carries, where from and to, and the field (or 7 for the market's) it belongs to. */
-export interface CartWant { kind: 'field' | 'market'; from: [number, number]; to: [number, number]; seed: number }
+export interface CartWant { kind: 'field' | 'market' | 'haul' | 'round'; from: [number, number]; to: [number, number]; seed: number }
 
 /**
  * Where carts should be running, from the colony as it stands: in from the fields that are being
  * reaped (`reaped`: their building ids; the two nearest the granary), or failing that from a near
- * field or two that someone may be working; and from the gate to the market square.
+ * field or two that someone may be working; from the stores to the two furthest places where work
+ * that needs supplying is going on (`worked`: a building site, a mill, a bakery, a forge and so on);
+ * and from the gate to the market square.
  */
-export function cartWants(c: Colony, reaped: number[]): CartWant[] {
+export function cartWants(c: Colony, reaped: number[], worked: number[] = []): CartWant[] {
   const want: CartWant[] = [];
   const gran = c.blds.find((b) => b.built && b.k === 'granary') ?? c.blds.find((b) => b.built && b.k === 'store');
   if (gran) {
@@ -503,6 +510,25 @@ export function cartWants(c: Colony, reaped: number[]): CartWant[] {
         const f = fields[(first + k) % fields.length];
         want.push({ kind: 'field', from: [f.x + (f.w >> 1), f.y + (f.h >> 1)], to: doorOf(c, gran), seed: f.id });
       }
+    }
+  }
+  const depot = c.blds.find((b) => b.built && b.k === 'store') ?? gran;
+  if (depot && worked.length) {
+    const far = (b: Bld): number => Math.abs(b.x - depot.x) + Math.abs(b.y - depot.y);
+    const list = c.blds.filter((b) => worked.includes(b.id) && b !== depot && b.k !== 'field' && (!b.built || HAULS.has(b.k)) && far(b) >= 8).sort((a, b) => far(b) - far(a) || a.id - b.id).slice(0, 2);
+    for (const b of list) want.push({ kind: 'haul', from: doorOf(c, depot), to: b.built ? doorOf(c, b) : [b.x + (b.w >> 1), b.y + b.h], seed: b.id });
+  }
+  if (depot) {
+    // the delivery cart on its round: bread and milk in the morning, firewood and water after noon, to two of the
+    // four homes furthest out, turn and turn about each half day
+    const far = (b: Bld): number => Math.abs(b.x - depot.x) + Math.abs(b.y - depot.y);
+    const homes = c.blds.filter((b) => b.built && HOME.has(b.k) && b.beds.some((x) => x) && far(b) >= 10).sort((a, b) => far(b) - far(a) || a.id - b.id);
+    const pool = homes.slice(0, 4);
+    const half = Math.floor((c.tick / TICKS_PER_DAY) * 2);
+    const first = pool.length ? Math.floor(h(half, 3, 53) * pool.length) : 0;
+    for (let k = 0; k < Math.min(2, pool.length); k++) {
+      const b = pool[(first + k * Math.max(1, pool.length >> 1)) % pool.length];
+      if (!want.some((w) => w.seed === b.id)) want.push({ kind: 'round', from: doorOf(c, depot), to: doorOf(c, b), seed: b.id });
     }
   }
   if (c.mkt) {
@@ -527,9 +553,18 @@ export function cartWants(c: Colony, reaped: number[]): CartWant[] {
   return want;
 }
 
-/** Should a cart be out on its run now? `reaped`: the field has sheaves standing; `worked`: someone is working it. */
-export function cartGoes(c: Colony, kind: 'field' | 'market', hour: number, day: number, reaped: boolean, worked: boolean): boolean {
-  if (kind === 'field') return hour >= 7 && hour < 18 && (reaped || worked) && c.weather < 3;
+/** Places whose work is fed by cart from the stores. */
+const HAULS = new Set(['windmill', 'watermill', 'bakery', 'brewery', 'smithy', 'steelworks', 'kiln', 'glassworks', 'tannery', 'dyeworks', 'workshop', 'kitchen', 'tavern', 'printer', 'jeweller', 'herbalist']);
+
+/**
+ * Should a cart be out on its run now? `reaped`: the field has sheaves standing; `worked`: someone is
+ * working there. (Through summer and autumn the field carts are out all day, as they were: there is
+ * always something to bring in.)
+ */
+export function cartGoes(c: Colony, kind: 'field' | 'market' | 'haul' | 'round', hour: number, day: number, reaped: boolean, worked: boolean): boolean {
+  if (kind === 'round') return ((hour >= 7.5 && hour < 11.5) || (hour >= 13 && hour < 17.5)) && c.weather < 3;
+  if (kind === 'field') { const season = Math.floor((day % (DAYS_PER_SEASON * 4)) / DAYS_PER_SEASON); return hour >= 7 && hour < 18 && (reaped || worked || season === 1 || season === 2) && c.weather < 3; }
+  if (kind === 'haul') return hour >= 7 && hour < 18 && worked && c.weather < 3;
   return (marketOpen(c) ? hour >= 6 && hour < 16 : hour >= 7 && hour < 18 && h(day, 1, 51) < 0.5) && c.weather < 4;
 }
 
@@ -662,114 +697,4 @@ function drawLoad(g: Graphics, market: boolean): void {
   } else {
     for (const [x, y] of [[-10, -3.5], [-10, 3.5], [-4, -3.5], [-4, 3.5], [-7, 0]] as const) sack(g, x, y, 0xd9c08a);
   }
-}
-
-/** A tile a cart can roll over: open ground, roads and paving, the gate. */
-function passable(c: Colony, i: number): boolean {
-  const s = c.st[i];
-  if (s !== B.NONE && s !== B.PAVING && s !== B.GATE && s !== B.TILLED) return false;
-  const t = c.ter[i];
-  if (t === T.DEEP || t === T.ROCK) return false;
-  const f = c.feat[i];
-  return f === F.NONE || f === F.FLOWERS || f === F.HERB || f === F.MUSHROOM || f === F.STUMP;
-}
-
-/**
- * The way a cart goes from one tile to another, keeping to the roads where it can (the view's own
- * search, run only when a cart's ends change, so the colony's pathing is untouched).
- */
-export function route(c: Colony, sx: number, sy: number, tx: number, ty: number): number[] | null {
-  const W = c.w;
-  const x0 = 0;
-  const y0 = 0;
-  const x1 = W - 1;
-  const y1 = c.h - 1;
-  const bw = x1 - x0 + 1;
-  const bh = y1 - y0 + 1;
-  const n = bw * bh;
-  const dist = new Int32Array(n).fill(0x3fffffff);
-  const prev = new Int32Array(n).fill(-1);
-  // a bucket queue: steps cost 2 on a road and 5 off it
-  const buckets: number[][] = [];
-  const at = (x: number, y: number): number => (y - y0) * bw + (x - x0);
-  const s0 = at(sx, sy);
-  const goal = at(tx, ty);
-  dist[s0] = 0;
-  buckets[0] = [s0];
-  let cur = 0;
-  let left = 1;
-  while (left > 0) {
-    const bk = buckets[cur];
-    if (!bk || !bk.length) { cur++; continue; }
-    const v = bk.pop() as number;
-    left--;
-    if (dist[v] !== cur) continue;
-    if (v === goal) break;
-    const vx = (v % bw) + x0;
-    const vy = Math.floor(v / bw) + y0;
-    for (let k = 0; k < 4; k++) {
-      const nx = vx + (k === 0 ? 1 : k === 1 ? -1 : 0);
-      const ny = vy + (k === 2 ? 1 : k === 3 ? -1 : 0);
-      if (nx < x0 || ny < y0 || nx > x1 || ny > y1) continue;
-      const gi = ny * W + nx;
-      const u = at(nx, ny);
-      if (u !== goal && u !== s0 && !passable(c, gi)) continue;
-      const t = c.ter[gi];
-      const road = t === T.PATH || t === T.STONE || c.wear[gi] > 40 || c.st[gi] === B.PAVING || c.st[gi] === B.GATE;
-      // (a ford through the shallows if there is no other way)
-      const nd = cur + (road ? 2 : t === T.SHALLOW ? 12 : 5);
-      if (nd >= dist[u]) continue;
-      dist[u] = nd;
-      prev[u] = v;
-      (buckets[nd] ??= []).push(u);
-      left++;
-    }
-  }
-  if (prev[goal] < 0) return null;
-  const out: number[] = [];
-  for (let v = goal; v >= 0; v = prev[v]) {
-    out.push((Math.floor(v / bw) + y0) * W + (v % bw) + x0);
-    if (v === s0) break;
-  }
-  out.reverse();
-  // drop the tiles the cart can glide past (it cuts across little jogs in the road instead of
-  // turning at every step)
-  const keep = new Uint8Array(out.length);
-  keep[0] = 1;
-  keep[out.length - 1] = 1;
-  const simplify = (a: number, b: number): void => {
-    const ax = out[a] % W;
-    const ay = Math.floor(out[a] / W);
-    const bx = out[b] % W;
-    const by = Math.floor(out[b] / W);
-    const len = Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay)) || 1;
-    let far = 0;
-    let at = -1;
-    for (let k = a + 1; k < b; k++) {
-      const px = out[k] % W;
-      const py = Math.floor(out[k] / W);
-      const d = Math.abs((bx - ax) * (ay - py) - (ax - px) * (by - ay)) / len;
-      if (d > far) { far = d; at = k; }
-    }
-    // a straight run is kept only if every tile it crosses is open
-    let clear = true;
-    if (at >= 0 && far <= 0.75) {
-      const n = Math.ceil(len * 2);
-      for (let k = 1; k < n && clear; k++) {
-        const qx = Math.round(ax + ((bx - ax) * k) / n);
-        const qy = Math.round(ay + ((by - ay) * k) / n);
-        const qi = qy * W + qx;
-        if (qi !== out[a] && qi !== out[b] && !passable(c, qi)) clear = false;
-      }
-    }
-    if (at >= 0 && (far > 0.75 || !clear)) {
-      keep[at] = 1;
-      simplify(a, at);
-      simplify(at, b);
-    }
-  };
-  simplify(0, out.length - 1);
-  const pts: number[] = [];
-  for (let k = 0; k < out.length; k++) if (keep[k]) pts.push(out[k]);
-  return pts.length >= 2 ? pts : null;
 }

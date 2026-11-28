@@ -695,6 +695,24 @@ function callOff(c: Colony, x: Exp, q: XParty): void {
   x.nx = dayOf(c.tick) + 6;
 }
 
+/**
+ * Someone chosen for a party that has not yet left dies or goes from the colony: they are struck from
+ * it at once (as they would be when it set out), and without its leader, or with fewer than two, it is
+ * called off.
+ */
+export function partyLoses(c: Colony, id: Id): void {
+  const x = c.exp;
+  if (!x) return;
+  for (const q of x.l.slice()) {
+    if (q.m > 1) continue;
+    const i = q.ids.indexOf(id);
+    if (i < 0 || q.pw.some((p) => p.id === id)) continue;
+    if (id === q.lead || q.ids.length <= 2) { callOff(c, x, q); continue; }
+    q.ids.splice(i, 1);
+    q.ro.splice(i, 1);
+  }
+}
+
 /** Someone walks back onto the map at the end of the road, and learns what happened while they were gone. */
 export function comeIn(c: Colony, p: Pawn, since: number): void {
   const [ex, ey] = roadEnd(c);
@@ -705,7 +723,8 @@ export function comeIn(c: Colony, p: Pawn, since: number): void {
   p.rest = Math.max(30, Math.min(p.rest, 55));
   p.soc = Math.max(p.soc, 50);
   // ties that ended while they were away
-  const sp = p.sp ? pawnById(c, p.sp) : undefined;
+  // (a partner who is away in their turn, with a party or on the road, has not gone anywhere)
+  const sp = p.sp ? pawnById(c, p.sp) ?? awayById(c, p.sp) : undefined;
   if (p.sp && sp && sp.sp !== p.id) { const rel = p.rel[sp.id]; if (rel?.k && rel.k !== 'ex') rel.k = 'ex'; think(c, p, 'dumped', sp.id); }
   if (p.sp && (!sp || sp.sp !== p.id)) p.sp = 0;
   for (let i = c.dead.length - 1; i >= 0; i--) {
