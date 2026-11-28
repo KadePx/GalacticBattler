@@ -27,6 +27,7 @@ import { dailyVisitors, stepVisitors } from './visit';
 import { dailyNature, stepNature } from './nature';
 import { dailyExped, stepExped } from './exped';
 import { dailyNeigh, stepNeigh } from './neigh';
+import { streetTick } from './street';
 import type { Colony } from './types';
 
 function daily(c: Colony): void {
@@ -73,6 +74,7 @@ export function step(c: Colony): void {
   if (c.mkt && c.mkt.t0) tickMarket(c);
   if (c.siege) dailySiege(c);
   if (c.gath && t >= c.gath.t1) endGathering(c);
+  else if (c.gath && c.gath.pr) streetTick(c);
   if (c.beasts?.length) stepWild(c);
   if (c.herd?.length) stepHerd(c);
   if (c.vis && (c.vis.l.length || c.vis.nx)) stepVisitors(c);

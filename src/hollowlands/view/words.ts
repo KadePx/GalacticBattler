@@ -38,7 +38,7 @@ const WORK: Record<string, string> = {
 const ACT: Record<string, string> = {
   idle: 'Standing about', wander: 'Wandering', sleep: 'Sleeping', eat: 'Eating', drink: 'Having a drink', relax: 'Relaxing', walk: 'Out for a walk', pray: 'Praying',
   dice: 'Playing dice', hobby: 'Busy with a hobby', play: 'Playing', visit: 'Visiting {o}', sulk: 'Sulking', binge: 'Bingeing', tantrum: 'Smashing things', rave: 'Raging',
-  court: 'Courting {o}', wed: 'Getting married', attend: 'At the gathering', mourn: 'Mourning', labour: 'In labour', rest: 'Resting in bed', perform: 'Performing',
+  court: 'Courting {o}', wed: 'Getting married', attend: 'At the gathering', lamps: 'Lighting the street lamps', mourn: 'Mourning', labour: 'In labour', rest: 'Resting in bed', perform: 'Performing',
   listen: 'Listening', stargaze: 'Watching the stars', bathe: 'Washing', work: 'Working',
   berserk: 'Attacking {o}', subdue: 'Stopping {o}',
   chess: 'Playing chess', darts: 'Throwing darts', music: 'Playing music', read: 'Reading', study: 'At school',
@@ -49,7 +49,7 @@ const ACT: Record<string, string> = {
 
 /** Lending a hand when the land turns (act.d), and a few acts done for an unusual reason (act.why). */
 const AID_ACT: Record<number, string> = { 1: 'Beating out the fire', 2: 'Heaping earth against the flood', 3: 'Searching the woods for {o}', 4: 'Clearing rubble', 5: 'Driving off the locusts', 6: 'Keeping vigil in the graveyard', 7: 'Getting rid of the cursed thing', 8: 'Going to see the fallen star' };
-const WHY_ACT: Record<string, string> = { d_leave: 'Taking the road to a neighbour', d_home: 'Home from the road', tourney: 'Watching the tournament', joust: 'Riding in the tournament', x_gather: 'Mustering at the gate with the expedition', x_leave: 'Setting out with the expedition', x_home: 'Home from the expedition', farewell: 'Seeing the expedition off', welcome: 'Welcoming the expedition home', lost: 'Lost in the woods', elope: 'Running off with {o}', dragon: 'Hiding from the dragon' };
+const WHY_ACT: Record<string, string> = { d_leave: 'Taking the road to a neighbour', d_home: 'Home from the road', tourney: 'Watching the tournament', joust: 'Riding in the tournament', form: 'Forming up for the procession', procession: 'Walking in the procession', bench: 'Sitting on a bench in the street', x_gather: 'Mustering at the gate with the expedition', x_leave: 'Setting out with the expedition', x_home: 'Home from the expedition', farewell: 'Seeing the expedition off', welcome: 'Welcoming the expedition home', lost: 'Lost in the woods', elope: 'Running off with {o}', dragon: 'Hiding from the dragon' };
 
 const GUEST_ACT: Record<string, string> = {
   minstrel: 'Listening to the minstrel', merchant: 'Looking over the merchant\'s wares', wizard: 'Hearing the wizard out', pilgrim: 'Talking faith with the pilgrims',
@@ -179,7 +179,7 @@ export function actText(c: Colony, p: Pawn): string {
   }
   s = s.replace('{o}', firstOf(c, a.o));
   // still on the way there (the tick being shown is the one just stepped: c.tick - 1)
-  if (c.tick - 1 < a.ta && a.path && a.path.length > 1 && a.k !== 'wander' && a.k !== 'walk') return 'Off to: ' + s[0].toLowerCase() + s.slice(1);
+  if (c.tick - 1 < a.ta && a.path && a.path.length > 1 && a.k !== 'wander' && a.k !== 'walk' && a.why !== 'procession') return 'Off to: ' + s[0].toLowerCase() + s.slice(1);
   return s;
 }
 

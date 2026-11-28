@@ -27,6 +27,7 @@ import { Rand, S } from './rng';
 import { addFact, attracted, favourite, insult, interact, learn, opinion } from './social';
 import { expAct } from './exped';
 import { neighAct } from './neigh';
+import { benchFor, lampAct, lampDone, processionAct } from './street';
 import { AX, type ActK, type Bld, type Colony, type Pawn, type WorkK } from './types';
 
 interface ActOpts { adj?: boolean; b?: number; o?: number; w?: WorkK; d?: number }
@@ -260,6 +261,11 @@ function leisure(c: Colony, p: Pawn, r: Rand, st: number, hour: number, why: str
         break;
       }
       case 'relax': {
+        // on a fair day, a bench in the street does as well as a chair indoors
+        if (fair && hour >= 8 && hour < 19 && r.chance(0.8)) {
+          const s = benchFor(c, p, (n) => r.int(n));
+          if (s && setAct(c, p, 'relax', s[0], s[1], dur, 'bench')) return true;
+        }
         const b = pub && (!home || r.chance(0.6)) ? pub : home!;
         const [x, y] = seat(c, p, b, 'c', r);
         if (setAct(c, p, 'relax', x, y, dur, 'relax', { b: b.id })) return true;
@@ -575,10 +581,14 @@ export function decide(c: Colony, p: Pawn): void {
   if (c.exp && c.exp.l.length && expAct(c, p, st, (k, x, y, dur, why) => setAct(c, p, k, x, y, dur, why))) return;
   // on a neighbour's business: an envoy or a knight taking the road, and the lists on a tournament day
   if (c.nb && (c.nb.go.length || c.nb.tn) && neighAct(c, p, st, (k, x, y, dur, why) => setAct(c, p, k, x, y, dur, why))) return;
+  // a wedding or a funeral walks to its place together
+  if (c.gath && (c.gath.k === 'wedding' || c.gath.k === 'funeral') && t < c.gath.t0 && processionAct(c, p, st, (k, x, y, dur, why, o) => setAct(c, p, k, x, y, dur, why, o ?? {}))) return;
   if (c.gath && t >= c.gath.t0 - 12 && t < c.gath.t1 - 4 && wantsToAttend(c, p, st) && attend(c, p, r)) return;
   if (((night && p.rest < 80) || p.rest < 22) && !p.brk && goSleep(c, p, night ? 'night' : 'tired')) return;
   // when food is rationed, only the ruler's table eats its fill
   if (p.food < (c.gov.laws.ration && p.rank < 5 ? 28 : 42) && hasFood(c) && goEat(c, p, r, 'hungry')) return;
+  // dusk: whoever's turn it is goes round the street lamps
+  if (hour >= 17 && hour < 21 && st === STAGE.ADULT && !p.brk && lampAct(c, p, (k, x, y, dur, why, o) => setAct(c, p, k, x, y, dur, why, o ?? {}))) return;
   // market day: the stallholders to their stalls, everyone else round the stalls with their silver
   if (st >= STAGE.TEEN && !p.brk && !night && marketOpen(c) && goMarket(c, p, r, (x, y, k, dur, why, o, d) => setAct(c, p, k, x, y, dur, why, { o: o || undefined, d }))) return;
 
@@ -934,6 +944,7 @@ export function finish(c: Colony, p: Pawn): void {
       break;
     }
     case 'mourn': if (a.o) think(c, p, 'visitedgrave', a.o); break;
+    case 'lamps': lampDone(c, p); break;
     case 'shop': if (a.d !== undefined && a.o) buy(c, p, a.d, a.o, !!a.b); break;
     default: break;
   }

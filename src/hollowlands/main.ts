@@ -16,6 +16,7 @@ import { createColony, step, type Colony, type Ev, type Id, type RaceK } from '.
 import { checkSpec, type PawnSpec } from './sim/create';
 import { awayById, fullName, ownedPawn, pawnById } from './sim/pawn';
 import { startNat } from './sim/nature';
+import { forceScene } from './sim/street';
 import type { Dead, Pawn, XSite } from './sim/types';
 import { callParty } from './sim/exped';
 import { WEIGHT, dateText, evText } from './text';
@@ -589,6 +590,29 @@ const hooks = {
    * (our knights ride to one), 'relief' (an ally's riders come).
    */
   neighbour: (k: string): boolean => forcePact(c, k),
+  /**
+   * Local test colonies only: bring on one of the street scenes and look at it. 'wedding' and 'funeral' go to the next morning, plan one
+   * for three hours later, and stop where the procession is forming up, just before it sets off; 'harvest' goes to the next morning with
+   * two fields half reaped (sheaves standing, the carts running); 'dusk' goes to a quarter past five, just before the lamplighter starts;
+   * 'noon' and 'night' only move the clock. Leaves the game paused: call __hl.play() to watch.
+   */
+  scene: (k: string): boolean => {
+    if (live) return false;
+    const toHour = (h: number): void => { const inDay = c.tick % TICKS_PER_DAY; const want = Math.round(h * 10); days(((want - inDay + TICKS_PER_DAY) % TICKS_PER_DAY || TICKS_PER_DAY) / TICKS_PER_DAY); };
+    setSpeed(0);
+    if (k === 'dusk' || k === 'noon' || k === 'night') {
+      toHour(k === 'dusk' ? 17.3 : k === 'noon' ? 12 : 22);
+      map.focusTile(c.cx, c.cy, 1.2);
+      return true;
+    }
+    toHour(k === 'funeral' ? 7 : k === 'harvest' ? 8 : 10);
+    const at = forceScene(c, k);
+    if (!at) return false;
+    if (at.wait > 0) days(at.wait / TICKS_PER_DAY);
+    map.refresh();
+    map.focusTile(at.x, at.y, 1.5);
+    return true;
+  },
   /** Open the world map over made-up neighbours, to look at the seals and the travellers on the roads (local test colonies only). */
   worldDemo: (): void => {
     const sites = [{ id: 'a0', name: c.name, x: 30, y: 26, founded: 0, pop: c.pawns.length }, { id: 'a1', name: 'Greywater', x: 46, y: 18, founded: 0, pop: 48 }, { id: 'a2', name: 'Thornwick', x: 16, y: 38, founded: 0, pop: 39 }, { id: 'a3', name: 'Coldharbour', x: 50, y: 40, founded: 0, pop: 61 }];

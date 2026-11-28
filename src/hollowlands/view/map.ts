@@ -20,6 +20,7 @@ import { SHAPE, stageOfAge, yearsAt } from './look';
 import { Fx, type FxPawn } from './fx';
 import { Life } from './life';
 import { NatureView } from './nature';
+import { Street } from './street';
 import { TS, bakeTerrain, blanketColor, drawFeatures, drawStructs, lightOf, paletteAt, type Pal } from './tiles';
 
 /** Chunk size in tiles. */
@@ -153,6 +154,13 @@ export class MapView {
   private natGlow = new Graphics();
   private natScreen = new Graphics();
   private life = new Life();
+  /** the streets' own small life: yard animals, pigeons, children's games, processions, the wall-walk, the lamps coming on */
+  private street = new Street();
+  private streetGround = new Graphics();
+  private streetLow = new Graphics();
+  private streetTop = new Graphics();
+  private streetLit = new Graphics();
+  private streetScene: unknown = null;
   private lifeFloor = new Graphics();
   private lifeLit = new Graphics();
   /** buildings someone is working in this frame, and those with someone awake inside */
@@ -163,7 +171,7 @@ export class MapView {
   private herdViews = new Map<number, { g: Graphics; stamp: number; face: number }>();
   private blds = new Map<number, Bld>();
   private plan = new Uint8Array(0);
-  private fires: { x: number; y: number; r: number }[] = [];
+  private fires: { x: number; y: number; r: number; lamp: number }[] = [];
   private lights: Sprite[] = [];
   private glowTex!: Texture;
   private drops: { s: Sprite; x: number; y: number; v: number }[] = [];
@@ -252,9 +260,12 @@ export class MapView {
     }
     this.night.clear().rect(0, 0, this.mw, this.mh).fill(0xffffff);
     this.overLayer.addChild(this.ring, this.mineMark);
-    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.natGround, this.bldSel, this.lifeFloor, this.pawnLayer, this.fxWork, this.canopyLayer, this.fxSky, this.natSky, this.night, this.lifeLit, this.lightLayer, this.natGlow, this.signLayer, this.overLayer);
+    this.cam.addChild(new Sprite(this.terTex), this.structLayer, this.groundLayer, this.natGround, this.bldSel, this.lifeFloor, this.streetGround, this.streetLow, this.pawnLayer, this.streetTop, this.fxWork, this.canopyLayer, this.fxSky, this.natSky, this.night, this.lifeLit, this.streetLit, this.lightLayer, this.natGlow, this.signLayer, this.overLayer);
     this.nat.reset(this.natGround);
     this.life.reset();
+    this.street.reset();
+    this.streetGround.clear();
+    this.streetScene = null;
     // the old pile graphic went with the old chunks: start a fresh one
     this.piles = new Graphics();
     this.structLayer.addChild(this.piles);
@@ -312,7 +323,7 @@ export class MapView {
       for (const p of c.pawns) {
         const v = this.views.get(p.id);
         if (!v || v.asleep) continue;
-        list.push({ id: p.id, x: v.x, y: v.y, size: v.size, moving: v.moving, k: p.act.k, w: p.act.w, ta: p.act.ta, tx: p.act.tx, ty: p.act.ty, d: p.act.d, b: p.act.b, kid: p.act.k === 'play' && stage(c, p) === STAGE.CHILD });
+        list.push({ id: p.id, x: v.x, y: v.y, size: v.size, moving: v.moving, k: p.act.k, w: p.act.w, ta: p.act.ta, tx: p.act.tx, ty: p.act.ty, d: p.act.d, b: p.act.b, kid: p.act.k === 'play' && stage(c, p) === STAGE.CHILD, why: p.act.why });
         if (!v.moving && p.act.k === 'work' && p.act.b && tf >= p.act.ta) busy.add(p.act.b);
         const inside = c.sb[v.tile];
         if (inside) homeIn.add(inside);
@@ -336,6 +347,12 @@ export class MapView {
     this.cull();
     this.lighting(tf, dt);
     this.life.draw(this.lifeFloor, this.lifeLit, c, this.fxPawns, this.busy, this.homeIn, this.time, tf, this.viewB, this.cam.scale.x, this.sky[3], this.pawnLayer);
+    this.street.draw(this.streetGround, this.streetLow, this.streetTop, this.streetLit, c, this.fxPawns, tf, this.time, this.viewB, this.cam.scale.x, this.sky[3]);
+    // the carts go where the sheaves are
+    if (this.street.scene !== this.streetScene) {
+      this.streetScene = this.street.scene;
+      this.life.reaped = this.street.scene ? this.street.scene.reaped.map((f) => f.b) : [];
+    }
     this.weather(dt);
     const [sx, sy] = this.nat.draw(this.natGround, this.natSky, this.natGlow, this.natScreen, c, tf, this.time, dt, this.viewB, this.cam.scale.x, this.app.screen.width, this.app.screen.height, this.sky[3]);
     if (sx !== this.app.stage.x || sy !== this.app.stage.y) this.app.stage.position.set(sx, sy);
@@ -405,7 +422,7 @@ export class MapView {
       this.fires = [];
       for (let i = 0; i < c.st.length; i++) {
         const r = lightOf(c.st[i]);
-        if (r) this.fires.push({ x: ((i % c.w) + 0.5) * TS, y: (Math.floor(i / c.w) + 0.5) * TS, r });
+        if (r) this.fires.push({ x: ((i % c.w) + 0.5) * TS, y: (Math.floor(i / c.w) + 0.5) * TS, r, lamp: c.st[i] === B.LAMPPOST ? i : -1 });
       }
     }
   }
@@ -504,11 +521,13 @@ export class MapView {
       v.fig.scale.set(v.size * boost);
 
       this.place(p, tf);
-      const moving = this.pos.moving;
-      v.moving = moving;
       const tx = Math.floor(this.pos.x / TS);
       const ty = Math.floor(this.pos.y / TS);
       v.tile = ty * c.w + tx;
+      // (the street scenes show a few people a little off where the colony has them: a warden walking the wall, a pair in a procession)
+      if (p.act.k !== 'sleep') this.street.shift(c, p, tf, this.time, this.pos);
+      const moving = this.pos.moving;
+      v.moving = moving;
       const asleep = !moving && p.act.k === 'sleep';
       const st = c.st[v.tile];
       const inBed = asleep && (st === B.BED || st === B.COT);
@@ -580,7 +599,8 @@ export class MapView {
         v.held.rotation = working && SWINGING.has(hk) ? -0.2 + Math.sin(this.time * 0.012 + p.id) * 0.7 : p.act.k === 'fight' && !moving ? Math.sin(this.time * 0.02 + p.id) * 0.6 : hk[0] === 'x' ? 0 : 0.18;
       }
       // what they are up to: shown beside them, faded while they walk there
-      const ak = asleep || p.brk?.k === 'seized' ? '' : activityKey(p.act.k, p.act.w);
+      // (those walking in a procession carry no badge: the garland or the bier says what they are about)
+      const ak = asleep || p.brk?.k === 'seized' || p.act.why === 'procession' ? '' : activityKey(p.act.k, p.act.w);
       if (ak !== v.actKey) { v.actKey = ak; drawActivity(v.act, ak); }
       v.act.visible = !!ak && s >= 0.6;
       if (v.act.visible) {
@@ -1344,6 +1364,8 @@ export class MapView {
     if (dark > 0.04) {
       for (let i = 0; i < this.fires.length; i++) {
         const f = this.fires[i];
+        // a street lamp gives no light until the lamplighter has been
+        if (f.lamp >= 0 && !this.street.lampLit(c, tf, f.lamp)) continue;
         this.light(n++, f.x, f.y, f.r, dark * 0.5 * (0.9 + 0.1 * Math.sin(this.time * 0.009 + i * 1.7)));
       }
       // rooms with someone awake inside glow from within
@@ -1706,6 +1728,7 @@ function heldFor(p: Pawn, blds: Map<number, Bld>): string {
   if (a.k === 'music') return 'lute';
   if (a.k === 'read' || a.k === 'study') return 'book';
   if (a.k === 'shop') return 'basket';
+  if (a.k === 'lamps') return 'lightpole';
   if (a.k === 'work' && a.w) {
     const want = TOOL_FOR[a.w];
     if (want) return p.tool && p.tool[0] === want ? want : '';

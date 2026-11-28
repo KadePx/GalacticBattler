@@ -695,6 +695,7 @@ export function thoughtText(c: Colony, k: string, o?: Id): string {
 
 const WHY: Record<string, string> = {
   d_leave: 'Taking the road to a neighbour', d_home: 'Home from the road', tourney: 'At the tournament', joust: 'Riding in the tournament',
+  form: 'Chosen to walk in the procession', procession: 'Walking in the procession', dusk: 'It is their turn to light the lamps', bench: 'A fair day for sitting out',
   memorial: 'Remembering the lost', x_gather: 'Chosen for the expedition', x_leave: 'Chosen for the expedition', x_home: 'Back from the wilds', farewell: 'Someone of theirs is going', welcome: 'The expedition is home', away: 'Chosen for the expedition',
   hungry: 'Hungry', starving: 'Starving', tired: 'Worn out', exhausted: 'Collapsed from exhaustion', night: 'Time to sleep', break: 'Not in their right mind',
   bored: 'Needed a break', idle: 'Nothing pressing to do', free: 'Free time', love: 'Wanted to see their love', urge: 'Could not put it off any longer', crush: 'Could not stay away', friend: 'Wanted company', family: 'Wanted family',

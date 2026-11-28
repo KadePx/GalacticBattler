@@ -8,7 +8,7 @@ import { B, F, T, type Colony } from '../sim/types';
 import { burning } from './life';
 import { TS, hash2 } from './tiles';
 
-export interface FxPawn { id: number; x: number; y: number; size: number; moving: boolean; k: string; w?: string; ta: number; tx: number; ty: number; d?: number; b?: number; kid?: boolean }
+export interface FxPawn { id: number; x: number; y: number; size: number; moving: boolean; k: string; w?: string; ta: number; tx: number; ty: number; d?: number; b?: number; kid?: boolean; why?: string }
 export interface Bounds { x0: number; y0: number; x1: number; y1: number }
 
 /** Parabolic flight from (x,y): out by (vx,vy) over the phase, falling under gravity. */

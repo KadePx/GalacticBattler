@@ -288,6 +288,13 @@ export function drawHeld(g: Graphics, k: string): void {
       haft(3, WOOD, 1.6);
       g.poly([-0.8, -1, 0.8, -1, 0.3, -7, -0.8, -5.5]).fill(IRON);
       break;
+    case 'lightpole':
+      // the lamplighter's pole: a long staff with a hooked wick burning at the end
+      haft(17, WOOD, 1.3);
+      g.moveTo(0, -15).quadraticCurveTo(2.6, -16.6, 1.6, -18.4).stroke({ width: 0.9, color: IRON, cap: 'round' });
+      g.circle(1.6, -19.4, 2.6).fill({ color: 0xffc24a, alpha: 0.35 });
+      g.ellipse(1.6, -19.6, 1.1, 1.7).fill(0xffe9a8);
+      break;
     case 'spear':
       haft(15, WOOD, 1.4);
       g.poly([0, -16.5, 1.6, -12.5, 0, -11.5, -1.6, -12.5]).fill(IRON).stroke({ width: 0.5, color: DARK });
@@ -574,6 +581,7 @@ export function drawActivity(g: Graphics, key: string): void {
       line([2, -1, 4, -4.4], BADGE_INK, 1.1);
       break;
     case 'pray':
+    case 'lamps':
     case 'attend': // a candle flame
       g.rect(-1.2, -0.4, 2.4, 4.4).fill(0xf1ead8);
       g.ellipse(0, -2.4, 1.4, 2.2).fill(0xffc24a);

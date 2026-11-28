@@ -55,6 +55,8 @@ export type ActK =
   | 'court' | 'wed' | 'attend' | 'mourn' | 'labour' | 'rest' | 'perform' | 'listen' | 'stargaze' | 'bathe'
   | 'chess' | 'darts' | 'music' | 'read' | 'study' | 'berserk' | 'subdue'
   | 'shop' | 'sell'
+  // going round the street lamps at dusk (see street.ts)
+  | 'lamps'
   // lending a hand when the land turns on the colony (see nature.ts: act.d says what), and a duel
   | 'aid' | 'duel'
   // an expedition: mustering at the gate, walking out, walking home (act.why says which);
@@ -563,7 +565,13 @@ export interface Colony {
   /** crop kind -> tick it was last brought in, for the variety of the colony's table */
   fresh?: Record<string, number>;
   /** planned gathering (wedding, funeral, feast) */
-  gath?: { k: string; t0: number; t1: number; b: number; a?: Id; o?: Id; x: number; y: number; /** which festival */ f?: string };
+  gath?: {
+    k: string; t0: number; t1: number; b: number; a?: Id; o?: Id; x: number; y: number; /** which festival */ f?: string;
+    /** a wedding's or funeral's procession (see street.ts): where it forms up, when it sets off (-1: there is none), and who walks, in order */
+    pr?: { x: number; y: number; t: number; ids: Id[] };
+  };
+  /** the street lamps this evening (see street.ts): [day, lamps in the round, who lights from the start, how many they have lit, who lights from the far end, how many] */
+  lamp?: [number, number, Id, number, Id, number];
   /**
    * The weekly market (see market.ts): today's hours (0 when there is none), market days held, the
    * stalls set out (ware index, keeper, the tile they stand on, the way they face, sold, earned),

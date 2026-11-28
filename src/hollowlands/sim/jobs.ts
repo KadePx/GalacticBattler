@@ -247,18 +247,22 @@ export function findJob(c: Colony, p: Pawn, r: Rand): Job | null {
         const gh = bldOf(c, 'barracks') ?? bldOf(c, 'guardhouse');
         return gh ? job('guard', spotTile(c, gh, 'R', r), true, 'Weapons practice', gh.id, 1) : job('guard', c.cy * c.w + c.cx + r.range(-2, 2), false, 'Weapons practice', undefined, 1);
       }
-      // the tower first, if nobody is up there
-      const tower = c.blds.find((b) => b.k === 'tower' && b.built);
-      if (tower && !c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === tower.id)) return job('guard', spotTile(c, tower, '.', r), true, 'On watch from the tower', tower.id);
-      // then the town wall's gates and towers, the main gate first
+      // a walled town keeps its watch on the wall: a tower or a gate that nobody has, a different one each turn,
+      // so the watch goes round the town (and walks the wall by its post: see the view's street scenes)
       if (c.walls && c.walls.done >= 1) {
         const posts = c.blds.filter((b) => (b.k === 'tgate' || b.k === 'wtower') && b.built && !b.br && b.s !== 'tgate~p');
-        const free = posts.find((b) => !c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === b.id));
-        if (free && r.chance(0.6)) {
+        const first = posts.length ? r.int(posts.length) : 0;
+        for (let n = 0; n < posts.length && n < 6; n++) {
+          const free = posts[(first + n) % posts.length];
+          if (c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === free.id)) continue;
           const spot = spots(shapeOf(free), free.k === 'tgate' ? ',' : '.')[0];
-          if (spot) return job('guard', (free.y + spot.dy) * c.w + free.x + spot.dx, false, free.k === 'tgate' ? 'Keeping the gate' : 'On watch from the wall', free.id);
+          if (spot && r.chance(0.75)) return job('guard', (free.y + spot.dy) * c.w + free.x + spot.dx, false, free.k === 'tgate' ? 'Keeping the gate' : 'On watch from the wall', free.id);
+          break;
         }
       }
+      // the watchtower, if nobody is up there
+      const tower = c.blds.find((b) => b.k === 'tower' && b.built);
+      if (tower && !c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === tower.id)) return job('guard', spotTile(c, tower, '.', r), true, 'On watch from the tower', tower.id);
       // then the castle's gatehouse
       const gate = c.blds.find((b) => b.k === 'gatehouse' && b.built);
       if (gate && !c.pawns.some((o) => o !== p && o.act.w === 'guard' && c.sb[o.act.ty * c.w + o.act.tx] === gate.id)) return job('guard', spotTile(c, gate, '.', r), true, 'On watch at the castle gate', gate.id);

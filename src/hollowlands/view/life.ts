@@ -1,8 +1,8 @@
 // The town at work, drawn from what is going on in it: looms clacking, bellows pumping, cauldrons
 // and vats bubbling, millstones turning, loaves on the baker's rack and sacks by the mill, the
 // anvil sparking under the hammer, washing out on the lines and dyed cloth drying, lamplight in
-// the windows after dark, children at their games, people carrying loads to work, and carts on
-// the road between the fields and the granary and between the gate and the market.
+// the windows after dark, people carrying loads to work, and carts on the road between the fields
+// being reaped and the granary and between the gate and the market.
 // Display only: everything here is read from the colony and the clock, and nothing is stored in
 // it. Where things are is re-read every few seconds; each frame only what is on screen is drawn.
 
@@ -44,6 +44,9 @@ export class Life {
   private layer: Container | null = null;
   /** cart routes that found no way, and when to try them again */
   private failed = new Map<string, number>();
+  /** the fields with sheaves standing (their building ids), told to us by the street scenes */
+  reaped: number[] = [];
+  private reapKey = '';
 
   /** Forget everything (a new colony): carts are removed from their layer. */
   reset(): void {
@@ -61,7 +64,9 @@ export class Life {
   /** Re-read where the working things, windows and washing lines are, every few seconds. */
   private rescan(c: Colony, time: number, layer: Container): void {
     const key = Math.floor(time / 4000);
-    if (key === this.scan && c.blds.length === this.nb && layer === this.layer) return;
+    const rk = this.reaped.join(',');
+    if (key === this.scan && c.blds.length === this.nb && layer === this.layer && rk === this.reapKey) return;
+    this.reapKey = rk;
     this.scan = key;
     this.nb = c.blds.length;
     this.layer = layer;
@@ -123,43 +128,9 @@ export class Life {
     this.planRoutes(c, layer, time);
   }
 
-  /** Where the carts run: from a field or two to the granary, and from the gate to the market. */
+  /** Where the carts run: from the fields being reaped to the granary, and from the gate to the market. */
   private planRoutes(c: Colony, layer: Container, time: number): void {
-    const want: { kind: 'field' | 'market'; from: [number, number]; to: [number, number]; seed: number }[] = [];
-    const gran = c.blds.find((b) => b.built && b.k === 'granary') ?? c.blds.find((b) => b.built && b.k === 'store');
-    if (gran) {
-      // the nearer fields send their crop in by cart; which ones changes with the season
-      const dist = (b: Bld): number => Math.abs(b.x - gran.x) + Math.abs(b.y - gran.y);
-      const fields = c.blds.filter((b) => b.built && b.k === 'field').sort((a, b) => dist(a) - dist(b) || a.id - b.id).slice(0, 5);
-      if (fields.length) {
-        const day = Math.floor(c.tick / TICKS_PER_DAY / DAYS_PER_SEASON);
-        const n = Math.min(2, fields.length);
-        const first = Math.floor(h(day, 0, 43) * fields.length);
-        for (let k = 0; k < n; k++) {
-          const f = fields[(first + k) % fields.length];
-          want.push({ kind: 'field', from: [f.x + (f.w >> 1), f.y + (f.h >> 1)], to: this.doorOf(c, gran), seed: f.id });
-        }
-      }
-    }
-    if (c.mkt) {
-      const slot = cartSlots(c)[0];
-      // in from the road just outside the town gate (or from where the road leaves the land, if there is no wall)
-      let from: [number, number] = [c.gx, c.gy];
-      let best = 1e9;
-      for (const b of c.blds) {
-        if (!b.built || b.k !== 'tgate') continue;
-        const gx = b.x + (b.w >> 1);
-        const gy = b.y + (b.h >> 1);
-        const d = Math.abs(gx - c.gx) + Math.abs(gy - c.gy);
-        if (d >= best) continue;
-        best = d;
-        const out = Math.abs(c.gx - gx) >= Math.abs(c.gy - gy);
-        const ox = out ? gx + Math.sign(c.gx - gx) * 4 : gx;
-        const oy = out ? gy : gy + Math.sign(c.gy - gy) * 4;
-        from = [Math.max(1, Math.min(c.w - 2, ox)), Math.max(1, Math.min(c.h - 2, oy))];
-      }
-      if (slot) want.push({ kind: 'market', from, to: [slot.x, slot.y], seed: 7 });
-    }
+    const want = cartWants(c, this.reaped);
     const keep: Route[] = [];
     for (const w of want) {
       const key = `${w.kind}:${w.from}:${w.to}`;
@@ -189,20 +160,6 @@ export class Life {
     }
     for (const r of this.routes) if (!keep.includes(r)) r.g.destroy({ children: true });
     this.routes = keep;
-  }
-
-  /** The open tile just outside a building's door (or beside it, if it has none). */
-  private doorOf(c: Colony, b: Bld): [number, number] {
-    for (const q of cells(shapeOf(b))) {
-      if (q.ch !== '+' && c.st[(b.y + q.dy) * c.w + b.x + q.dx] !== B.DOOR) continue;
-      const x = b.x + q.dx;
-      const y = b.y + q.dy;
-      for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
-        const i = (y + dy) * c.w + x + dx;
-        if (c.sb[i] !== b.id && passable(c, i)) return [x + dx, y + dy];
-      }
-    }
-    return [b.x + (b.w >> 1), b.y + b.h];
   }
 
   /**
@@ -451,12 +408,7 @@ export class Life {
     // ---- loads carried to work, children's games ----
     for (const p of pawns) {
       if (p.x < view.x0 * TS || p.x > view.x1 * TS || p.y < view.y0 * TS || p.y > view.y1 * TS) continue;
-      if (p.k === 'play' && p.kid && !p.moving && tf >= p.ta) {
-        // a ball tossed up and caught
-        const q = (time * 0.0016 + p.id * 0.37) % 1;
-        floor.circle(p.x + 6 * p.size, p.y - 4 * p.size - Math.sin(q * Math.PI) * 12, 1.8).fill(0xe86a6a).stroke({ width: 0.6, color: 0xffffff });
-        continue;
-      }
+      // (children's games are drawn with the street scenes: see street.ts)
       if (!p.moving || p.k !== 'work' || !p.w || !fine) continue;
       const kind = p.b ? this.blds.get(p.b) : undefined;
       const lk = loadFor(p.w, kind);
@@ -486,13 +438,8 @@ export class Life {
     }
 
     // ---- carts on the road ----
-    const day0 = hour >= 7 && hour < 18;
-    const harvest = season === 1 || season === 2;
-    const mkt = marketOpen(c);
     for (const r of this.routes) {
-      let go = false;
-      if (r.kind === 'field') go = day0 && (harvest || busy.has(r.seed)) && !(c.weather >= 3);
-      else go = (mkt ? hour >= 6 && hour < 16 : day0 && h(day, 1, 51) < 0.5) && c.weather < 4;
+      const go = cartGoes(c, r.kind, hour, day, this.reaped.includes(r.seed), busy.has(r.seed));
       if (!go) { r.g.visible = false; continue; }
       // to and fro along the road, resting a little at each end
       const speed = 0.03;
@@ -529,6 +476,77 @@ export class Life {
 }
 
 /** Should the fire on tile i be smoking? Shared with the chimney smoke in fx. */
+/** One cart's run: what it carries, where from and to, and the field (or 7 for the market's) it belongs to. */
+export interface CartWant { kind: 'field' | 'market'; from: [number, number]; to: [number, number]; seed: number }
+
+/**
+ * Where carts should be running, from the colony as it stands: in from the fields that are being
+ * reaped (`reaped`: their building ids; the two nearest the granary), or failing that from a near
+ * field or two that someone may be working; and from the gate to the market square.
+ */
+export function cartWants(c: Colony, reaped: number[]): CartWant[] {
+  const want: CartWant[] = [];
+  const gran = c.blds.find((b) => b.built && b.k === 'granary') ?? c.blds.find((b) => b.built && b.k === 'store');
+  if (gran) {
+    const dist = (b: Bld): number => Math.abs(b.x - gran.x) + Math.abs(b.y - gran.y);
+    const all = c.blds.filter((b) => b.built && b.k === 'field').sort((a, b) => dist(a) - dist(b) || a.id - b.id);
+    const cut = all.filter((b) => reaped.includes(b.id)).slice(0, 2);
+    const fields = all.slice(0, 5);
+    if (cut.length) {
+      for (const f of cut) want.push({ kind: 'field', from: [f.x + (f.w >> 1), f.y + (f.h >> 1)], to: doorOf(c, gran), seed: f.id });
+    } else if (fields.length) {
+      // which of the nearer fields has the cart changes with the season
+      const day = Math.floor(c.tick / TICKS_PER_DAY / DAYS_PER_SEASON);
+      const n = Math.min(2, fields.length);
+      const first = Math.floor(h(day, 0, 43) * fields.length);
+      for (let k = 0; k < n; k++) {
+        const f = fields[(first + k) % fields.length];
+        want.push({ kind: 'field', from: [f.x + (f.w >> 1), f.y + (f.h >> 1)], to: doorOf(c, gran), seed: f.id });
+      }
+    }
+  }
+  if (c.mkt) {
+    const slot = cartSlots(c)[0];
+    // in from the road just outside the town gate (or from where the road leaves the land, if there is no wall)
+    let from: [number, number] = [c.gx, c.gy];
+    let best = 1e9;
+    for (const b of c.blds) {
+      if (!b.built || b.k !== 'tgate') continue;
+      const gx = b.x + (b.w >> 1);
+      const gy = b.y + (b.h >> 1);
+      const d = Math.abs(gx - c.gx) + Math.abs(gy - c.gy);
+      if (d >= best) continue;
+      best = d;
+      const out = Math.abs(c.gx - gx) >= Math.abs(c.gy - gy);
+      const ox = out ? gx + Math.sign(c.gx - gx) * 4 : gx;
+      const oy = out ? gy : gy + Math.sign(c.gy - gy) * 4;
+      from = [Math.max(1, Math.min(c.w - 2, ox)), Math.max(1, Math.min(c.h - 2, oy))];
+    }
+    if (slot) want.push({ kind: 'market', from, to: [slot.x, slot.y], seed: 7 });
+  }
+  return want;
+}
+
+/** Should a cart be out on its run now? `reaped`: the field has sheaves standing; `worked`: someone is working it. */
+export function cartGoes(c: Colony, kind: 'field' | 'market', hour: number, day: number, reaped: boolean, worked: boolean): boolean {
+  if (kind === 'field') return hour >= 7 && hour < 18 && (reaped || worked) && c.weather < 3;
+  return (marketOpen(c) ? hour >= 6 && hour < 16 : hour >= 7 && hour < 18 && h(day, 1, 51) < 0.5) && c.weather < 4;
+}
+
+/** The open tile just outside a building's door (or beside it, if it has none). */
+function doorOf(c: Colony, b: Bld): [number, number] {
+  for (const q of cells(shapeOf(b))) {
+    if (q.ch !== '+' && c.st[(b.y + q.dy) * c.w + b.x + q.dx] !== B.DOOR) continue;
+    const x = b.x + q.dx;
+    const y = b.y + q.dy;
+    for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      const i = (y + dy) * c.w + x + dx;
+      if (c.sb[i] !== b.id && passable(c, i)) return [x + dx, y + dy];
+    }
+  }
+  return [b.x + (b.w >> 1), b.y + b.h];
+}
+
 export function burning(c: Colony, i: number, s: number, busy: Set<number>, home: Set<number>, hour: number): boolean {
   const b = c.sb[i];
   if (s === B.BRAZIER) return true;
